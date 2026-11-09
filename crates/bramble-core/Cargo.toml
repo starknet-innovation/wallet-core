@@ -44,7 +44,7 @@ sha2 = { version = "=0.10.9" }
 # The wasm2 player's allocator and panic hook; linked by the `extern crate` line in lib.rs.
 uniffi-runtime-wasm = { version = "=0.31.0-6" }
 # wasm32 has no threads, so UniFFI must not demand Send + Sync on exported objects.
-uniffi_core = { version = "=0.31.2", features = ["wasm-unstable-single-threaded"] }
+uniffi_core = { version = "=0.32.2", features = ["wasm-unstable-single-threaded"] }
 # Pinned so `wasm-bindgen-cli` (which ubrn runs over the module) has one deliberate version to
 # match. It arrives through getrandom's wasm backend in wallet-core.
 wasm-bindgen = { version = "=0.2.130" }
