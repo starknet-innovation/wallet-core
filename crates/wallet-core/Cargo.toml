@@ -11,7 +11,7 @@ description = "Starknet wallet core: Krusty KMS key custody, the encrypted vault
 # Wallet cryptography. Pinned exactly; `parallel` (rayon) only serves proof generation.
 krusty-kms = { version = "=2.0.0", default-features = false }
 krusty-kms-common = { version = "=2.0.0" }
-starknet-types-core = { version = "=0.2.4", features = ["hash", "curve"] }
+starknet-types-core = { version = "=1.0.0", features = ["hash", "curve"] }
 # Vault envelope: the extension's EncryptedEnvelope v3 (PBKDF2-SHA-256 -> AES-256-GCM).
 aes-gcm = { version = "=0.11.1", features = ["zeroize"] }
 pbkdf2 = { version = "=0.13.0", default-features = false, features = ["hmac"] }

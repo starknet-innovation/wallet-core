@@ -932,7 +932,7 @@ dependencies = [
  "sha3 0.12.0",
  "starknet-rust-core",
  "starknet-rust-crypto",
- "starknet-types-core",
+ "starknet-types-core 0.2.4",
  "subtle",
  "zeroize",
 ]
@@ -946,7 +946,7 @@ dependencies = [
  "hex",
  "serde",
  "serde_json",
- "starknet-types-core",
+ "starknet-types-core 0.2.4",
  "subtle",
  "thiserror",
  "zeroize",
@@ -962,7 +962,7 @@ dependencies = [
  "getrandom 0.2.17",
  "getrandom 0.4.3",
  "krusty-kms-common",
- "starknet-types-core",
+ "starknet-types-core 0.2.4",
  "subtle",
  "zeroize",
 ]
@@ -1635,7 +1635,7 @@ dependencies = [
  "sha3 0.12.0",
  "starknet-rust-core-derive",
  "starknet-rust-crypto",
- "starknet-types-core",
+ "starknet-types-core 0.2.4",
 ]
 
 [[package]]
@@ -1666,7 +1666,7 @@ dependencies = [
  "rfc6979 0.5.0",
  "sha2 0.11.1",
  "starknet-rust-curve",
- "starknet-types-core",
+ "starknet-types-core 0.2.4",
  "zeroize",
 ]
 
@@ -1676,7 +1676,7 @@ version = "0.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "488ba4eee956277344d09941d4630471964da37565771b7a3f4ab0fa8ea5b9bd"
 dependencies = [
- "starknet-types-core",
+ "starknet-types-core 0.2.4",
 ]
 
 [[package]]
@@ -1687,6 +1687,25 @@ checksum = "90d23b1bc014ee4cce40056ab3114bcbcdc2dbc1e845bbfb1f8bd0bab63507d4"
 dependencies = [
  "blake2",
  "digest 0.10.7",
+ "lambdaworks-crypto",
+ "lambdaworks-math",
+ "num-bigint 0.4.8",
+ "num-integer",
+ "num-traits",
+ "rand 0.9.5",
+ "serde",
+ "zeroize",
+]
+
+[[package]]
+name = "starknet-types-core"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a12690813e587969cb4a9e7d8ebdb069d4bb7ec8d03275c5f719310c8e1f07c"
+dependencies = [
+ "blake2",
+ "digest 0.10.7",
+ "generic-array",
  "lambdaworks-crypto",
  "lambdaworks-math",
  "num-bigint 0.4.8",
@@ -2028,7 +2047,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.1",
  "sha3 0.12.0",
- "starknet-types-core",
+ "starknet-types-core 1.0.0",
  "thiserror",
  "zeroize",
 ]
