@@ -129,9 +129,11 @@ Each phase names the crate a module lands in; the table above decides anything n
         only at the FFI, behind `raw-keys`. The Nostr event grammar mobile's relay code uses
         (`NostrEvent`, `parse_event_json`, `event_from_value`, `has_recipient_tag`,
         `is_public_key`, `safe_non_negative_integer`, `kms::utf16_length`) is public.
-        Two differences mobile meets when it deletes its copy: its passphrase bound is 256 bytes
-        and wallet-core's is Bramble's 1,024 UTF-16 units, and its `oz_class_hash` reads Krusty's
-        `latest` where wallet-core takes the version (`OZ_ACCOUNT_VERSION`).
+        Mobile's implementation is still in flux, so where it differs from the extension it takes
+        the core's behaviour rather than the core bending to it: its 256-byte passphrase bound
+        becomes the extension's 1,024 UTF-16 units (`wallet-model/preferences/passphrase.ts`), and
+        its `oz_class_hash` stops reading Krusty's `latest` and uses `OZ_ACCOUNT_VERSION` (3.0.0,
+        `account-contract.ts`), so a Krusty bump cannot move its addresses.
       - Bramble's `tests/conformance/mobile-generated.test.ts` requires mobile's Krusty pin to
         equal the extension's npm pin (0.11.0), so it fails the moment mobile moves to 2.0.0
         while the extension stays on 0.11 until Phase 3.1. Point it at
