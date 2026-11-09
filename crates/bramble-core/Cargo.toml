@@ -37,7 +37,7 @@ thiserror = { version = "=2.0.21" }
 
 [dev-dependencies]
 serde_json = { version = "=1.0.154" }
-# Golden-fixture hashes (tests/fixtures.rs); already in the lockfile through Krusty.
+# Golden-fixture hashes (tests/fixtures.rs); the same version wallet-core uses for vault crypto.
 sha2 = { version = "=0.11.1" }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
