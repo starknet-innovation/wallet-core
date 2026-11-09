@@ -1,11 +1,15 @@
 [package]
 name = "wallet-core"
-version = "0.1.0"
-edition = "2021"
-rust-version = "1.92"
-license = "MIT"
-publish = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "README.md"
 description = "Starknet wallet core: Krusty KMS key custody and wallet logic as plain Rust, with no product policy and no FFI"
+keywords = ["starknet", "wallet", "kms", "nostr", "cryptography"]
+categories = ["cryptography::cryptocurrencies"]
 
 [dependencies]
 # Wallet cryptography. Pinned exactly; `parallel` (rayon) only serves proof generation.

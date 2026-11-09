@@ -83,6 +83,7 @@ crates/bramble-core/       Bramble: lib bramble_core, the cdylib/staticlib/wasm3
 js/                        npm package @starknet-innovation/bramble-core: ubrn config,
                            entrypoint, smoke test over the built wasm
 .github/workflows/         ci.yml (rust + wasm jobs), release.yml (tag → npm, with provenance),
+                           publish-crates.yml (tag → crates.io, wallet-core then bramble-core),
                            advisories.yml (weekly `cargo deny check advisories` on main)
 ```
 
@@ -286,7 +287,7 @@ seals with fresh randomness are kept while the extension still opens them.
   mirror (the pattern `encrypted-store.ts` already uses).
 - Whether the devnet OZ class hash moves into the core or stays a TypeScript constant.
 - Who owns the mobile vault → v12 migration.
-- When a second wallet wants `wallet-core`: publish it to crates.io, and whether it ships its own
-  UniFFI feature or each wallet keeps exporting from its own crate (today's answer).
+- Whether a second wallet using `wallet-core` (on crates.io since 2026-11-09) ships its own UniFFI
+  feature or keeps exporting from its own crate (today's answer).
 - Which modules count as mobile-only glue, and whether they live in the app or in `bramble-core`
   behind mobile's build (Phase 2).

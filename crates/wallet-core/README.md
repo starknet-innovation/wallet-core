@@ -33,9 +33,10 @@ hashing, transfer planning and portfolio, history and privacy logic join it here
 - **Not I/O.** No network, no files, no clock of its own; hosts pass in time and, later, storage.
 - **No logging.** Library code prints nothing, and no secret reaches `Debug`, `Display` or an
   error message.
-- **Not published** to crates.io (`publish = false`).
 
 ## Using it
+
+Published to crates.io with `bramble-core`, from the same `v*` tag and at the same version.
 
 ```rust
 use wallet_core::{derive_starknet_keypair, sign_stark_hash, Zeroizing};

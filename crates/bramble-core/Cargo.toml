@@ -1,11 +1,15 @@
 [package]
 name = "bramble-core"
-version = "0.1.0"
-edition = "2021"
-rust-version = "1.92"
-license = "MIT"
-publish = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "README.md"
 description = "Bramble wallet core: wallet-core plus Bramble's policy, behind one UniFFI surface for the browser extension (WASM), iOS and Android"
+keywords = ["starknet", "wallet", "uniffi", "wasm", "bramble"]
+categories = ["cryptography::cryptocurrencies"]
 
 [lib]
 # staticlib: linked into the iOS app through an XCFramework.

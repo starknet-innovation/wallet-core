@@ -30,7 +30,8 @@ jobs:
         run: |
           tag="${GITHUB_REF_NAME#v}"
           pkg="$(node -p "require('./js/package.json').version")"
-          crate="$(grep -m1 '^version = ' crates/bramble-core/Cargo.toml | cut -d'"' -f2)"
+          crate="$(cargo metadata --no-deps --format-version 1 --locked \
+            | jq -r '.packages[] | select(.name == "bramble-core") | .version')"
           test "$tag" = "$pkg" && test "$tag" = "$crate"
       - run: cargo install wasm-bindgen-cli --version 0.2.130 --locked
       - run: bash tools/check.sh wasm

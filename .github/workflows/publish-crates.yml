@@ -1,0 +1,135 @@
+name: Publish to crates.io
+
+# Publishes wallet-core, then bramble-core, from the same `v*` tag release.yml publishes npm from.
+# Mirrors Krusty KMS's publish.yml: trusted publishing (OIDC), no stored token, behind a protected
+# `crates-io` environment.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: crates-io-publish-${{ github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_TOOLCHAIN: 1.97.1
+
+jobs:
+  # A tag push never ships what CI would reject. Tags skip ci.yml, so run its checks here.
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component rustfmt,clippy \
+            --target wasm32-unknown-unknown
+          rustup default "$RUST_TOOLCHAIN"
+      - run: cargo install cargo-deny --version 0.19.8 --locked
+      - run: bash tools/check.sh quick lint test deny package
+
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    environment: crates-io
+    permissions:
+      actions: read # the environment / deployment-policy API calls below
+      contents: read
+      id-token: write # crates.io trusted publishing
+    env:
+      CARGO_HTTP_MULTIPLEXING: "false"
+      CARGO_NET_RETRY: "10"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
+          rustup default "$RUST_TOOLCHAIN"
+      # The environment is all that stands between a pushed tag and a crates.io token, so refuse
+      # to continue unless its protection rules are configured: a reviewer who is not the tag
+      # pusher, and a deployment policy admitting exactly `v*` tags.
+      - name: Require a protected crates-io environment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          environment_json="${RUNNER_TEMP}/crates-io-environment.json"
+          policies_json="${RUNNER_TEMP}/crates-io-policies.json"
+          gh api "repos/${GITHUB_REPOSITORY}/environments/crates-io" > "${environment_json}"
+          gh api "repos/${GITHUB_REPOSITORY}/environments/crates-io/deployment-branch-policies?per_page=100" \
+            > "${policies_json}"
+          node - "${environment_json}" "${policies_json}" <<'NODE'
+          const fs = require("node:fs");
+          const environment = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          const policies = JSON.parse(fs.readFileSync(process.argv[3], "utf8"));
+          const reviewers = environment.protection_rules?.find((rule) => rule.type === "required_reviewers");
+          if (!reviewers?.reviewers?.length) {
+            throw new Error("the crates-io environment must have at least one required reviewer");
+          }
+          if (reviewers.prevent_self_review !== true) {
+            throw new Error("the crates-io environment must prevent self-review");
+          }
+          const policy = environment.deployment_branch_policy;
+          if (!policy?.custom_branch_policies || policy.protected_branches) {
+            throw new Error("the crates-io environment must use a custom v*-tag-only deployment policy");
+          }
+          const rules = policies.branch_policies ?? [];
+          if (policies.total_count !== 1 || rules.length !== 1 || rules[0].name !== "v*" || rules[0].type !== "tag") {
+            throw new Error("the crates-io environment must allow exactly the v* tag pattern");
+          }
+          NODE
+      - name: Release commit must be on main
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor HEAD origin/main \
+            || { echo "::error::release tag must point to a commit reachable from main"; exit 1; }
+      - name: Tag must equal both crate versions
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          for crate in wallet-core bramble-core; do
+            version="$(cargo metadata --no-deps --format-version 1 --locked \
+              | jq -r ".packages[] | select(.name == \"${crate}\") | .version")"
+            test "$tag" = "$version" \
+              || { echo "::error::tag ${GITHUB_REF_NAME} does not match ${crate} ${version}"; exit 1; }
+          done
+      - name: Authenticate with crates.io
+        id: auth
+        run: |
+          set -euo pipefail
+          oidc_response="$(curl --fail --silent --show-error \
+            --header "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=crates.io")"
+          oidc_token="$(jq --exit-status --raw-output '.value' <<<"${oidc_response}")"
+          token_response="$(curl --fail --silent --show-error --request POST \
+            --header "Content-Type: application/json" \
+            --header "User-Agent: wallet-core-trusted-publishing" \
+            --data "$(jq --compact-output --null-input --arg jwt "${oidc_token}" '{jwt: $jwt}')" \
+            https://crates.io/api/v1/trusted_publishing/tokens)"
+          token="$(jq --exit-status --raw-output '.token' <<<"${token_response}")"
+          echo "::add-mask::${token}"
+          echo "token=${token}" >> "${GITHUB_OUTPUT}"
+      - name: Publish crates in dependency order
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        run: |
+          bash tools/publish-crate.sh wallet-core
+          bash tools/publish-crate.sh bramble-core
+      - name: Revoke crates.io token
+        if: ${{ always() && steps.auth.outputs.token != '' }}
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        run: >
+          curl --fail --silent --show-error --request DELETE
+          --header "Authorization: Bearer ${CARGO_REGISTRY_TOKEN}"
+          --header "User-Agent: wallet-core-trusted-publishing"
+          https://crates.io/api/v1/trusted_publishing/tokens

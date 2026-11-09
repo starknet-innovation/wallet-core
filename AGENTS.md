@@ -77,7 +77,9 @@ Grep first; extend in place rather than adding a sibling.
 
 ## Releases
 
-- The tag `v<x.y.z>` must equal the `bramble-core` crate version and `js/package.json`;
-  `release.yml` refuses otherwise.
-- npm publishes through OIDC trusted publishing only. Never add an npm token or publish locally.
+- Both crates share the workspace version. The tag `v<x.y.z>` must equal it and
+  `js/package.json`; `release.yml` (npm) and `publish-crates.yml` (crates.io) refuse otherwise.
+- npm and crates.io publish through OIDC trusted publishing only. Never add a registry token or
+  publish locally. crates.io publishing also waits on a reviewer in the `crates-io` environment.
+- A version on crates.io can be yanked but never replaced or deleted: bump, don't retag.
 - Only a maintainer tags, and only a merged `main` commit. Never move or recreate a tag.
