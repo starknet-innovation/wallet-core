@@ -129,8 +129,52 @@ Each phase names the crate a module lands in; the table above decides anything n
    takes the new tag, deletes its copy and keeps Bramble's constants and exports. From then on,
    mobile work on that mechanism is a PR here.
    1. **KMS, Nostr, felt** (already in `wallet-core`). Mobile bumps Krusty 0.11 → 2.0.0 across
-      the whole crate (`send/sign.rs`, `argent_multisig.rs`, `account_catalog.rs` included) and
-      deletes `kms.rs`, `nostr.rs` and `felt.rs`. Two gaps first:
+      the whole crate and then takes `kms.rs`, `nostr.rs` and `felt.rs` from `wallet-core`.
+      Mobile has no users yet, so Krusty 2.0.0 is taken without a separate diff review: the
+      golden fixtures are the check that mobile derives and signs as the extension does.
+      Steps, in order:
+      1. **Krusty bump in mobile** (one PR on `feature/mobile-wallet`; needs nothing from this
+         repo). Tried on a copy of `0a4bd84c`: with `krusty-kms` and `krusty-kms-common` at
+         `=2.0.0` the crate builds with no source change, clippy is clean, and all 340 tests
+         pass with every fixture byte-identical. The PR:
+         - `Cargo.toml`: `krusty-kms` and `krusty-kms-common` `=0.11.0` → `=2.0.0`; `bip39`
+           `=2.2.2` → `=3.0.0`, the version Krusty 2.0.0 uses, so the lockfile holds one copy
+           (`ui.rs`'s word assist builds and passes unchanged). `starknet-types-core` stays
+           `=0.2.4`. `cargo tree -i krusty-kms` and `-i bip39` each show one version.
+         - `src/lib.rs`: `krusty_version: "2.0.0"`.
+         - Bramble's `tests/conformance/mobile-generated.test.ts` ("the Rust core pins the same
+           Krusty release as the extension"): drop the npm-pin equality, which the extension
+           keeps at 0.11 until 3.1, and check instead that `Cargo.toml`'s pin equals
+           `lib.rs`'s `krusty_version`. Step 3 points it at `wallet_core::KRUSTY_VERSION`.
+         - Comments and docs naming 0.11.0 as mobile's Krusty: `send/mod.rs`, `send/sign.rs`,
+           `privacy/mod.rs`, `argent_multisig.rs`, `kms.rs`, `mobile/SCOPE.md`.
+         - Checks: `cargo test`, clippy with `-D warnings`, `bun run check` in Bramble (the
+           conformance suites, including `mobile-nostr-parity.test.ts` opening
+           `rust-gift-wrap.json`: Krusty 2.0 wraps, the extension's 0.11 opens), and an iOS and
+           Android build. Swift and Kotlin bindings regenerate with no diff.
+         - If a golden fixture ever fails here, Krusty changed behaviour: stop and report it
+           upstream; never edit the fixture.
+      2. **Nostr parity gaps in `wallet-core`** (PR here), found by comparing mobile's
+         `nostr.rs` and `kms.rs` with the core:
+         - Open a gift wrap from a parsed `NostrEvent`. Mobile's relay code parses first and
+           calls `open_at(&NostrEvent)`; the core only takes event JSON. The JSON function
+           becomes a wrapper over the new one.
+         - A Stark public key from a `SecretFelt`, for mobile's `scoped_viewing_public_key`
+           (recovery compares it with the key a privacy pool holds).
+         - Parity tests for both against `nostr-multisig-parity.json` and
+           `extension-privacy-*.json`.
+      3. **Mobile takes the core** at `v0.1.0`, tagged once step 2 merges. That tag makes a
+         GitHub release only: `release.yml` skips npm while `js/package.json` is private, which
+         it stays until Phase 3.1. Mobile pins `wallet-core` by `git` and `tag`.
+         `felt.rs` becomes `pub(crate) use wallet_core::felt;`, `nostr.rs` maps onto the core
+         (`ApplicationData` → `NostrApplicationData`), and `kms.rs` keeps only mobile's glue
+         (`Ladder` and its serde names, `normalise_phrase`, error mapping, `OZ_ACCOUNT_VERSION`)
+         until 2.7. `krusty_version` reads `wallet_core::KRUSTY_VERSION`. The KMS half of
+         mobile's `parity.rs` and the key and gift-wrap tests in `nostr_multisig_parity.rs`
+         are deleted, since `crates/bramble-core/tests/parity.rs` covers them;
+         `privacy_key_boundary.rs` is pointed at where derivation now lives.
+
+      What step 3 needs from this repo:
       - (done) `wallet-core`'s API was String in, String out, and `StarkKeypair.private_key` a
         plain `String`. Mobile works in `Felt` and holds keys in `Zeroizing`
         (`kms_accounts.rs` calls `kms::private_key`). `wallet-core` now borrows secrets (`&str`)
@@ -144,11 +188,7 @@ Each phase names the crate a module lands in; the table above decides anything n
         becomes the extension's 1,024 UTF-16 units (`wallet-model/preferences/passphrase.ts`), and
         its `oz_class_hash` stops reading Krusty's `latest` and uses `OZ_ACCOUNT_VERSION` (3.0.0,
         `account-contract.ts`), so a Krusty bump cannot move its addresses.
-      - Bramble's `tests/conformance/mobile-generated.test.ts` requires mobile's Krusty pin to
-        equal the extension's npm pin (0.11.0), so it fails the moment mobile moves to 2.0.0
-        while the extension stays on 0.11 until Phase 3.1. Point it at
-        `wallet_core::KRUSTY_VERSION` instead; the golden vectors, still generated by the
-        extension on 0.11, are what prove 2.0.0 derives and signs the same.
+      - The Nostr parity gaps in step 2.
    2. **Vault and accounts**: `container.rs` (envelope v3, byte-compatible) and the vault
       mechanics into `wallet-core`, with plain Rust `Storage` and `Clock` traits; mobile's
       `files.rs` implements `Storage`. The v12 schema and migrations are Bramble's and stay in
@@ -274,11 +314,8 @@ seals with fresh randomness are kept while the extension still opens them.
 ## Open questions
 
 - npm scope: `@starknet-innovation` (matches the GitHub org) or `@starknetfoundation` (matches Krusty).
-  Settle before the first release tag; the extension's pin fixes the name.
-- Bramble PR #803 (Krusty 0.11 → 0.14) was closed without comment; this repo pins 2.0.0, released
-  2026-11-08, so review its diff (Bitcoin and QSB modules, zeroizing HMAC) before relying
-  on it. This blocks Phase 2.1: mobile moves from Krusty 0.11 to 2.0, and that step also breaks
-  Bramble's Krusty pin-equality test (see 2.1).
+  Deferred; settle before the first npm publish (Phase 3.1), since the extension's pin fixes the
+  name. Tags before then don't publish to npm.
 - Which `starknet-types-core` the sequencer runs (0.2.4 is reported but unconfirmed). It matters only
   if this repo starts sharing types with sequencer or node crates; until then Krusty sets the pin.
 - UniFFI 0.29.5 → 0.31.2: what changes in the generated Swift and Kotlin (Phase 2.7).
