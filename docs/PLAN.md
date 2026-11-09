@@ -162,19 +162,18 @@ Each phase names the crate a module lands in; the table above decides anything n
            iOS and Android build. Swift and Kotlin bindings regenerate with no diff.
          - If a golden fixture ever fails here, Krusty changed behaviour: stop and report it
            upstream; never edit the fixture.
-      2. **Nostr parity gaps in `wallet-core`** (PR here), found by comparing mobile's
-         `nostr.rs` and `kms.rs` with the core:
-         - Open a gift wrap from a parsed `NostrEvent`. Mobile's relay code parses first and
-           calls `open_at(&NostrEvent)`; the core only takes event JSON. The JSON function
-           becomes a wrapper over the new one.
-         - A Stark public key from a `SecretFelt`, for mobile's `scoped_viewing_public_key`
+      2. **Nostr parity gaps in `wallet-core`** (done), found by comparing mobile's `nostr.rs`
+         and `kms.rs` with the core:
+         - `open_nostr_event` opens a gift wrap from a parsed `NostrEvent`, re-serialised as the
+           extension's `JSON.stringify(event)` and re-checked against the event grammar.
+           `open_nostr_application_data` (event JSON) is now a wrapper over it.
+         - `stark_public_key` takes a `SecretFelt`, for mobile's `scoped_viewing_public_key`
            (recovery compares it with the key a privacy pool holds).
-         - Parity tests: the open against `nostr-multisig-parity.json`'s gift wrap and its
-           refused variants; the public key against `extension-parity.json`'s `publicKeyX`
-           (derive the key, then take its public key). The privacy fixtures hold viewing keys
-           but no viewing *public* keys, so the composed `previewStrk20ViewingPublicKey` has
-           no golden vector: add one to Bramble's privacy generator, and test against it once
-           it is copied here.
+         - Parity tests: the parsed open against `nostr-multisig-parity.json`'s gift wrap and
+           its refused variants; the public key against `extension-parity.json`'s `publicKeyX`.
+           Still open, in Bramble: the privacy fixtures hold no viewing *public* keys, so the
+           composed `previewStrk20ViewingPublicKey` has no golden vector. Add one to the privacy
+           generator, and test against it once it is copied here.
       3. **Mobile takes the core** at `v0.1.0`, tagged once step 2 merges. That tag makes a
          GitHub release only: `release.yml` skips npm while `js/package.json` is private, which
          it stays until Phase 3.1. Mobile pins `wallet-core` by `git` and `tag`.
@@ -200,7 +199,7 @@ Each phase names the crate a module lands in; the table above decides anything n
         becomes the extension's 1,024 UTF-16 units (`wallet-model/preferences/passphrase.ts`), and
         its `oz_class_hash` stops reading Krusty's `latest` and uses `OZ_ACCOUNT_VERSION` (3.0.0,
         `account-contract.ts`), so a Krusty bump cannot move its addresses.
-      - The Nostr parity gaps in step 2.
+      - (done) The Nostr parity gaps in step 2.
    2. **Vault and accounts**: `container.rs` (envelope v3, byte-compatible) and the vault
       mechanics into `wallet-core`, with plain Rust `Storage` and `Clock` traits; mobile's
       `files.rs` implements `Storage`. The v12 schema and migrations are Bramble's and stay in

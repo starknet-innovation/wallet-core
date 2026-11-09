@@ -240,6 +240,14 @@ pub fn sign_stark_hash(
     })
 }
 
+/// The Stark public key (x-coordinate) of a signing scalar, such as a viewing key, so a wallet can
+/// compare it with the key a privacy pool holds without the private key leaving Rust.
+pub fn stark_public_key(private_key: &SecretFelt) -> Result<String, Error> {
+    let key = usable_key(private_key, "invalid public-key input")?;
+    let public = krusty_kms::stark_public_key(key).map_err(|_| Error::kms("public key"))?;
+    checked_non_zero(public, "public key")
+}
+
 /// The STRK20 viewing key scoped to `"<chain_id>:<pool_address>"`. Both scope values must be
 /// canonical non-zero felts: the scope is hashed as text, and Krusty (0.11 in the extension
 /// today, 2.0 here) refuses any other spelling. The result is a signing scalar too, so it is

@@ -18,12 +18,13 @@ pub mod nostr;
 pub use kms::{
     derive_argent_legacy_keypair, derive_oz_account_address, derive_starknet_keypair,
     derive_strk20_viewing_key, generate_mnemonic, oz_account_class_hash, sign_stark_hash,
-    validate_mnemonic, NetworkId, StarkKeypair, StarkSignature, StarkXOnlyKeypair,
+    stark_public_key, validate_mnemonic, NetworkId, StarkKeypair, StarkSignature,
+    StarkXOnlyKeypair,
 };
 pub use krusty_kms_common::SecretFelt;
 pub use nostr::{
-    derive_nostr_public_key, open_nostr_application_data, wrap_nostr_application_data,
-    NostrApplicationData,
+    derive_nostr_public_key, open_nostr_application_data, open_nostr_event,
+    wrap_nostr_application_data, NostrApplicationData, NostrEvent,
 };
 pub use zeroize::Zeroizing;
 
