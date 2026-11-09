@@ -160,7 +160,9 @@ pub enum SendFailureCode {
     BraavosStrongSigner,
 }
 
-/// A failure, with the hash of anything already accepted (a deployment, or an ambiguous write).
+/// A failure, with the hash of what was signed and handed to the node: a write whose reply was
+/// ambiguous or an error, or, once a transfer's deployment was accepted, that deployment (the
+/// invoke's own record stays with the host). `None` only when nothing signed left the core.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SendFailure {
     pub code: SendFailureCode,

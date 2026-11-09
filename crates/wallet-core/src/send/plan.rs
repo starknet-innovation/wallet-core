@@ -60,12 +60,12 @@ pub trait PlanHost {
     /// Signs `hash` with the plan's account key, still under that session. `renew` is false for
     /// a review's signature (Braavos's deployment estimate), which must not renew an idle timer.
     fn sign(&self, hash: &Felt, renew: bool) -> Result<StarkSignature, SignRefusal>;
-    /// Persists a pending record. Best effort: a failure never blocks or rewrites a send.
+    /// Persists a pending record before its signed write leaves the core. Best effort: a failure
+    /// never blocks or rewrites a send. The plan never removes one: whatever the node answers, a
+    /// signed write may land, so the record settles only through `observe`.
     fn record_pending(&self, record: PendingRecord);
     /// Merges a status observation into the record for `hash`; its settled status, if recorded.
     fn observe(&self, hash: &Felt, observation: Observation) -> Option<TxStatus>;
-    /// Drops the pending record of a write the node determinately refused.
-    fn discard(&self, hash: &Felt);
     /// The explorer page for a transaction hash, if the wallet has one for the plan's network.
     fn explorer_url(&self, hash: &str) -> Option<String>;
 }
