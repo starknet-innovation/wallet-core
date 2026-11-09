@@ -34,8 +34,8 @@ pub const OZ_ACCOUNT_VERSION: &str = "3.0.0";
 pub const FEE_MARGIN_PERCENT: u32 = 50;
 
 /// `REVIEWED_FEE_HEADROOM`: a submit-time fee may reach 3/2 of the fee the person reviewed.
-pub const REVIEWED_FEE_HEADROOM: wallet_core::send::fees::Headroom =
-    wallet_core::send::fees::Headroom {
+pub const REVIEWED_FEE_HEADROOM: starknet_wallet_core::send::fees::Headroom =
+    starknet_wallet_core::send::fees::Headroom {
         numerator: 3,
         denominator: 2,
     };
@@ -45,12 +45,13 @@ pub const CONFIRMATION_DELAYS_MS: [u32; 12] = [
     0, 250, 500, 900, 1_500, 2_500, 4_000, 5_000, 7_500, 10_000, 10_000, 10_000,
 ];
 
-/// Bramble's send numbers, for `wallet_core::send::plan::Plan`.
-pub const SEND_POLICY: wallet_core::send::plan::Policy = wallet_core::send::plan::Policy {
-    fee_margin_percent: FEE_MARGIN_PERCENT,
-    reviewed_fee_headroom: REVIEWED_FEE_HEADROOM,
-    confirmation_delays_ms: &CONFIRMATION_DELAYS_MS,
-};
+/// Bramble's send numbers, for `starknet_wallet_core::send::plan::Plan`.
+pub const SEND_POLICY: starknet_wallet_core::send::plan::Policy =
+    starknet_wallet_core::send::plan::Policy {
+        fee_margin_percent: FEE_MARGIN_PERCENT,
+        reviewed_fee_headroom: REVIEWED_FEE_HEADROOM,
+        confirmation_delays_ms: &CONFIRMATION_DELAYS_MS,
+    };
 
 /// Every failure the core reports across the FFI boundary.
 #[derive(Debug, thiserror::Error, uniffi::Error)]

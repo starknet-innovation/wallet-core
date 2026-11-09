@@ -7,14 +7,14 @@ mod plan_support;
 
 use plan_support::*;
 use serde_json::{json, Value};
-use wallet_core::send::calls::ReviewFlag;
-use wallet_core::send::judge::TxStatus;
-use wallet_core::send::plan::{Account, Authorization, Kind, Plan, TransferRefusal};
-use wallet_core::send::sign::Deployment;
-use wallet_core::send::types::{
+use starknet_wallet_core::send::calls::ReviewFlag;
+use starknet_wallet_core::send::judge::TxStatus;
+use starknet_wallet_core::send::plan::{Account, Authorization, Kind, Plan, TransferRefusal};
+use starknet_wallet_core::send::sign::Deployment;
+use starknet_wallet_core::send::types::{
     SendError, SendFailure, SendFailureCode as Code, SendStep, StepReply,
 };
-use wallet_core::{felt, Felt, NetworkId};
+use starknet_wallet_core::{felt, Felt, NetworkId};
 
 const ACCOUNT_0: &str = "0x208361e3911b1d93a704400b88e7e53a89171fce64dbb48f8479e4f44b398d9";
 

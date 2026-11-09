@@ -258,7 +258,7 @@ Each phase names the crate a module lands in; the table above decides anything n
         hash mismatch, poisoned recipient, the 200-poll deployment wait, unknown deployment
         state, a missing bulk-estimate entry).
 
-      Mobile's side: delete `rpc.rs` and those `send/` files and `use wallet_core::{rpc,
+      Mobile's side: delete `rpc.rs` and those `send/` files and `use starknet_wallet_core::{rpc,
       send::*}`. `TransferPlan` becomes a UniFFI object around `Mutex<Plan>` holding
       `Weak<WalletCore>` and the session generation; its `PlanHost` maps onto `plan_sign`,
       `session_generation`, `activity::store` (`PendingRecord` → `Entry`, direction "out",
