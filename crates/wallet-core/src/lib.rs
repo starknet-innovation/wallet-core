@@ -58,7 +58,12 @@ impl Error {
 mod tests {
     #[test]
     fn krusty_version_matches_the_lockfile() {
-        let lock = include_str!("../../../Cargo.lock");
+        // The workspace lockfile in this repo; the crate's own copy in a published package.
+        let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let lock = ["../../Cargo.lock", "Cargo.lock"]
+            .iter()
+            .find_map(|path| std::fs::read_to_string(manifest.join(path)).ok())
+            .expect("a Cargo.lock beside the crate or at the workspace root");
         let resolved = lock
             .split("[[package]]")
             .find(|entry| entry.contains("name = \"krusty-kms\"\n"))

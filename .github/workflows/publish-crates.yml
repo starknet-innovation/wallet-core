@@ -94,9 +94,14 @@ jobs:
           git fetch origin main
           git merge-base --is-ancestor HEAD origin/main \
             || { echo "::error::release tag must point to a commit reachable from main"; exit 1; }
-      - name: Tag must equal both crate versions
+      # Also the npm package: release.yml checks it too, but runs in parallel, and a crates.io
+      # version cannot be taken back once the npm side refuses the tag.
+      - name: Tag must equal both crate versions and the npm package
         run: |
           tag="${GITHUB_REF_NAME#v}"
+          pkg="$(jq -r .version js/package.json)"
+          test "$tag" = "$pkg" \
+            || { echo "::error::tag ${GITHUB_REF_NAME} does not match js/package.json ${pkg}"; exit 1; }
           for crate in starknet-wallet-core bramble-core; do
             version="$(cargo metadata --no-deps --format-version 1 --locked \
               | jq -r ".packages[] | select(.name == \"${crate}\") | .version")"
