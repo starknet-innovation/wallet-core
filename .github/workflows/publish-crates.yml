@@ -115,7 +115,8 @@ jobs:
           git merge-base --is-ancestor HEAD origin/main \
             || { echo "::error::release tag must point to a commit reachable from main"; exit 1; }
       # Also the npm package: release.yml checks it too, but runs in parallel, and a crates.io
-      # version cannot be taken back once the npm side refuses the tag.
+      # version cannot be taken back once the npm side refuses the tag. `private: true` is not
+      # checked: crates ship ahead of npm until Phase 3.1 opens it (decided 2026-11-09).
       - name: Tag must equal both crate versions and the npm package
         run: |
           tag="${GITHUB_REF_NAME#v}"

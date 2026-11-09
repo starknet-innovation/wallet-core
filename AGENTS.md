@@ -79,6 +79,8 @@ Grep first; extend in place rather than adding a sibling.
 
 - Both crates share the workspace version. The tag `v<x.y.z>` must equal it and
   `js/package.json`; `release.yml` (npm) and `publish-crates.yml` (crates.io) refuse otherwise.
+  Until Phase 3.1 drops `private: true`, a tag publishes the crates and the npm step fails; that
+  is expected, not a reason to hold the crates back.
 - npm and crates.io publish through OIDC trusted publishing only. Never add a registry token or
   publish locally. crates.io publishing also waits on a reviewer in the `crates-io` environment.
 - A version on crates.io can be yanked but never replaced or deleted: bump, don't retag.
