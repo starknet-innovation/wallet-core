@@ -346,10 +346,10 @@ directions. The v12 vault stores each account's derived key (`signingKeys[].priv
 AES-256-GCM. `signHash` (`vault/src/service/service.ts`) decrypts the whole vault into JavaScript
 objects on every signature, then passes the key string back to `kms.signStarkHash`. So every
 signature puts every account's key into the JS heap as immutable strings that cannot be zeroed
-and live until GC. What limits it: plaintext is per-operation, not held across an unlock; the
-passphrase-derived AES key is a non-extractable WebCrypto key dropped on lock; everything runs in
-the background service worker; `storage.session` is restricted to trusted contexts where the
-browser allows it.
+and live until GC. What limits it: decrypted secrets are per-operation, not held across an unlock
+(the grant cache keeps only public account records); the passphrase-derived AES key is a
+non-extractable WebCrypto key dropped on lock; everything runs in the background service worker;
+`storage.session` is restricted to trusted contexts where the browser allows it.
 
 **`raw-keys` reproduces this model**, no worse and no better. Adopting the core with it on keeps
 today's exposure; it is a bridge, not the target.
@@ -422,8 +422,9 @@ seals with fresh randomness are kept while the extension still opens them.
 - UniFFI 0.29.5 → 0.31.2: what changes in the generated Swift and Kotlin (Phase 2.7).
 - `HostStorage` is synchronous and `chrome.storage` is not; the extension side needs a write-through
   mirror (the pattern `encrypted-store.ts` already uses).
-- Where the extension holds the vault passphrase during an unlock session: `signHash` takes it on
-  every call, so it likely sits in JavaScript for the session's life. Not yet traced.
+- How long the extension holds the vault passphrase in JavaScript. `signHash` takes it on every
+  call and the grant cache (`vault/src/service/grant-cache.ts`) keeps it until lock; where the
+  caller holds it was not traced. Under the 3.2 target it crosses once, on unlock.
 - The JS binding generator for the extension (ubrn `wasm2`, pre-production, or wasm-bindgen
   directly) is decided at Phase 3.1, not now; the Rust surface does not depend on it.
 - Whether the devnet OZ class hash moves into the core or stays a TypeScript constant.
