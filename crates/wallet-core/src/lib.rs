@@ -20,10 +20,12 @@ pub use kms::{
     derive_strk20_viewing_key, generate_mnemonic, oz_account_class_hash, sign_stark_hash,
     validate_mnemonic, NetworkId, StarkKeypair, StarkSignature, StarkXOnlyKeypair,
 };
+pub use krusty_kms_common::SecretFelt;
 pub use nostr::{
     derive_nostr_public_key, open_nostr_application_data, wrap_nostr_application_data,
     NostrApplicationData,
 };
+pub use zeroize::Zeroizing;
 
 /// The Krusty KMS release compiled into this crate. `krusty_version_matches_the_lockfile` keeps
 /// it true.

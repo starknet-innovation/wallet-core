@@ -1,12 +1,13 @@
 //! Nostr coordination identity and NIP-59 application data. The event grammar and bounds are
-//! Bramble's `wallet-model/nostr` ones, kept as generic resource bounds. The private key is
-//! derived per call into a `Zeroizing` buffer, only borrowed by Krusty, and never returned.
+//! Bramble's `wallet-model/nostr` ones, kept as generic resource bounds, and public so a wallet
+//! checks relay traffic with the same grammar the core does. The private key is derived per call
+//! into a `Zeroizing` buffer, only borrowed by Krusty, and never returned.
 
 use serde::Serialize;
 use serde_json::Value;
 use zeroize::Zeroizing;
 
-use crate::kms::{check_derivation_input, secret_inputs, utf16_length};
+use crate::kms::{check_derivation_input, utf16_length};
 use crate::Error;
 
 /// NIP-59 gift-wrap kind.
@@ -20,7 +21,7 @@ const MAX_SAFE_INTEGER: u64 = (1 << 53) - 1;
 
 /// A bounded signed event that passed `isNostrEvent`; authenticity is still unknown.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub(crate) struct NostrEvent {
+pub struct NostrEvent {
     pub content: String,
     pub created_at: u64,
     pub id: String,
@@ -46,22 +47,22 @@ fn is_lower_hex(value: &str, length: usize) -> bool {
 }
 
 /// `isNostrPublicKey`: 64 lowercase hex digits (also `isNostrEventId`).
-pub(crate) fn is_public_key(value: &str) -> bool {
+pub fn is_public_key(value: &str) -> bool {
     is_lower_hex(value, 64)
 }
 
 /// The adapter's application identifier grammar: 1–128 printable ASCII characters.
-pub(crate) fn is_identifier(value: &str) -> bool {
+pub fn is_identifier(value: &str) -> bool {
     !value.is_empty() && value.len() <= 128 && value.bytes().all(|b| (b' '..=b'~').contains(&b))
 }
 
 /// `isNostrApplicationData`: 1..=32,768 UTF-8 bytes (UTF-8 is never shorter than UTF-16).
-pub(crate) fn is_application_data(value: &str) -> bool {
+pub fn is_application_data(value: &str) -> bool {
     !value.is_empty() && value.len() <= MAX_APPLICATION_DATA_BYTES
 }
 
 /// `Number.isSafeInteger(value) && value >= 0`, including JSON spellings such as `1.0` or `1e3`.
-fn safe_non_negative_integer(value: &Value) -> Option<u64> {
+pub fn safe_non_negative_integer(value: &Value) -> Option<u64> {
     if let Some(n) = value.as_u64() {
         return (n <= MAX_SAFE_INTEGER).then_some(n);
     }
@@ -92,7 +93,7 @@ fn tag(value: &Value) -> Option<Vec<String>> {
 }
 
 /// `isNostrEvent`: exactly the seven NIP-01 keys, each bounded as the extension bounds it.
-fn event_from_value(value: &Value) -> Option<NostrEvent> {
+pub fn event_from_value(value: &Value) -> Option<NostrEvent> {
     let object = value.as_object()?;
     const KEYS: [&str; 7] = [
         "content",
@@ -137,7 +138,7 @@ fn event_from_value(value: &Value) -> Option<NostrEvent> {
 }
 
 /// `parseNostrEventJson`: a bounded JSON event, or `None`.
-pub(crate) fn parse_event_json(text: &str) -> Option<NostrEvent> {
+pub fn parse_event_json(text: &str) -> Option<NostrEvent> {
     if text.is_empty() || text.len() > MAX_EVENT_JSON_BYTES {
         return None;
     }
@@ -145,7 +146,7 @@ pub(crate) fn parse_event_json(text: &str) -> Option<NostrEvent> {
 }
 
 /// `hasNostrRecipientTag`: some tag is `["p", recipient, …]`.
-fn has_recipient_tag(event: &NostrEvent, recipient: &str) -> bool {
+pub fn has_recipient_tag(event: &NostrEvent, recipient: &str) -> bool {
     event
         .tags
         .iter()
@@ -167,14 +168,12 @@ fn private_key(
 
 /// The wallet's coordination public key: BIP-340 x-only, 64 lowercase hex digits.
 pub fn derive_nostr_public_key(
-    mnemonic: String,
+    mnemonic: &str,
     address_index: u32,
     account_index: u32,
-    passphrase: Option<String>,
+    passphrase: Option<&str>,
 ) -> Result<String, Error> {
-    let (mnemonic, passphrase) = secret_inputs(mnemonic, passphrase);
-    let passphrase = passphrase.as_ref().map(|p| p.as_str());
-    let key = private_key(&mnemonic, address_index, account_index, passphrase)?;
+    let key = private_key(mnemonic, address_index, account_index, passphrase)?;
     let public = krusty_kms::nostr_public_key(&key).map_err(|_| Error::kms("nostr public key"))?;
     let hex: String = public.iter().map(|b| format!("{b:02x}")).collect();
     if !is_public_key(&hex) {
@@ -188,35 +187,33 @@ pub fn derive_nostr_public_key(
 /// kind-1059 event carrying the recipient's `p` tag.
 #[allow(clippy::too_many_arguments)]
 pub fn wrap_nostr_application_data(
-    mnemonic: String,
+    mnemonic: &str,
     address_index: u32,
     account_index: u32,
-    recipient_public_key: String,
-    identifier: String,
-    content: String,
+    recipient_public_key: &str,
+    identifier: &str,
+    content: &str,
     created_at: u64,
-    passphrase: Option<String>,
+    passphrase: Option<&str>,
 ) -> Result<String, Error> {
-    if !is_public_key(&recipient_public_key)
-        || !is_identifier(&identifier)
-        || !is_application_data(&content)
+    if !is_public_key(recipient_public_key)
+        || !is_identifier(identifier)
+        || !is_application_data(content)
     {
         return Err(Error::invalid("invalid nostr application data"));
     }
-    let (mnemonic, passphrase) = secret_inputs(mnemonic, passphrase);
-    let passphrase = passphrase.as_ref().map(|p| p.as_str());
-    let key = private_key(&mnemonic, address_index, account_index, passphrase)?;
+    let key = private_key(mnemonic, address_index, account_index, passphrase)?;
     let wrapped = krusty_kms::wrap_nostr_application_data_at(
         &key,
-        &recipient_public_key,
-        &identifier,
-        &content,
+        recipient_public_key,
+        identifier,
+        content,
         created_at,
     )
     .map_err(|_| Error::kms("nostr wrap"))?;
     match parse_event_json(&wrapped) {
         Some(event)
-            if event.kind == GIFT_WRAP_KIND && has_recipient_tag(&event, &recipient_public_key) =>
+            if event.kind == GIFT_WRAP_KIND && has_recipient_tag(&event, recipient_public_key) =>
         {
             Ok(wrapped)
         }
@@ -228,20 +225,18 @@ pub fn wrap_nostr_application_data(
 /// be kind 1059 before Krusty sees it; Krusty's signature and rumor checks and the output bounds
 /// all fail closed, since a relay event is untrusted.
 pub fn open_nostr_application_data(
-    mnemonic: String,
+    mnemonic: &str,
     address_index: u32,
     account_index: u32,
-    event_json: String,
-    passphrase: Option<String>,
+    event_json: &str,
+    passphrase: Option<&str>,
 ) -> Result<NostrApplicationData, Error> {
-    if parse_event_json(&event_json).is_none_or(|event| event.kind != GIFT_WRAP_KIND) {
+    if parse_event_json(event_json).is_none_or(|event| event.kind != GIFT_WRAP_KIND) {
         return Err(Error::invalid("invalid nostr gift wrap"));
     }
-    let (mnemonic, passphrase) = secret_inputs(mnemonic, passphrase);
-    let passphrase = passphrase.as_ref().map(|p| p.as_str());
-    let key = private_key(&mnemonic, address_index, account_index, passphrase)?;
+    let key = private_key(mnemonic, address_index, account_index, passphrase)?;
     // The original text goes to Krusty, as the extension passes the event JSON it received.
-    let opened = krusty_kms::open_nostr_application_data(&key, &event_json)
+    let opened = krusty_kms::open_nostr_application_data(&key, event_json)
         .map_err(|_| Error::kms("nostr open"))?;
     let valid = is_application_data(&opened.content)
         && is_identifier(&opened.identifier)
@@ -315,12 +310,12 @@ mod tests {
         let phrase = "habit hope tip crystal because grunt nation idea electric witness alert like";
         let mut kind1 = event();
         kind1["kind"] = json!(1);
-        let err = open_nostr_application_data(phrase.into(), 0, 0, kind1.to_string(), None);
+        let err = open_nostr_application_data(phrase, 0, 0, &kind1.to_string(), None);
         assert!(matches!(err, Err(Error::InvalidInput { .. })));
-        let err = open_nostr_application_data(phrase.into(), 0, 0, "{".into(), None);
+        let err = open_nostr_application_data(phrase, 0, 0, "{", None);
         assert!(matches!(err, Err(Error::InvalidInput { .. })));
         // Well-formed but unauthenticated: Krusty refuses it.
-        let err = open_nostr_application_data(phrase.into(), 0, 0, event().to_string(), None);
+        let err = open_nostr_application_data(phrase, 0, 0, &event().to_string(), None);
         assert!(matches!(err, Err(Error::Kms { .. })));
     }
 }

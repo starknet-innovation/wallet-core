@@ -47,13 +47,13 @@ traits or config objects for wallets that do not exist yet.
 | OZ address derivation with a **required** salt | `KmsPort`'s optional salt (omitted = public key, Krusty's default); OZ accounts pass `0x0` from `account-contract.ts` |
 | OZ class hash at a caller-given manifest version | `CoreError`, `core_info()`, remote exports of `wallet-core`'s records |
 | Nostr key derivation, NIP-59 wrap/open, event grammar and resource bounds | parity fixtures and tests against the extension |
-| Later phases: vault container (envelope v3), storage and clock traits, sans-IO RPC, transaction hashing, transfer planning, portfolio/history/privacy logic | Later phases: v12 vault schema and migrations, UniFFI foreign traits adapting to `wallet-core`'s, catalogs, iOS/extension-only assets |
+| Later phases: vault container (envelope v3), storage and clock traits, sans-IO RPC, transaction hashing, transfer planning, portfolio/history/privacy logic, Nostr relay paging and gift-wrap batch checks | Later phases: v12 vault schema and migrations, UniFFI foreign traits adapting to `wallet-core`'s, catalogs, multisig coordination policy (identifier, relays, sync window, who counts as a co-signer), iOS/extension-only assets |
 
 The resource bounds (mnemonic, passphrase, Nostr event and data sizes) are Bramble's numbers, kept in
 `wallet-core` because they protect against oversized input rather than express product taste.
 
 `bramble-core` keeps the crate, lib and UniFFI module names mobile already uses (`bramble_core`,
-`BrambleCore`, `org.bramble.core`), so the last mobile step (2.6) swaps the dependency without
+`BrambleCore`, `org.bramble.core`), so the last mobile step (2.7) swaps the dependency without
 touching Swift or Kotlin imports. A second wallet would add its own `<wallet>-core` crate the same
 way, or use `wallet-core` from Rust directly.
 
@@ -131,10 +131,19 @@ Each phase names the crate a module lands in; the table above decides anything n
    1. **KMS, Nostr, felt** (already in `wallet-core`). Mobile bumps Krusty 0.11 → 2.0.0 across
       the whole crate (`send/sign.rs`, `argent_multisig.rs`, `account_catalog.rs` included) and
       deletes `kms.rs`, `nostr.rs` and `felt.rs`. Two gaps first:
-      - `wallet-core`'s API is String in, String out, and `StarkKeypair.private_key` is a plain
-        `String`. Mobile works in `Felt` and holds keys in `Zeroizing`
-        (`kms_accounts.rs` calls `kms::private_key`). `wallet-core` returns keys zeroizing (and
-        typed where mobile needs it); `bramble-core` converts to `String` only at the FFI.
+      - (done) `wallet-core`'s API was String in, String out, and `StarkKeypair.private_key` a
+        plain `String`. Mobile works in `Felt` and holds keys in `Zeroizing`
+        (`kms_accounts.rs` calls `kms::private_key`). `wallet-core` now borrows secrets (`&str`)
+        and returns them zeroizing: phrases as `Zeroizing<String>`, private and viewing keys as
+        Krusty's `SecretFelt` (re-exported, redacted `Debug`). `bramble-core` converts to `String`
+        only at the FFI, behind `raw-keys`. The Nostr event grammar mobile's relay code uses
+        (`NostrEvent`, `parse_event_json`, `event_from_value`, `has_recipient_tag`,
+        `is_public_key`, `safe_non_negative_integer`, `kms::utf16_length`) is public.
+        Mobile's implementation is still in flux, so where it differs from the extension it takes
+        the core's behaviour rather than the core bending to it: its 256-byte passphrase bound
+        becomes the extension's 1,024 UTF-16 units (`wallet-model/preferences/passphrase.ts`), and
+        its `oz_class_hash` stops reading Krusty's `latest` and uses `OZ_ACCOUNT_VERSION` (3.0.0,
+        `account-contract.ts`), so a Krusty bump cannot move its addresses.
       - Bramble's `tests/conformance/mobile-generated.test.ts` requires mobile's Krusty pin to
         equal the extension's npm pin (0.11.0), so it fails the moment mobile moves to 2.0.0
         while the extension stays on 0.11 until Phase 3.1. Point it at
@@ -143,7 +152,7 @@ Each phase names the crate a module lands in; the table above decides anything n
    2. **Vault and accounts**: `container.rs` (envelope v3, byte-compatible) and the vault
       mechanics into `wallet-core`, with plain Rust `Storage` and `Clock` traits; mobile's
       `files.rs` implements `Storage`. The v12 schema and migrations are Bramble's and stay in
-      `mobile/core` until 2.6; the mobile vault migrates into v12 here.
+      `mobile/core` until 2.7; the mobile vault migrates into v12 here.
    3. **Sans-IO transactions**: `rpc.rs`, `send/*` and transaction hashing, Argent and Braavos
       paths, into `wallet-core`; Bramble's defaults (fee margins, which flows it offers) stay
       with the Bramble crate.
@@ -151,8 +160,24 @@ Each phase names the crate a module lands in; the table above decides anything n
       `privacy/*` into `wallet-core`, with the `js/*` JavaScript-semantics shims beside whichever
       code calls them; the iOS `include_str!` in `history/appearance.rs` moves to the Bramble
       crate's `generated/`.
-   5. **Catalogs**: `generated/*.json` are Bramble's; `wallet-core` takes catalogs as arguments.
-   6. **Swap**: what remains in `mobile/core` that is Bramble's but not mobile-only (constants,
+   5. **Multisig coordination**: what sits around the Nostr wrap/open the core already has,
+      and is today written twice (the extension's `background/multisig/multisig-coordination-ops.ts`,
+      `multisig-nostr-publish.ts`, `multisig-sync-window.ts` and the paging half of
+      `nostr-relay.ts`; mobile's `coordination.rs`, `nostr_relay.rs`, `ffi_nostr_multisig.rs`).
+      Sans-IO: the host keeps the WebSockets and the address book and passes in what it read.
+      The extension's TypeScript is the oracle *and* the shape: functions keep its names and
+      arguments, so its later swap (3.4) replaces bodies, not call sites, and mobile adapts to
+      them. A Bramble generator for these rules comes first (see Golden tests).
+      - `wallet-core`: relay-URL grammar (`isNostrRelayUrl`), gift-wrap batch validation
+        (`parsedGiftWraps`: kind 1059, `p` tag, no duplicate ids, batch bound), sync paging
+        (unseen-first bounding, the `until` cursor, interleaving candidates across relays) and
+        acknowledgement counting.
+      - `bramble-core`: the `bramble.multisig` identifier, default relays and "one custom relay
+        replaces the defaults", `MAX_SYNC_PAGES`, the sync window (30-day first lookback, 3-day
+        incremental, retry cut-off), recipient selection and the sender rule (a saved contact on
+        the network whose Stark key's Argent signer GUID is in the signer set).
+   6. **Catalogs**: `generated/*.json` are Bramble's; `wallet-core` takes catalogs as arguments.
+   7. **Swap**: what remains in `mobile/core` that is Bramble's but not mobile-only (constants,
       v12 schema and migrations, catalogs, the UniFFI surface, `HostStorage` and `HostClock` as
       `#[uniffi::export(with_foreign)]` traits adapting to `wallet-core`'s) moves into this
       repo's `bramble-core`. `mobile/core` is then replaced by a git dependency on it at a tag
@@ -192,6 +217,10 @@ Each phase names the crate a module lands in; the table above decides anything n
    3. **Transactions, then reads**: `@bramble/transactions` drives the `TransferPlan` step loop;
       portfolio, history and privacy follow. Bramble's `scripts/mobile-assets.ts` renderers
       invert so TypeScript reads catalogs from the npm package.
+   4. **Multisig coordination**: `multisig-coordination-ops.ts`, `multisig-nostr-publish.ts` and
+      `multisig-sync-window.ts` call the core's functions from 2.5 under the same names;
+      `nostr-relay.ts` keeps its sockets and loses its paging. Nostr keys still come from the
+      vault (index `0, 0`, recovery-phrase wallets only), as today.
 
    The extension's TypeScript is the oracle until it is replaced, so each swap is proved by the
    golden suite passing through the extension's own conformance tests before the TypeScript goes.
@@ -223,6 +252,8 @@ seals with fresh randomness are kept while the extension still opens them.
   proving each swap changed nothing.
 - **Gaps**: mobile-only behaviour (biometric, file storage) has ordinary Rust tests; it has no
   oracle. Extension behaviour without a generator gets one in Bramble before its module is ported.
+  Multisig coordination (2.5) is the known case: `nostr-multisig-parity.json` covers keys and one
+  gift wrap, not recipient selection, the sender rule, sync paging or the sync window.
 - `krusty_version_matches_the_lockfile` (in `wallet-core`) keeps the Krusty version `core_info()`
   reports honest.
 
@@ -250,7 +281,7 @@ seals with fresh randomness are kept while the extension still opens them.
   Bramble's Krusty pin-equality test (see 2.1).
 - Which `starknet-types-core` the sequencer runs (0.2.4 is reported but unconfirmed). It matters only
   if this repo starts sharing types with sequencer or node crates; until then Krusty sets the pin.
-- UniFFI 0.29.5 → 0.31.2: what changes in the generated Swift and Kotlin (Phase 2.6).
+- UniFFI 0.29.5 → 0.31.2: what changes in the generated Swift and Kotlin (Phase 2.7).
 - `HostStorage` is synchronous and `chrome.storage` is not; the extension side needs a write-through
   mirror (the pattern `encrypted-store.ts` already uses).
 - Whether the devnet OZ class hash moves into the core or stays a TypeScript constant.

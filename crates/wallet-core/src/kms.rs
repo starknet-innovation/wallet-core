@@ -2,12 +2,13 @@
 //! re-checked before they leave (the checks Bramble's `kms-krusty/adapter.ts` made in
 //! TypeScript), so a Krusty regression surfaces as an error rather than as a wrong key.
 //!
-//! Private keys are canonical hex strings. Whether they may leave the process is the wallet's
-//! decision, made where it exports this crate across an FFI boundary.
+//! Secrets are borrowed in and come back zeroizing: phrases as `Zeroizing<String>`, private and
+//! viewing keys as Krusty's `SecretFelt`, whose `Debug` is redacted. Turning a key into text is
+//! the wallet's decision, made where it exports this crate across an FFI boundary.
 
 use krusty_kms::OzAccountClassConfig;
 use krusty_kms::STARKNET_COIN_TYPE;
-use krusty_kms_common::ChainId;
+use krusty_kms_common::{ChainId, SecretFelt};
 use starknet_types_core::felt::Felt;
 use zeroize::Zeroizing;
 
@@ -40,7 +41,7 @@ impl From<NetworkId> for ChainId {
 /// Stark key material, as the extension's `StarkKeypair`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StarkKeypair {
-    pub private_key: String,
+    pub private_key: SecretFelt,
     pub public_key_x: String,
     pub public_key_y: String,
 }
@@ -48,7 +49,7 @@ pub struct StarkKeypair {
 /// X-only Stark key material from Ready's ETH-seeded scheme (`StarkXOnlyKeypair`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StarkXOnlyKeypair {
-    pub private_key: String,
+    pub private_key: SecretFelt,
     pub public_key_x: String,
 }
 
@@ -61,7 +62,7 @@ pub struct StarkSignature {
 }
 
 /// Length in UTF-16 code units, the unit JavaScript's `String.length` counts.
-pub(crate) fn utf16_length(value: &str) -> usize {
+pub fn utf16_length(value: &str) -> usize {
     value.encode_utf16().count()
 }
 
@@ -83,26 +84,12 @@ pub(crate) fn check_derivation_input(
     Ok(())
 }
 
-/// Moves phrase text and passphrase into buffers wiped on drop.
-pub(crate) fn secret_inputs(
-    mnemonic: String,
-    passphrase: Option<String>,
-) -> (Zeroizing<String>, Option<Zeroizing<String>>) {
-    (Zeroizing::new(mnemonic), passphrase.map(Zeroizing::new))
-}
-
 fn parse_felt(value: &str, reason: &str) -> Result<Felt, Error> {
     felt::parse(value).ok_or_else(|| Error::invalid(reason))
 }
 
 fn parse_non_zero(value: &str, reason: &str) -> Result<Felt, Error> {
     felt::parse_non_zero(value).ok_or_else(|| Error::invalid(reason))
-}
-
-fn parse_private_key(value: &str, reason: &str) -> Result<Felt, Error> {
-    felt::parse(value)
-        .filter(felt::is_private_key)
-        .ok_or_else(|| Error::invalid(reason))
 }
 
 fn checked_non_zero(value: Felt, operation: &str) -> Result<String, Error> {
@@ -112,15 +99,30 @@ fn checked_non_zero(value: Felt, operation: &str) -> Result<String, Error> {
     Ok(felt::canonical(&value))
 }
 
-fn checked_private_key(value: &Felt, operation: &str) -> Result<String, Error> {
+fn checked_scalar(value: &Felt, operation: &str) -> Result<String, Error> {
     if !felt::is_private_key(value) {
         return Err(Error::kms(operation));
     }
     Ok(felt::canonical(value))
 }
 
+/// A caller's key, if it is a usable signing scalar.
+fn usable_key<'a>(key: &'a SecretFelt, reason: &str) -> Result<&'a Felt, Error> {
+    Some(key.expose_secret())
+        .filter(|key| felt::is_private_key(key))
+        .ok_or_else(|| Error::invalid(reason))
+}
+
+/// A key Krusty derived, if it is a usable signing scalar.
+fn checked_secret(value: SecretFelt, operation: &str) -> Result<SecretFelt, Error> {
+    if !felt::is_private_key(value.expose_secret()) {
+        return Err(Error::kms(operation));
+    }
+    Ok(value)
+}
+
 /// Generates a fresh phrase from OS entropy.
-pub fn generate_mnemonic(word_count: u8) -> Result<String, Error> {
+pub fn generate_mnemonic(word_count: u8) -> Result<Zeroizing<String>, Error> {
     if !MNEMONIC_WORD_COUNTS.contains(&word_count) {
         return Err(Error::invalid("unsupported word count"));
     }
@@ -128,39 +130,35 @@ pub fn generate_mnemonic(word_count: u8) -> Result<String, Error> {
         krusty_kms::generate_mnemonic(usize::from(word_count))
             .map_err(|_| Error::kms("generate"))?,
     );
-    if !validate_mnemonic(phrase.to_string()) {
+    if !validate_mnemonic(&phrase) {
         return Err(Error::kms("generate"));
     }
-    // The copy that crosses the boundary is the host's to wipe; this one is wiped on drop.
-    Ok(phrase.to_string())
+    Ok(phrase)
 }
 
 /// Whether text is a checksummed BIP-39 English phrase of a supported length. The text is judged
 /// as given: the extension's import form normalises spacing and case before it gets here.
-pub fn validate_mnemonic(mnemonic: String) -> bool {
-    let mnemonic = Zeroizing::new(mnemonic);
-    if !is_mnemonic_text(&mnemonic) {
+pub fn validate_mnemonic(mnemonic: &str) -> bool {
+    if !is_mnemonic_text(mnemonic) {
         return false;
     }
     let words = mnemonic.split(' ').count();
     MNEMONIC_WORD_COUNTS
         .iter()
         .any(|count| usize::from(*count) == words)
-        && krusty_kms::validate_mnemonic(&mnemonic).is_ok()
+        && krusty_kms::validate_mnemonic(mnemonic).is_ok()
 }
 
 /// The Starknet keypair at `m/44'/9004'/account_index'/0/address_index`, Krusty's argument order.
 pub fn derive_starknet_keypair(
-    mnemonic: String,
+    mnemonic: &str,
     address_index: u32,
     account_index: u32,
-    passphrase: Option<String>,
+    passphrase: Option<&str>,
 ) -> Result<StarkKeypair, Error> {
-    let (mnemonic, passphrase) = secret_inputs(mnemonic, passphrase);
-    let passphrase = passphrase.as_ref().map(|p| p.as_str());
-    check_derivation_input(&mnemonic, passphrase)?;
+    check_derivation_input(mnemonic, passphrase)?;
     let pair = krusty_kms::derive_keypair_with_coin_type(
-        &mnemonic,
+        mnemonic,
         address_index,
         account_index,
         STARKNET_COIN_TYPE,
@@ -172,7 +170,7 @@ pub fn derive_starknet_keypair(
         .to_affine()
         .map_err(|_| Error::kms("derive"))?;
     Ok(StarkKeypair {
-        private_key: checked_private_key(pair.private_key.expose_secret(), "derive")?,
+        private_key: checked_secret(pair.private_key, "derive")?,
         public_key_x: checked_non_zero(public.x(), "derive")?,
         public_key_y: checked_non_zero(public.y(), "derive")?,
     })
@@ -182,16 +180,22 @@ pub fn derive_starknet_keypair(
 /// `m/44'/9004'/0'/0/address_index`. Ready fixes the hardened account field at zero and takes
 /// no BIP-39 passphrase.
 pub fn derive_argent_legacy_keypair(
-    mnemonic: String,
+    mnemonic: &str,
     address_index: u32,
 ) -> Result<StarkXOnlyKeypair, Error> {
-    let mnemonic = Zeroizing::new(mnemonic);
-    check_derivation_input(&mnemonic, None)?;
-    let key = krusty_kms::derive_argent_legacy_private_key(&mnemonic, address_index, 0)
-        .map_err(|_| Error::kms("derive"))?;
-    let public = krusty_kms::stark_public_key(&key).map_err(|_| Error::kms("derive"))?;
+    check_derivation_input(mnemonic, None)?;
+    // Krusty returns this key as a plain `Felt`; it moves straight into a `SecretFelt`.
+    let key = checked_secret(
+        SecretFelt::new(
+            krusty_kms::derive_argent_legacy_private_key(mnemonic, address_index, 0)
+                .map_err(|_| Error::kms("derive"))?,
+        ),
+        "derive",
+    )?;
+    let public =
+        krusty_kms::stark_public_key(key.expose_secret()).map_err(|_| Error::kms("derive"))?;
     Ok(StarkXOnlyKeypair {
-        private_key: checked_private_key(&key, "derive")?,
+        private_key: key,
         public_key_x: checked_non_zero(public, "derive")?,
     })
 }
@@ -222,14 +226,17 @@ pub fn oz_account_class_hash(network: NetworkId, version: &str) -> Result<String
 }
 
 /// Deterministic RFC-6979 Stark ECDSA over `message_hash`.
-pub fn sign_stark_hash(private_key: String, message_hash: String) -> Result<StarkSignature, Error> {
-    let key = parse_private_key(&private_key, "invalid signing input")?;
-    let hash = parse_felt(&message_hash, "invalid signing input")?;
-    let signature = krusty_kms::sign_stark_hash(&key, &hash).map_err(|_| Error::kms("sign"))?;
+pub fn sign_stark_hash(
+    private_key: &SecretFelt,
+    message_hash: &str,
+) -> Result<StarkSignature, Error> {
+    let key = usable_key(private_key, "invalid signing input")?;
+    let hash = parse_felt(message_hash, "invalid signing input")?;
+    let signature = krusty_kms::sign_stark_hash(key, &hash).map_err(|_| Error::kms("sign"))?;
     Ok(StarkSignature {
         public_key: checked_non_zero(signature.public_key, "sign")?,
-        r: checked_private_key(&signature.r, "sign")?,
-        s: checked_private_key(&signature.s, "sign")?,
+        r: checked_scalar(&signature.r, "sign")?,
+        s: checked_scalar(&signature.s, "sign")?,
     })
 }
 
@@ -238,20 +245,23 @@ pub fn sign_stark_hash(private_key: String, message_hash: String) -> Result<Star
 /// today, 2.0 here) refuses any other spelling. The result is a signing scalar too, so it is
 /// held to the same range.
 pub fn derive_strk20_viewing_key(
-    private_key: String,
-    chain_id: String,
-    pool_address: String,
-) -> Result<String, Error> {
-    let key = parse_private_key(&private_key, "invalid viewing-key input")?;
-    for scope in [&chain_id, &pool_address] {
+    private_key: &SecretFelt,
+    chain_id: &str,
+    pool_address: &str,
+) -> Result<SecretFelt, Error> {
+    let key = usable_key(private_key, "invalid viewing-key input")?;
+    for scope in [chain_id, pool_address] {
         let parsed = parse_non_zero(scope, "invalid viewing-key input")?;
-        if felt::canonical(&parsed) != *scope {
+        if felt::canonical(&parsed) != scope {
             return Err(Error::invalid("invalid viewing-key input"));
         }
     }
-    let viewing_key = krusty_kms::derive_scoped_strk20_viewing_key(&key, &chain_id, &pool_address)
-        .map_err(|_| Error::kms("viewing key"))?;
-    checked_private_key(&viewing_key, "viewing key")
+    // Krusty returns the viewing key as a plain `Felt`; it moves straight into a `SecretFelt`.
+    let viewing_key = SecretFelt::new(
+        krusty_kms::derive_scoped_strk20_viewing_key(key, chain_id, pool_address)
+            .map_err(|_| Error::kms("viewing key"))?,
+    );
+    checked_secret(viewing_key, "viewing key")
 }
 
 #[cfg(test)]
@@ -263,16 +273,16 @@ mod tests {
 
     #[test]
     fn mnemonic_validation_matches_the_adapter() {
-        assert!(validate_mnemonic(PHRASE.into()));
-        assert!(!validate_mnemonic(PHRASE.to_uppercase()));
-        assert!(!validate_mnemonic(format!("{PHRASE} like")));
-        assert!(!validate_mnemonic(String::new()));
-        assert!(!validate_mnemonic("   ".into()));
-        assert!(!validate_mnemonic("a ".repeat(300)));
+        assert!(validate_mnemonic(PHRASE));
+        assert!(!validate_mnemonic(&PHRASE.to_uppercase()));
+        assert!(!validate_mnemonic(&format!("{PHRASE} like")));
+        assert!(!validate_mnemonic(""));
+        assert!(!validate_mnemonic("   "));
+        assert!(!validate_mnemonic(&"a ".repeat(300)));
         for count in MNEMONIC_WORD_COUNTS {
             let phrase = generate_mnemonic(count).unwrap();
             assert_eq!(phrase.split(' ').count(), usize::from(count));
-            assert!(validate_mnemonic(phrase));
+            assert!(validate_mnemonic(&phrase));
         }
         assert!(generate_mnemonic(13).is_err());
     }
@@ -290,24 +300,30 @@ mod tests {
 
     #[test]
     fn raw_key_inputs_must_be_in_range() {
-        let order = "0x800000000000010ffffffffffffffffb781126dcae7b2321e66a241adc64d2f";
-        assert!(sign_stark_hash(order.into(), "0x1".into()).is_err());
-        assert!(sign_stark_hash("0x0".into(), "0x1".into()).is_err());
-        assert!(sign_stark_hash("0x1".into(), "0x1".into()).is_ok());
-        assert!(derive_strk20_viewing_key("0x1".into(), "0x0".into(), "0x123".into()).is_err());
-        assert!(derive_strk20_viewing_key(
-            "0x1".into(),
-            "0x534e5f5345504f4c4941".into(),
-            "0x0123".into()
-        )
-        .is_err());
-        assert!(derive_strk20_viewing_key(
-            "0x1".into(),
-            "0x534e5f5345504f4c4941".into(),
-            "0x123".into()
-        )
-        .is_ok());
-        assert!(derive_argent_legacy_keypair(PHRASE.into(), 1 << 31).is_err());
+        let key = |hex: &str| SecretFelt::new(Felt::from_hex(hex).unwrap());
+        let order = key("0x800000000000010ffffffffffffffffb781126dcae7b2321e66a241adc64d2f");
+        let one = key("0x1");
+        assert!(sign_stark_hash(&order, "0x1").is_err());
+        assert!(sign_stark_hash(&key("0x0"), "0x1").is_err());
+        assert!(sign_stark_hash(&one, "0x1").is_ok());
+        assert!(sign_stark_hash(&one, "0x01").is_ok());
+        assert!(sign_stark_hash(&one, "0xFF").is_err());
+        let sepolia = "0x534e5f5345504f4c4941";
+        assert!(derive_strk20_viewing_key(&one, "0x0", "0x123").is_err());
+        assert!(derive_strk20_viewing_key(&one, sepolia, "0x0123").is_err());
+        assert!(derive_strk20_viewing_key(&order, sepolia, "0x123").is_err());
+        assert!(derive_strk20_viewing_key(&one, sepolia, "0x123").is_ok());
+        assert!(derive_argent_legacy_keypair(PHRASE, 1 << 31).is_err());
+    }
+
+    #[test]
+    fn keys_are_redacted_in_debug_output() {
+        let pair = derive_starknet_keypair(PHRASE, 0, 0, None).unwrap();
+        let secret = felt::canonical(pair.private_key.expose_secret());
+        assert!(!format!("{pair:?}").contains(&secret[2..]));
+        let ready = derive_argent_legacy_keypair(PHRASE, 0).unwrap();
+        let secret = felt::canonical(ready.private_key.expose_secret());
+        assert!(!format!("{ready:?}").contains(&secret[2..]));
     }
 
     #[test]
