@@ -1,0 +1,5 @@
+# getrandom 0.4 picks its wasm32-unknown-unknown backend from this cfg; without it the
+# build fails with "target is not supported". The `wasm_js` feature comes from Krusty's
+# crypto crate and from this crate's own wasm32 dependency block.
+[target.wasm32-unknown-unknown]
+rustflags = ['--cfg', 'getrandom_backend="wasm_js"']
