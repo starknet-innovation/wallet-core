@@ -1,8 +1,0 @@
-[bindings.kotlin]
-package_name = "org.bramble.core"
-cdylib_name = "wallet_core"
-
-[bindings.swift]
-module_name = "BrambleCore"
-ffi_module_name = "wallet_coreFFI"
-ffi_module_filename = "wallet_coreFFI"

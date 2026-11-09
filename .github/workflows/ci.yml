@@ -29,9 +29,10 @@ jobs:
       - run: cargo clippy --all-targets --locked -- -D warnings
       - run: cargo clippy --locked --no-default-features -- -D warnings
       - run: cargo test --locked --no-fail-fast
-      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
-        with:
-          command: check
+      # The org's Actions allowlist excludes EmbarkStudios/cargo-deny-action, so install the tool
+      # by exact version, as Bramble installs its Rust tools.
+      - run: cargo install cargo-deny --version 0.19.8 --locked
+      - run: cargo deny check
 
   wasm:
     runs-on: ubuntu-latest
@@ -58,4 +59,4 @@ jobs:
         working-directory: js
       - run: npm test
         working-directory: js
-      - run: sha256sum js/dist/generated/wallet_core.wasm js/dist/generated/wallet_core_bg.js
+      - run: sha256sum js/dist/generated/bramble_core.wasm js/dist/generated/bramble_core_bg.js

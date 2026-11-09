@@ -1,4 +1,4 @@
-// ubrn emits bundler-style relative imports (`from './wallet_core'`). Node ESM needs the
+// ubrn emits bundler-style relative imports (`from './bramble_core'`). Node ESM needs the
 // extension, so add `.js` where a relative specifier has none. Idempotent; run after `ubrn build`.
 import { readdir, readFile, writeFile } from "node:fs/promises";
 

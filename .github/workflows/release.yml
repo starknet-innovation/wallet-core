@@ -30,7 +30,7 @@ jobs:
         run: |
           tag="${GITHUB_REF_NAME#v}"
           pkg="$(node -p "require('./js/package.json').version")"
-          crate="$(grep -m1 '^version = ' crates/core/Cargo.toml | cut -d'"' -f2)"
+          crate="$(grep -m1 '^version = ' crates/bramble-core/Cargo.toml | cut -d'"' -f2)"
           test "$tag" = "$pkg" && test "$tag" = "$crate"
       - run: cargo install wasm-bindgen-cli --version 0.2.130 --locked
       - run: npm ci
@@ -39,7 +39,7 @@ jobs:
         working-directory: js
       - run: npm test
         working-directory: js
-      - run: sha256sum js/dist/generated/wallet_core.wasm js/dist/generated/wallet_core_bg.js > SHA256SUMS
+      - run: sha256sum js/dist/generated/bramble_core.wasm js/dist/generated/bramble_core_bg.js > SHA256SUMS
       # `private: true` in js/package.json makes this step fail until Phase 3.1 removes it.
       - run: npm publish --provenance --access public
         working-directory: js
