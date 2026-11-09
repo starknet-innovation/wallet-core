@@ -106,6 +106,14 @@ fn checked_scalar(value: &Felt, operation: &str) -> Result<String, Error> {
     Ok(felt::canonical(value))
 }
 
+/// A caller's key, if it is a usable signing scalar.
+fn usable_key<'a>(key: &'a SecretFelt, reason: &str) -> Result<&'a Felt, Error> {
+    Some(key.expose_secret())
+        .filter(|key| felt::is_private_key(key))
+        .ok_or_else(|| Error::invalid(reason))
+}
+
+/// A key Krusty derived, if it is a usable signing scalar.
 fn checked_secret(value: SecretFelt, operation: &str) -> Result<SecretFelt, Error> {
     if !felt::is_private_key(value.expose_secret()) {
         return Err(Error::kms(operation));
@@ -177,14 +185,17 @@ pub fn derive_argent_legacy_keypair(
 ) -> Result<StarkXOnlyKeypair, Error> {
     check_derivation_input(mnemonic, None)?;
     // Krusty returns this key as a plain `Felt`; it moves straight into a `SecretFelt`.
-    let key = SecretFelt::new(
-        krusty_kms::derive_argent_legacy_private_key(mnemonic, address_index, 0)
-            .map_err(|_| Error::kms("derive"))?,
-    );
+    let key = checked_secret(
+        SecretFelt::new(
+            krusty_kms::derive_argent_legacy_private_key(mnemonic, address_index, 0)
+                .map_err(|_| Error::kms("derive"))?,
+        ),
+        "derive",
+    )?;
     let public =
         krusty_kms::stark_public_key(key.expose_secret()).map_err(|_| Error::kms("derive"))?;
     Ok(StarkXOnlyKeypair {
-        private_key: checked_secret(key, "derive")?,
+        private_key: key,
         public_key_x: checked_non_zero(public, "derive")?,
     })
 }
@@ -219,10 +230,7 @@ pub fn sign_stark_hash(
     private_key: &SecretFelt,
     message_hash: &str,
 ) -> Result<StarkSignature, Error> {
-    let key = private_key.expose_secret();
-    if !felt::is_private_key(key) {
-        return Err(Error::invalid("invalid signing input"));
-    }
+    let key = usable_key(private_key, "invalid signing input")?;
     let hash = parse_felt(message_hash, "invalid signing input")?;
     let signature = krusty_kms::sign_stark_hash(key, &hash).map_err(|_| Error::kms("sign"))?;
     Ok(StarkSignature {
@@ -241,10 +249,7 @@ pub fn derive_strk20_viewing_key(
     chain_id: &str,
     pool_address: &str,
 ) -> Result<SecretFelt, Error> {
-    let key = private_key.expose_secret();
-    if !felt::is_private_key(key) {
-        return Err(Error::invalid("invalid viewing-key input"));
-    }
+    let key = usable_key(private_key, "invalid viewing-key input")?;
     for scope in [chain_id, pool_address] {
         let parsed = parse_non_zero(scope, "invalid viewing-key input")?;
         if felt::canonical(&parsed) != scope {
