@@ -34,7 +34,7 @@ bindgen = ["uniffi/cli"]
 raw-keys = []
 
 [dependencies]
-wallet-core = { version = "=0.1.0", path = "../wallet-core" }
+starknet-wallet-core = { version = "=0.1.0", path = "../wallet-core" }
 # Bindings for Swift, Kotlin and (through uniffi-bindgen-react-native's wasm2 flavour) TypeScript.
 uniffi = { version = "=0.31.2" }
 thiserror = { version = "=2.0.21" }

@@ -1,6 +1,7 @@
 name: Publish to crates.io
 
-# Publishes wallet-core, then bramble-core, from the same `v*` tag release.yml publishes npm from.
+# Publishes starknet-wallet-core (crates/wallet-core), then bramble-core, from the same `v*` tag
+# release.yml publishes npm from.
 # Mirrors Krusty KMS's publish.yml: trusted publishing (OIDC), no stored token, behind a protected
 # `crates-io` environment.
 
@@ -96,7 +97,7 @@ jobs:
       - name: Tag must equal both crate versions
         run: |
           tag="${GITHUB_REF_NAME#v}"
-          for crate in wallet-core bramble-core; do
+          for crate in starknet-wallet-core bramble-core; do
             version="$(cargo metadata --no-deps --format-version 1 --locked \
               | jq -r ".packages[] | select(.name == \"${crate}\") | .version")"
             test "$tag" = "$version" \
@@ -122,7 +123,7 @@ jobs:
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
         run: |
-          bash tools/publish-crate.sh wallet-core
+          bash tools/publish-crate.sh starknet-wallet-core
           bash tools/publish-crate.sh bramble-core
       - name: Revoke crates.io token
         if: ${{ always() && steps.auth.outputs.token != '' }}

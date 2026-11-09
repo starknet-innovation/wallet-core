@@ -189,11 +189,11 @@ version = "0.1.0"
 dependencies = [
  "serde_json",
  "sha2 0.10.9",
+ "starknet-wallet-core",
  "thiserror",
  "uniffi",
  "uniffi-runtime-wasm",
  "uniffi_core",
- "wallet-core",
  "wasm-bindgen",
 ]
 
@@ -1660,6 +1660,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "starknet-wallet-core"
+version = "0.1.0"
+dependencies = [
+ "getrandom 0.4.3",
+ "krusty-kms",
+ "krusty-kms-common",
+ "serde",
+ "serde_json",
+ "starknet-types-core",
+ "thiserror",
+ "zeroize",
+]
+
+[[package]]
 name = "static_assertions"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1975,20 +1989,6 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
-
-[[package]]
-name = "wallet-core"
-version = "0.1.0"
-dependencies = [
- "getrandom 0.4.3",
- "krusty-kms",
- "krusty-kms-common",
- "serde",
- "serde_json",
- "starknet-types-core",
- "thiserror",
- "zeroize",
-]
 
 [[package]]
 name = "wasi"

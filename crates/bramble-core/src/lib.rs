@@ -12,10 +12,10 @@
 
 #![forbid(unsafe_code)]
 
-use wallet_core::Zeroizing;
+use starknet_wallet_core::Zeroizing;
 #[cfg(feature = "raw-keys")]
-use wallet_core::{felt, SecretFelt};
-pub use wallet_core::{NetworkId, NostrApplicationData, StarkSignature};
+use starknet_wallet_core::{felt, SecretFelt};
+pub use starknet_wallet_core::{NetworkId, NostrApplicationData, StarkSignature};
 
 // The wasm2 player needs the allocator and panic hook this crate exports; nothing else
 // references it, so the linker would drop it without this line.
@@ -38,11 +38,11 @@ pub enum CoreError {
     Kms { operation: String },
 }
 
-impl From<wallet_core::Error> for CoreError {
-    fn from(error: wallet_core::Error) -> Self {
+impl From<starknet_wallet_core::Error> for CoreError {
+    fn from(error: starknet_wallet_core::Error) -> Self {
         match error {
-            wallet_core::Error::InvalidInput { reason } => Self::InvalidInput { reason },
-            wallet_core::Error::Kms { operation } => Self::Kms { operation },
+            starknet_wallet_core::Error::InvalidInput { reason } => Self::InvalidInput { reason },
+            starknet_wallet_core::Error::Kms { operation } => Self::Kms { operation },
         }
     }
 }
@@ -117,7 +117,7 @@ pub struct CoreInfo {
 pub fn core_info() -> CoreInfo {
     CoreInfo {
         core_version: env!("CARGO_PKG_VERSION").into(),
-        krusty_version: wallet_core::KRUSTY_VERSION.into(),
+        krusty_version: starknet_wallet_core::KRUSTY_VERSION.into(),
     }
 }
 
@@ -125,13 +125,13 @@ pub fn core_info() -> CoreInfo {
 #[uniffi::export]
 pub fn generate_mnemonic(word_count: u8) -> Result<String, CoreError> {
     // The copy that crosses the boundary is the host's to wipe; this one is wiped on drop.
-    Ok(wallet_core::generate_mnemonic(word_count)?.to_string())
+    Ok(starknet_wallet_core::generate_mnemonic(word_count)?.to_string())
 }
 
 /// Whether text is a checksummed BIP-39 English phrase of a supported length.
 #[uniffi::export]
 pub fn validate_mnemonic(mnemonic: String) -> bool {
-    wallet_core::validate_mnemonic(&Zeroizing::new(mnemonic))
+    starknet_wallet_core::validate_mnemonic(&Zeroizing::new(mnemonic))
 }
 
 /// The Starknet keypair at `m/44'/9004'/account_index'/0/address_index`.
@@ -144,7 +144,7 @@ pub fn derive_starknet_keypair(
     passphrase: Option<String>,
 ) -> Result<StarkKeypair, CoreError> {
     let (mnemonic, passphrase) = (Zeroizing::new(mnemonic), passphrase.map(Zeroizing::new));
-    let pair = wallet_core::derive_starknet_keypair(
+    let pair = starknet_wallet_core::derive_starknet_keypair(
         &mnemonic,
         address_index,
         account_index,
@@ -164,7 +164,10 @@ pub fn derive_argent_legacy_keypair(
     mnemonic: String,
     address_index: u32,
 ) -> Result<StarkXOnlyKeypair, CoreError> {
-    let pair = wallet_core::derive_argent_legacy_keypair(&Zeroizing::new(mnemonic), address_index)?;
+    let pair = starknet_wallet_core::derive_argent_legacy_keypair(
+        &Zeroizing::new(mnemonic),
+        address_index,
+    )?;
     Ok(StarkXOnlyKeypair {
         private_key: key_text(&pair.private_key),
         public_key_x: pair.public_key_x,
@@ -181,7 +184,7 @@ pub fn derive_oz_account_address(
     salt: Option<String>,
 ) -> Result<String, CoreError> {
     let salt = salt.unwrap_or_else(|| public_key_x.clone());
-    Ok(wallet_core::derive_oz_account_address(
+    Ok(starknet_wallet_core::derive_oz_account_address(
         public_key_x,
         class_hash,
         salt,
@@ -191,7 +194,7 @@ pub fn derive_oz_account_address(
 /// The OpenZeppelin account class Bramble deploys on `network`.
 #[uniffi::export]
 pub fn oz_account_class_hash(network: NetworkId) -> Result<String, CoreError> {
-    Ok(wallet_core::oz_account_class_hash(
+    Ok(starknet_wallet_core::oz_account_class_hash(
         network,
         OZ_ACCOUNT_VERSION,
     )?)
@@ -205,7 +208,7 @@ pub fn sign_stark_hash(
     message_hash: String,
 ) -> Result<StarkSignature, CoreError> {
     let key = key_from_text(private_key, "invalid signing input")?;
-    Ok(wallet_core::sign_stark_hash(&key, &message_hash)?)
+    Ok(starknet_wallet_core::sign_stark_hash(&key, &message_hash)?)
 }
 
 /// The STRK20 viewing key scoped to `"<chain_id>:<pool_address>"`.
@@ -217,7 +220,8 @@ pub fn derive_strk20_viewing_key(
     pool_address: String,
 ) -> Result<String, CoreError> {
     let key = key_from_text(private_key, "invalid viewing-key input")?;
-    let viewing_key = wallet_core::derive_strk20_viewing_key(&key, &chain_id, &pool_address)?;
+    let viewing_key =
+        starknet_wallet_core::derive_strk20_viewing_key(&key, &chain_id, &pool_address)?;
     Ok(key_text(&viewing_key))
 }
 
@@ -230,7 +234,7 @@ pub fn derive_nostr_public_key(
     passphrase: Option<String>,
 ) -> Result<String, CoreError> {
     let (mnemonic, passphrase) = (Zeroizing::new(mnemonic), passphrase.map(Zeroizing::new));
-    Ok(wallet_core::derive_nostr_public_key(
+    Ok(starknet_wallet_core::derive_nostr_public_key(
         &mnemonic,
         address_index,
         account_index,
@@ -252,7 +256,7 @@ pub fn wrap_nostr_application_data(
     passphrase: Option<String>,
 ) -> Result<String, CoreError> {
     let (mnemonic, passphrase) = (Zeroizing::new(mnemonic), passphrase.map(Zeroizing::new));
-    Ok(wallet_core::wrap_nostr_application_data(
+    Ok(starknet_wallet_core::wrap_nostr_application_data(
         &mnemonic,
         address_index,
         account_index,
@@ -274,7 +278,7 @@ pub fn open_nostr_application_data(
     passphrase: Option<String>,
 ) -> Result<NostrApplicationData, CoreError> {
     let (mnemonic, passphrase) = (Zeroizing::new(mnemonic), passphrase.map(Zeroizing::new));
-    Ok(wallet_core::open_nostr_application_data(
+    Ok(starknet_wallet_core::open_nostr_application_data(
         &mnemonic,
         address_index,
         account_index,
@@ -289,7 +293,10 @@ mod tests {
 
     #[test]
     fn core_info_names_the_compiled_krusty() {
-        assert_eq!(core_info().krusty_version, wallet_core::KRUSTY_VERSION);
+        assert_eq!(
+            core_info().krusty_version,
+            starknet_wallet_core::KRUSTY_VERSION
+        );
         assert_eq!(core_info().core_version, env!("CARGO_PKG_VERSION"));
     }
 
