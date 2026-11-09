@@ -2,8 +2,8 @@
 //! real Krusty path (see `fixtures/README.md`); the known-answer vectors are the ones
 //! `scripts/check-krusty-adapter.ts` holds every extension build to.
 
+use bramble_core::*;
 use serde_json::Value;
-use wallet_core::*;
 
 fn fixture(name: &str) -> Value {
     let path = format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"));

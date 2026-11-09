@@ -59,4 +59,4 @@ jobs:
         working-directory: js
       - run: npm test
         working-directory: js
-      - run: sha256sum js/dist/generated/wallet_core.wasm js/dist/generated/wallet_core_bg.js
+      - run: sha256sum js/dist/generated/bramble_core.wasm js/dist/generated/bramble_core_bg.js
