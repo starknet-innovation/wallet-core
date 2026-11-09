@@ -12,9 +12,10 @@
 
 #![forbid(unsafe_code)]
 
-pub use wallet_core::{
-    NetworkId, NostrApplicationData, StarkKeypair, StarkSignature, StarkXOnlyKeypair,
-};
+use wallet_core::Zeroizing;
+#[cfg(feature = "raw-keys")]
+use wallet_core::{felt, SecretFelt};
+pub use wallet_core::{NetworkId, NostrApplicationData, StarkSignature};
 
 // The wasm2 player needs the allocator and panic hook this crate exports; nothing else
 // references it, so the linker would drop it without this line.
@@ -46,25 +47,13 @@ impl From<wallet_core::Error> for CoreError {
     }
 }
 
-// wallet-core's records and enums, exported as they are.
+// wallet-core's records and enums, exported as they are. Its keypairs hold `SecretFelt`; the
+// `raw-keys` records below are where a key becomes text, and only for the FFI.
 
 #[uniffi::remote(Enum)]
 pub enum NetworkId {
     Mainnet,
     Sepolia,
-}
-
-#[uniffi::remote(Record)]
-pub struct StarkKeypair {
-    pub private_key: String,
-    pub public_key_x: String,
-    pub public_key_y: String,
-}
-
-#[uniffi::remote(Record)]
-pub struct StarkXOnlyKeypair {
-    pub private_key: String,
-    pub public_key_x: String,
 }
 
 #[uniffi::remote(Record)]
@@ -79,6 +68,41 @@ pub struct NostrApplicationData {
     pub content: String,
     pub identifier: String,
     pub sender_public_key: String,
+}
+
+/// Stark key material, as the extension's `StarkKeypair`.
+#[cfg(feature = "raw-keys")]
+#[derive(Clone, PartialEq, Eq, uniffi::Record)]
+pub struct StarkKeypair {
+    pub private_key: String,
+    pub public_key_x: String,
+    pub public_key_y: String,
+}
+
+/// X-only Stark key material from Ready's ETH-seeded scheme (`StarkXOnlyKeypair`).
+#[cfg(feature = "raw-keys")]
+#[derive(Clone, PartialEq, Eq, uniffi::Record)]
+pub struct StarkXOnlyKeypair {
+    pub private_key: String,
+    pub public_key_x: String,
+}
+
+/// The extension's spelling of a key, for the hosts that still hold raw keys (`raw-keys`).
+#[cfg(feature = "raw-keys")]
+fn key_text(key: &SecretFelt) -> String {
+    felt::canonical(key.expose_secret())
+}
+
+/// A raw key from the host: the extension's felt grammar, else `reason`. The range is
+/// wallet-core's to check.
+#[cfg(feature = "raw-keys")]
+fn key_from_text(text: String, reason: &str) -> Result<SecretFelt, CoreError> {
+    let text = Zeroizing::new(text);
+    felt::parse(&text)
+        .map(SecretFelt::new)
+        .ok_or_else(|| CoreError::InvalidInput {
+            reason: reason.into(),
+        })
 }
 
 /// Versions compiled into this core, for About screens, bug reports and the host's pin check.
@@ -100,13 +124,14 @@ pub fn core_info() -> CoreInfo {
 /// Generates a fresh phrase from OS entropy.
 #[uniffi::export]
 pub fn generate_mnemonic(word_count: u8) -> Result<String, CoreError> {
-    Ok(wallet_core::generate_mnemonic(word_count)?)
+    // The copy that crosses the boundary is the host's to wipe; this one is wiped on drop.
+    Ok(wallet_core::generate_mnemonic(word_count)?.to_string())
 }
 
 /// Whether text is a checksummed BIP-39 English phrase of a supported length.
 #[uniffi::export]
 pub fn validate_mnemonic(mnemonic: String) -> bool {
-    wallet_core::validate_mnemonic(mnemonic)
+    wallet_core::validate_mnemonic(&Zeroizing::new(mnemonic))
 }
 
 /// The Starknet keypair at `m/44'/9004'/account_index'/0/address_index`.
@@ -118,12 +143,18 @@ pub fn derive_starknet_keypair(
     account_index: u32,
     passphrase: Option<String>,
 ) -> Result<StarkKeypair, CoreError> {
-    Ok(wallet_core::derive_starknet_keypair(
-        mnemonic,
+    let (mnemonic, passphrase) = (Zeroizing::new(mnemonic), passphrase.map(Zeroizing::new));
+    let pair = wallet_core::derive_starknet_keypair(
+        &mnemonic,
         address_index,
         account_index,
-        passphrase,
-    )?)
+        passphrase.as_deref().map(String::as_str),
+    )?;
+    Ok(StarkKeypair {
+        private_key: key_text(&pair.private_key),
+        public_key_x: pair.public_key_x,
+        public_key_y: pair.public_key_y,
+    })
 }
 
 /// Ready (Argent X) legacy derivation.
@@ -133,10 +164,11 @@ pub fn derive_argent_legacy_keypair(
     mnemonic: String,
     address_index: u32,
 ) -> Result<StarkXOnlyKeypair, CoreError> {
-    Ok(wallet_core::derive_argent_legacy_keypair(
-        mnemonic,
-        address_index,
-    )?)
+    let pair = wallet_core::derive_argent_legacy_keypair(&Zeroizing::new(mnemonic), address_index)?;
+    Ok(StarkXOnlyKeypair {
+        private_key: key_text(&pair.private_key),
+        public_key_x: pair.public_key_x,
+    })
 }
 
 /// The counterfactual OpenZeppelin account address. An omitted salt is the public key, as
@@ -172,7 +204,8 @@ pub fn sign_stark_hash(
     private_key: String,
     message_hash: String,
 ) -> Result<StarkSignature, CoreError> {
-    Ok(wallet_core::sign_stark_hash(private_key, message_hash)?)
+    let key = key_from_text(private_key, "invalid signing input")?;
+    Ok(wallet_core::sign_stark_hash(&key, &message_hash)?)
 }
 
 /// The STRK20 viewing key scoped to `"<chain_id>:<pool_address>"`.
@@ -183,11 +216,9 @@ pub fn derive_strk20_viewing_key(
     chain_id: String,
     pool_address: String,
 ) -> Result<String, CoreError> {
-    Ok(wallet_core::derive_strk20_viewing_key(
-        private_key,
-        chain_id,
-        pool_address,
-    )?)
+    let key = key_from_text(private_key, "invalid viewing-key input")?;
+    let viewing_key = wallet_core::derive_strk20_viewing_key(&key, &chain_id, &pool_address)?;
+    Ok(key_text(&viewing_key))
 }
 
 /// The wallet's coordination public key: BIP-340 x-only, 64 lowercase hex digits.
@@ -198,11 +229,12 @@ pub fn derive_nostr_public_key(
     account_index: u32,
     passphrase: Option<String>,
 ) -> Result<String, CoreError> {
+    let (mnemonic, passphrase) = (Zeroizing::new(mnemonic), passphrase.map(Zeroizing::new));
     Ok(wallet_core::derive_nostr_public_key(
-        mnemonic,
+        &mnemonic,
         address_index,
         account_index,
-        passphrase,
+        passphrase.as_deref().map(String::as_str),
     )?)
 }
 
@@ -219,15 +251,16 @@ pub fn wrap_nostr_application_data(
     created_at: u64,
     passphrase: Option<String>,
 ) -> Result<String, CoreError> {
+    let (mnemonic, passphrase) = (Zeroizing::new(mnemonic), passphrase.map(Zeroizing::new));
     Ok(wallet_core::wrap_nostr_application_data(
-        mnemonic,
+        &mnemonic,
         address_index,
         account_index,
-        recipient_public_key,
-        identifier,
-        content,
+        &recipient_public_key,
+        &identifier,
+        &content,
         created_at,
-        passphrase,
+        passphrase.as_deref().map(String::as_str),
     )?)
 }
 
@@ -240,12 +273,13 @@ pub fn open_nostr_application_data(
     event_json: String,
     passphrase: Option<String>,
 ) -> Result<NostrApplicationData, CoreError> {
+    let (mnemonic, passphrase) = (Zeroizing::new(mnemonic), passphrase.map(Zeroizing::new));
     Ok(wallet_core::open_nostr_application_data(
-        mnemonic,
+        &mnemonic,
         address_index,
         account_index,
-        event_json,
-        passphrase,
+        &event_json,
+        passphrase.as_deref().map(String::as_str),
     )?)
 }
 

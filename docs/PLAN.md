@@ -121,10 +121,17 @@ Each phase names the crate a module lands in; the table above decides anything n
    1. **KMS, Nostr, felt** (already in `wallet-core`). Mobile bumps Krusty 0.11 → 2.0.0 across
       the whole crate (`send/sign.rs`, `argent_multisig.rs`, `account_catalog.rs` included) and
       deletes `kms.rs`, `nostr.rs` and `felt.rs`. Two gaps first:
-      - `wallet-core`'s API is String in, String out, and `StarkKeypair.private_key` is a plain
-        `String`. Mobile works in `Felt` and holds keys in `Zeroizing`
-        (`kms_accounts.rs` calls `kms::private_key`). `wallet-core` returns keys zeroizing (and
-        typed where mobile needs it); `bramble-core` converts to `String` only at the FFI.
+      - (done) `wallet-core`'s API was String in, String out, and `StarkKeypair.private_key` a
+        plain `String`. Mobile works in `Felt` and holds keys in `Zeroizing`
+        (`kms_accounts.rs` calls `kms::private_key`). `wallet-core` now borrows secrets (`&str`)
+        and returns them zeroizing: phrases as `Zeroizing<String>`, private and viewing keys as
+        Krusty's `SecretFelt` (re-exported, redacted `Debug`). `bramble-core` converts to `String`
+        only at the FFI, behind `raw-keys`. The Nostr event grammar mobile's relay code uses
+        (`NostrEvent`, `parse_event_json`, `event_from_value`, `has_recipient_tag`,
+        `is_public_key`, `safe_non_negative_integer`, `kms::utf16_length`) is public.
+        Two differences mobile meets when it deletes its copy: its passphrase bound is 256 bytes
+        and wallet-core's is Bramble's 1,024 UTF-16 units, and its `oz_class_hash` reads Krusty's
+        `latest` where wallet-core takes the version (`OZ_ACCOUNT_VERSION`).
       - Bramble's `tests/conformance/mobile-generated.test.ts` requires mobile's Krusty pin to
         equal the extension's npm pin (0.11.0), so it fails the moment mobile moves to 2.0.0
         while the extension stays on 0.11 until Phase 3.1. Point it at
