@@ -1,13 +1,13 @@
-//! Nostr coordination identity and NIP-59 application data, mirroring the extension's
-//! `wallet-model/nostr` grammar and the Krusty adapter's checks. The private key is derived per
-//! call into a `Zeroizing` buffer, only borrowed by Krusty, and never returned.
+//! Nostr coordination identity and NIP-59 application data. The event grammar and bounds are
+//! Bramble's `wallet-model/nostr` ones, kept as generic resource bounds. The private key is
+//! derived per call into a `Zeroizing` buffer, only borrowed by Krusty, and never returned.
 
 use serde::Serialize;
 use serde_json::Value;
 use zeroize::Zeroizing;
 
 use crate::kms::{check_derivation_input, secret_inputs, utf16_length};
-use crate::CoreError;
+use crate::Error;
 
 /// NIP-59 gift-wrap kind.
 pub const GIFT_WRAP_KIND: u64 = 1_059;
@@ -31,7 +31,7 @@ pub(crate) struct NostrEvent {
 }
 
 /// Authenticated application data opened from a gift wrap addressed to this wallet.
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NostrApplicationData {
     pub content: String,
     pub identifier: String,
@@ -158,29 +158,27 @@ fn private_key(
     address_index: u32,
     account_index: u32,
     passphrase: Option<&str>,
-) -> Result<Zeroizing<[u8; 32]>, CoreError> {
+) -> Result<Zeroizing<[u8; 32]>, Error> {
     check_derivation_input(mnemonic, passphrase)?;
     krusty_kms::derive_nostr_private_key(mnemonic, address_index, account_index, passphrase)
         .map(Zeroizing::new)
-        .map_err(|_| CoreError::kms("nostr key"))
+        .map_err(|_| Error::kms("nostr key"))
 }
 
 /// The wallet's coordination public key: BIP-340 x-only, 64 lowercase hex digits.
-#[uniffi::export]
 pub fn derive_nostr_public_key(
     mnemonic: String,
     address_index: u32,
     account_index: u32,
     passphrase: Option<String>,
-) -> Result<String, CoreError> {
+) -> Result<String, Error> {
     let (mnemonic, passphrase) = secret_inputs(mnemonic, passphrase);
     let passphrase = passphrase.as_ref().map(|p| p.as_str());
     let key = private_key(&mnemonic, address_index, account_index, passphrase)?;
-    let public =
-        krusty_kms::nostr_public_key(&key).map_err(|_| CoreError::kms("nostr public key"))?;
+    let public = krusty_kms::nostr_public_key(&key).map_err(|_| Error::kms("nostr public key"))?;
     let hex: String = public.iter().map(|b| format!("{b:02x}")).collect();
     if !is_public_key(&hex) {
-        return Err(CoreError::kms("nostr public key"));
+        return Err(Error::kms("nostr public key"));
     }
     Ok(hex)
 }
@@ -188,7 +186,6 @@ pub fn derive_nostr_public_key(
 /// Wraps application data for one recipient at the host's clock (`created_at`, Unix seconds;
 /// wasm32 has no clock of its own). The output is re-checked as the adapter does: a bounded
 /// kind-1059 event carrying the recipient's `p` tag.
-#[uniffi::export]
 #[allow(clippy::too_many_arguments)]
 pub fn wrap_nostr_application_data(
     mnemonic: String,
@@ -199,12 +196,12 @@ pub fn wrap_nostr_application_data(
     content: String,
     created_at: u64,
     passphrase: Option<String>,
-) -> Result<String, CoreError> {
+) -> Result<String, Error> {
     if !is_public_key(&recipient_public_key)
         || !is_identifier(&identifier)
         || !is_application_data(&content)
     {
-        return Err(CoreError::invalid("invalid nostr application data"));
+        return Err(Error::invalid("invalid nostr application data"));
     }
     let (mnemonic, passphrase) = secret_inputs(mnemonic, passphrase);
     let passphrase = passphrase.as_ref().map(|p| p.as_str());
@@ -216,42 +213,41 @@ pub fn wrap_nostr_application_data(
         &content,
         created_at,
     )
-    .map_err(|_| CoreError::kms("nostr wrap"))?;
+    .map_err(|_| Error::kms("nostr wrap"))?;
     match parse_event_json(&wrapped) {
         Some(event)
             if event.kind == GIFT_WRAP_KIND && has_recipient_tag(&event, &recipient_public_key) =>
         {
             Ok(wrapped)
         }
-        _ => Err(CoreError::kms("nostr wrap")),
+        _ => Err(Error::kms("nostr wrap")),
     }
 }
 
 /// Opens one gift wrap addressed to this wallet. The event must pass the extension's grammar and
 /// be kind 1059 before Krusty sees it; Krusty's signature and rumor checks and the output bounds
 /// all fail closed, since a relay event is untrusted.
-#[uniffi::export]
 pub fn open_nostr_application_data(
     mnemonic: String,
     address_index: u32,
     account_index: u32,
     event_json: String,
     passphrase: Option<String>,
-) -> Result<NostrApplicationData, CoreError> {
+) -> Result<NostrApplicationData, Error> {
     if parse_event_json(&event_json).is_none_or(|event| event.kind != GIFT_WRAP_KIND) {
-        return Err(CoreError::invalid("invalid nostr gift wrap"));
+        return Err(Error::invalid("invalid nostr gift wrap"));
     }
     let (mnemonic, passphrase) = secret_inputs(mnemonic, passphrase);
     let passphrase = passphrase.as_ref().map(|p| p.as_str());
     let key = private_key(&mnemonic, address_index, account_index, passphrase)?;
     // The original text goes to Krusty, as the extension passes the event JSON it received.
     let opened = krusty_kms::open_nostr_application_data(&key, &event_json)
-        .map_err(|_| CoreError::kms("nostr open"))?;
+        .map_err(|_| Error::kms("nostr open"))?;
     let valid = is_application_data(&opened.content)
         && is_identifier(&opened.identifier)
         && is_public_key(&opened.sender_public_key);
     if !valid {
-        return Err(CoreError::kms("nostr open"));
+        return Err(Error::kms("nostr open"));
     }
     Ok(NostrApplicationData {
         content: opened.content,
@@ -320,11 +316,11 @@ mod tests {
         let mut kind1 = event();
         kind1["kind"] = json!(1);
         let err = open_nostr_application_data(phrase.into(), 0, 0, kind1.to_string(), None);
-        assert!(matches!(err, Err(CoreError::InvalidInput { .. })));
+        assert!(matches!(err, Err(Error::InvalidInput { .. })));
         let err = open_nostr_application_data(phrase.into(), 0, 0, "{".into(), None);
-        assert!(matches!(err, Err(CoreError::InvalidInput { .. })));
+        assert!(matches!(err, Err(Error::InvalidInput { .. })));
         // Well-formed but unauthenticated: Krusty refuses it.
         let err = open_nostr_application_data(phrase.into(), 0, 0, event().to_string(), None);
-        assert!(matches!(err, Err(CoreError::Kms { .. })));
+        assert!(matches!(err, Err(Error::Kms { .. })));
     }
 }

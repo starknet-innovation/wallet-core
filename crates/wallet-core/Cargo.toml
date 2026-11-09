@@ -1,0 +1,22 @@
+[package]
+name = "wallet-core"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.92"
+license = "MIT"
+publish = false
+description = "Starknet wallet core: Krusty KMS key custody and wallet logic as plain Rust, with no product policy and no FFI"
+
+[dependencies]
+# Wallet cryptography. Pinned exactly; `parallel` (rayon) only serves proof generation.
+krusty-kms = { version = "=2.0.0", default-features = false }
+krusty-kms-common = { version = "=2.0.0" }
+starknet-types-core = { version = "=0.2.4", features = ["hash", "curve"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = { version = "=1.0.151" }
+thiserror = { version = "=2.0.21" }
+zeroize = { version = "=1.9.0", features = ["derive"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# OS entropy through `crypto.getRandomValues`; see .cargo/config.toml for the backend cfg.
+getrandom = { version = "=0.4.3", features = ["wasm_js"] }

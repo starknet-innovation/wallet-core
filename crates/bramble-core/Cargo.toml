@@ -1,18 +1,18 @@
 [package]
-name = "wallet-core"
+name = "bramble-core"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.92"
 license = "MIT"
 publish = false
-description = "Bramble wallet core: Krusty KMS key custody and Starknet wallet logic behind one UniFFI surface for the browser extension (WASM), iOS and Android"
+description = "Bramble wallet core: wallet-core plus Bramble's policy, behind one UniFFI surface for the browser extension (WASM), iOS and Android"
 
 [lib]
 # staticlib: linked into the iOS app through an XCFramework.
 # cdylib:    loaded by Android from jniLibs, read by uniffi-bindgen, and the wasm32 module.
 # lib:       integration tests and the bindgen binary.
 crate-type = ["lib", "cdylib", "staticlib"]
-name = "wallet_core"
+name = "bramble_core"
 
 [[bin]]
 name = "uniffi-bindgen"
@@ -23,29 +23,26 @@ required-features = ["bindgen"]
 default = ["raw-keys"]
 # Swift/Kotlin binding generator (`cargo run --features bindgen --bin uniffi-bindgen`).
 bindgen = ["uniffi/cli"]
-# Functions that take or return a raw Stark private key. The extension's vault (schema v12)
-# stores derived keys and hands them back for signing, so its build needs them; mobile keeps
-# keys inside the core and builds with `--no-default-features`. Removed in Phase 2 (docs/PLAN.md).
+# Exports the functions that take or return a raw Stark private key. The extension's vault
+# (schema v12) stores derived keys and hands them back for signing, so its build needs them;
+# mobile keeps keys inside the core and builds with `--no-default-features`. Removed in Phase 2
+# (docs/PLAN.md).
 raw-keys = []
 
 [dependencies]
-# Wallet cryptography. Pinned exactly; `parallel` (rayon) only serves proof generation.
-krusty-kms = { version = "=2.0.0", default-features = false }
-krusty-kms-common = { version = "=2.0.0" }
-starknet-types-core = { version = "=0.2.4", features = ["hash", "curve"] }
+wallet-core = { version = "=0.1.0", path = "../wallet-core" }
 # Bindings for Swift, Kotlin and (through uniffi-bindgen-react-native's wasm2 flavour) TypeScript.
 uniffi = { version = "=0.31.2" }
-serde = { version = "=1.0.229", features = ["derive"] }
-serde_json = { version = "=1.0.151" }
 thiserror = { version = "=2.0.21" }
-zeroize = { version = "=1.9.0", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = { version = "=1.0.151" }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 # The wasm2 player's allocator and panic hook; linked by the `extern crate` line in lib.rs.
 uniffi-runtime-wasm = { version = "=0.31.0-6" }
 # wasm32 has no threads, so UniFFI must not demand Send + Sync on exported objects.
 uniffi_core = { version = "=0.31.2", features = ["wasm-unstable-single-threaded"] }
-# OS entropy through `crypto.getRandomValues`; see .cargo/config.toml for the backend cfg.
-getrandom = { version = "=0.4.3", features = ["wasm_js"] }
-# Pinned so `wasm-bindgen-cli` (which ubrn runs over the module) has one deliberate version to match.
+# Pinned so `wasm-bindgen-cli` (which ubrn runs over the module) has one deliberate version to
+# match. It arrives through getrandom's wasm backend in wallet-core.
 wasm-bindgen = { version = "=0.2.130" }

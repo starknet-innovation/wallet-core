@@ -5,13 +5,13 @@ import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
 const fixture = JSON.parse(
-  await readFile(new URL("../../crates/core/tests/fixtures/extension-parity.json", import.meta.url), "utf8"),
+  await readFile(new URL("../../crates/bramble-core/tests/fixtures/extension-parity.json", import.meta.url), "utf8"),
 );
 const nostr = JSON.parse(
-  await readFile(new URL("../../crates/core/tests/fixtures/nostr-parity.json", import.meta.url), "utf8"),
+  await readFile(new URL("../../crates/bramble-core/tests/fixtures/nostr-parity.json", import.meta.url), "utf8"),
 );
 const core = await import("../dist/index.js");
-await core.uniffiInitAsync(await readFile(new URL("../dist/generated/wallet_core.wasm", import.meta.url)));
+await core.uniffiInitAsync(await readFile(new URL("../dist/generated/bramble_core.wasm", import.meta.url)));
 
 test("core info names the pinned Krusty release", () => {
   assert.equal(core.coreInfo().krustyVersion, "2.0.0");
