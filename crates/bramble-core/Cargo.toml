@@ -38,7 +38,7 @@ thiserror = { version = "=2.0.21" }
 [dev-dependencies]
 serde_json = { version = "=1.0.154" }
 # Golden-fixture hashes (tests/fixtures.rs); already in the lockfile through Krusty.
-sha2 = { version = "=0.10.9" }
+sha2 = { version = "=0.11.1" }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 # The wasm2 player's allocator and panic hook; linked by the `extern crate` line in lib.rs.
