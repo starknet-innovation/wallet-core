@@ -1,0 +1,2 @@
+# Golden fixtures are hash-checked (tests/fixtures.rs); never let a checkout rewrite their bytes.
+crates/bramble-core/tests/fixtures/** -text

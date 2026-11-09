@@ -1,4 +1,386 @@
 {
+  "argent": {
+    "guids": [
+      {
+        "guid": "0x116dcea0b31d06f721c156324cd8de3652bf8953cd5ba055f74db21b1134ec9",
+        "publicKey": "0x123"
+      },
+      {
+        "guid": "0x44262798138cf2be1f7fee96be6f7ce9030bec80801437fe00903a65ae72e59",
+        "publicKey": "0x456"
+      },
+      {
+        "guid": "0x45451c325d0511d28e9f2f4a9bd8594e1c59ab7b6b340ad7c1939cd60f04931",
+        "publicKey": "0x426212993d56613e1886a4cbc5b58810570023581c2aab0b423277776b79d2e"
+      },
+      {
+        "guid": "0x67abf39c36192b456feed7ce8a185dfe3245cfded0ea02773a100de58e77cb0",
+        "publicKey": "0x7873b5322cbee02f90349e3dea6af8daa6e26dec9b13940b7ab7358617f32bd"
+      }
+    ],
+    "configs": [
+      {
+        "address": "0x30adfd66fcb9c20d7709875fae114590607430eca3c36609917d7a464d9c99a",
+        "calldata": ["2", "2", "0", "0x123", "0", "0x456"],
+        "normalized": ["0x123", "0x456"],
+        "salt": "0x0",
+        "signerPublicKeys": ["0x456", "0x123"],
+        "threshold": 2
+      },
+      {
+        "address": "0x6489f72967bc59ab6c71bf04b2d87424d872c3f210011ca0c8f47ac2983151a",
+        "calldata": [
+          "1",
+          "1",
+          "0",
+          "0x426212993d56613e1886a4cbc5b58810570023581c2aab0b423277776b79d2e"
+        ],
+        "normalized": ["0x426212993d56613e1886a4cbc5b58810570023581c2aab0b423277776b79d2e"],
+        "salt": "0x0",
+        "signerPublicKeys": ["0x426212993d56613e1886a4cbc5b58810570023581c2aab0b423277776b79d2e"],
+        "threshold": 1
+      },
+      {
+        "address": "0x7cc9b25b3b85cdce9e9da00dbbdea030b2c32ab001e1afb573734efad232a6f",
+        "calldata": [
+          "2",
+          "3",
+          "0",
+          "0x789",
+          "0",
+          "0x426212993d56613e1886a4cbc5b58810570023581c2aab0b423277776b79d2e",
+          "0",
+          "0x7873b5322cbee02f90349e3dea6af8daa6e26dec9b13940b7ab7358617f32bd"
+        ],
+        "normalized": [
+          "0x789",
+          "0x426212993d56613e1886a4cbc5b58810570023581c2aab0b423277776b79d2e",
+          "0x7873b5322cbee02f90349e3dea6af8daa6e26dec9b13940b7ab7358617f32bd"
+        ],
+        "salt": "0x2a",
+        "signerPublicKeys": [
+          "0x426212993d56613e1886a4cbc5b58810570023581c2aab0b423277776b79d2e",
+          "0x7873b5322cbee02f90349e3dea6af8daa6e26dec9b13940b7ab7358617f32bd",
+          "0x0789"
+        ],
+        "threshold": 2
+      },
+      {
+        "address": "0x436c27874a4b2a248cd01f33e6e9c6d7174271ac5dc90b61e11eb54a6f7fbb6",
+        "calldata": [
+          "17",
+          "32",
+          "0",
+          "0x12",
+          "0",
+          "0xf",
+          "0",
+          "0x8",
+          "0",
+          "0x18",
+          "0",
+          "0x1b",
+          "0",
+          "0x1",
+          "0",
+          "0x1c",
+          "0",
+          "0x1a",
+          "0",
+          "0x16",
+          "0",
+          "0x7",
+          "0",
+          "0x17",
+          "0",
+          "0x15",
+          "0",
+          "0x4",
+          "0",
+          "0xe",
+          "0",
+          "0x5",
+          "0",
+          "0xb",
+          "0",
+          "0x6",
+          "0",
+          "0x2",
+          "0",
+          "0x10",
+          "0",
+          "0x11",
+          "0",
+          "0xa",
+          "0",
+          "0x1f",
+          "0",
+          "0x3",
+          "0",
+          "0x9",
+          "0",
+          "0x13",
+          "0",
+          "0x19",
+          "0",
+          "0x14",
+          "0",
+          "0xc",
+          "0",
+          "0x1d",
+          "0",
+          "0xd",
+          "0",
+          "0x1e",
+          "0",
+          "0x20"
+        ],
+        "normalized": [
+          "0x12",
+          "0xf",
+          "0x8",
+          "0x18",
+          "0x1b",
+          "0x1",
+          "0x1c",
+          "0x1a",
+          "0x16",
+          "0x7",
+          "0x17",
+          "0x15",
+          "0x4",
+          "0xe",
+          "0x5",
+          "0xb",
+          "0x6",
+          "0x2",
+          "0x10",
+          "0x11",
+          "0xa",
+          "0x1f",
+          "0x3",
+          "0x9",
+          "0x13",
+          "0x19",
+          "0x14",
+          "0xc",
+          "0x1d",
+          "0xd",
+          "0x1e",
+          "0x20"
+        ],
+        "salt": "0x7b",
+        "signerPublicKeys": [
+          "0x1",
+          "0x2",
+          "0x3",
+          "0x4",
+          "0x5",
+          "0x6",
+          "0x7",
+          "0x8",
+          "0x9",
+          "0xa",
+          "0xb",
+          "0xc",
+          "0xd",
+          "0xe",
+          "0xf",
+          "0x10",
+          "0x11",
+          "0x12",
+          "0x13",
+          "0x14",
+          "0x15",
+          "0x16",
+          "0x17",
+          "0x18",
+          "0x19",
+          "0x1a",
+          "0x1b",
+          "0x1c",
+          "0x1d",
+          "0x1e",
+          "0x1f",
+          "0x20"
+        ],
+        "threshold": 17
+      }
+    ],
+    "rejected": [
+      { "signerPublicKeys": ["0x1"], "threshold": 0 },
+      { "signerPublicKeys": ["0x1"], "threshold": 2 },
+      {
+        "signerPublicKeys": [
+          "0x1",
+          "0x2",
+          "0x3",
+          "0x4",
+          "0x5",
+          "0x6",
+          "0x7",
+          "0x8",
+          "0x9",
+          "0xa",
+          "0xb",
+          "0xc",
+          "0xd",
+          "0xe",
+          "0xf",
+          "0x10",
+          "0x11",
+          "0x12",
+          "0x13",
+          "0x14",
+          "0x15",
+          "0x16",
+          "0x17",
+          "0x18",
+          "0x19",
+          "0x1a",
+          "0x1b",
+          "0x1c",
+          "0x1d",
+          "0x1e",
+          "0x1f",
+          "0x20",
+          "0x21"
+        ],
+        "threshold": 1
+      },
+      { "signerPublicKeys": ["0x123", "0x0123"], "threshold": 1 },
+      { "signerPublicKeys": ["0x0"], "threshold": 1 },
+      {
+        "signerPublicKeys": ["0x11111111111111111111111111111111111111111111111111111111111111111"],
+        "threshold": 1
+      }
+    ]
+  },
+  "cards": [
+    {
+      "input": "mcw:contact:1:SN_MAIN:0000000000000000000000000000000000000000000000000000000000000123:426212993d56613e1886a4cbc5b58810570023581c2aab0b423277776b79d2e:29eb921dd3b259edf2e9f2dfdbe2bf7fcebbc2ee8ad4cada7bfa4a13ffa430e9",
+      "parsed": {
+        "address": "0x0000000000000000000000000000000000000000000000000000000000000123",
+        "networkId": "SN_MAIN",
+        "nostrPublicKey": "29eb921dd3b259edf2e9f2dfdbe2bf7fcebbc2ee8ad4cada7bfa4a13ffa430e9",
+        "publicKeyX": "0x426212993d56613e1886a4cbc5b58810570023581c2aab0b423277776b79d2e"
+      }
+    },
+    {
+      "input": "mcw:contact:1:SN_SEPOLIA:0000000000000000000000000000000000000000000000000000000000000123:426212993d56613e1886a4cbc5b58810570023581c2aab0b423277776b79d2e:-",
+      "parsed": {
+        "address": "0x0000000000000000000000000000000000000000000000000000000000000123",
+        "networkId": "SN_SEPOLIA",
+        "publicKeyX": "0x426212993d56613e1886a4cbc5b58810570023581c2aab0b423277776b79d2e"
+      }
+    },
+    {
+      "input": "mcw:contact:1:SN_DEVNET:0000000000000000000000000000000000000000000000000000000000000123:-:-",
+      "parsed": {
+        "address": "0x0000000000000000000000000000000000000000000000000000000000000123",
+        "networkId": "SN_DEVNET"
+      }
+    },
+    {
+      "input": "mcw:contact:1:SN_MAIN:0000000000000000000000000000000000000000000000000000000000000abc:-:-",
+      "parsed": {
+        "address": "0x0000000000000000000000000000000000000000000000000000000000000abc",
+        "networkId": "SN_MAIN"
+      }
+    },
+    {
+      "input": "mcw:contact:2:SN_MAIN:0000000000000000000000000000000000000000000000000000000000000123:426212993d56613e1886a4cbc5b58810570023581c2aab0b423277776b79d2e:29eb921dd3b259edf2e9f2dfdbe2bf7fcebbc2ee8ad4cada7bfa4a13ffa430e9",
+      "parsed": null
+    },
+    {
+      "input": "mcw:contact:1:SN_MAIN:0000000000000000000000000000000000000000000000000000000000000123:426212993d56613e1886a4cbc5b58810570023581c2aab0b423277776b79d2e:29eb921dd3b259edf2e9f2dfdbe2bf7fcebbc2ee8ad4cada7bfa4a13ffa430e9:extra",
+      "parsed": null
+    },
+    {
+      "input": "mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm",
+      "parsed": null
+    },
+    {
+      "input": "mcw:contact:1:SN_MAIN:0000000000000000000000000000000000000000000000000000000000000123:426212993d56613e1886a4cbc5b58810570023581c2aab0b423277776b79d2e:0x11",
+      "parsed": null
+    },
+    {
+      "input": "mcw:contact:1:SN_MAIN:0000000000000000000000000000000000000000000000000000000000000000:-:-",
+      "parsed": null
+    },
+    { "input": "mcw:contact:1:SN_MAIN:123:456", "parsed": null },
+    { "input": "mcw:contact:1:SN_OTHER:123:-:-", "parsed": null },
+    { "input": "mcw:contact:1:SN_MAIN::-:-", "parsed": null },
+    {
+      "input": "mcw:contact:1:SN_MAIN:ABC:DEF:-",
+      "parsed": {
+        "address": "0x0000000000000000000000000000000000000000000000000000000000000abc",
+        "networkId": "SN_MAIN",
+        "publicKeyX": "0xdef"
+      }
+    },
+    {
+      "input": "mcw:contact:1:SN_MAIN:abc :def :-",
+      "parsed": {
+        "address": "0x0000000000000000000000000000000000000000000000000000000000000abc",
+        "networkId": "SN_MAIN",
+        "publicKeyX": "0xdef"
+      }
+    },
+    { "input": "mcw:contact:1:SN_MAIN:abc:0:-", "parsed": null },
+    {
+      "input": "mcw:contact:1:SN_MAIN:fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff:-:-",
+      "parsed": null
+    },
+    {
+      "input": "mcw:contact:1:SN_MAIN:abc:00000000000000000000000000000000000000000000000000000000000000000000001:-",
+      "parsed": {
+        "address": "0x0000000000000000000000000000000000000000000000000000000000000abc",
+        "networkId": "SN_MAIN",
+        "publicKeyX": "0x1"
+      }
+    }
+  ],
+  "classHash": "0x07aeca3456816e3b833506d7cc5c1313d371fbdb0ae95ee70af72a4ddbf42594",
+  "joins": [
+    {
+      "signerGuids": [
+        "0x45451c325d0511d28e9f2f4a9bd8594e1c59ab7b6b340ad7c1939cd60f04931",
+        "0x67abf39c36192b456feed7ce8a185dfe3245cfded0ea02773a100de58e77cb0"
+      ],
+      "threshold": 2,
+      "address": "0x5a420c195dff16c6c802af09dc5b65d3249e6409b0d4bd9efb4b45b4ede50a3",
+      "record": {
+        "accountContractType": "argent-multisig",
+        "address": "0x5a420c195dff16c6c802af09dc5b65d3249e6409b0d4bd9efb4b45b4ede50a3",
+        "classHash": "0x07aeca3456816e3b833506d7cc5c1313d371fbdb0ae95ee70af72a4ddbf42594",
+        "currentConfig": {
+          "signerPublicKeys": [
+            "0x426212993d56613e1886a4cbc5b58810570023581c2aab0b423277776b79d2e",
+            "0x7873b5322cbee02f90349e3dea6af8daa6e26dec9b13940b7ab7358617f32bd"
+          ],
+          "threshold": 2
+        },
+        "id": "SN_SEPOLIA:0x5a420c195dff16c6c802af09dc5b65d3249e6409b0d4bd9efb4b45b4ede50a3",
+        "networkId": "SN_SEPOLIA"
+      }
+    },
+    {
+      "signerGuids": [
+        "0x3f2ece769edda214661ae54b1edb1279ec8b52067d3c881ab98b7fc0836ae19",
+        "0x45451c325d0511d28e9f2f4a9bd8594e1c59ab7b6b340ad7c1939cd60f04931"
+      ],
+      "threshold": 1,
+      "address": "0x456",
+      "record": {
+        "accountContractType": "argent-multisig",
+        "address": "0x456",
+        "classHash": "0x07aeca3456816e3b833506d7cc5c1313d371fbdb0ae95ee70af72a4ddbf42594",
+        "id": "SN_SEPOLIA:0x456",
+        "networkId": "SN_SEPOLIA"
+      }
+    }
+  ],
   "nostrKeys": [
     {
       "index": 0,
@@ -10,6 +392,29 @@
       "mnemonic": "habit hope tip crystal because grunt nation idea electric witness alert like",
       "publicKey": "45957708164bcaab7492d7450ac1f9d4fa4762e5910744dab70db2b95154b4a3"
     }
+  ],
+  "relayUrls": [
+    { "extension": "valid", "value": "wss://relay.primal.net" },
+    { "extension": "valid", "value": "wss://nos.lol" },
+    { "extension": "valid", "value": " wss://relay.example/path?x=1 " },
+    { "extension": "valid", "value": "wss://relay.example:7447" },
+    { "extension": "invalid", "value": "WSS://relay.example" },
+    { "extension": "valid", "value": "wss://127.0.0.1:7000" },
+    { "extension": "valid", "value": "wss://[::1]:7000/nostr" },
+    { "extension": "defaults", "value": "" },
+    { "extension": "defaults", "value": "   " },
+    { "extension": "valid", "mobileDiffers": "insecure-loopback", "value": "ws://localhost:7000" },
+    { "extension": "valid", "mobileDiffers": "insecure-loopback", "value": "ws://127.0.0.1:7000" },
+    { "extension": "invalid", "value": "ws://relay.example" },
+    { "extension": "invalid", "value": "https://relay.example" },
+    { "extension": "invalid", "value": "wss://user:pw@relay.example" },
+    { "extension": "invalid", "value": "wss://relay.example/#frag" },
+    { "extension": "invalid", "value": "wss://relay.example:70000" },
+    { "extension": "invalid", "value": "wss://" },
+    { "extension": "invalid", "value": "not a url" },
+    { "extension": "invalid", "mobileDiffers": "strict-subset", "value": "wss://réseau.example" },
+    { "extension": "invalid", "mobileDiffers": "strict-subset", "value": "wss://relay.example#" },
+    { "extension": "invalid", "mobileDiffers": "strict-subset", "value": "wss://@relay.example" }
   ],
   "giftWrap": {
     "content": "{\"intent\":{\"accountId\":\"SN_SEPOLIA:0x123\",\"configSnapshot\":{\"signerGuids\":[],\"threshold\":1}},\"kind\":\"bramble.argent-multisig-intent\",\"version\":1}",
