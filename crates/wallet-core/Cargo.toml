@@ -23,9 +23,9 @@ sha2 = { version = "=0.11.1", default-features = false }
 base64 = { version = "=0.22.1" }
 getrandom = { version = "=0.4.3" }
 serde = { version = "=1.0.229", features = ["derive"] }
-serde_json = { version = "=1.0.151" }
+serde_json = { version = "=1.0.154" }
 thiserror = { version = "=2.0.21" }
-zeroize = { version = "=1.9.0", features = ["derive"] }
+zeroize = { version = "=1.9.1", features = ["derive"] }
 
 [dev-dependencies]
 # Checks the selector constants are starknet_keccak of their names; already in the lockfile.
