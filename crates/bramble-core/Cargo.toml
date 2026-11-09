@@ -36,7 +36,7 @@ uniffi = { version = "=0.31.2" }
 thiserror = { version = "=2.0.21" }
 
 [dev-dependencies]
-serde_json = { version = "=1.0.151" }
+serde_json = { version = "=1.0.154" }
 # Golden-fixture hashes (tests/fixtures.rs); already in the lockfile through Krusty.
 sha2 = { version = "=0.10.9" }
 
