@@ -2,6 +2,8 @@
 //! the published E2E phrase, and the driver that holds the plan to the recorded wire order.
 #![allow(dead_code)]
 
+pub mod node;
+
 use std::cell::RefCell;
 
 use bramble_core::SEND_POLICY;
@@ -125,11 +127,6 @@ impl PlanHost for Host {
     fn observe(&self, _hash: &Felt, observation: Observation) -> Option<TxStatus> {
         self.observed.borrow_mut().push(observation);
         None
-    }
-    fn discard(&self, hash: &Felt) {
-        self.records
-            .borrow_mut()
-            .retain(|record| record.hash != *hash);
     }
     fn explorer_url(&self, hash: &str) -> Option<String> {
         Some(format!("https://explorer.test/tx/{hash}"))

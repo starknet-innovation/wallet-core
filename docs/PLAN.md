@@ -320,9 +320,10 @@ Each phase names the crate a module lands in; the table above decides anything n
       - The state machine (`plan*.rs`) as `send::plan::Plan`, step for step. What tied it to
         mobile's `WalletCore` comes in from outside instead: `PlanHost` (lent to each
         `advance`) owns the session check, signing (`sign(hash, renew)`), the activity log
-        (`record_pending`, `observe`, `discard`) and explorer URLs; Bramble's account catalog
-        rides in `Authorization` (Argent classes and their shapes, Braavos signing classes and
-        implementation), as the Phase 2.6 rule asks; and its numbers are a `Policy`.
+        (`record_pending`, `observe`; a signed write's record is never dropped, whatever the
+        node answers) and explorer URLs; Bramble's account catalog rides in `Authorization`
+        (Argent classes and their shapes, Braavos signing classes and implementation), as the
+        Phase 2.6 rule asks; and its numbers are a `Policy`.
         `bramble-core` holds them: `FEE_MARGIN_PERCENT` (50), `REVIEWED_FEE_HEADROOM` (3/2),
         `CONFIRMATION_DELAYS_MS`, together as `SEND_POLICY`, each checked against the rules
         fixture. `Plan` is `&mut self`; the FFI object's mutex and its poison-closes rule stay

@@ -156,7 +156,7 @@ impl Plan {
                 None => self.fail(Code::DeploymentStatusUnknown, None),
             },
             Expect::DeployEstimate => self.on_deploy_estimate(host, answer),
-            Expect::DeployWrite => self.on_deploy_write(host, answer),
+            Expect::DeployWrite => self.on_deploy_write(answer),
             Expect::DeployStatus => self.on_deploy_status(host, answer),
             Expect::DeployReceipt => {
                 if judge::receipt(answer) {
@@ -171,7 +171,7 @@ impl Plan {
                 Some(nonce) => self.sign_and_send_invoke(host, nonce),
                 None => self.after_deployment(Code::PreparationUnavailable, None),
             },
-            Expect::InvokeWrite => self.on_invoke_write(host, answer),
+            Expect::InvokeWrite => self.on_invoke_write(answer),
             Expect::ConfirmStatus | Expect::RefreshStatus => {
                 self.on_confirm_status(host, expect, answer)
             }
@@ -289,23 +289,20 @@ impl Plan {
         })
     }
 
-    fn on_invoke_write(&mut self, host: &dyn PlanHost, answer: Option<Answer>) -> SendStep {
+    fn on_invoke_write(&mut self, answer: Option<Answer>) -> SendStep {
         let Some(hash) = self.work.invoke_hash else {
             return self.fail(Code::SubmissionIndeterminate, None);
         };
-        match judge::write(answer, &hash) {
-            WriteAnswer::Accepted => self.broadcast(hash),
-            WriteAnswer::Mismatch => self.after_deployment(Code::HashMismatch, Some(hash)),
-            WriteAnswer::Indeterminate => {
-                self.after_deployment(Code::SubmissionIndeterminate, Some(hash))
-            }
-            WriteAnswer::NodeError => {
-                // A determinate refusal: the transaction never existed, so its pending record
-                // goes (the extension records activity only after an accepted write).
-                host.discard(&hash);
-                self.after_deployment(Code::NodeError, None)
-            }
-        }
+        // Once signed, the invoke may land whatever the node answers, even an error (the
+        // extension, which records only after an accepted write, differs here on purpose): its
+        // record stays and every failure carries its hash.
+        let code = match judge::write(answer, &hash) {
+            WriteAnswer::Accepted => return self.broadcast(hash),
+            WriteAnswer::Mismatch => Code::HashMismatch,
+            WriteAnswer::Indeterminate => Code::SubmissionIndeterminate,
+            WriteAnswer::NodeError => Code::NodeError,
+        };
+        self.after_deployment(code, Some(hash))
     }
 
     fn on_confirm_status(
