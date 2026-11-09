@@ -77,7 +77,9 @@ Grep first; extend in place rather than adding a sibling.
 
 ## Releases
 
-- The tag `v<x.y.z>` must equal the `bramble-core` crate version and `js/package.json`;
+- The tag `v<x.y.z>` must equal both crate versions and `js/package.json`;
   `release.yml` refuses otherwise.
+- While `js/package.json` is `private` (until Phase 3.1), a tag makes a GitHub release only;
+  mobile pins `wallet-core` by that tag.
 - npm publishes through OIDC trusted publishing only. Never add an npm token or publish locally.
 - Only a maintainer tags, and only a merged `main` commit. Never move or recreate a tag.

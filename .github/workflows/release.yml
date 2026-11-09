@@ -26,17 +26,21 @@ jobs:
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
-      - name: Tag must equal the package and crate versions
+      - name: Tag must equal the package and both crate versions
         run: |
           tag="${GITHUB_REF_NAME#v}"
           pkg="$(node -p "require('./js/package.json').version")"
           crate="$(grep -m1 '^version = ' crates/bramble-core/Cargo.toml | cut -d'"' -f2)"
-          test "$tag" = "$pkg" && test "$tag" = "$crate"
+          core="$(grep -m1 '^version = ' crates/wallet-core/Cargo.toml | cut -d'"' -f2)"
+          test "$tag" = "$pkg" && test "$tag" = "$crate" && test "$tag" = "$core"
       - run: cargo install wasm-bindgen-cli --version 0.2.130 --locked
       - run: bash tools/check.sh wasm
       - run: sha256sum js/dist/generated/bramble_core.wasm js/dist/generated/bramble_core_bg.js > SHA256SUMS
-      # `private: true` in js/package.json makes this step fail until Phase 3.1 removes it.
-      - run: npm publish --provenance --access public
+      # js/package.json stays `private` until Phase 3.1; until then a tag is a GitHub release only.
+      - id: npm
+        run: echo "private=$(node -p "require('./js/package.json').private === true")" >> "$GITHUB_OUTPUT"
+      - if: steps.npm.outputs.private != 'true'
+        run: npm publish --provenance --access public
         working-directory: js
       - run: gh release create "$GITHUB_REF_NAME" SHA256SUMS --verify-tag --title "$GITHUB_REF_NAME"
         env:
