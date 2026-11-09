@@ -275,7 +275,7 @@ Each phase names the crate a module lands in; the table above decides anything n
         today.
    2. **Vault**: `encrypted-store.ts` becomes a shim over the core, with a write-through mirror
       over `chrome.storage`. Keys stop leaving Rust and `raw-keys` leaves the extension build.
-      Migrations from schemas before v12 stay in TypeScript.
+      Migrations from schemas before v12 stay in TypeScript. See [Key exposure](#key-exposure).
    3. **Transactions, then reads**: `@bramble/transactions` drives the `TransferPlan` step loop;
       portfolio, history and privacy follow. Bramble's `scripts/mobile-assets.ts` renderers
       invert so TypeScript reads catalogs from the npm package.
@@ -288,6 +288,37 @@ Each phase names the crate a module lands in; the table above decides anything n
    golden suite passing through the extension's own conformance tests before the TypeScript goes.
 4. **Later**: Ledger, dapp provider and permissions, STRK20 submission, swap, gasless, NFTs,
    allowances.
+
+## Key exposure
+
+How far raw private keys travel outside Rust, today and after Phase 3.2.
+
+**Today (Bramble `e6485a7a`).** Krusty's wasm is stateless: keys cross it as hex strings in both
+directions. The v12 vault stores each account's derived key (`signingKeys[].privateKey`) under
+AES-256-GCM. `signHash` (`vault/src/service/service.ts`) decrypts the whole vault into JavaScript
+objects on every signature, then passes the key string back to `kms.signStarkHash`. So every
+signature puts every account's key into the JS heap as immutable strings that cannot be zeroed
+and live until GC. What limits it: decrypted secrets are per-operation, not held across an unlock
+(the grant cache keeps only public account records); the passphrase-derived AES key is a
+non-extractable WebCrypto key dropped on lock; everything runs in the background service worker;
+`storage.session` is restricted to trusted contexts where the browser allows it.
+
+**`raw-keys` reproduces this model**, no worse and no better. Adopting the core with it on keeps
+today's exposure; it is a bridge, not the target.
+
+**Target (3.2, a precondition for dropping `raw-keys`, not a follow-up).**
+- The core unlocks the vault and holds it: `unlock(vault_bytes, passphrase) → VaultSession`,
+  with signing and derivation as session methods. Keys live in wasm linear memory as `Zeroizing`
+  values; only UniFFI object handles reach JavaScript.
+- Unavoidable JS exposure is limited to what the UI must touch: the passphrase on unlock, and a
+  mnemonic typed on import or shown on backup. Each goes straight into the core and is dropped.
+- Then the extension builds `--no-default-features` like mobile, and `raw-keys` is deleted.
+- Not a hard boundary: wasm memory is readable by any script in the extension's context, so code
+  execution there can still sign or read it. What this removes is accidental exposure (logs,
+  error strings, serialisation, GC copies) and unreliable erasure.
+
+**Interim, extension only, independent of this repo**: decrypt only the signing account's key
+rather than the whole vault, narrowing each signature's exposure from every account to one.
 
 ## Golden tests
 
@@ -343,6 +374,11 @@ seals with fresh randomness are kept while the extension still opens them.
 - UniFFI 0.29.5 → 0.31.2: what changes in the generated Swift and Kotlin (Phase 2.7).
 - `HostStorage` is synchronous and `chrome.storage` is not; the extension side needs a write-through
   mirror (the pattern `encrypted-store.ts` already uses).
+- How long the extension holds the vault passphrase in JavaScript. `signHash` takes it on every
+  call and the grant cache (`vault/src/service/grant-cache.ts`) keeps it until lock; where the
+  caller holds it was not traced. Under the 3.2 target it crosses once, on unlock.
+- The JS binding generator for the extension (ubrn `wasm2`, pre-production, or wasm-bindgen
+  directly) is decided at Phase 3.1, not now; the Rust surface does not depend on it.
 - Whether the devnet OZ class hash moves into the core or stays a TypeScript constant.
 - Who owns the mobile vault → v12 migration.
 - When a second wallet wants `wallet-core`: publish it to crates.io, and whether it ships its own
