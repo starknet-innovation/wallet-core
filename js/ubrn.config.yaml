@@ -1,0 +1,9 @@
+# uniffi-bindgen-react-native, wasm2 flavour: one `cargo build --target wasm32-unknown-unknown`,
+# then TypeScript generated from the UniFFI metadata embedded in the .wasm. No shim crate.
+rust:
+  directory: ../crates/core
+  manifestPath: Cargo.toml
+bindings:
+  ts: src/generated
+wasm2:
+  ts: src/generated
