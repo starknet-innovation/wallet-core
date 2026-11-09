@@ -25,7 +25,7 @@ default = ["raw-keys"]
 bindgen = ["uniffi/cli"]
 # Functions that take or return a raw Stark private key. The extension's vault (schema v12)
 # stores derived keys and hands them back for signing, so its build needs them; mobile keeps
-# keys inside the core and builds with `--no-default-features`. Removed in Phase 2 (docs/PLAN.md).
+# keys inside the core and builds with `--no-default-features`. Removed in Phase 3.2 (docs/PLAN.md).
 raw-keys = []
 
 [dependencies]

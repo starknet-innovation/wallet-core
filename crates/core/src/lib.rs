@@ -10,7 +10,7 @@
 
 #![forbid(unsafe_code)]
 
-// `is_private_key` only has callers behind `raw-keys` until the vault lands (Phase 2).
+// `is_private_key` only has callers behind `raw-keys` until the vault lands (Phase 2.2).
 #[cfg_attr(not(feature = "raw-keys"), allow(dead_code))]
 mod felt;
 mod kms;
