@@ -43,6 +43,8 @@ cargo test -p bramble-core <name>   # narrow loop while iterating
 - **Krusty KMS owns wallet crypto.** Never add fallback signing, key derivation or mnemonic
   validation; if Krusty can't do it, fail closed. `krusty-kms` stays pinned with `=` and is bumped
   deliberately, never in passing.
+- **`starknet-types-core` follows Krusty** (`=0.2.4` today). Bump it only together with
+  `krusty-kms`; `cargo tree -i starknet-types-core` must show one version.
 - **Every dependency is pinned exactly** (`=x.y.z`), justified in the PR, and used immediately.
   Prefer none.
 - **No secret leaves through a side door.** Private keys, mnemonics, passphrases and viewing keys

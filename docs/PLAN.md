@@ -21,6 +21,9 @@ Decisions, 2026-11-09:
   move to wasm-bindgen directly (or whatever UniFFI's own JS backend becomes) without touching Rust.
 - Krusty KMS is compiled in (`krusty-kms =2.0.0`). The extension drops
   `@starknetfoundation/krusty-kms-wasm`; one Krusty, one pin, checked by `core_info()`.
+- `starknet-types-core` stays at `=0.2.4`, the version Krusty 2.0.0 builds on. `Felt` crosses the
+  Krusty boundary, so a second copy in the lockfile would be a second, incompatible `Felt`. It moves
+  to 1.x only in the same change as a deliberate Krusty bump, never on its own.
 - The extension's vault schema (v12) is the target. Mobile's own vault payload migrates into it.
 - The extension consumes a published npm package at an exact pin with a digest check, the way it
   pins Krusty today. Extension PRs go to `main`; mobile adopts the crate on `feature/mobile-wallet`.
@@ -238,6 +241,8 @@ seals with fresh randomness are kept while the extension still opens them.
   at the time of writing, so review its diff (Bitcoin and QSB modules, zeroizing HMAC) before relying
   on it. This blocks Phase 2.1: mobile moves from Krusty 0.11 to 2.0, and that step also breaks
   Bramble's Krusty pin-equality test (see 2.1).
+- Which `starknet-types-core` the sequencer runs (0.2.4 is reported but unconfirmed). It matters only
+  if this repo starts sharing types with sequencer or node crates; until then Krusty sets the pin.
 - UniFFI 0.29.5 → 0.31.2: what changes in the generated Swift and Kotlin (Phase 2.6).
 - `HostStorage` is synchronous and `chrome.storage` is not; the extension side needs a write-through
   mirror (the pattern `encrypted-store.ts` already uses).
