@@ -21,6 +21,9 @@ Decisions, 2026-11-09:
   move to wasm-bindgen directly (or whatever UniFFI's own JS backend becomes) without touching Rust.
 - Krusty KMS is compiled in (`krusty-kms =2.0.0`). The extension drops
   `@starknetfoundation/krusty-kms-wasm`; one Krusty, one pin, checked by `core_info()`.
+- `starknet-types-core` stays at `=0.2.4`, the version Krusty 2.0.0 builds on. `Felt` crosses the
+  Krusty boundary, so a second copy in the lockfile would be a second, incompatible `Felt`. It moves
+  to 1.x only in the same change as a deliberate Krusty bump, never on its own.
 - The extension's vault schema (v12) is the target. Mobile's own vault payload migrates into it.
 - The extension consumes a published npm package at an exact pin with a digest check, the way it
   pins Krusty today. Extension PRs go to `main`; mobile adopts the crate on `feature/mobile-wallet`.
@@ -61,6 +64,10 @@ Cargo.toml                 workspace; release profile (lto, panic=abort, strip)
 rust-toolchain.toml        pinned channel, wasm32-unknown-unknown target
 .cargo/config.toml         getrandom backend cfg for wasm32
 deny.toml                  licences, advisories, sources
+.gitattributes             golden fixtures checked out byte-for-byte
+AGENTS.md                  contributor and agent rules (CLAUDE.md points to it)
+tools/check.sh             the one check entrypoint: CI, hooks and agents run its modes
+.githooks/                 pre-commit (quick), pre-push (lint + test)
 crates/wallet-core/        generic: lib wallet_core, plain Rust
   src/lib.rs               Error, KRUSTY_VERSION, re-exports
   src/felt.rs              strict lowercase-hex felt grammar
@@ -71,10 +78,12 @@ crates/bramble-core/       Bramble: lib bramble_core, the cdylib/staticlib/wasm3
   src/bin/uniffi-bindgen.rs  Swift/Kotlin generator (`bindgen` feature)
   uniffi.toml              Swift/Kotlin module names, as mobile's
   tests/parity.rs          extension fixtures and known-answer vectors
-  tests/fixtures/          copied from Bramble; README names the commit
+  tests/fixtures.rs        holds tests/fixtures/ to its README manifest (sha256 per file)
+  tests/fixtures/          copied from Bramble; README is the manifest
 js/                        npm package @starknet-innovation/bramble-core: ubrn config,
                            entrypoint, smoke test over the built wasm
-.github/workflows/         ci.yml (rust + wasm jobs), release.yml (tag → npm, with provenance)
+.github/workflows/         ci.yml (rust + wasm jobs), release.yml (tag → npm, with provenance),
+                           advisories.yml (weekly `cargo deny check advisories` on main)
 ```
 
 Features (on `bramble-core`): `raw-keys` (default) exports the functions that take or return a raw
@@ -89,26 +98,27 @@ Each phase names the crate a module lands in; the table above decides anything n
 0. **Scaffold** (done): the layout above, KMS and Nostr ported, native and wasm32 builds, parity
    tests in Rust and through the built wasm under Node, CI and release workflows. Split into
    `wallet-core` and `bramble-core` the same day; the exported API did not change.
-1. **Golden suite** (done: 22 files from Bramble `0a4bd84c`, hash-checked by
-   `crates/bramble-core/tests/fixtures.rs`; the hand-cut `nostr-parity.json` subset gave way to the
-   whole `nostr-multisig-parity.json`): copy every fixture the extension generates for mobile into
-   `crates/bramble-core/tests/fixtures/`, under the manifest described in Golden tests, before any
-   further port. Bramble writes them into `mobile/core/tests/fixtures/` with `bun run mobile:parity`,
-   which also runs the transaction and privacy generators:
+1. **Golden suite** (done): every fixture the extension generates for mobile, 22 files from
+   Bramble `0a4bd84c`, copied into `crates/bramble-core/tests/fixtures/` under the manifest
+   described in Golden tests and hash-checked by `crates/bramble-core/tests/fixtures.rs`. The
+   hand-cut `nostr-parity.json` subset gave way to the whole `nostr-multisig-parity.json`.
+   Bramble writes them into `mobile/core/tests/fixtures/` with `bun run mobile:parity`, which also
+   runs the transaction and privacy generators:
    - KMS, accounts and a sealed envelope: `extension-parity.json`, `accounts-parity-*.json`.
    - Nostr multisig: `nostr-multisig-parity.json`.
    - Portfolio, tokens, history rows: `portfolio-parity.jsonl`.
    - Privacy: `extension-privacy-*.json`.
    - Transactions: `extension-transactions-*.json`.
 
-   The same directory also holds fixtures that are *not* extension output, and they are not
-   golden: `vault-v1.json`, `vault-v2-*.json`, `vault-v3-container.json` and
-   `migration-v1-to-v5.golden.json` were written by earlier mobile cores and pin mobile's own
-   migration chain; `ui-coordination.json` drives the iOS UI suite; `rust-gift-wrap.json` runs the
-   other way (Rust writes it, the extension opens it). Those move with their modules as ordinary
-   regression fixtures. Fixtures for modules not yet ported sit here unused until their phase.
-   Where the extension has behaviour mobile ports but no generator covers it, the generator is
-   added in Bramble first.
+   Bramble's `mobile/core/tests/fixtures/` also holds fixtures that are *not* extension output;
+   they are not golden and were not copied: `vault-v1.json`, `vault-v2-*.json`,
+   `vault-v3-container.json` and `migration-v1-to-v5.golden.json` were written by earlier mobile
+   cores and pin mobile's own migration chain; `ui-coordination.json` drives the iOS UI suite;
+   `rust-gift-wrap.json` runs the other way (Rust writes it, the extension opens it). Those move
+   with their modules as ordinary regression fixtures. The golden fixtures for modules not yet
+   ported (portfolio, privacy, transactions) sit in this repo unused until their phase. Where the
+   extension has behaviour mobile ports but no generator covers it, the generator is added in
+   Bramble first.
 2. **Mobile adoption** (`feature/mobile-wallet`), one module group at a time. Mobile's crate is
    also named `bramble-core`, so until the last step it cannot depend on this repo's
    `bramble-core`; it depends on `wallet-core` (plain Rust, no UniFFI, so no second scaffolding
@@ -227,9 +237,9 @@ transfer planning, portfolio rendering) and write JSON fixtures. Re-running them
 seals with fresh randomness are kept while the extension still opens them.
 
 - **Here**: the fixtures live in `crates/bramble-core/tests/fixtures/`, with `README.md` as the
-  manifest: per file, the generator, the Bramble commit and the sha256. A test checks the hashes,
-  so a hand-edited fixture fails. Bramble stays the source: syncing is re-running the generator
-  there and copying the files, never editing them here.
+  manifest: the Bramble commit (one for all files), and per file the generator and the sha256. A
+  test checks the hashes, so a hand-edited fixture fails. Bramble stays the source: syncing is
+  re-running the generator there and copying the files, never editing them here.
 - **Three harnesses, one set of vectors**: the Rust tests (`crates/bramble-core/tests/*.rs`,
   which exercise `wallet-core` through Bramble's constants), the built wasm under Node
   (`js/test/smoke.test.mjs`, so the shipped artifact is what is tested), and mobile, whose
@@ -265,10 +275,12 @@ seals with fresh randomness are kept while the extension still opens them.
 
 - npm scope: `@starknet-innovation` (matches the GitHub org) or `@starknetfoundation` (matches Krusty).
   Settle before the first release tag; the extension's pin fixes the name.
-- Bramble PR #803 (Krusty 0.11 → 0.14) was closed without comment; this repo pins 2.0.0, one day old
-  at the time of writing, so review its diff (Bitcoin and QSB modules, zeroizing HMAC) before relying
+- Bramble PR #803 (Krusty 0.11 → 0.14) was closed without comment; this repo pins 2.0.0, released
+  2026-11-08, so review its diff (Bitcoin and QSB modules, zeroizing HMAC) before relying
   on it. This blocks Phase 2.1: mobile moves from Krusty 0.11 to 2.0, and that step also breaks
   Bramble's Krusty pin-equality test (see 2.1).
+- Which `starknet-types-core` the sequencer runs (0.2.4 is reported but unconfirmed). It matters only
+  if this repo starts sharing types with sequencer or node crates; until then Krusty sets the pin.
 - UniFFI 0.29.5 → 0.31.2: what changes in the generated Swift and Kotlin (Phase 2.7).
 - `HostStorage` is synchronous and `chrome.storage` is not; the extension side needs a write-through
   mirror (the pattern `encrypted-store.ts` already uses).
