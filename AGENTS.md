@@ -69,6 +69,11 @@ Grep first; extend in place rather than adding a sibling.
 - Felt parsing, canonical hex and the private-key range live in `crates/wallet-core/src/felt.rs`.
 - Vault crypto (envelope v3, DEK container, AES-GCM and randomness helpers) lives in
   `crates/wallet-core/src/envelope.rs` and `container.rs`; host I/O goes through `host.rs`.
+- JSON-RPC bodies and reply judging live in `rpc.rs` and `send/{rpc_bodies,judge}.rs`; v3
+  transaction hashes in `send/sign.rs`; fee bounds in `send/fees.rs`; u256 in `send/u256.rs`.
+  JavaScript `trim` and `shortAddress` are `send::calls::{js_trim, short_label}`.
+- The send state machine is `send::plan::Plan`; a wallet's session, keys and activity log reach
+  it only through `PlanHost`, and its numbers through `Policy` (Bramble's: `SEND_POLICY`).
 - Only `wallet-core` depends on Krusty (`kms.rs`, `nostr.rs`); `bramble-core` goes through
   `wallet-core` and never names `krusty_kms`.
 

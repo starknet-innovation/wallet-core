@@ -38,6 +38,13 @@ impl From<NetworkId> for ChainId {
     }
 }
 
+impl NetworkId {
+    /// The chain id transaction hashes commit to, from Krusty and never from a node.
+    pub fn chain_id(self) -> Felt {
+        ChainId::from(self).as_felt()
+    }
+}
+
 /// Stark key material, as the extension's `StarkKeypair`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StarkKeypair {

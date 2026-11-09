@@ -76,12 +76,16 @@ crates/wallet-core/        generic: lib wallet_core, plain Rust
   src/envelope.rs          the extension's EncryptedEnvelope v3 (PBKDF2-SHA-256, AES-256-GCM)
   src/container.rs         vault container: DEK, passphrase and biometric slots, sealed payload
   src/host.rs              host-provided Storage and Clock traits, ClockReading
+  src/rpc.rs               sans-IO JSON-RPC: envelope, chain id, balanceOf, amounts, u256 text
+  src/send/                transfers: calls, fees, judge, rpc_bodies, sign (v3 hashes), u256, and
+                           the sans-IO Plan with its PlanHost
 crates/bramble-core/       Bramble: lib bramble_core, the cdylib/staticlib/wasm32 module
   src/lib.rs               UniFFI scaffolding, CoreError, core_info(), Bramble constants, exports
   src/bin/uniffi-bindgen.rs  Swift/Kotlin generator (`bindgen` feature)
   uniffi.toml              Swift/Kotlin module names, as mobile's
   tests/parity.rs          extension fixtures and known-answer vectors
   tests/vault_parity.rs    envelope and DEK slot the extension sealed
+  tests/transactions_*_parity.rs  send rules; every body, hash and signing; the plan over every capture
   tests/fixtures.rs        holds tests/fixtures/ to its README manifest (sha256 per file)
   tests/fixtures/          copied from Bramble; README is the manifest
 js/                        npm package @starknet-innovation/bramble-core: ubrn config,
@@ -217,7 +221,51 @@ Each phase names the crate a module lands in; the table above decides anything n
       Still open: mobile's side of the swap, and the mobile vault → v12 migration.
    3. **Sans-IO transactions**: `rpc.rs`, `send/*` and transaction hashing, Argent and Braavos
       paths, into `wallet-core`; Bramble's defaults (fee margins, which flows it offers) stay
-      with the Bramble crate.
+      with the Bramble crate. Done:
+      - `rpc.rs` whole, and from `send/` the mechanism modules `u256`, `fees`, `judge`,
+        `rpc_bodies`, `sign` and `calls`, with the types they use folded into them. The chain id
+        comes from `NetworkId::chain_id()` (Krusty) rather than mobile's network catalog;
+        `js_trim` and `short_label` live in `send::calls` until 2.4 brings the `js/*` shims;
+        `sign::Deployment::address()` is the counterfactual-address check mobile made with
+        Krusty directly. `CoreError` gains `Rpc`.
+      - The state machine (`plan*.rs`) as `send::plan::Plan`, step for step. What tied it to
+        mobile's `WalletCore` comes in from outside instead: `PlanHost` (lent to each
+        `advance`) owns the session check, signing (`sign(hash, renew)`), the activity log
+        (`record_pending`, `observe`, `discard`) and explorer URLs; Bramble's account catalog
+        rides in `Authorization` (Argent classes and their shapes, Braavos signing classes and
+        implementation), as the Phase 2.6 rule asks; and its numbers are a `Policy`.
+        `bramble-core` holds them: `FEE_MARGIN_PERCENT` (50), `REVIEWED_FEE_HEADROOM` (3/2),
+        `CONFIRMATION_DELAYS_MS`, together as `SEND_POLICY`, each checked against the rules
+        fixture. `Plan` is `&mut self`; the FFI object's mutex and its poison-closes rule stay
+        with the wrapper. What the plan signs it derives itself: `Transfer::new` validates the
+        request and builds the calldata, summary and verifier flags (mobile's
+        `prepare_transfer` mechanism), and `Plan::new` drops a deployment that does not
+        reproduce the account's address. A zero `Headroom` denominator fails closed.
+      - Tests, all over fixtures already here: `transactions_rules_parity.rs` (mobile's
+        `send/fixture_tests.rs`, less explorer URLs and the activity store, which move with
+        2.4); `transactions_wire_parity.rs` (every request body in the OpenZeppelin, Ready and
+        Braavos captures rebuilt, every signed hash recomputed from its own fields, its bounds
+        re-derived from a quoted estimate, every hash the extension signed accounted for);
+        `transactions_plan_parity.rs` and `transactions_refusal_parity.rs` (mobile's three
+        `transactions_*_parity.rs`: the plan drives all 20 captures and 18 refusals with a test
+        `PlanHost` on the published phrase, in `tests/plan_support`, checking every hash is signed
+        in the extension's order, plus checkpoints, a lock after review and a fee past the
+        headroom); `transactions_plan_mechanism.rs` (mobile's `transactions_plan.rs` against its
+        canned node: wrong chain, out-of-order replies, node errors, write transport failure,
+        hash mismatch, poisoned recipient, the 200-poll deployment wait, unknown deployment
+        state, a missing bulk-estimate entry).
+
+      Mobile's side: delete `rpc.rs` and those `send/` files and `use wallet_core::{rpc,
+      send::*}`. `TransferPlan` becomes a UniFFI object around `Mutex<Plan>` holding
+      `Weak<WalletCore>` and the session generation; its `PlanHost` maps onto `plan_sign`,
+      `session_generation`, `activity::store` (`PendingRecord` → `Entry`, direction "out",
+      status "pending") and `history::explorer`; `sign` must refuse once the generation moved,
+      as `plan_sign` does. `wallet_ext.rs` keeps preparing plans (vault records, contacts,
+      catalogs), building `Authorization` from `account_catalog` and calling `Transfer::new`. Records keep their UniFFI
+      derives through `#[uniffi::remote]` until 2.7. Mobile's wallet-level tests
+      (`transactions_lifecycle.rs`, `transactions_block_pin.rs`, and the contact, tracked-token
+      and locked-prepare cases of `transactions_plan.rs`) stay there: they exercise its locks,
+      store and address book through that wrapper.
    4. **Portfolio, history, privacy reads**: `portfolio/*`, `history/*`, `activity/*`,
       `privacy/*` into `wallet-core`, with the `js/*` JavaScript-semantics shims beside whichever
       code calls them; the iOS `include_str!` in `history/appearance.rs` moves to the Bramble
