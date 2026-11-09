@@ -135,23 +135,31 @@ Each phase names the crate a module lands in; the table above decides anything n
       Steps, in order:
       1. **Krusty bump in mobile** (one PR on `feature/mobile-wallet`; needs nothing from this
          repo). Tried on a copy of `0a4bd84c`: with `krusty-kms` and `krusty-kms-common` at
-         `=2.0.0` the crate builds with no source change, clippy is clean, and all 340 tests
-         pass with every fixture byte-identical. The PR:
+         `=2.0.0` and `bip39` at `=3.0.0` the crate builds with no source change, clippy is
+         clean, and 369 tests pass (3 network tests ignored) with every fixture byte-identical.
+         The PR:
          - `Cargo.toml`: `krusty-kms` and `krusty-kms-common` `=0.11.0` → `=2.0.0`; `bip39`
            `=2.2.2` → `=3.0.0`, the version Krusty 2.0.0 uses, so the lockfile holds one copy
-           (`ui.rs`'s word assist builds and passes unchanged). `starknet-types-core` stays
-           `=0.2.4`. `cargo tree -i krusty-kms` and `-i bip39` each show one version.
+           (`ui.rs`'s word assist needs no change). `starknet-types-core` stays `=0.2.4`.
+           `cargo tree -d` lists no second `krusty-kms`, `bip39` or `starknet-types-core`. The
+           comment above the pins names `mobile-core-pins.test.ts`, which does not exist; it
+           should name `mobile-generated.test.ts`.
          - `src/lib.rs`: `krusty_version: "2.0.0"`.
          - Bramble's `tests/conformance/mobile-generated.test.ts` ("the Rust core pins the same
            Krusty release as the extension"): drop the npm-pin equality, which the extension
            keeps at 0.11 until 3.1, and check instead that `Cargo.toml`'s pin equals
            `lib.rs`'s `krusty_version`. Step 3 points it at `wallet_core::KRUSTY_VERSION`.
          - Comments and docs naming 0.11.0 as mobile's Krusty: `send/mod.rs`, `send/sign.rs`,
-           `privacy/mod.rs`, `argent_multisig.rs`, `kms.rs`, `mobile/SCOPE.md`.
-         - Checks: `cargo test`, clippy with `-D warnings`, `bun run check` in Bramble (the
-           conformance suites, including `mobile-nostr-parity.test.ts` opening
-           `rust-gift-wrap.json`: Krusty 2.0 wraps, the extension's 0.11 opens), and an iOS and
-           Android build. Swift and Kotlin bindings regenerate with no diff.
+           `privacy/mod.rs`, `argent_multisig.rs`, `kms.rs`, `mobile/SCOPE.md`; and
+           `scripts/generate-mobile-parity-vectors.ts`, whose header says to bump Krusty in
+           `package.json` and `Cargo.toml` together (now: re-run after bumping either).
+         - `rust-gift-wrap.json` regenerated (`BRAMBLE_WRITE_FIXTURES=1 cargo test --test
+           nostr_multisig_parity`), so `mobile-nostr-parity.test.ts` opens a wrap Krusty 2.0
+           made with the extension's 0.11. Without it the test opens the old 0.11 wrap and
+           proves nothing about 2.0. It is a regression fixture, so regenerating it is allowed.
+           Tried: the regenerated wrap opens in the extension's test, and a tampered one fails.
+         - Checks: `cargo test`, clippy with `-D warnings`, `bun run check` in Bramble, and an
+           iOS and Android build. Swift and Kotlin bindings regenerate with no diff.
          - If a golden fixture ever fails here, Krusty changed behaviour: stop and report it
            upstream; never edit the fixture.
       2. **Nostr parity gaps in `wallet-core`** (PR here), found by comparing mobile's
@@ -161,8 +169,12 @@ Each phase names the crate a module lands in; the table above decides anything n
            becomes a wrapper over the new one.
          - A Stark public key from a `SecretFelt`, for mobile's `scoped_viewing_public_key`
            (recovery compares it with the key a privacy pool holds).
-         - Parity tests for both against `nostr-multisig-parity.json` and
-           `extension-privacy-*.json`.
+         - Parity tests: the open against `nostr-multisig-parity.json`'s gift wrap and its
+           refused variants; the public key against `extension-parity.json`'s `publicKeyX`
+           (derive the key, then take its public key). The privacy fixtures hold viewing keys
+           but no viewing *public* keys, so the composed `previewStrk20ViewingPublicKey` has
+           no golden vector: add one to Bramble's privacy generator, and test against it once
+           it is copied here.
       3. **Mobile takes the core** at `v0.1.0`, tagged once step 2 merges. That tag makes a
          GitHub release only: `release.yml` skips npm while `js/package.json` is private, which
          it stays until Phase 3.1. Mobile pins `wallet-core` by `git` and `tag`.
