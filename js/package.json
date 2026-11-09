@@ -27,7 +27,7 @@
     "@ubjs/wasm": "0.31.0-6"
   },
   "devDependencies": {
-    "typescript": "5.9.3",
+    "typescript": "7.0.2",
     "uniffi-bindgen-react-native": "0.31.0-6"
   },
   "repository": {
