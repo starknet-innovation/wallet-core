@@ -9,14 +9,15 @@ Starknet wallet logic in Rust, in two crates:
   extension (wasm32, npm `@starknet-innovation/bramble-core`) and the iOS and Android apps.
 
 ```bash
-cargo test --locked                                   # unit and extension-parity tests
-cargo clippy --all-targets --locked -- -D warnings
-cargo build --locked --no-default-features            # mobile profile: no raw-key exports
-cargo deny check
+git config core.hooksPath .githooks   # once per clone: fmt + guardrails on commit, clippy + tests on push
+bash tools/check.sh quick             # fmt + guardrails
+bash tools/check.sh rust              # + clippy (default, mobile, wasm32) + tests
+bash tools/check.sh all               # everything CI runs, including cargo-deny and the npm build
 
-cargo install wasm-bindgen-cli --version 0.2.130 --locked   # must match Cargo.lock
-cd js && npm ci && npm run build && npm test          # wasm2 bindings, then the fixture through the wasm
+cargo install wasm-bindgen-cli --version 0.2.130 --locked   # for `wasm`; must match Cargo.lock
 ```
+
+`AGENTS.md` has the hard rules and conventions for contributors and coding agents.
 
 `docs/PLAN.md` has what goes in which crate, the phases for moving the extension and mobile onto
 `bramble-core`, and the decisions behind them. `crates/bramble-core/tests/fixtures/README.md` says

@@ -33,12 +33,7 @@ jobs:
           crate="$(grep -m1 '^version = ' crates/bramble-core/Cargo.toml | cut -d'"' -f2)"
           test "$tag" = "$pkg" && test "$tag" = "$crate"
       - run: cargo install wasm-bindgen-cli --version 0.2.130 --locked
-      - run: npm ci
-        working-directory: js
-      - run: npm run build
-        working-directory: js
-      - run: npm test
-        working-directory: js
+      - run: bash tools/check.sh wasm
       - run: sha256sum js/dist/generated/bramble_core.wasm js/dist/generated/bramble_core_bg.js > SHA256SUMS
       # `private: true` in js/package.json makes this step fail until Phase 3.1 removes it.
       - run: npm publish --provenance --access public

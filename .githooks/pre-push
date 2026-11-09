@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Offline subset of CI: clippy (all three profiles) and the Rust tests. The npm build, cargo-deny
+# (needs the advisory DB) and the wasm tests run in CI and in `tools/check.sh all`.
+#
+# Enable once per clone:  git config core.hooksPath .githooks
+# Bypass one push:        git push --no-verify
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+
+command -v cargo >/dev/null || { echo "pre-push: cargo not found, skipping"; exit 0; }
+
+exec bash tools/check.sh lint test

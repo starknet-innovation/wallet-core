@@ -1,0 +1,28 @@
+name: Advisories
+
+# Advisories are published between PRs; sweep main weekly so one surfaces here instead of in an
+# unrelated PR that happens to touch the lockfile.
+on:
+  schedule:
+    - cron: "30 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  RUST_TOOLCHAIN: 1.97.1
+
+jobs:
+  deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
+          rustup default "$RUST_TOOLCHAIN"
+      - run: cargo install cargo-deny --version 0.19.8 --locked
+      - run: cargo deny check advisories
