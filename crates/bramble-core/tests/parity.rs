@@ -97,7 +97,7 @@ fn known_answer_vectors_match_the_reviewed_extension_build() {
 
 #[test]
 fn coordination_keys_match_the_extension() {
-    for vector in fixture("nostr-parity.json")["nostrKeys"]
+    for vector in fixture("nostr-multisig-parity.json")["nostrKeys"]
         .as_array()
         .unwrap()
     {
@@ -111,7 +111,7 @@ fn coordination_keys_match_the_extension() {
 
 #[test]
 fn opens_the_extension_gift_wrap_and_refuses_its_variants() {
-    let fixture = fixture("nostr-parity.json");
+    let fixture = fixture("nostr-multisig-parity.json");
     let wrap = &fixture["giftWrap"];
     let mnemonic = text(&fixture["nostrKeys"][0]["mnemonic"]);
     let recipient = u32::try_from(wrap["recipientNostrIndex"].as_u64().unwrap()).unwrap();
@@ -152,7 +152,7 @@ fn opens_the_extension_gift_wrap_and_refuses_its_variants() {
 
 #[test]
 fn gift_wraps_round_trip_between_the_two_identities() {
-    let fixture = fixture("nostr-parity.json");
+    let fixture = fixture("nostr-multisig-parity.json");
     let mnemonic = text(&fixture["nostrKeys"][0]["mnemonic"]);
     let cosigner = u32::try_from(fixture["nostrKeys"][1]["index"].as_u64().unwrap()).unwrap();
     let recipient = text(&fixture["nostrKeys"][1]["publicKey"]);

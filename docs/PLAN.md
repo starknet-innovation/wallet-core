@@ -89,7 +89,9 @@ Each phase names the crate a module lands in; the table above decides anything n
 0. **Scaffold** (done): the layout above, KMS and Nostr ported, native and wasm32 builds, parity
    tests in Rust and through the built wasm under Node, CI and release workflows. Split into
    `wallet-core` and `bramble-core` the same day; the exported API did not change.
-1. **Golden suite**: copy every fixture the extension generates for mobile into
+1. **Golden suite** (done: 22 files from Bramble `0a4bd84c`, hash-checked by
+   `crates/bramble-core/tests/fixtures.rs`; the hand-cut `nostr-parity.json` subset gave way to the
+   whole `nostr-multisig-parity.json`): copy every fixture the extension generates for mobile into
    `crates/bramble-core/tests/fixtures/`, under the manifest described in Golden tests, before any
    further port. Bramble writes them into `mobile/core/tests/fixtures/` with `bun run mobile:parity`,
    which also runs the transaction and privacy generators:
