@@ -12,6 +12,8 @@ through [`bramble-core`](../bramble-core).
   for application data, with bounds on event and data sizes.
 - **The encrypted vault** (`envelope`, `container`): envelope v3 and the DEK container,
   byte-compatible with the extension's, over host storage and a clock (`host`).
+- **Sans-IO JSON-RPC and transfers** (`rpc`, `send`): builds node requests and reads their
+  replies, and derives and plans a transfer. The host carries the bytes.
 - **The felt grammar** (`felt`): strict parsing, canonical lowercase hex and the private-key range.
   Everything else here goes through it.
 - **Mechanism, with decisions as arguments.** The account version, the salt, the network: the
@@ -19,8 +21,7 @@ through [`bramble-core`](../bramble-core).
 - **Secret-careful.** Private keys are `SecretFelt`, mnemonics and passphrases are `Zeroizing`
   where the API allows, and errors carry a fixed reason or operation name, never input text.
 
-As `docs/PLAN.md` lands, sans-IO RPC, transaction hashing, transfer planning and portfolio,
-history and privacy logic join it here.
+As `docs/PLAN.md` lands, portfolio, history and privacy logic join it here.
 
 ## What it is NOT
 

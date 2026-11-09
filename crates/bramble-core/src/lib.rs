@@ -29,6 +29,29 @@ uniffi::setup_scaffolding!();
 /// would otherwise move every derived address.
 pub const OZ_ACCOUNT_VERSION: &str = "3.0.0";
 
+/// The margin starknet.js `toOverheadResourceBounds` adds to every estimated amount and price
+/// before the extension signs them (its default overhead, which the extension does not change).
+pub const FEE_MARGIN_PERCENT: u32 = 50;
+
+/// `REVIEWED_FEE_HEADROOM`: a submit-time fee may reach 3/2 of the fee the person reviewed.
+pub const REVIEWED_FEE_HEADROOM: wallet_core::send::fees::Headroom =
+    wallet_core::send::fees::Headroom {
+        numerator: 3,
+        denominator: 2,
+    };
+
+/// The extension's `CONFIRMATION_DELAYS_MS`: when a broadcast transaction's status is read.
+pub const CONFIRMATION_DELAYS_MS: [u32; 12] = [
+    0, 250, 500, 900, 1_500, 2_500, 4_000, 5_000, 7_500, 10_000, 10_000, 10_000,
+];
+
+/// Bramble's send numbers, for `wallet_core::send::plan::Plan`.
+pub const SEND_POLICY: wallet_core::send::plan::Policy = wallet_core::send::plan::Policy {
+    fee_margin_percent: FEE_MARGIN_PERCENT,
+    reviewed_fee_headroom: REVIEWED_FEE_HEADROOM,
+    confirmation_delays_ms: &CONFIRMATION_DELAYS_MS,
+};
+
 /// Every failure the core reports across the FFI boundary.
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum CoreError {
@@ -46,6 +69,9 @@ pub enum CoreError {
     /// The biometric slot no longer opens.
     #[error("biometric unlock was invalidated")]
     BiometricInvalidated,
+    /// A node reply the core will not interpret.
+    #[error("rpc failure: {reason}")]
+    Rpc { reason: String },
 }
 
 impl From<starknet_wallet_core::Error> for CoreError {
@@ -57,6 +83,7 @@ impl From<starknet_wallet_core::Error> for CoreError {
             starknet_wallet_core::Error::Storage { reason } => Self::Storage { reason },
             starknet_wallet_core::Error::BiometricUnavailable => Self::BiometricUnavailable,
             starknet_wallet_core::Error::BiometricInvalidated => Self::BiometricInvalidated,
+            starknet_wallet_core::Error::Rpc { reason } => Self::Rpc { reason },
         }
     }
 }

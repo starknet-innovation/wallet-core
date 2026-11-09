@@ -27,6 +27,10 @@ serde_json = { version = "=1.0.151" }
 thiserror = { version = "=2.0.21" }
 zeroize = { version = "=1.9.0", features = ["derive"] }
 
+[dev-dependencies]
+# Checks the selector constants are starknet_keccak of their names; already in the lockfile.
+sha3 = { version = "=0.12.0" }
+
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 # OS entropy through `crypto.getRandomValues`; see .cargo/config.toml for the backend cfg.
 getrandom = { version = "=0.4.3", features = ["wasm_js"] }

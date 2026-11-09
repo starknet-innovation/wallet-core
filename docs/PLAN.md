@@ -76,12 +76,16 @@ crates/wallet-core/        generic: package starknet-wallet-core, lib starknet_w
   src/envelope.rs          the extension's EncryptedEnvelope v3 (PBKDF2-SHA-256, AES-256-GCM)
   src/container.rs         vault container: DEK, passphrase and biometric slots, sealed payload
   src/host.rs              host-provided Storage and Clock traits, ClockReading
+  src/rpc.rs               sans-IO JSON-RPC: envelope, chain id, balanceOf, amounts, u256 text
+  src/send/                transfers: calls, fees, judge, rpc_bodies, sign (v3 hashes), u256, and
+                           the sans-IO Plan with its PlanHost
 crates/bramble-core/       Bramble: lib bramble_core, the cdylib/staticlib/wasm32 module
   src/lib.rs               UniFFI scaffolding, CoreError, core_info(), Bramble constants, exports
   src/bin/uniffi-bindgen.rs  Swift/Kotlin generator (`bindgen` feature)
   uniffi.toml              Swift/Kotlin module names, as mobile's
   tests/parity.rs          extension fixtures and known-answer vectors
   tests/vault_parity.rs    envelope and DEK slot the extension sealed
+  tests/transactions_*_parity.rs  send rules; every body, hash and signing; the plan over every capture
   tests/fixtures.rs        holds tests/fixtures/ to its README manifest (sha256 per file)
   tests/fixtures/          copied from Bramble; README is the manifest
 js/                        npm package @starknet-innovation/bramble-core: ubrn config,
@@ -169,19 +173,18 @@ Each phase names the crate a module lands in; the table above decides anything n
            iOS and Android build. Swift and Kotlin bindings regenerate with no diff.
          - If a golden fixture ever fails here, Krusty changed behaviour: stop and report it
            upstream; never edit the fixture.
-      2. **Nostr parity gaps in `wallet-core`** (PR here), found by comparing mobile's
-         `nostr.rs` and `kms.rs` with the core:
-         - Open a gift wrap from a parsed `NostrEvent`. Mobile's relay code parses first and
-           calls `open_at(&NostrEvent)`; the core only takes event JSON. The JSON function
-           becomes a wrapper over the new one.
-         - A Stark public key from a `SecretFelt`, for mobile's `scoped_viewing_public_key`
+      2. **Nostr parity gaps in `wallet-core`** (done), found by comparing mobile's `nostr.rs`
+         and `kms.rs` with the core:
+         - `open_nostr_event` opens a gift wrap from a parsed `NostrEvent`, re-serialised as the
+           extension's `JSON.stringify(event)` and re-checked against the event grammar.
+           `open_nostr_application_data` (event JSON) is now a wrapper over it.
+         - `stark_public_key` takes a `SecretFelt`, for mobile's `scoped_viewing_public_key`
            (recovery compares it with the key a privacy pool holds).
-         - Parity tests: the open against `nostr-multisig-parity.json`'s gift wrap and its
-           refused variants; the public key against `extension-parity.json`'s `publicKeyX`
-           (derive the key, then take its public key). The privacy fixtures hold viewing keys
-           but no viewing *public* keys, so the composed `previewStrk20ViewingPublicKey` has
-           no golden vector: add one to Bramble's privacy generator, and test against it once
-           it is copied here.
+         - Parity tests: the parsed open against `nostr-multisig-parity.json`'s gift wrap and
+           its refused variants; the public key against `extension-parity.json`'s `publicKeyX`.
+           Still open, in Bramble: the privacy fixtures hold no viewing *public* keys, so the
+           composed `previewStrk20ViewingPublicKey` has no golden vector. Add one to the privacy
+           generator, and test against it once it is copied here.
       3. **Mobile takes the core** at `v0.1.0`, tagged once step 2 merges. That tag makes a
          GitHub release and publishes both crates to crates.io; `release.yml` skips npm while
          `js/package.json` is private, which it stays until Phase 3.1. Mobile pins the
@@ -208,7 +211,7 @@ Each phase names the crate a module lands in; the table above decides anything n
         becomes the extension's 1,024 UTF-16 units (`wallet-model/preferences/passphrase.ts`), and
         its `oz_class_hash` stops reading Krusty's `latest` and uses `OZ_ACCOUNT_VERSION` (3.0.0,
         `account-contract.ts`), so a Krusty bump cannot move its addresses.
-      - The Nostr parity gaps in step 2.
+      - (done) The Nostr parity gaps in step 2.
    2. **Vault and accounts**: `container.rs` (envelope v3, byte-compatible) and the vault
       mechanics into `wallet-core`, with plain Rust `Storage` and `Clock` traits; mobile's
       `files.rs` implements `Storage`. The v12 schema and migrations are Bramble's and stay in
@@ -221,7 +224,51 @@ Each phase names the crate a module lands in; the table above decides anything n
       Still open: mobile's side of the swap, and the mobile vault → v12 migration.
    3. **Sans-IO transactions**: `rpc.rs`, `send/*` and transaction hashing, Argent and Braavos
       paths, into `wallet-core`; Bramble's defaults (fee margins, which flows it offers) stay
-      with the Bramble crate.
+      with the Bramble crate. Done:
+      - `rpc.rs` whole, and from `send/` the mechanism modules `u256`, `fees`, `judge`,
+        `rpc_bodies`, `sign` and `calls`, with the types they use folded into them. The chain id
+        comes from `NetworkId::chain_id()` (Krusty) rather than mobile's network catalog;
+        `js_trim` and `short_label` live in `send::calls` until 2.4 brings the `js/*` shims;
+        `sign::Deployment::address()` is the counterfactual-address check mobile made with
+        Krusty directly. `CoreError` gains `Rpc`.
+      - The state machine (`plan*.rs`) as `send::plan::Plan`, step for step. What tied it to
+        mobile's `WalletCore` comes in from outside instead: `PlanHost` (lent to each
+        `advance`) owns the session check, signing (`sign(hash, renew)`), the activity log
+        (`record_pending`, `observe`, `discard`) and explorer URLs; Bramble's account catalog
+        rides in `Authorization` (Argent classes and their shapes, Braavos signing classes and
+        implementation), as the Phase 2.6 rule asks; and its numbers are a `Policy`.
+        `bramble-core` holds them: `FEE_MARGIN_PERCENT` (50), `REVIEWED_FEE_HEADROOM` (3/2),
+        `CONFIRMATION_DELAYS_MS`, together as `SEND_POLICY`, each checked against the rules
+        fixture. `Plan` is `&mut self`; the FFI object's mutex and its poison-closes rule stay
+        with the wrapper. What the plan signs it derives itself: `Transfer::new` validates the
+        request and builds the calldata, summary and verifier flags (mobile's
+        `prepare_transfer` mechanism), and `Plan::new` drops a deployment that does not
+        reproduce the account's address. A zero `Headroom` denominator fails closed.
+      - Tests, all over fixtures already here: `transactions_rules_parity.rs` (mobile's
+        `send/fixture_tests.rs`, less explorer URLs and the activity store, which move with
+        2.4); `transactions_wire_parity.rs` (every request body in the OpenZeppelin, Ready and
+        Braavos captures rebuilt, every signed hash recomputed from its own fields, its bounds
+        re-derived from a quoted estimate, every hash the extension signed accounted for);
+        `transactions_plan_parity.rs` and `transactions_refusal_parity.rs` (mobile's three
+        `transactions_*_parity.rs`: the plan drives all 20 captures and 18 refusals with a test
+        `PlanHost` on the published phrase, in `tests/plan_support`, checking every hash is signed
+        in the extension's order, plus checkpoints, a lock after review and a fee past the
+        headroom); `transactions_plan_mechanism.rs` (mobile's `transactions_plan.rs` against its
+        canned node: wrong chain, out-of-order replies, node errors, write transport failure,
+        hash mismatch, poisoned recipient, the 200-poll deployment wait, unknown deployment
+        state, a missing bulk-estimate entry).
+
+      Mobile's side: delete `rpc.rs` and those `send/` files and `use wallet_core::{rpc,
+      send::*}`. `TransferPlan` becomes a UniFFI object around `Mutex<Plan>` holding
+      `Weak<WalletCore>` and the session generation; its `PlanHost` maps onto `plan_sign`,
+      `session_generation`, `activity::store` (`PendingRecord` → `Entry`, direction "out",
+      status "pending") and `history::explorer`; `sign` must refuse once the generation moved,
+      as `plan_sign` does. `wallet_ext.rs` keeps preparing plans (vault records, contacts,
+      catalogs), building `Authorization` from `account_catalog` and calling `Transfer::new`. Records keep their UniFFI
+      derives through `#[uniffi::remote]` until 2.7. Mobile's wallet-level tests
+      (`transactions_lifecycle.rs`, `transactions_block_pin.rs`, and the contact, tracked-token
+      and locked-prepare cases of `transactions_plan.rs`) stay there: they exercise its locks,
+      store and address book through that wrapper.
    4. **Portfolio, history, privacy reads**: `portfolio/*`, `history/*`, `activity/*`,
       `privacy/*` into `wallet-core`, with the `js/*` JavaScript-semantics shims beside whichever
       code calls them; the iOS `include_str!` in `history/appearance.rs` moves to the Bramble
@@ -279,7 +326,7 @@ Each phase names the crate a module lands in; the table above decides anything n
         today.
    2. **Vault**: `encrypted-store.ts` becomes a shim over the core, with a write-through mirror
       over `chrome.storage`. Keys stop leaving Rust and `raw-keys` leaves the extension build.
-      Migrations from schemas before v12 stay in TypeScript.
+      Migrations from schemas before v12 stay in TypeScript. See [Key exposure](#key-exposure).
    3. **Transactions, then reads**: `@bramble/transactions` drives the `TransferPlan` step loop;
       portfolio, history and privacy follow. Bramble's `scripts/mobile-assets.ts` renderers
       invert so TypeScript reads catalogs from the npm package.
@@ -292,6 +339,37 @@ Each phase names the crate a module lands in; the table above decides anything n
    golden suite passing through the extension's own conformance tests before the TypeScript goes.
 4. **Later**: Ledger, dapp provider and permissions, STRK20 submission, swap, gasless, NFTs,
    allowances.
+
+## Key exposure
+
+How far raw private keys travel outside Rust, today and after Phase 3.2.
+
+**Today (Bramble `e6485a7a`).** Krusty's wasm is stateless: keys cross it as hex strings in both
+directions. The v12 vault stores each account's derived key (`signingKeys[].privateKey`) under
+AES-256-GCM. `signHash` (`vault/src/service/service.ts`) decrypts the whole vault into JavaScript
+objects on every signature, then passes the key string back to `kms.signStarkHash`. So every
+signature puts every account's key into the JS heap as immutable strings that cannot be zeroed
+and live until GC. What limits it: decrypted secrets are per-operation, not held across an unlock
+(the grant cache keeps only public account records); the passphrase-derived AES key is a
+non-extractable WebCrypto key dropped on lock; everything runs in the background service worker;
+`storage.session` is restricted to trusted contexts where the browser allows it.
+
+**`raw-keys` reproduces this model**, no worse and no better. Adopting the core with it on keeps
+today's exposure; it is a bridge, not the target.
+
+**Target (3.2, a precondition for dropping `raw-keys`, not a follow-up).**
+- The core unlocks the vault and holds it: `unlock(vault_bytes, passphrase) → VaultSession`,
+  with signing and derivation as session methods. Keys live in wasm linear memory as `Zeroizing`
+  values; only UniFFI object handles reach JavaScript.
+- Unavoidable JS exposure is limited to what the UI must touch: the passphrase on unlock, and a
+  mnemonic typed on import or shown on backup. Each goes straight into the core and is dropped.
+- Then the extension builds `--no-default-features` like mobile, and `raw-keys` is deleted.
+- Not a hard boundary: wasm memory is readable by any script in the extension's context, so code
+  execution there can still sign or read it. What this removes is accidental exposure (logs,
+  error strings, serialisation, GC copies) and unreliable erasure.
+
+**Interim, extension only, independent of this repo**: decrypt only the signing account's key
+rather than the whole vault, narrowing each signature's exposure from every account to one.
 
 ## Golden tests
 
@@ -347,6 +425,11 @@ seals with fresh randomness are kept while the extension still opens them.
 - UniFFI 0.29.5 → 0.31.2: what changes in the generated Swift and Kotlin (Phase 2.7).
 - `HostStorage` is synchronous and `chrome.storage` is not; the extension side needs a write-through
   mirror (the pattern `encrypted-store.ts` already uses).
+- How long the extension holds the vault passphrase in JavaScript. `signHash` takes it on every
+  call and the grant cache (`vault/src/service/grant-cache.ts`) keeps it until lock; where the
+  caller holds it was not traced. Under the 3.2 target it crosses once, on unlock.
+- The JS binding generator for the extension (ubrn `wasm2`, pre-production, or wasm-bindgen
+  directly) is decided at Phase 3.1, not now; the Rust surface does not depend on it.
 - Whether the devnet OZ class hash moves into the core or stays a TypeScript constant.
 - Who owns the mobile vault → v12 migration.
 - Whether a second wallet using `wallet-core` (on crates.io since 2026-11-09) ships its own UniFFI

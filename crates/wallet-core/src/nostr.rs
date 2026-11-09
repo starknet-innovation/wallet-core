@@ -221,9 +221,8 @@ pub fn wrap_nostr_application_data(
     }
 }
 
-/// Opens one gift wrap addressed to this wallet. The event must pass the extension's grammar and
-/// be kind 1059 before Krusty sees it; Krusty's signature and rumor checks and the output bounds
-/// all fail closed, since a relay event is untrusted.
+/// Opens one gift wrap addressed to this wallet, from event JSON a relay delivered. A wrapper over
+/// [`open_nostr_event`].
 pub fn open_nostr_application_data(
     mnemonic: &str,
     address_index: u32,
@@ -231,12 +230,29 @@ pub fn open_nostr_application_data(
     event_json: &str,
     passphrase: Option<&str>,
 ) -> Result<NostrApplicationData, Error> {
-    if parse_event_json(event_json).is_none_or(|event| event.kind != GIFT_WRAP_KIND) {
-        return Err(Error::invalid("invalid nostr gift wrap"));
-    }
+    let event =
+        parse_event_json(event_json).ok_or_else(|| Error::invalid("invalid nostr gift wrap"))?;
+    open_nostr_event(mnemonic, address_index, account_index, &event, passphrase)
+}
+
+/// Opens one parsed gift wrap addressed to this wallet. The event is re-serialised from its fields,
+/// as the extension hands Krusty `JSON.stringify(event)`, and that text must pass the extension's
+/// grammar and be kind 1059 before Krusty sees it (the fields are public, so a caller can build an
+/// event that never passed it). Krusty's signature and rumor checks and the output bounds all fail
+/// closed, since a relay event is untrusted.
+pub fn open_nostr_event(
+    mnemonic: &str,
+    address_index: u32,
+    account_index: u32,
+    event: &NostrEvent,
+    passphrase: Option<&str>,
+) -> Result<NostrApplicationData, Error> {
+    let json = serde_json::to_string(event)
+        .ok()
+        .filter(|json| parse_event_json(json).is_some_and(|e| e.kind == GIFT_WRAP_KIND))
+        .ok_or_else(|| Error::invalid("invalid nostr gift wrap"))?;
     let key = private_key(mnemonic, address_index, account_index, passphrase)?;
-    // The original text goes to Krusty, as the extension passes the event JSON it received.
-    let opened = krusty_kms::open_nostr_application_data(&key, event_json)
+    let opened = krusty_kms::open_nostr_application_data(&key, &json)
         .map_err(|_| Error::kms("nostr open"))?;
     let valid = is_application_data(&opened.content)
         && is_identifier(&opened.identifier)
@@ -317,5 +333,10 @@ mod tests {
         // Well-formed but unauthenticated: Krusty refuses it.
         let err = open_nostr_application_data(phrase, 0, 0, &event().to_string(), None);
         assert!(matches!(err, Err(Error::Kms { .. })));
+        // A hand-built event is held to the same grammar as a parsed one.
+        let mut built = event_from_value(&event()).unwrap();
+        built.sig = "C".repeat(128);
+        let err = open_nostr_event(phrase, 0, 0, &built, None);
+        assert!(matches!(err, Err(Error::InvalidInput { .. })));
     }
 }

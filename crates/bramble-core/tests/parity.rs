@@ -259,3 +259,68 @@ fn every_family_ladder_matches_the_extension() {
         "{seen:?}"
     );
 }
+
+/// Mobile's relay code parses events before opening them; the parsed path must open what the
+/// JSON path opens and refuse what it refuses.
+#[test]
+fn opens_the_extension_gift_wrap_from_a_parsed_event() {
+    use wallet_core::nostr::parse_event_json;
+    let fixture = fixture("nostr-multisig-parity.json");
+    let wrap = &fixture["giftWrap"];
+    let mnemonic = text(&fixture["nostrKeys"][0]["mnemonic"]);
+    let recipient = u32::try_from(wrap["recipientNostrIndex"].as_u64().unwrap()).unwrap();
+    let event = parse_event_json(wrap["eventJson"].as_str().unwrap()).unwrap();
+    let opened = wallet_core::open_nostr_event(&mnemonic, recipient, 0, &event, None).unwrap();
+    assert_eq!(opened.content, text(&wrap["content"]));
+    assert_eq!(opened.identifier, text(&wrap["identifier"]));
+    assert_eq!(
+        opened.sender_public_key,
+        text(&fixture["nostrKeys"][0]["publicKey"])
+    );
+    assert!(
+        wallet_core::open_nostr_event(&mnemonic, 0, 0, &event, None).is_err(),
+        "wrong recipient"
+    );
+    let mut parsed = 0;
+    for rejection in wrap["rejections"].as_array().unwrap() {
+        // Some variants (oversize content, an extra key) never parse; the rest must not open.
+        if let Some(event) = parse_event_json(rejection["eventJson"].as_str().unwrap()) {
+            parsed += 1;
+            assert!(
+                wallet_core::open_nostr_event(&mnemonic, recipient, 0, &event, None).is_err(),
+                "{}",
+                rejection["name"]
+            );
+        }
+    }
+    // Guard against a fixture whose variants all stop parsing, which would test nothing here.
+    assert!(parsed > 0);
+    // `created_at` spelled as a float opens, as through the extension's `JSON.stringify(event)`:
+    // Krusty sees the re-serialised integer, never the relay's spelling (which it refuses).
+    let raw = wrap["eventJson"].as_str().unwrap();
+    let integer = format!("\"created_at\":{}", event.created_at);
+    assert!(raw.contains(&integer));
+    let float = raw.replacen(&integer, &format!("{integer}.0"), 1);
+    let opened =
+        wallet_core::open_nostr_application_data(&mnemonic, recipient, 0, &float, None).unwrap();
+    assert_eq!(opened.content, text(&wrap["content"]));
+}
+
+/// The public key of a derived key is the extension's `publicKeyX`, with no raw key crossing.
+#[test]
+fn public_keys_of_derived_keys_match_the_extension() {
+    let fixture = fixture("extension-parity.json");
+    let mnemonic = text(&fixture["mnemonic"]);
+    for vector in fixture["accounts"].as_array().unwrap() {
+        let index = u32::try_from(vector["accountIndex"].as_u64().unwrap()).unwrap();
+        let pair = wallet_core::derive_starknet_keypair(&mnemonic, 0, index, None).unwrap();
+        assert_eq!(
+            wallet_core::stark_public_key(&pair.private_key).unwrap(),
+            text(&vector["publicKeyX"]),
+            "{index}"
+        );
+    }
+    assert!(
+        wallet_core::stark_public_key(&wallet_core::SecretFelt::new(Default::default())).is_err()
+    );
+}

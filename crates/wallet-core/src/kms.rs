@@ -38,6 +38,13 @@ impl From<NetworkId> for ChainId {
     }
 }
 
+impl NetworkId {
+    /// The chain id transaction hashes commit to, from Krusty and never from a node.
+    pub fn chain_id(self) -> Felt {
+        ChainId::from(self).as_felt()
+    }
+}
+
 /// Stark key material, as the extension's `StarkKeypair`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StarkKeypair {
@@ -238,6 +245,14 @@ pub fn sign_stark_hash(
         r: checked_scalar(&signature.r, "sign")?,
         s: checked_scalar(&signature.s, "sign")?,
     })
+}
+
+/// The Stark public key (x-coordinate) of a signing scalar, such as a viewing key, so a wallet can
+/// compare it with the key a privacy pool holds without the private key leaving Rust.
+pub fn stark_public_key(private_key: &SecretFelt) -> Result<String, Error> {
+    let key = usable_key(private_key, "invalid public-key input")?;
+    let public = krusty_kms::stark_public_key(key).map_err(|_| Error::kms("public key"))?;
+    checked_non_zero(public, "public key")
 }
 
 /// The STRK20 viewing key scoped to `"<chain_id>:<pool_address>"`. Both scope values must be
