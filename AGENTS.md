@@ -47,7 +47,7 @@ cargo test -p bramble-core <name>   # narrow loop while iterating
   `krusty-kms`; `cargo tree -i starknet-types-core` must show one version.
 - **Every dependency is pinned exactly** (`=x.y.z`), justified in the PR, and used immediately.
   Prefer none. Don't bump one unless a feature needs it or an advisory forces it; Dependabot
-  opens security PRs only. Hashes are pinned by `Cargo.lock` (built `--locked`),
+  opens no version-update PRs, and advisories reach us through security updates and `cargo deny`. Hashes are pinned by `Cargo.lock` (built `--locked`),
   `js/package-lock.json` (`npm ci`, install scripts off in `js/.npmrc`) and action commit SHAs.
 - **No secret leaves through a side door.** Private keys, mnemonics, passphrases and viewing keys
   never reach logs, error messages, `Debug`/`Display` output or UniFFI error strings. Hold them in

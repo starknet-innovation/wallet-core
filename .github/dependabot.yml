@@ -1,7 +1,8 @@
 version: 2
-# Security updates only. `open-pull-requests-limit: 0` turns off routine version bumps while
-# leaving security-advisory PRs on (they ignore this limit). We bump a dependency only when we
-# need it or an advisory forces it; every new version is new code we have to trust.
+# No routine bumps: `open-pull-requests-limit: 0` turns off version updates. Security-update PRs
+# have their own limit, but only open when "Dependabot security updates" is on in repo settings,
+# and `ignore` below suppresses them too; Rust advisories are also swept by advisories.yml
+# (cargo-deny), which covers ignored crates. Every new version is new code we have to trust.
 updates:
   - package-ecosystem: "cargo"
     directory: "/"
