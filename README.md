@@ -20,5 +20,5 @@ cargo install wasm-bindgen-cli --version 0.2.130 --locked   # for `wasm`; must m
 `AGENTS.md` has the hard rules and conventions for contributors and coding agents.
 
 `docs/PLAN.md` has what goes in which crate, the phases for moving the extension and mobile onto
-`bramble-core`, and the decisions behind them. `crates/bramble-core/tests/fixtures/README.md` says
-where the parity fixtures come from.
+`bramble-core`, and the decisions behind them. `crates/bramble-core/tests/fixtures/README.md` is the
+golden-fixture manifest: where each file comes from and its sha256.

@@ -53,8 +53,8 @@ cargo test -p bramble-core <name>   # narrow loop while iterating
 - **The mobile build exports no raw keys.** Anything that takes or returns a raw private key goes
   behind the `raw-keys` feature; `--no-default-features` must stay clean (clippy checks it).
 - **Fixtures are evidence, not inputs.** Never edit a file under `tests/fixtures/` to make a test
-  pass. Regenerate it in Bramble, copy it unchanged, and update its provenance row in the
-  fixtures README.
+  pass. Regenerate it in Bramble, copy it unchanged, and update its sha256 row (and the Bramble
+  commit line) in the fixtures README.
 - **`wallet-core` takes no product policy.** If a rule is Bramble's choice, it lives in
   `bramble-core`.
 - `#![forbid(unsafe_code)]` stays on both crates. Fix a lint rather than allow it; the one
