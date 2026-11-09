@@ -112,9 +112,10 @@ Each phase names the crate a module lands in; the table above decides anything n
    `vault-v3-container.json` and `migration-v1-to-v5.golden.json` were written by earlier mobile
    cores and pin mobile's own migration chain; `ui-coordination.json` drives the iOS UI suite;
    `rust-gift-wrap.json` runs the other way (Rust writes it, the extension opens it). Those move
-   with their modules as ordinary regression fixtures. Golden fixtures for modules not yet ported
-   (portfolio, privacy, transactions) sit here unused until their phase. Where the extension has
-   behaviour mobile ports but no generator covers it, the generator is added in Bramble first.
+   with their modules as ordinary regression fixtures. The golden fixtures for modules not yet
+   ported (portfolio, privacy, transactions) sit in this repo unused until their phase. Where the
+   extension has behaviour mobile ports but no generator covers it, the generator is added in
+   Bramble first.
 2. **Mobile adoption** (`feature/mobile-wallet`), one module group at a time. Mobile's crate is
    also named `bramble-core`, so until the last step it cannot depend on this repo's
    `bramble-core`; it depends on `wallet-core` (plain Rust, no UniFFI, so no second scaffolding
