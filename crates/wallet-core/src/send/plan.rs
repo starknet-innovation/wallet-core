@@ -10,7 +10,9 @@
 
 use super::fees::{Bounds, FeeQuote};
 use super::judge::{self, Observation, TxStatus};
-pub use super::types::{Account, ArgentClass, Authorization, Kind, Policy, Transfer};
+pub use super::types::{
+    Account, ArgentClass, Authorization, Kind, Policy, Token, Transfer, TransferRefusal,
+};
 use super::types::{
     RpcPurpose, SendError, SendFailure, SendFailureCode, SendStep, StepReply, TransferReview,
 };
@@ -163,7 +165,13 @@ pub struct Plan {
 }
 
 impl Plan {
-    pub fn new(account: Account, kind: Kind, policy: Policy) -> Self {
+    /// A plan for `kind` from `account`. A deployment that does not reproduce the account's
+    /// address is dropped, so such an account is never deployed from here.
+    pub fn new(mut account: Account, kind: Kind, policy: Policy) -> Self {
+        let address = account.address;
+        account.deployment = account
+            .deployment
+            .filter(|deployment| deployment.address() == Some(address));
         Self {
             account,
             kind,

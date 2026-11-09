@@ -168,9 +168,11 @@ pub fn krusty_bounds(
     ))
 }
 
-/// `exceedsReviewedFee`: a unit change, or `actual × denominator > reviewed × numerator`.
+/// `exceedsReviewedFee`: a unit change, or `actual × denominator > reviewed × numerator`. A
+/// zero denominator counts every fee as exceeding.
 pub fn exceeds_reviewed(reviewed: &FeeQuote, quoted: &FeeQuote, headroom: Headroom) -> bool {
-    if reviewed.unit != quoted.unit {
+    // A zero denominator would make every fee "within" headroom; fail closed instead.
+    if reviewed.unit != quoted.unit || headroom.denominator == 0 {
         return true;
     }
     match (
@@ -275,6 +277,15 @@ mod tests {
             &q(1000, FeeUnit::Fri),
             &q(1501, FeeUnit::Fri),
             headroom
+        ));
+        let broken = Headroom {
+            numerator: 3,
+            denominator: 0,
+        };
+        assert!(exceeds_reviewed(
+            &q(1000, FeeUnit::Fri),
+            &q(1, FeeUnit::Fri),
+            broken
         ));
         assert!(exceeds_reviewed(
             &q(1000, FeeUnit::Fri),

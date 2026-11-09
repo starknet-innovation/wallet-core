@@ -2,7 +2,7 @@
 //! an amount, node text or key material, so nothing a user typed or a node said can reach a log
 //! through an error.
 
-use super::calls::ReviewFlag;
+use super::calls::{self, ReviewFlag, SendAmountError};
 use super::fees::{FeeAmount, Headroom};
 use super::judge::TxStatus;
 use super::sign::Deployment;
@@ -218,7 +218,8 @@ pub struct Account {
     pub address: Felt,
     pub public_key: Felt,
     pub authorization: Authorization,
-    /// The DEPLOY_ACCOUNT the address commits to (`Deployment::address` must reproduce it), or
+    /// The DEPLOY_ACCOUNT the address commits to (`Plan::new` drops it unless
+    /// `Deployment::address` reproduces the address), or
     /// `None` when the wallet does not deploy the account's class: such an account can send once
     /// deployed, but is never deployed from here.
     pub deployment: Option<Deployment>,
@@ -254,22 +255,80 @@ impl Account {
     }
 }
 
-/// The one ERC-20 call every review, hash and record is derived from, already validated by the
-/// wallet (`calls::validate_recipient`, `parse_token_amount`, `transfer_flags`).
+/// The ERC-20 a transfer sends, from the wallet's token catalog.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Token<'a> {
+    pub address: Felt,
+    pub symbol: &'a str,
+    pub decimals: u8,
+}
+
+/// Why a transfer request was refused before any plan exists.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TransferRefusal {
+    /// Not a felt, or zero (`buildErc20TransferCall`'s "Invalid transfer address").
+    InvalidRecipient,
+    InvalidAmount(SendAmountError),
+}
+
+/// The one ERC-20 call every review, hash and record is derived from. Built only by
+/// `Transfer::new`, so the call that is signed is always the one the review describes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Transfer {
-    pub symbol: String,
-    pub token_address: Felt,
-    pub is_strk: bool,
-    pub recipient: Felt,
-    pub amount: U256,
+    pub(crate) symbol: String,
+    pub(crate) token_address: Felt,
+    pub(crate) is_strk: bool,
+    pub(crate) recipient: Felt,
+    pub(crate) amount: U256,
     /// The amount as typed (trimmed), for the review and the activity record.
-    pub amount_text: String,
-    pub calldata: Vec<Felt>,
-    pub summary: String,
-    pub flags: Vec<ReviewFlag>,
-    /// STRK base units the host last read, for the shortfall warning only.
-    pub fee_balance: Option<U256>,
+    pub(crate) amount_text: String,
+    pub(crate) calldata: Vec<Felt>,
+    pub(crate) summary: String,
+    pub(crate) flags: Vec<ReviewFlag>,
+    pub(crate) fee_balance: Option<U256>,
+}
+
+impl Transfer {
+    /// Validates and canonicalises a transfer of `amount` (decimal text as typed) of `token` from
+    /// `account` to `recipient` (any spelling `calls::validate_recipient` accepts), and derives
+    /// its calldata, summary and the verifier's flags. `trusted` is every other address the
+    /// person would recognise on the network and `tokens` every token contract the wallet knows,
+    /// for `calls::transfer_flags`. `fee_balance` is the STRK the host last read, for the
+    /// shortfall warning only.
+    pub fn new(
+        account: &Account,
+        token: Token<'_>,
+        recipient: &str,
+        amount: &str,
+        trusted: &[Felt],
+        tokens: &[Felt],
+        fee_balance: Option<U256>,
+    ) -> Result<Self, TransferRefusal> {
+        let recipient = calls::validate_recipient(recipient)
+            .filter(|recipient| *recipient != Felt::ZERO)
+            .ok_or(TransferRefusal::InvalidRecipient)?;
+        let parsed = calls::parse_token_amount(amount, token.decimals)
+            .map_err(TransferRefusal::InvalidAmount)?;
+        let calldata = calls::transfer_execute_calldata(&token.address, &recipient, &parsed)
+            .ok_or(TransferRefusal::InvalidRecipient)?;
+        Ok(Self {
+            symbol: token.symbol.into(),
+            token_address: token.address,
+            is_strk: token.symbol == "STRK",
+            recipient,
+            amount: parsed,
+            amount_text: amount.trim().into(),
+            calldata,
+            summary: calls::transfer_summary(&parsed, token.decimals, token.symbol, &recipient),
+            flags: calls::transfer_flags(&recipient, &account.address, trusted, tokens),
+            fee_balance,
+        })
+    }
+
+    /// The verifier's flags, for a wallet that shows them before a plan runs.
+    pub fn flags(&self) -> &[ReviewFlag] {
+        &self.flags
+    }
 }
 
 /// What the plan does.

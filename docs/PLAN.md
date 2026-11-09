@@ -237,7 +237,10 @@ Each phase names the crate a module lands in; the table above decides anything n
         `bramble-core` holds them: `FEE_MARGIN_PERCENT` (50), `REVIEWED_FEE_HEADROOM` (3/2),
         `CONFIRMATION_DELAYS_MS`, together as `SEND_POLICY`, each checked against the rules
         fixture. `Plan` is `&mut self`; the FFI object's mutex and its poison-closes rule stay
-        with the wrapper.
+        with the wrapper. What the plan signs it derives itself: `Transfer::new` validates the
+        request and builds the calldata, summary and verifier flags (mobile's
+        `prepare_transfer` mechanism), and `Plan::new` drops a deployment that does not
+        reproduce the account's address. A zero `Headroom` denominator fails closed.
       - Tests, all over fixtures already here: `transactions_rules_parity.rs` (mobile's
         `send/fixture_tests.rs`, less explorer URLs and the activity store, which move with
         2.4); `transactions_wire_parity.rs` (every request body in the OpenZeppelin, Ready and
@@ -245,19 +248,24 @@ Each phase names the crate a module lands in; the table above decides anything n
         re-derived from a quoted estimate, every hash the extension signed accounted for);
         `transactions_plan_parity.rs` and `transactions_refusal_parity.rs` (mobile's three
         `transactions_*_parity.rs`: the plan drives all 20 captures and 18 refusals with a test
-        `PlanHost` on the published phrase, in `tests/plan_support`, plus the confirmation
-        checkpoints).
+        `PlanHost` on the published phrase, in `tests/plan_support`, checking every hash is signed
+        in the extension's order, plus checkpoints, a lock after review and a fee past the
+        headroom); `transactions_plan_mechanism.rs` (mobile's `transactions_plan.rs` against its
+        canned node: wrong chain, out-of-order replies, node errors, write transport failure,
+        hash mismatch, poisoned recipient, the 200-poll deployment wait, unknown deployment
+        state, a missing bulk-estimate entry).
 
       Mobile's side: delete `rpc.rs` and those `send/` files and `use wallet_core::{rpc,
       send::*}`. `TransferPlan` becomes a UniFFI object around `Mutex<Plan>` holding
       `Weak<WalletCore>` and the session generation; its `PlanHost` maps onto `plan_sign`,
       `session_generation`, `activity::store` (`PendingRecord` → `Entry`, direction "out",
-      status "pending") and `history::explorer`. `wallet_ext.rs` keeps preparing plans (vault
-      records, contacts, catalogs), building `Authorization` from `account_catalog` and keeping
-      a `Deployment` only when `address()` reproduces the record. Records keep their UniFFI
-      derives through `#[uniffi::remote]` until 2.7. Mobile's lifecycle tests
-      (`transactions_plan.rs`, `transactions_lifecycle.rs`, `transactions_block_pin.rs`) stay
-      there: they exercise its locks and store through that wrapper.
+      status "pending") and `history::explorer`; `sign` must refuse once the generation moved,
+      as `plan_sign` does. `wallet_ext.rs` keeps preparing plans (vault records, contacts,
+      catalogs), building `Authorization` from `account_catalog` and calling `Transfer::new`. Records keep their UniFFI
+      derives through `#[uniffi::remote]` until 2.7. Mobile's wallet-level tests
+      (`transactions_lifecycle.rs`, `transactions_block_pin.rs`, and the contact, tracked-token
+      and locked-prepare cases of `transactions_plan.rs`) stay there: they exercise its locks,
+      store and address book through that wrapper.
    4. **Portfolio, history, privacy reads**: `portfolio/*`, `history/*`, `activity/*`,
       `privacy/*` into `wallet-core`, with the `js/*` JavaScript-semantics shims beside whichever
       code calls them; the iOS `include_str!` in `history/appearance.rs` moves to the Bramble

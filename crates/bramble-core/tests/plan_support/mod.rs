@@ -6,15 +6,14 @@ use std::cell::RefCell;
 
 use bramble_core::SEND_POLICY;
 use serde_json::{json, Value};
-use wallet_core::send::calls::{self, ReviewFlag};
+use wallet_core::send::calls::ReviewFlag;
 use wallet_core::send::judge::{Observation, TxStatus};
 use wallet_core::send::plan::{
     Account, ArgentClass, Authorization, Kind, PendingKind, PendingRecord, Plan, PlanHost,
-    SignRefusal, Transfer,
+    SignRefusal, Token, Transfer, TransferRefusal,
 };
 use wallet_core::send::sign::Deployment;
 use wallet_core::send::types::{SendStep, StepReply};
-use wallet_core::send::u256::U256;
 use wallet_core::{
     derive_starknet_keypair, felt, sign_stark_hash, Felt, NetworkId, SecretFelt, StarkSignature,
 };
@@ -88,6 +87,10 @@ pub struct Host {
     key: SecretFelt,
     pub records: RefCell<Vec<PendingRecord>>,
     pub observed: RefCell<Vec<Observation>>,
+    /// Every hash the plan asked to have signed, in order.
+    pub signed: RefCell<Vec<Felt>>,
+    /// What `session_current` answers: false once the wallet locked after the plan was made.
+    pub session: std::cell::Cell<bool>,
 }
 
 impl Host {
@@ -98,6 +101,8 @@ impl Host {
             key: pair.private_key,
             records: RefCell::default(),
             observed: RefCell::default(),
+            signed: RefCell::default(),
+            session: std::cell::Cell::new(true),
         }
     }
 
@@ -108,9 +113,10 @@ impl Host {
 
 impl PlanHost for Host {
     fn session_current(&self) -> bool {
-        true
+        self.session.get()
     }
     fn sign(&self, hash: &Felt, _renew: bool) -> Result<StarkSignature, SignRefusal> {
+        self.signed.borrow_mut().push(*hash);
         sign_stark_hash(&self.key, &felt::canonical(hash)).map_err(|_| SignRefusal::Failed)
     }
     fn record_pending(&self, record: PendingRecord) {
@@ -151,9 +157,10 @@ pub fn account(scenario: &Value, family: &str, public_key: Felt) -> Account {
         })
         .unwrap();
     let record_class = scenario["recordClass"].as_str().unwrap_or("");
+    // Mobile deploys only the pinned Argent 0.4.0 class or Xverse's build of it.
     let argent_class = ARGENT
         .iter()
-        .find(|(label, _, _)| *label == record_class)
+        .find(|(label, _, signer_array)| *label == record_class && *signer_array)
         .map(|(_, hash, _)| f(hash));
     let (authorization, candidate) = match family {
         "openzeppelin" => (
@@ -205,25 +212,33 @@ pub fn plan(scenario: &Value, account: Account) -> Plan {
     if scenario["flow"] == "deployment" {
         return Plan::new(account, Kind::Deployment, SEND_POLICY);
     }
-    let token = f(STRK);
-    let recipient = calls::validate_recipient(scenario["recipient"].as_str().unwrap_or(ACCOUNT_1));
-    let recipient = recipient.unwrap();
-    let amount = calls::parse_token_amount("1.5", 18).unwrap();
-    let tokens = [token, f(ETH)];
-    let transfer = Transfer {
-        symbol: "STRK".into(),
-        token_address: token,
-        is_strk: true,
-        recipient,
-        amount,
-        amount_text: "1.5".into(),
-        calldata: calls::transfer_execute_calldata(&token, &recipient, &amount).unwrap(),
-        summary: calls::transfer_summary(&amount, 18, "STRK", &recipient),
-        flags: calls::transfer_flags(&recipient, &account.address, &[], &tokens),
-        fee_balance: None::<U256>,
-    };
-    assert!(!transfer.flags.contains(&ReviewFlag::AddressPoisoning));
+    let recipient = scenario["recipient"].as_str().unwrap_or(ACCOUNT_1);
+    let transfer = transfer(&account, recipient, &[]).unwrap();
+    assert!(!transfer.flags().contains(&ReviewFlag::AddressPoisoning));
     Plan::new(account, Kind::Transfer(Box::new(transfer)), SEND_POLICY)
+}
+
+/// Bramble's `prepare_transfer`: 1.5 STRK, checked against `trusted` and the ETH and STRK
+/// contracts.
+pub fn transfer(
+    account: &Account,
+    recipient: &str,
+    trusted: &[Felt],
+) -> Result<Transfer, TransferRefusal> {
+    let token = Token {
+        address: f(STRK),
+        symbol: "STRK",
+        decimals: 18,
+    };
+    Transfer::new(
+        account,
+        token,
+        recipient,
+        "1.5",
+        trusted,
+        &[f(STRK), f(ETH)],
+        None,
+    )
 }
 
 pub fn reply(id: u64, recorded: &Value) -> StepReply {
@@ -340,11 +355,17 @@ pub fn run(scenario: &Value, family: &str) -> (Plan, Host) {
     let signed = scenario
         .get("signatures")
         .or_else(|| scenario.get("signed"));
-    assert_eq!(
-        plan.signatures_made() as usize,
-        signed.unwrap().as_array().unwrap().len(),
-        "{name}"
-    );
+    // The same hashes, signed in the extension's order (Braavos signs its deployment
+    // parameters before the transaction hash).
+    let expected: Vec<Felt> = signed
+        .unwrap()
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|record| f(record["hash"].as_str().unwrap()))
+        .collect();
+    assert_eq!(*host.signed.borrow(), expected, "{name}");
+    assert_eq!(plan.signatures_made() as usize, expected.len(), "{name}");
     // The pending record was handed over before the write left the core, keyed by its hash.
     let records = host.records.borrow();
     let record = records
