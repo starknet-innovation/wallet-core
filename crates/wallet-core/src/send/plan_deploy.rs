@@ -143,34 +143,27 @@ impl Plan {
         )
     }
 
-    pub(super) fn on_deploy_write(
-        &mut self,
-        host: &dyn PlanHost,
-        answer: Option<Answer>,
-    ) -> SendStep {
+    pub(super) fn on_deploy_write(&mut self, answer: Option<Answer>) -> SendStep {
         let Some(hash) = self.work.deploy_hash else {
             return self.fail(Code::SubmissionIndeterminate, None);
         };
-        let verdict = judge::write(answer, &hash);
-        if verdict == WriteAnswer::NodeError {
-            // A determinate refusal: the deployment never existed; drop its pending record.
-            host.discard(&hash);
-        }
-        if !self.is_transfer() {
-            return match verdict {
-                WriteAnswer::Accepted => self.broadcast(hash),
-                WriteAnswer::Mismatch => self.fail(Code::HashMismatch, Some(hash)),
-                WriteAnswer::Indeterminate => self.fail(Code::SubmissionIndeterminate, Some(hash)),
-                WriteAnswer::NodeError => self.fail(Code::NodeError, None),
-            };
-        }
-        match verdict {
-            WriteAnswer::Accepted => self.wait(DEPLOY_POLL_INTERVAL_MS, AfterWait::DeployStatus),
-            WriteAnswer::Mismatch | WriteAnswer::Indeterminate => {
-                self.fail(Code::DeploymentStatusUnknown, Some(hash))
+        // Once signed, the deployment may land whatever the node answers, so its record stays
+        // and every failure carries its hash; only the code depends on the answer.
+        let transfer = self.is_transfer();
+        let code = match judge::write(answer, &hash) {
+            WriteAnswer::Accepted if transfer => {
+                return self.wait(DEPLOY_POLL_INTERVAL_MS, AfterWait::DeployStatus)
             }
-            WriteAnswer::NodeError => self.fail(Code::AutoDeploymentFailed, None),
-        }
+            WriteAnswer::Accepted => return self.broadcast(hash),
+            WriteAnswer::Mismatch | WriteAnswer::Indeterminate if transfer => {
+                Code::DeploymentStatusUnknown
+            }
+            WriteAnswer::NodeError if transfer => Code::AutoDeploymentFailed,
+            WriteAnswer::Mismatch => Code::HashMismatch,
+            WriteAnswer::Indeterminate => Code::SubmissionIndeterminate,
+            WriteAnswer::NodeError => Code::NodeError,
+        };
+        self.fail(code, Some(hash))
     }
 
     pub(crate) fn poll_deployment(&mut self) -> SendStep {

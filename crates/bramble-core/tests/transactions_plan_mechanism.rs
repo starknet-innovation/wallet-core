@@ -5,171 +5,16 @@
 
 mod plan_support;
 
+use plan_support::node::*;
 use plan_support::*;
-use serde_json::{json, Value};
+use serde_json::json;
 use wallet_core::send::calls::ReviewFlag;
 use wallet_core::send::judge::TxStatus;
-use wallet_core::send::plan::{Account, Authorization, Kind, Plan, TransferRefusal};
-use wallet_core::send::sign::Deployment;
+use wallet_core::send::plan::{Kind, Plan, TransferRefusal};
 use wallet_core::send::types::{
     SendError, SendFailure, SendFailureCode as Code, SendStep, StepReply,
 };
-use wallet_core::{felt, Felt, NetworkId};
-
-const ACCOUNT_0: &str = "0x208361e3911b1d93a704400b88e7e53a89171fce64dbb48f8479e4f44b398d9";
-
-/// The published phrase's OpenZeppelin account 0 on Sepolia.
-fn oz_account(host: &Host) -> Account {
-    let public_key = host.public_key();
-    let deployment = Deployment {
-        class_hash: f(OZ_CLASS),
-        salt: Felt::ZERO,
-        constructor_calldata: vec![public_key],
-    };
-    let address = deployment.address().unwrap();
-    assert_eq!(address, f(ACCOUNT_0));
-    Account {
-        network: NetworkId::Sepolia,
-        address,
-        public_key,
-        authorization: Authorization::StarkPair,
-        deployment: Some(deployment),
-    }
-}
-
-fn transfer_plan(host: &Host, recipient: &str) -> Plan {
-    let account = oz_account(host);
-    let transfer = transfer(&account, recipient, &[]).unwrap();
-    Plan::new(
-        account,
-        Kind::Transfer(Box::new(transfer)),
-        bramble_core::SEND_POLICY,
-    )
-}
-
-/// Mobile's canned node: deployment state, nonce, and the estimate it returns per transaction.
-struct Node {
-    deployed: bool,
-    nonce: String,
-    invoke_estimate: Value,
-    deploy_estimate: Value,
-    status: Value,
-}
-
-impl Node {
-    fn sepolia(deployed: bool) -> Self {
-        Self {
-            deployed,
-            nonce: "0x5".into(),
-            invoke_estimate: json!({"l1_data_gas_consumed":"0x180","l1_data_gas_price":"0x5a0",
-                "l1_gas_consumed":"0x0","l1_gas_price":"0x2d5c6b1e1ef","l2_gas_consumed":"0x1234a0",
-                "l2_gas_price":"0xb2d05e00","overall_fee":"0x1","unit":"FRI"}),
-            deploy_estimate: json!({"l1_data_gas_consumed":"0x1e0","l1_data_gas_price":"0x5a0",
-                "l1_gas_consumed":"0x0","l1_gas_price":"0x2d5c6b1e1ef","l2_gas_consumed":"0xf4240",
-                "l2_gas_price":"0xb2d05e00","overall_fee":"0xabc","unit":"FRI"}),
-            status: json!({"execution_status":"SUCCEEDED","finality_status":"ACCEPTED_ON_L2"}),
-        }
-    }
-
-    /// The reply to a request; a write echoes the hash the host last recorded.
-    fn reply(&mut self, method: &str, params: &Value, signed: Option<String>) -> Value {
-        let not_found = json!({"error": {"code": 20, "message": "Contract not found"}});
-        match method {
-            "starknet_chainId" => json!({"result": "0x534e5f5345504f4c4941"}),
-            "starknet_getClassHashAt" if self.deployed => json!({"result": OZ_CLASS}),
-            "starknet_getClassHashAt" => not_found,
-            "starknet_getNonce" if self.deployed => json!({"result": self.nonce}),
-            "starknet_getNonce" => not_found,
-            "starknet_estimateFee" => {
-                let entries: Vec<Value> = params["request"]
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .map(|tx| match tx["type"].as_str() {
-                        Some("DEPLOY_ACCOUNT") => self.deploy_estimate.clone(),
-                        _ => self.invoke_estimate.clone(),
-                    })
-                    .collect();
-                json!({ "result": entries })
-            }
-            "starknet_addDeployAccountTransaction" => {
-                self.deployed = true;
-                self.nonce = "0x1".into();
-                json!({"result": {"transaction_hash": signed.unwrap(), "contract_address": ACCOUNT_0}})
-            }
-            "starknet_addInvokeTransaction" => {
-                json!({"result": {"transaction_hash": signed.unwrap()}})
-            }
-            "starknet_getTransactionStatus" => json!({ "result": self.status }),
-            "starknet_getTransactionReceipt" => json!({"result": {"type": "DEPLOY_ACCOUNT"}}),
-            other => panic!("unexpected method {other}"),
-        }
-    }
-}
-
-fn parts(step: &SendStep) -> (u64, String, Value, bool) {
-    let SendStep::Rpc {
-        id, body, is_write, ..
-    } = step
-    else {
-        panic!("expected an RPC step, got {step:?}");
-    };
-    let value: Value = serde_json::from_str(body).unwrap();
-    let method = value["method"].as_str().unwrap().to_string();
-    (*id, method, value["params"].clone(), *is_write)
-}
-
-fn latest_hash(host: &Host) -> String {
-    felt::canonical(&host.records.borrow().last().expect("a pending record").hash)
-}
-
-/// Answers every step from `node` until `stop(method, is_write)` holds or a non-RPC step
-/// arrives; returns that step unanswered.
-fn run_until(
-    plan: &mut Plan,
-    host: &Host,
-    node: &mut Node,
-    mut step: SendStep,
-    stop: impl Fn(&str, bool) -> bool,
-) -> SendStep {
-    loop {
-        match &step {
-            SendStep::Rpc { .. } => {
-                let (id, method, params, is_write) = parts(&step);
-                if stop(&method, is_write) {
-                    return step;
-                }
-                let signed = is_write.then(|| latest_hash(host));
-                step = plan
-                    .advance(host, reply(id, &node.reply(&method, &params, signed)))
-                    .unwrap();
-            }
-            SendStep::Wait { .. } => step = plan.advance(host, StepReply::WaitElapsed).unwrap(),
-            _ => return step,
-        }
-    }
-}
-
-fn never(_: &str, _: bool) -> bool {
-    false
-}
-
-fn reviewed(host: &Host, node: &mut Node, recipient: &str) -> Plan {
-    let mut plan = transfer_plan(host, recipient);
-    let first = plan.advance(host, StepReply::Start).unwrap();
-    assert_eq!(
-        run_until(&mut plan, host, node, first, never),
-        SendStep::Review
-    );
-    plan
-}
-
-fn failure(step: SendStep) -> SendFailure {
-    match step {
-        SendStep::Failed { failure } => failure,
-        other => panic!("expected a failure, got {other:?}"),
-    }
-}
+use wallet_core::{felt, Felt};
 
 #[test]
 fn deployed_send_confirms_and_records() {
@@ -457,4 +302,102 @@ fn a_deployment_that_does_not_reproduce_the_address_is_never_offered() {
     let review = plan.current_review().unwrap();
     assert!(review.requires_deployment && review.deployment_fee_estimate_failed);
     assert!(!review.can_confirm);
+}
+
+/// Reviews and confirms `plan`, then answers its first write, `method`, with a node error. The
+/// failure, after checking the signed hash's pending record survived.
+fn refused_write(host: &Host, plan: &mut Plan, deployed: bool, method: &str) -> SendFailure {
+    let mut node = Node::sepolia(deployed);
+    let first = plan.advance(host, StepReply::Start).unwrap();
+    assert_eq!(
+        run_until(plan, host, &mut node, first, never),
+        SendStep::Review
+    );
+    let step = plan.advance(host, StepReply::Confirm).unwrap();
+    let (id, write, ..) = parts(&run_until(plan, host, &mut node, step, |_, w| w));
+    assert_eq!(write, method);
+    let error = json!({"error": {"code": -32603, "message": "Internal error"}});
+    let failed = failure(plan.advance(host, reply(id, &error)).unwrap());
+    let signed = felt::canonical(host.signed.borrow().last().unwrap());
+    assert_eq!((latest_hash(host), plan.signatures_made()), (signed, 1));
+    failed
+}
+
+#[test]
+fn a_refused_invoke_keeps_its_record_and_hash() {
+    let host = Host::new();
+    let mut plan = transfer_plan(&host, ACCOUNT_1);
+    let failed = refused_write(&host, &mut plan, true, "starknet_addInvokeTransaction");
+    assert_eq!(
+        (failed.code, failed.hash),
+        (Code::NodeError, Some(latest_hash(&host)))
+    );
+}
+
+#[test]
+fn a_refused_auto_deployment_keeps_its_record_and_hash() {
+    let host = Host::new();
+    let mut plan = transfer_plan(&host, ACCOUNT_1);
+    let failed = refused_write(
+        &host,
+        &mut plan,
+        false,
+        "starknet_addDeployAccountTransaction",
+    );
+    let hash = Some(latest_hash(&host));
+    assert_eq!(
+        (failed.code, failed.hash),
+        (Code::AutoDeploymentFailed, hash)
+    );
+}
+
+#[test]
+fn a_refused_deployment_keeps_its_record_and_hash() {
+    let host = Host::new();
+    let mut plan = Plan::new(
+        oz_account(&host),
+        Kind::Deployment,
+        bramble_core::SEND_POLICY,
+    );
+    let failed = refused_write(
+        &host,
+        &mut plan,
+        false,
+        "starknet_addDeployAccountTransaction",
+    );
+    assert_eq!(
+        (failed.code, failed.hash),
+        (Code::NodeError, Some(latest_hash(&host)))
+    );
+}
+
+#[test]
+fn a_refused_invoke_after_an_accepted_deployment_names_the_deployment() {
+    let host = Host::new();
+    let mut node = Node::sepolia(false);
+    let mut plan = reviewed(&host, &mut node, ACCOUNT_1);
+    let step = plan.advance(&host, StepReply::Confirm).unwrap();
+    let invoke = run_until(&mut plan, &host, &mut node, step, |m, _| {
+        m == "starknet_addInvokeTransaction"
+    });
+    let error = json!({"error": {"code": -32603, "message": "Internal error"}});
+    let failed = failure(
+        plan.advance(&host, reply(parts(&invoke).0, &error))
+            .unwrap(),
+    );
+    let recorded: Vec<String> = host
+        .records
+        .borrow()
+        .iter()
+        .map(|r| felt::canonical(&r.hash))
+        .collect();
+    let signed: Vec<String> = host.signed.borrow().iter().map(felt::canonical).collect();
+    assert_eq!(recorded, signed, "both signed writes keep their records");
+    assert_eq!(
+        (failed.code, failed.hash),
+        (
+            Code::DeploymentThenInvokeUnconfirmed,
+            Some(signed[0].clone())
+        )
+    );
 }
