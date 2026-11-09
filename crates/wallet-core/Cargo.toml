@@ -7,7 +7,7 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 readme = "README.md"
-description = "Starknet wallet core: Krusty KMS key custody and wallet logic as plain Rust, with no product policy and no FFI"
+description = "Starknet wallet core: Krusty KMS key custody, the encrypted vault and wallet logic as plain Rust, with no product policy and no FFI"
 keywords = ["starknet", "wallet", "kms", "nostr", "cryptography"]
 categories = ["cryptography::cryptocurrencies"]
 
@@ -16,6 +16,12 @@ categories = ["cryptography::cryptocurrencies"]
 krusty-kms = { version = "=2.0.0", default-features = false }
 krusty-kms-common = { version = "=2.0.0" }
 starknet-types-core = { version = "=0.2.4", features = ["hash", "curve"] }
+# Vault envelope: the extension's EncryptedEnvelope v3 (PBKDF2-SHA-256 -> AES-256-GCM).
+aes-gcm = { version = "=0.11.1", features = ["zeroize"] }
+pbkdf2 = { version = "=0.13.0", default-features = false, features = ["hmac"] }
+sha2 = { version = "=0.11.1", default-features = false }
+base64 = { version = "=0.22.1" }
+getrandom = { version = "=0.4.3" }
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = { version = "=1.0.151" }
 thiserror = { version = "=2.0.21" }

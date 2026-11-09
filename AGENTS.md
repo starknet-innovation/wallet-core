@@ -67,6 +67,8 @@ Bramble's worst consistency bugs came from one agent re-deriving what another ha
 Grep first; extend in place rather than adding a sibling.
 
 - Felt parsing, canonical hex and the private-key range live in `crates/wallet-core/src/felt.rs`.
+- Vault crypto (envelope v3, DEK container, AES-GCM and randomness helpers) lives in
+  `crates/wallet-core/src/envelope.rs` and `container.rs`; host I/O goes through `host.rs`.
 - Only `wallet-core` depends on Krusty (`kms.rs`, `nostr.rs`); `bramble-core` goes through
   `wallet-core` and never names `krusty_kms`.
 

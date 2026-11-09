@@ -10,6 +10,8 @@ through [`bramble-core`](../bramble-core).
   viewing keys, OpenZeppelin account class hash and counterfactual address.
 - **Nostr coordination identity** (`nostr`): the wallet's BIP-340 key, NIP-59 gift wrap and open
   for application data, with bounds on event and data sizes.
+- **The encrypted vault** (`envelope`, `container`): envelope v3 and the DEK container,
+  byte-compatible with the extension's, over host storage and a clock (`host`).
 - **The felt grammar** (`felt`): strict parsing, canonical lowercase hex and the private-key range.
   Everything else here goes through it.
 - **Mechanism, with decisions as arguments.** The account version, the salt, the network: the
@@ -17,8 +19,8 @@ through [`bramble-core`](../bramble-core).
 - **Secret-careful.** Private keys are `SecretFelt`, mnemonics and passphrases are `Zeroizing`
   where the API allows, and errors carry a fixed reason or operation name, never input text.
 
-As `docs/PLAN.md` lands, the vault container, storage and clock traits, sans-IO RPC, transaction
-hashing, transfer planning and portfolio, history and privacy logic join it here.
+As `docs/PLAN.md` lands, sans-IO RPC, transaction hashing, transfer planning and portfolio,
+history and privacy logic join it here.
 
 ## What it is NOT
 
@@ -30,7 +32,8 @@ hashing, transfer planning and portfolio, history and privacy logic join it here
 - **Not an FFI crate.** No UniFFI, no wasm-bindgen, no `extern "C"`. A wallet exports what it
   needs from its own crate (Bramble's is `bramble-core`).
 - **Not a configuration framework.** No traits or config objects for wallets that don't exist yet.
-- **Not I/O.** No network, no files, no clock of its own; hosts pass in time and, later, storage.
+- **Not I/O.** No network, no files, no clock of its own; the host implements `Storage` and
+  `Clock`.
 - **No logging.** Library code prints nothing, and no secret reaches `Debug`, `Display` or an
   error message.
 
