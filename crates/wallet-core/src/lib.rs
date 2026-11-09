@@ -2,7 +2,8 @@
 //!
 //! Key custody through Krusty KMS (`kms`), Nostr coordination identity (`nostr`), the felt
 //! grammar they share (`felt`), the encrypted vault (`envelope`, `container`) and the host
-//! storage and clock it runs on (`host`), as plain Rust. This crate holds mechanism only: product choices
+//! storage and clock it runs on (`host`), sans-IO JSON-RPC (`rpc`) and the transfer mechanism
+//! (`send`), as plain Rust. This crate holds mechanism only: product choices
 //! (which account version a wallet deploys, which salt, what crosses an FFI boundary) are
 //! arguments here and constants in the wallet's own crate (`bramble-core` for Bramble). It has
 //! no FFI of its own; a wallet exports what it needs from its crate.
@@ -18,6 +19,8 @@ pub mod felt;
 pub mod host;
 pub mod kms;
 pub mod nostr;
+pub mod rpc;
+pub mod send;
 
 pub use kms::{
     derive_argent_legacy_keypair, derive_oz_account_address, derive_starknet_keypair,
@@ -29,6 +32,8 @@ pub use nostr::{
     derive_nostr_public_key, open_nostr_application_data, wrap_nostr_application_data,
     NostrApplicationData,
 };
+/// The field element the transaction API takes: Krusty's, so a caller never holds a second one.
+pub use starknet_types_core::felt::Felt;
 pub use zeroize::Zeroizing;
 
 /// The Krusty KMS release compiled into this crate. `krusty_version_matches_the_lockfile` keeps
@@ -54,6 +59,9 @@ pub enum Error {
     /// The host's wrap secret does not open the biometric slot (stale or tampered).
     #[error("biometric unlock was invalidated")]
     BiometricInvalidated,
+    /// A node reply the core will not interpret (a fixed reason, never node text).
+    #[error("rpc failure: {reason}")]
+    Rpc { reason: String },
 }
 
 impl Error {
@@ -66,6 +74,12 @@ impl Error {
     /// A storage failure with a fixed reason. Public so a host's `Storage` reports the same way.
     pub fn storage(reason: &str) -> Self {
         Self::Storage {
+            reason: reason.into(),
+        }
+    }
+
+    pub(crate) fn rpc(reason: &str) -> Self {
+        Self::Rpc {
             reason: reason.into(),
         }
     }
