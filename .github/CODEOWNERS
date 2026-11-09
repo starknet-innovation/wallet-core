@@ -1,0 +1,20 @@
+# Reviewers auto-requested on PRs; the set a ruleset can require. Same maintainers as Bramble.
+# These paths decide what gets built, published or trusted, or hold key custody.
+
+*                                   @omarespejel @adrienlacombe @l-henri @robertkodra @Ryun1 @teddyjfpender @derek-flossman
+
+/.github/                           @omarespejel @adrienlacombe @l-henri @robertkodra @Ryun1 @teddyjfpender @derek-flossman
+/.githooks/                         @omarespejel @adrienlacombe @l-henri @robertkodra @Ryun1 @teddyjfpender @derek-flossman
+/tools/                             @omarespejel @adrienlacombe @l-henri @robertkodra @Ryun1 @teddyjfpender @derek-flossman
+/rust-toolchain.toml                @omarespejel @adrienlacombe @l-henri @robertkodra @Ryun1 @teddyjfpender @derek-flossman
+/.cargo/                            @omarespejel @adrienlacombe @l-henri @robertkodra @Ryun1 @teddyjfpender @derek-flossman
+/Cargo.toml                         @omarespejel @adrienlacombe @l-henri @robertkodra @Ryun1 @teddyjfpender @derek-flossman
+/Cargo.lock                         @omarespejel @adrienlacombe @l-henri @robertkodra @Ryun1 @teddyjfpender @derek-flossman
+/crates/*/Cargo.toml                @omarespejel @adrienlacombe @l-henri @robertkodra @Ryun1 @teddyjfpender @derek-flossman
+/deny.toml                          @omarespejel @adrienlacombe @l-henri @robertkodra @Ryun1 @teddyjfpender @derek-flossman
+/js/package.json                    @omarespejel @adrienlacombe @l-henri @robertkodra @Ryun1 @teddyjfpender @derek-flossman
+/js/package-lock.json               @omarespejel @adrienlacombe @l-henri @robertkodra @Ryun1 @teddyjfpender @derek-flossman
+/crates/wallet-core/src/kms.rs      @omarespejel @adrienlacombe @l-henri @robertkodra @Ryun1 @teddyjfpender @derek-flossman
+/crates/wallet-core/src/nostr.rs    @omarespejel @adrienlacombe @l-henri @robertkodra @Ryun1 @teddyjfpender @derek-flossman
+/crates/bramble-core/tests/fixtures/ @omarespejel @adrienlacombe @l-henri @robertkodra @Ryun1 @teddyjfpender @derek-flossman
+/AGENTS.md                          @omarespejel @adrienlacombe @l-henri @robertkodra @Ryun1 @teddyjfpender @derek-flossman
