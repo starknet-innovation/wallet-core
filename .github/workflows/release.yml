@@ -40,7 +40,7 @@ jobs:
       - run: npm test
         working-directory: js
       - run: sha256sum js/dist/generated/bramble_core.wasm js/dist/generated/bramble_core_bg.js > SHA256SUMS
-      # `private: true` in js/package.json makes this step fail until Phase 1 removes it.
+      # `private: true` in js/package.json makes this step fail until Phase 3.1 removes it.
       - run: npm publish --provenance --access public
         working-directory: js
       - run: gh release create "$GITHUB_REF_NAME" SHA256SUMS --verify-tag --title "$GITHUB_REF_NAME"
