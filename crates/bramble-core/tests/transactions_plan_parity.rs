@@ -3,8 +3,8 @@
 //! OpenZeppelin, Ready (Argent) and Braavos account against a canned node; this drives
 //! `starknet_wallet_core::send::plan::Plan` under `SEND_POLICY` with the same replies and
 //! requires the same request bodies in the same order, the same number of signed hashes and the
-//! same transaction hash. Moved from mobile's `transactions_{,argent_,braavos_}parity.rs` in Phase 2.3, with a
-//! test host in place of the mobile vault (`plan_support`); the refusals are in
+//! same transaction hash. Moved from mobile's `transactions_{,argent_,braavos_}parity.rs` in
+//! Phase 2.3, with a test host in place of the mobile vault (`plan_support`); the refusals are in
 //! `transactions_refusal_parity.rs`, and mobile's lifecycle tests (locks, persistence) stay with
 //! its wallet.
 
