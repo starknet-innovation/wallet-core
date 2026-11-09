@@ -21,7 +21,8 @@ env:
   RUST_TOOLCHAIN: 1.97.1
 
 jobs:
-  # A tag push never ships what CI would reject. Tags skip ci.yml, so run its checks here.
+  # A tag push never ships what CI would reject. Tags skip ci.yml, so run its checks here: this
+  # job and verify-wasm are its rust and wasm jobs.
   verify:
     runs-on: ubuntu-latest
     steps:
@@ -36,8 +37,27 @@ jobs:
       - run: cargo install cargo-deny --version 0.19.8 --locked
       - run: bash tools/check.sh quick lint test deny package
 
+  # The wasm32 module is bramble-core's main consumer; ci.yml's wasm job, repeated for the tag.
+  verify-wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal \
+            --target wasm32-unknown-unknown
+          rustup default "$RUST_TOOLCHAIN"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      # Must equal the `wasm-bindgen` version in Cargo.lock; ubrn runs it over the module.
+      - run: cargo install wasm-bindgen-cli --version 0.2.130 --locked
+      - run: bash tools/check.sh wasm
+
   publish:
-    needs: verify
+    needs: [verify, verify-wasm]
     runs-on: ubuntu-latest
     environment: crates-io
     permissions:
