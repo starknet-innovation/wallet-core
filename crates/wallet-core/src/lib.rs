@@ -1,7 +1,8 @@
 //! Starknet wallet core.
 //!
-//! Key custody through Krusty KMS (`kms`), Nostr coordination identity (`nostr`) and the felt
-//! grammar they share (`felt`), as plain Rust. This crate holds mechanism only: product choices
+//! Key custody through Krusty KMS (`kms`), Nostr coordination identity (`nostr`), the felt
+//! grammar they share (`felt`), the encrypted vault (`envelope`, `container`) and the host
+//! storage and clock it runs on (`host`), as plain Rust. This crate holds mechanism only: product choices
 //! (which account version a wallet deploys, which salt, what crosses an FFI boundary) are
 //! arguments here and constants in the wallet's own crate (`bramble-core` for Bramble). It has
 //! no FFI of its own; a wallet exports what it needs from its crate.
@@ -11,7 +12,10 @@
 
 #![forbid(unsafe_code)]
 
+pub mod container;
+pub mod envelope;
 pub mod felt;
+pub mod host;
 pub mod kms;
 pub mod nostr;
 
@@ -38,11 +42,30 @@ pub enum Error {
     InvalidInput { reason: String },
     #[error("key management failure during {operation}")]
     Kms { operation: String },
+    /// The passphrase does not open the vault (or the envelope was tampered with; by design the
+    /// two are indistinguishable).
+    #[error("wrong password")]
+    WrongPassword,
+    #[error("storage failure: {reason}")]
+    Storage { reason: String },
+    /// The vault has no biometric slot.
+    #[error("biometric unlock is not enabled")]
+    BiometricUnavailable,
+    /// The host's wrap secret does not open the biometric slot (stale or tampered).
+    #[error("biometric unlock was invalidated")]
+    BiometricInvalidated,
 }
 
 impl Error {
     pub(crate) fn invalid(reason: &str) -> Self {
         Self::InvalidInput {
+            reason: reason.into(),
+        }
+    }
+
+    /// A storage failure with a fixed reason. Public so a host's `Storage` reports the same way.
+    pub fn storage(reason: &str) -> Self {
+        Self::Storage {
             reason: reason.into(),
         }
     }

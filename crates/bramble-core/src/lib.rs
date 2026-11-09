@@ -36,6 +36,16 @@ pub enum CoreError {
     InvalidInput { reason: String },
     #[error("key management failure during {operation}")]
     Kms { operation: String },
+    #[error("wrong password")]
+    WrongPassword,
+    #[error("storage failure: {reason}")]
+    Storage { reason: String },
+    /// Biometric unlock is not set up (no slot, or the vault predates it).
+    #[error("biometric unlock is not enabled")]
+    BiometricUnavailable,
+    /// The biometric slot no longer opens.
+    #[error("biometric unlock was invalidated")]
+    BiometricInvalidated,
 }
 
 impl From<wallet_core::Error> for CoreError {
@@ -43,6 +53,10 @@ impl From<wallet_core::Error> for CoreError {
         match error {
             wallet_core::Error::InvalidInput { reason } => Self::InvalidInput { reason },
             wallet_core::Error::Kms { operation } => Self::Kms { operation },
+            wallet_core::Error::WrongPassword => Self::WrongPassword,
+            wallet_core::Error::Storage { reason } => Self::Storage { reason },
+            wallet_core::Error::BiometricUnavailable => Self::BiometricUnavailable,
+            wallet_core::Error::BiometricInvalidated => Self::BiometricInvalidated,
         }
     }
 }

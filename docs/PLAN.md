@@ -73,11 +73,15 @@ crates/wallet-core/        generic: lib wallet_core, plain Rust
   src/felt.rs              strict lowercase-hex felt grammar
   src/kms.rs               key custody over Krusty
   src/nostr.rs             coordination identity, NIP-59 wrap/open
+  src/envelope.rs          the extension's EncryptedEnvelope v3 (PBKDF2-SHA-256, AES-256-GCM)
+  src/container.rs         vault container: DEK, passphrase and biometric slots, sealed payload
+  src/host.rs              host-provided Storage and Clock traits, ClockReading
 crates/bramble-core/       Bramble: lib bramble_core, the cdylib/staticlib/wasm32 module
   src/lib.rs               UniFFI scaffolding, CoreError, core_info(), Bramble constants, exports
   src/bin/uniffi-bindgen.rs  Swift/Kotlin generator (`bindgen` feature)
   uniffi.toml              Swift/Kotlin module names, as mobile's
   tests/parity.rs          extension fixtures and known-answer vectors
+  tests/vault_parity.rs    envelope and DEK slot the extension sealed
   tests/fixtures.rs        holds tests/fixtures/ to its README manifest (sha256 per file)
   tests/fixtures/          copied from Bramble; README is the manifest
 js/                        npm package @starknet-innovation/bramble-core: ubrn config,
@@ -205,6 +209,12 @@ Each phase names the crate a module lands in; the table above decides anything n
       mechanics into `wallet-core`, with plain Rust `Storage` and `Clock` traits; mobile's
       `files.rs` implements `Storage`. The v12 schema and migrations are Bramble's and stay in
       `mobile/core` until 2.7; the mobile vault migrates into v12 here.
+      In `wallet-core`: `envelope.rs` (mobile's `vault.rs`), `container.rs`, and `host.rs`
+      (`Storage`, `Clock`, mobile's `ClockReading`). The vault version is an argument (mobile's
+      `VAULT_VERSION` stays Bramble's), and so is the passphrase rule: `SealingKey::create` no
+      longer calls `check_password`, so mobile checks first. Mobile's `HostClock` adapts to
+      `Clock`, and `migrations_tests.rs` uses `SealingKey::from_parts` where it used `fixed`.
+      Still open: mobile's side of the swap, and the mobile vault → v12 migration.
    3. **Sans-IO transactions**: `rpc.rs`, `send/*` and transaction hashing, Argent and Braavos
       paths, into `wallet-core`; Bramble's defaults (fee margins, which flows it offers) stay
       with the Bramble crate.
