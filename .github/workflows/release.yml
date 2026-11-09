@@ -17,7 +17,14 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
+      # As publish-crates.yml: a tag off main makes no release anywhere.
+      - name: Release commit must be on main
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor HEAD origin/main \
+            || { echo "::error::release tag must point to a commit reachable from main"; exit 1; }
       - name: Install Rust toolchain
         run: |
           rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --target wasm32-unknown-unknown

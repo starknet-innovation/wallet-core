@@ -78,7 +78,7 @@ jobs:
           rustup default "$RUST_TOOLCHAIN"
       # The environment is all that stands between a pushed tag and a crates.io token, so refuse
       # to continue unless its protection rules are configured: a reviewer who is not the tag
-      # pusher, and a deployment policy admitting exactly `v*` tags.
+      # pusher, no administrator bypass, and a deployment policy admitting exactly `v*` tags.
       - name: Require a protected crates-io environment
         env:
           GH_TOKEN: ${{ github.token }}
@@ -99,6 +99,10 @@ jobs:
           }
           if (reviewers.prevent_self_review !== true) {
             throw new Error("the crates-io environment must prevent self-review");
+          }
+          // An admin who may bypass could approve their own tag past the reviewer rule.
+          if (environment.can_admins_bypass !== false) {
+            throw new Error("the crates-io environment must not let administrators bypass it");
           }
           const policy = environment.deployment_branch_policy;
           if (!policy?.custom_branch_policies || policy.protected_branches) {
