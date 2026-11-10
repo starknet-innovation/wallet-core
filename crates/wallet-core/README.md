@@ -43,7 +43,7 @@ As `docs/PLAN.md` lands, portfolio, history and privacy logic join it here.
 Not on crates.io. Depend on it by git tag; both crates share one version and one `v*` tag.
 
 ```toml
-wallet-core = { package = "starknet-wallet-core", git = "https://github.com/starknet-innovation/wallet-core", tag = "v0.2.0" }
+wallet-core = { package = "starknet-wallet-core", git = "https://github.com/starknet-innovation/wallet-core", tag = "v0.2.1" }
 ```
 
 ```rust
