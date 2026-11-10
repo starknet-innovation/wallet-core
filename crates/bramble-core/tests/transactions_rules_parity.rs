@@ -1,7 +1,7 @@
 //! The send rules the extension's own code computed (`extension-transactions-{rules,
 //! presentation,verification,status}.json`, see `fixtures/README.md`): fee policy, amount
 //! grammar and call encoding, presentation, the verifier's flags, status judgement and timing,
-//! through `wallet_core::send` with Bramble's constants. Moved from mobile's
+//! through `starknet_wallet_core::send` with Bramble's constants. Moved from mobile's
 //! `send/fixture_tests.rs` in Phase 2.3; its explorer-URL and activity-store cases move with
 //! those modules (2.4).
 
@@ -9,12 +9,12 @@ use bramble_core::{
     CONFIRMATION_DELAYS_MS, FEE_MARGIN_PERCENT, REVIEWED_FEE_HEADROOM, SEND_POLICY,
 };
 use serde_json::Value;
-use wallet_core::send::calls::{self, ReviewFlag, SendAmountError};
-use wallet_core::send::fees::{self, FeeQuote, FeeRefusal, FeeUnit};
-use wallet_core::send::judge::{self, Observation, TxStatus};
-use wallet_core::send::plan::{DEPLOY_POLL_ATTEMPTS, DEPLOY_POLL_INTERVAL_MS};
-use wallet_core::send::u256::U256;
-use wallet_core::{felt, Felt};
+use starknet_wallet_core::send::calls::{self, ReviewFlag, SendAmountError};
+use starknet_wallet_core::send::fees::{self, FeeQuote, FeeRefusal, FeeUnit};
+use starknet_wallet_core::send::judge::{self, Observation, TxStatus};
+use starknet_wallet_core::send::plan::{DEPLOY_POLL_ATTEMPTS, DEPLOY_POLL_INTERVAL_MS};
+use starknet_wallet_core::send::u256::U256;
+use starknet_wallet_core::{felt, Felt};
 
 fn fixture() -> Value {
     let mut whole = serde_json::Map::new();
