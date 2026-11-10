@@ -98,7 +98,9 @@ Grep first; extend in place rather than adding a sibling.
   which admins cannot bypass.
 - The one exception: crates.io attaches trusted publishing only to a crate that exists, so a new
   crate name's first version is published once by a maintainer, with a token scoped to that
-  crate and revoked straight after. Then add the trusted publisher (this repo,
-  `publish-crates.yml`, environment `crates-io`) before the next tag.
+  crate and revoked straight after, from a clean checkout of the commit that will be tagged
+  (`publish-crate.sh` fails the release unless the version on crates.io is that commit's
+  package). Then add the trusted publisher (this repo, `publish-crates.yml`, environment
+  `crates-io`) before the next tag.
 - A version on crates.io can be yanked but never replaced or deleted: bump, don't retag.
 - Only a maintainer tags, and only a merged `main` commit. Never move or recreate a tag.
