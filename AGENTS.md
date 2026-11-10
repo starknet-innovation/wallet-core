@@ -32,8 +32,9 @@ cargo test -p bramble-core <name>   # narrow loop while iterating
 
 ## Layout
 
-- `crates/wallet-core` (package `starknet-wallet-core`) — generic custody (Krusty KMS), Nostr coordination, and as the plan lands,
-  vault, transactions and portfolio. Plain Rust: no FFI, no UniFFI, no Bramble policy.
+- `crates/wallet-core` (package `starknet-wallet-core`) — generic custody (Krusty KMS), Nostr
+  coordination, and as the plan lands, vault, transactions and portfolio. Plain Rust: no FFI, no
+  UniFFI, no Bramble policy.
 - `crates/bramble-core` — Bramble's choices on top, exported through UniFFI. The only FFI crate.
 - `crates/bramble-core/tests/fixtures` — golden fixtures written by the extension (see its README).
 - `js/` — the npm package: ubrn-generated wasm bindings plus a thin TypeScript entry.
