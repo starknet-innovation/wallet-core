@@ -46,13 +46,14 @@ its copy and depends on this one. Both halves are done for 2.1 and the vault; `r
 | 2.1 KMS, Nostr, felt | done (#13, #20) | done (Bramble #907, #909), at `v0.1.0` |
 | 2.2 Vault | done (#19) | done (Bramble #911), at `v0.1.0`; the vault → v12 migration has no owner |
 | 2.2 Accounts | not started, and not yet described (see 2.2) | n/a |
-| 2.3 Transactions | done (#22, #25) | not started (M4); needs `v0.2.0` |
+| 2.3 Transactions | done (#22, #25) | not started (M4); needs `v0.2.1` |
 | 2.4 Reads, 2.5 Multisig, 2.6 Catalogs, 2.7 Swap | not started | not started |
 | 3 Extension | not started; `js/package.json` is private | n/a |
 
-`v0.1.0` is tagged at `35abc8b` (GitHub release only) and is what M2 and M3 pin. `v0.2.0` is the
-tag M4 takes: the package is `starknet-wallet-core` from it, and it carries #25, which removed
-`PlanHost::discard`.
+`v0.1.0` is tagged at `35abc8b` (GitHub release only) and is what M2 and M3 pin. `v0.2.0`
+renamed the package to `starknet-wallet-core` and carries #25, which removed
+`PlanHost::discard`. `v0.2.1` is the tag M4 takes: it makes `send::plan_probe`'s selectors,
+`selector` and `braavos_signers` public, which mobile's `recovery_advisory.rs` uses.
 
 ### Next PRs
 
@@ -65,7 +66,7 @@ This repo only receives the fixture copies that follow a generator change.
 | M1 Krusty 0.11 → 2.0.0 (merged, Bramble #907) | Bramble, `feature/mobile-wallet` | nothing | pins, version string, one conformance test, `rust-gift-wrap.json` regenerated | 2.1 step 1 |
 | M2 Take `wallet-core`: felt, Nostr, KMS (merged, Bramble #909) | same | M1, `v0.1.0` | adds the dependency; three modules become re-exports or glue; duplicate parity tests deleted | 2.1 step 3 |
 | M3 Vault (merged, Bramble #911) | same | M2 | `vault.rs`, `container.rs` and `ClockReading` from the core; `HostClock` and `files.rs` adapt | 2.2 |
-| M4 Send | same | M2, `v0.2.0` | `rpc.rs` and the `send/` mechanism from the core; `TransferPlan` wraps `Plan` | 2.3 |
+| M4 Send | same | M2, `v0.2.1` | `rpc.rs` and the `send/` mechanism from the core; `TransferPlan` wraps `Plan` | 2.3 |
 | G1 Viewing public key vector | same | nothing | one field in the privacy generator | Golden tests |
 | G2 Multisig coordination generator | same | `main` merged in | a new fixture for the 2.5 rules | Golden tests |
 | F1, F2 Fixture copies | here | G1, G2 | files copied unchanged, sha256 rows and the Bramble commit line updated, the test that reads them | Golden tests |
@@ -350,18 +351,24 @@ Each phase names the crate a module lands in; the table above decides anything n
         hash mismatch, poisoned recipient, the 200-poll deployment wait, unknown deployment
         state, a missing bulk-estimate entry).
 
-      Mobile's side (M4): take `v0.2.0` (`wallet-core = { package = "starknet-wallet-core", git =
-      …, tag = "v0.2.0" }`, with `zeroize` `=1.9.0` → `=1.9.1` and `serde_json` `=1.0.151` →
+      Mobile's side (M4): take `v0.2.1` (`wallet-core = { package = "starknet-wallet-core", git =
+      …, tag = "v0.2.1" }`, with `zeroize` `=1.9.0` → `=1.9.1` and `serde_json` `=1.0.151` →
       `=1.0.154`, the core's pins), delete `rpc.rs` and those `send/` files and `use
       wallet_core::{rpc, send::*}`. Mobile's plan still drops the pending record of a write the
       node errored on (`store::discard` in `plan_deploy.rs` and `plan_submit.rs`); the core's
       does not (#25), so those calls go, the record stays until `observe` settles it, and the
       failure carries the hash. Mobile's tests that expect the record gone change with it.
-      `TransferPlan` becomes a UniFFI object around `Mutex<Plan>` holding `Weak<WalletCore>` and the session generation; its `PlanHost` maps onto `plan_sign`,
+      `recovery_advisory.rs` reads the same account state outside a plan; its imports from
+      mobile's `send::plan_probe` become `wallet_core::send::plan_probe`, except
+      `ARGENT_SIGNER_ARRAY`: it is a catalog string the core does not hold (`ArgentClass` carries
+      `signer_array` as a flag), so it moves from mobile's `plan_probe.rs` into `account_catalog`.
+      `TransferPlan` becomes a UniFFI object around `Mutex<Plan>` holding `Weak<WalletCore>` and
+      the session generation; its `PlanHost` maps onto `plan_sign`,
       `session_generation`, `activity::store` (`PendingRecord` → `Entry`, direction "out",
       status "pending") and `history::explorer`; `sign` must refuse once the generation moved,
       as `plan_sign` does. `wallet_ext.rs` keeps preparing plans (vault records, contacts,
-      catalogs), building `Authorization` from `account_catalog` and calling `Transfer::new`. Records keep their UniFFI
+      catalogs), building `Authorization` from `account_catalog` and calling `Transfer::new`.
+      Records keep their UniFFI
       derives through `#[uniffi::remote]` until 2.7. Mobile's wallet-level tests
       (`transactions_lifecycle.rs`, `transactions_block_pin.rs`, and the contact, tracked-token
       and locked-prepare cases of `transactions_plan.rs`) stay there: they exercise its locks,

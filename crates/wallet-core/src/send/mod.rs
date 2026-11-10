@@ -15,7 +15,7 @@ pub mod fees;
 pub mod judge;
 pub mod plan;
 mod plan_deploy;
-mod plan_probe;
+pub mod plan_probe;
 mod plan_review;
 mod plan_submit;
 pub mod rpc_bodies;

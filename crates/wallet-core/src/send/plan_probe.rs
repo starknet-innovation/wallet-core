@@ -14,6 +14,9 @@
 //!
 //! Each read carries the `Probe` it belongs to, and `probed` hands the outcome to that step of
 //! the review or submit path.
+//!
+//! The selectors and `braavos_signers` are public for a wallet's other reads of the same
+//! account state (Bramble's recovery advisory), so the signer-list grammar is written once.
 
 use crate::Felt;
 
@@ -23,16 +26,12 @@ use super::rpc_bodies;
 use super::types::{RpcPurpose, SendFailure, SendFailureCode as Code, SendStep};
 
 /// `get_owner`, `get_owner_type` and `get_guardian` (`starknet_keccak` of each name).
-pub(crate) const GET_OWNER: &str =
-    "0x3ee0bfaf5b124501fef19bbd1312e71f6966d186c42eeb91d1bff729b91d1d4";
-pub(crate) const GET_OWNER_TYPE: &str =
-    "0xae4c53adcf230c976273bd2a636233f06e97b1d4a68208d3d10a80d2f8a0a4";
-pub(crate) const GET_GUARDIAN: &str =
-    "0x24fd89f2d8a7798e705aa5361f39154ca43e03721c05188285138f16018955d";
+pub const GET_OWNER: &str = "0x3ee0bfaf5b124501fef19bbd1312e71f6966d186c42eeb91d1bff729b91d1d4";
+pub const GET_OWNER_TYPE: &str = "0xae4c53adcf230c976273bd2a636233f06e97b1d4a68208d3d10a80d2f8a0a4";
+pub const GET_GUARDIAN: &str = "0x24fd89f2d8a7798e705aa5361f39154ca43e03721c05188285138f16018955d";
 /// Braavos's `get_signers` and `get_deferred_remove_signers`.
-pub(crate) const GET_SIGNERS: &str =
-    "0x2b8faca80de28f81027b46c4f3cb534c44616e721ae9f1e96539c6b54a1d932";
-pub(crate) const GET_DEFERRED_REMOVE_SIGNERS: &str =
+pub const GET_SIGNERS: &str = "0x2b8faca80de28f81027b46c4f3cb534c44616e721ae9f1e96539c6b54a1d932";
+pub const GET_DEFERRED_REMOVE_SIGNERS: &str =
     "0x3f4c3fd98c1f85cfe943da13a3e1970248bf364130b9590071520aa2ec61e93";
 
 /// `atAcceptedBlock`: three attempts, then the miss fails closed.
@@ -69,7 +68,9 @@ fn refused(code: Code, detail: Option<String>) -> Outcome {
     })
 }
 
-pub(crate) fn selector(hex: &str) -> Felt {
+/// A selector constant as a felt. Panics on text that is not a felt: it is for the constants
+/// above and a wallet's own, never for input.
+pub fn selector(hex: &str) -> Felt {
     Felt::from_hex(hex).expect("selector constant is a felt")
 }
 
@@ -89,7 +90,7 @@ fn authorizable(classes: &[ArgentClass], class_hash: &Felt) -> Result<(), Outcom
 /// `parseBraavosSigners`: `get_signers` serialises three felt arrays, `[stark_len, ...stark,
 /// secp256r1_len, ...secp256r1, webauthn_len, ...webauthn]`. Returns the first Stark signer and
 /// whether any strong (2FA) signer exists; `None` when a length overruns the result.
-pub(crate) fn braavos_signers(result: &[Felt]) -> Option<(Option<Felt>, bool)> {
+pub fn braavos_signers(result: &[Felt]) -> Option<(Option<Felt>, bool)> {
     let mut lists = Vec::with_capacity(3);
     let mut offset = 0;
     for _ in 0..3 {
