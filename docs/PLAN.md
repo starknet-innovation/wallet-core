@@ -359,8 +359,9 @@ Each phase names the crate a module lands in; the table above decides anything n
       does not (#25), so those calls go, the record stays until `observe` settles it, and the
       failure carries the hash. Mobile's tests that expect the record gone change with it.
       `recovery_advisory.rs` reads the same account state outside a plan; its imports from
-      mobile's `send::plan_probe` become `wallet_core::send::plan_probe` (`ARGENT_SIGNER_ARRAY`
-      is a catalog string and stays in `account_catalog`).
+      mobile's `send::plan_probe` become `wallet_core::send::plan_probe`, except
+      `ARGENT_SIGNER_ARRAY`: it is a catalog string the core does not hold (`ArgentClass` carries
+      `signer_array` as a flag), so it moves from mobile's `plan_probe.rs` into `account_catalog`.
       `TransferPlan` becomes a UniFFI object around `Mutex<Plan>` holding `Weak<WalletCore>` and
       the session generation; its `PlanHost` maps onto `plan_sign`,
       `session_generation`, `activity::store` (`PendingRecord` → `Entry`, direction "out",
