@@ -12,14 +12,13 @@ Usage: bash tools/check.sh <mode>...
 
   quick       fmt + guardrails (the pre-commit hook)
   rust        fmt + lint + test
-  all         quick + lint + test + deny + package + wasm (run before handing off)
+  all         quick + lint + test + deny + wasm (run before handing off)
 
   fmt         cargo fmt --check
   guardrails  pins in sync, actions SHA-pinned, no print macros in src, 500-line cap
   lint        clippy: default features, mobile profile (--no-default-features), wasm32
   test        cargo test
   deny        cargo deny check
-  package     cargo package: both crates build from what crates.io would receive
   wasm        build the npm package through ubrn, then type-check and test it
 EOF
 }
@@ -91,10 +90,6 @@ check_test() { run cargo test --locked --no-fail-fast; }
 
 check_deny() { run cargo deny check; }
 
-# Builds each crate from its .crate file, as crates.io would. bramble-core resolves wallet-core
-# through a local registry, so this works before wallet-core is published. Needs a clean tree.
-check_package() { run cargo package --locked --workspace; }
-
 check_wasm() {
   local want have=""
   want="$(locked_wasm_bindgen)"
@@ -117,13 +112,12 @@ for mode in "$@"; do
   case "$mode" in
     quick) check_fmt; check_guardrails ;;
     rust) check_fmt; check_lint; check_test ;;
-    all) check_fmt; check_guardrails; check_lint; check_test; check_deny; check_package; check_wasm ;;
+    all) check_fmt; check_guardrails; check_lint; check_test; check_deny; check_wasm ;;
     fmt) check_fmt ;;
     guardrails) check_guardrails ;;
     lint) check_lint ;;
     test) check_test ;;
     deny) check_deny ;;
-    package) check_package ;;
     wasm) check_wasm ;;
     help | -h | --help) usage ;;
     *) echo "unknown mode: $mode" >&2; usage >&2; exit 2 ;;

@@ -1,10 +1,10 @@
 //! The send plan must put on the wire exactly what the extension's real send path puts there.
 //! `extension-transactions-{wire,argent,argent-upgraded,braavos}.json` record that path for an
 //! OpenZeppelin, Ready (Argent) and Braavos account against a canned node; this drives
-//! `starknet_wallet_core::send::plan::Plan` under `SEND_POLICY` with the same replies and
-//! requires the same request bodies in the same order, the same number of signed hashes and the
-//! same transaction hash. Moved from mobile's `transactions_{,argent_,braavos_}parity.rs` in
-//! Phase 2.3, with a test host in place of the mobile vault (`plan_support`); the refusals are in
+//! `wallet_core::send::plan::Plan` under `SEND_POLICY` with the same replies and requires the same
+//! request bodies in the same order, the same number of signed hashes and the same transaction
+//! hash. Moved from mobile's `transactions_{,argent_,braavos_}parity.rs` in Phase 2.3, with a
+//! test host in place of the mobile vault (`plan_support`); the refusals are in
 //! `transactions_refusal_parity.rs`, and mobile's lifecycle tests (locks, persistence) stay with
 //! its wallet.
 
@@ -12,8 +12,8 @@ mod plan_support;
 
 use plan_support::*;
 use serde_json::json;
-use starknet_wallet_core::send::judge::TxStatus;
-use starknet_wallet_core::send::types::{SendError, SendStep, StepReply};
+use wallet_core::send::judge::TxStatus;
+use wallet_core::send::types::{SendError, SendStep, StepReply};
 
 #[test]
 fn plans_match_the_extension_wire_captures() {
@@ -84,7 +84,7 @@ fn a_lock_after_review_refuses_confirm_before_signing() {
     };
     assert_eq!(
         failure.code,
-        starknet_wallet_core::send::types::SendFailureCode::Locked
+        wallet_core::send::types::SendFailureCode::Locked
     );
     assert!(host.signed.borrow().is_empty() && host.records.borrow().is_empty());
     assert_eq!(
@@ -124,7 +124,7 @@ fn a_fee_past_the_reviewed_headroom_is_refused_before_signing() {
     };
     assert_eq!(
         failure.code,
-        starknet_wallet_core::send::types::SendFailureCode::ReviewedFeeExceeded
+        wallet_core::send::types::SendFailureCode::ReviewedFeeExceeded
     );
     assert!(host.signed.borrow().is_empty() && host.records.borrow().is_empty());
 }

@@ -5,7 +5,7 @@
 mod plan_support;
 
 use plan_support::*;
-use starknet_wallet_core::send::types::{SendError, SendFailureCode as Code, SendStep, StepReply};
+use wallet_core::send::types::{SendError, SendFailureCode as Code, SendStep, StepReply};
 
 fn code(name: &str) -> Code {
     match name {

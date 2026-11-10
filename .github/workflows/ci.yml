@@ -26,7 +26,7 @@ jobs:
           rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component rustfmt,clippy \
             --target wasm32-unknown-unknown
           rustup default "$RUST_TOOLCHAIN"
-      - run: bash tools/check.sh quick lint test package
+      - run: bash tools/check.sh quick lint test
       # The org's Actions allowlist excludes EmbarkStudios/cargo-deny-action, so install the tool
       # by exact version, as Bramble installs its Rust tools.
       - run: cargo install cargo-deny --version 0.19.8 --locked

@@ -106,7 +106,7 @@ deny.toml                  licences, advisories, sources
 AGENTS.md                  contributor and agent rules (CLAUDE.md points to it)
 tools/check.sh             the one check entrypoint: CI, hooks and agents run its modes
 .githooks/                 pre-commit (quick), pre-push (lint + test)
-crates/wallet-core/        generic: package starknet-wallet-core, lib starknet_wallet_core
+crates/wallet-core/        generic: lib wallet_core, plain Rust
   src/lib.rs               Error, KRUSTY_VERSION, re-exports
   src/felt.rs              strict lowercase-hex felt grammar
   src/kms.rs               key custody over Krusty
@@ -129,8 +129,6 @@ crates/bramble-core/       Bramble: lib bramble_core, the cdylib/staticlib/wasm3
 js/                        npm package @starknet-innovation/bramble-core: ubrn config,
                            entrypoint, smoke test over the built wasm
 .github/workflows/         ci.yml (rust + wasm jobs), release.yml (tag → npm, with provenance),
-                           publish-crates.yml (tag → crates.io, starknet-wallet-core then
-                           bramble-core),
                            advisories.yml (weekly `cargo deny check advisories` on main)
 ```
 
@@ -235,9 +233,7 @@ Each phase names the crate a module lands in; the table above decides anything n
          stay direct dependencies at the core's pin, because `kms_accounts.rs`,
          `argent_multisig.rs`, `account_catalog.rs`, `networks.rs` and `send/` still name
          Krusty; `cargo tree -d` must list neither twice. Mobile's `CoreError` gains
-         `From<wallet_core::Error>`, variant for variant as `bramble-core`'s here. From the tag
-         after `v0.1.0` the package is `starknet-wallet-core`; mobile keeps every `wallet_core::`
-         path with `wallet-core = { package = "starknet-wallet-core", git = …, tag = … }`.
+         `From<wallet_core::Error>`, variant for variant as `bramble-core`'s here.
          `felt.rs` becomes `pub(crate) use wallet_core::felt;`, `nostr.rs` maps onto the core
          (`ApplicationData` → `NostrApplicationData`), and `kms.rs` keeps only mobile's glue
          (`Ladder` and its serde names, `normalise_phrase`, error mapping, `OZ_ACCOUNT_VERSION`)

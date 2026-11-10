@@ -3,9 +3,9 @@
 //! `tests/parity.rs` in Phase 2.2.
 
 use serde_json::Value;
-use starknet_wallet_core::container::{decode_dek, DEK_SCOPE};
-use starknet_wallet_core::envelope::{open, Envelope};
-use starknet_wallet_core::Error;
+use wallet_core::container::{decode_dek, DEK_SCOPE};
+use wallet_core::envelope::{open, Envelope};
+use wallet_core::Error;
 
 fn fixture() -> Value {
     let path = format!(

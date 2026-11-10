@@ -264,14 +264,13 @@ fn every_family_ladder_matches_the_extension() {
 /// JSON path opens and refuse what it refuses.
 #[test]
 fn opens_the_extension_gift_wrap_from_a_parsed_event() {
-    use starknet_wallet_core::nostr::parse_event_json;
+    use wallet_core::nostr::parse_event_json;
     let fixture = fixture("nostr-multisig-parity.json");
     let wrap = &fixture["giftWrap"];
     let mnemonic = text(&fixture["nostrKeys"][0]["mnemonic"]);
     let recipient = u32::try_from(wrap["recipientNostrIndex"].as_u64().unwrap()).unwrap();
     let event = parse_event_json(wrap["eventJson"].as_str().unwrap()).unwrap();
-    let opened =
-        starknet_wallet_core::open_nostr_event(&mnemonic, recipient, 0, &event, None).unwrap();
+    let opened = wallet_core::open_nostr_event(&mnemonic, recipient, 0, &event, None).unwrap();
     assert_eq!(opened.content, text(&wrap["content"]));
     assert_eq!(opened.identifier, text(&wrap["identifier"]));
     assert_eq!(
@@ -279,7 +278,7 @@ fn opens_the_extension_gift_wrap_from_a_parsed_event() {
         text(&fixture["nostrKeys"][0]["publicKey"])
     );
     assert!(
-        starknet_wallet_core::open_nostr_event(&mnemonic, 0, 0, &event, None).is_err(),
+        wallet_core::open_nostr_event(&mnemonic, 0, 0, &event, None).is_err(),
         "wrong recipient"
     );
     let mut parsed = 0;
@@ -288,8 +287,7 @@ fn opens_the_extension_gift_wrap_from_a_parsed_event() {
         if let Some(event) = parse_event_json(rejection["eventJson"].as_str().unwrap()) {
             parsed += 1;
             assert!(
-                starknet_wallet_core::open_nostr_event(&mnemonic, recipient, 0, &event, None)
-                    .is_err(),
+                wallet_core::open_nostr_event(&mnemonic, recipient, 0, &event, None).is_err(),
                 "{}",
                 rejection["name"]
             );
@@ -304,8 +302,7 @@ fn opens_the_extension_gift_wrap_from_a_parsed_event() {
     assert!(raw.contains(&integer));
     let float = raw.replacen(&integer, &format!("{integer}.0"), 1);
     let opened =
-        starknet_wallet_core::open_nostr_application_data(&mnemonic, recipient, 0, &float, None)
-            .unwrap();
+        wallet_core::open_nostr_application_data(&mnemonic, recipient, 0, &float, None).unwrap();
     assert_eq!(opened.content, text(&wrap["content"]));
 }
 
@@ -316,18 +313,14 @@ fn public_keys_of_derived_keys_match_the_extension() {
     let mnemonic = text(&fixture["mnemonic"]);
     for vector in fixture["accounts"].as_array().unwrap() {
         let index = u32::try_from(vector["accountIndex"].as_u64().unwrap()).unwrap();
-        let pair =
-            starknet_wallet_core::derive_starknet_keypair(&mnemonic, 0, index, None).unwrap();
+        let pair = wallet_core::derive_starknet_keypair(&mnemonic, 0, index, None).unwrap();
         assert_eq!(
-            starknet_wallet_core::stark_public_key(&pair.private_key).unwrap(),
+            wallet_core::stark_public_key(&pair.private_key).unwrap(),
             text(&vector["publicKeyX"]),
             "{index}"
         );
     }
     assert!(
-        starknet_wallet_core::stark_public_key(&starknet_wallet_core::SecretFelt::new(
-            Default::default()
-        ))
-        .is_err()
+        wallet_core::stark_public_key(&wallet_core::SecretFelt::new(Default::default())).is_err()
     );
 }

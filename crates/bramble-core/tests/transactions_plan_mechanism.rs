@@ -8,13 +8,13 @@ mod plan_support;
 use plan_support::node::*;
 use plan_support::*;
 use serde_json::json;
-use starknet_wallet_core::send::calls::ReviewFlag;
-use starknet_wallet_core::send::judge::TxStatus;
-use starknet_wallet_core::send::plan::{Kind, Plan, TransferRefusal};
-use starknet_wallet_core::send::types::{
+use wallet_core::send::calls::ReviewFlag;
+use wallet_core::send::judge::TxStatus;
+use wallet_core::send::plan::{Kind, Plan, TransferRefusal};
+use wallet_core::send::types::{
     SendError, SendFailure, SendFailureCode as Code, SendStep, StepReply,
 };
-use starknet_wallet_core::{felt, Felt};
+use wallet_core::{felt, Felt};
 
 #[test]
 fn deployed_send_confirms_and_records() {

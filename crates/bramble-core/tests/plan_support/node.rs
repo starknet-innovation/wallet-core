@@ -2,10 +2,10 @@
 //! answers a plan from it until a chosen request.
 
 use serde_json::{json, Value};
-use starknet_wallet_core::send::plan::{Account, Authorization, Kind, Plan};
-use starknet_wallet_core::send::sign::Deployment;
-use starknet_wallet_core::send::types::{SendFailure, SendStep, StepReply};
-use starknet_wallet_core::{felt, Felt, NetworkId};
+use wallet_core::send::plan::{Account, Authorization, Kind, Plan};
+use wallet_core::send::sign::Deployment;
+use wallet_core::send::types::{SendFailure, SendStep, StepReply};
+use wallet_core::{felt, Felt, NetworkId};
 
 use super::*;
 

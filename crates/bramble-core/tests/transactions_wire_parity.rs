@@ -1,7 +1,6 @@
-//! What the extension put on the wire, rebuilt by `starknet_wallet_core::send`: every request
-//! body in the OpenZeppelin, Ready (Argent) and Braavos captures
-//! (`extension-transactions-{wire,argent,argent-upgraded,braavos}.json`, see
-//! `fixtures/README.md`), every signed transaction's hash
+//! What the extension put on the wire, rebuilt by `wallet_core::send`: every request body in the
+//! OpenZeppelin, Ready (Argent) and Braavos captures (`extension-transactions-{wire,argent,
+//! argent-upgraded,braavos}.json`, see `fixtures/README.md`), every signed transaction's hash
 //! recomputed from its own fields, its resource bounds re-derived from an estimate the node gave
 //! under Bramble's margin, and every hash the extension signed accounted for.
 //!
@@ -12,10 +11,10 @@ use std::collections::BTreeSet;
 
 use bramble_core::FEE_MARGIN_PERCENT;
 use serde_json::{json, Value};
-use starknet_wallet_core::send::fees::{self, Bound, Bounds};
-use starknet_wallet_core::send::rpc_bodies::{self, DeployTx, InvokeTx};
-use starknet_wallet_core::send::sign::{self, Deployment};
-use starknet_wallet_core::{derive_starknet_keypair, felt, sign_stark_hash, Felt, NetworkId};
+use wallet_core::send::fees::{self, Bound, Bounds};
+use wallet_core::send::rpc_bodies::{self, DeployTx, InvokeTx};
+use wallet_core::send::sign::{self, Deployment};
+use wallet_core::{derive_starknet_keypair, felt, sign_stark_hash, Felt, NetworkId};
 
 const CAPTURES: [&str; 4] = ["wire", "argent", "argent-upgraded", "braavos"];
 const QUERY_VERSION: &str = "0x100000000000000000000000000000003";
@@ -225,7 +224,7 @@ fn check_scenario(scenario: &Value) -> BTreeSet<Felt> {
         let params = &exchange["params"];
         let reply = &exchange["reply"]["result"];
         let body = match exchange["method"].as_str().unwrap() {
-            "starknet_chainId" => starknet_wallet_core::rpc::chain_id_request(1),
+            "starknet_chainId" => wallet_core::rpc::chain_id_request(1),
             "starknet_blockHashAndNumber" => rpc_bodies::block_hash_and_number(1),
             "starknet_getNonce" => rpc_bodies::nonce(1, &one(&params["contract_address"])),
             "starknet_getClassHashAt" => {
