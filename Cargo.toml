@@ -5,7 +5,7 @@ resolver = "2"
 # Shared by both crates. They release together: one tag, one version, published to crates.io in
 # dependency order by .github/workflows/publish-crates.yml.
 [workspace.package]
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 rust-version = "1.92"
 license = "MIT"

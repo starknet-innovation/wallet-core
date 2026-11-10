@@ -11,6 +11,7 @@ use serde_json::json;
 use starknet_wallet_core::send::calls::ReviewFlag;
 use starknet_wallet_core::send::judge::TxStatus;
 use starknet_wallet_core::send::plan::{Kind, Plan, TransferRefusal};
+use starknet_wallet_core::send::plan_probe::{self, braavos_signers, selector};
 use starknet_wallet_core::send::types::{
     SendError, SendFailure, SendFailureCode as Code, SendStep, StepReply,
 };
@@ -400,4 +401,30 @@ fn a_refused_invoke_after_an_accepted_deployment_names_the_deployment() {
             Some(signed[0].clone())
         )
     );
+}
+
+/// Mobile's recovery advisory makes the plan's account-state reads outside a plan, so the
+/// selectors and the Braavos signer-list parser are reachable from another crate.
+#[test]
+fn the_account_state_reads_are_usable_outside_a_plan() {
+    for constant in [
+        plan_probe::GET_OWNER,
+        plan_probe::GET_OWNER_TYPE,
+        plan_probe::GET_GUARDIAN,
+        plan_probe::GET_SIGNERS,
+        plan_probe::GET_DEFERRED_REMOVE_SIGNERS,
+    ] {
+        assert_eq!(felt::canonical(&selector(constant)), constant);
+    }
+    let key = Felt::from(9u8);
+    let one = Felt::ONE;
+    assert_eq!(
+        braavos_signers(&[one, key, Felt::ZERO, Felt::ZERO]),
+        Some((Some(key), false))
+    );
+    assert_eq!(
+        braavos_signers(&[one, key, one, key, Felt::ZERO]),
+        Some((Some(key), true))
+    );
+    assert_eq!(braavos_signers(&[Felt::TWO, key]), None);
 }
