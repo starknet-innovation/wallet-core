@@ -35,8 +35,11 @@ from `generate-mobile-parity-vectors.ts`.
 | `extension-transactions-verification.json` | `generate-mobile-transaction-vectors.ts` | `44253f028a3caaf4ea896b6c09afec5c3b512cce729ccabe43e4422f712385be` |
 | `extension-transactions-wire.json` | `generate-mobile-transaction-vectors.ts` | `a4e8085ad6b5e14f05c66f291b8198a167cae729e639a812c7af908d412d8e3d` |
 
-Only KMS, accounts and Nostr have ported modules today (`tests/parity.rs`); the rest sit here
-unused until their Phase 2 step moves the matching mobile parity test in.
+Read today: `extension-parity.json` (`parity.rs`, `vault_parity.rs`),
+`accounts-parity-families-sepolia.json` and `nostr-multisig-parity.json` (`parity.rs`), and every
+`extension-transactions-*.json` except `-observation` (`transactions_*_parity.rs`). The rest sit
+here unused until their Phase 2 step moves the matching mobile parity test in (see `docs/PLAN.md`,
+Phase 1).
 
 Not here, because they are not extension output: `vault-*.json` and `migration-v1-to-v5.golden.json`
 (earlier mobile cores), `ui-coordination.json` (iOS UI suite) and `rust-gift-wrap.json` (Rust
