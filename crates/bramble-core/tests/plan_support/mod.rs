@@ -8,15 +8,15 @@ use std::cell::RefCell;
 
 use bramble_core::SEND_POLICY;
 use serde_json::{json, Value};
-use wallet_core::send::calls::ReviewFlag;
-use wallet_core::send::judge::{Observation, TxStatus};
-use wallet_core::send::plan::{
+use starknet_wallet_core::send::calls::ReviewFlag;
+use starknet_wallet_core::send::judge::{Observation, TxStatus};
+use starknet_wallet_core::send::plan::{
     Account, ArgentClass, Authorization, Kind, PendingKind, PendingRecord, Plan, PlanHost,
     SignRefusal, Token, Transfer, TransferRefusal,
 };
-use wallet_core::send::sign::Deployment;
-use wallet_core::send::types::{SendStep, StepReply};
-use wallet_core::{
+use starknet_wallet_core::send::sign::Deployment;
+use starknet_wallet_core::send::types::{SendStep, StepReply};
+use starknet_wallet_core::{
     derive_starknet_keypair, felt, sign_stark_hash, Felt, NetworkId, SecretFelt, StarkSignature,
 };
 
