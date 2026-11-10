@@ -37,22 +37,22 @@ Decisions, 2026-11-09:
 ## Status
 
 As of 2026-11-10. Every Phase 2 step has two halves: the mechanism lands here, then mobile deletes
-its copy and depends on this one. Both halves are done for 2.1 and the vault; `rpc.rs` and the
-`send/` mechanism still exist in both repos until M4. A step is done when both halves are.
+its copy and depends on this one. Both halves are done for 2.1, the vault and transactions, so
+mobile holds no copy of what this repo has ported. A step is done when both halves are.
 
-| Step | Here | Mobile (`mc-wallet`, `feature/mobile-wallet`, at `b1a5a62b`) |
+| Step | Here | Mobile (`mc-wallet`, `feature/mobile-wallet`, at `01bd6517`) |
 | --- | --- | --- |
 | 0 Scaffold, 1 Golden suite | done | n/a |
 | 2.1 KMS, Nostr, felt | done (#13, #20) | done (Bramble #907, #909), at `v0.1.0` |
 | 2.2 Vault | done (#19) | done (Bramble #911), at `v0.1.0`; the vault → v12 migration has no owner |
 | 2.2 Accounts | not started, and not yet described (see 2.2) | n/a |
-| 2.3 Transactions | done (#22, #25) | not started (M4); needs `v0.2.1` |
+| 2.3 Transactions | done (#22, #25, #31) | done (Bramble #916), at `v0.2.1` |
 | 2.4 Reads, 2.5 Multisig, 2.6 Catalogs, 2.7 Swap | not started | not started |
 | 3 Extension | not started; `js/package.json` is private | n/a |
 
-`v0.1.0` is tagged at `35abc8b` (GitHub release only) and is what M2 and M3 pin. `v0.2.0`
+`v0.1.0` is tagged at `35abc8b` (GitHub release only) and was what M2 and M3 pinned. `v0.2.0`
 renamed the package to `starknet-wallet-core` and carries #25, which removed
-`PlanHost::discard`. `v0.2.1` is the tag M4 takes: it makes `send::plan_probe`'s selectors,
+`PlanHost::discard`. `v0.2.1` is what mobile pins now, for everything: it makes `send::plan_probe`'s selectors,
 `selector` and `braavos_signers` public, which mobile's `recovery_advisory.rs` uses.
 
 ### Next PRs
@@ -66,12 +66,13 @@ This repo only receives the fixture copies that follow a generator change.
 | M1 Krusty 0.11 → 2.0.0 (merged, Bramble #907) | Bramble, `feature/mobile-wallet` | nothing | pins, version string, one conformance test, `rust-gift-wrap.json` regenerated | 2.1 step 1 |
 | M2 Take `wallet-core`: felt, Nostr, KMS (merged, Bramble #909) | same | M1, `v0.1.0` | adds the dependency; three modules become re-exports or glue; duplicate parity tests deleted | 2.1 step 3 |
 | M3 Vault (merged, Bramble #911) | same | M2 | `vault.rs`, `container.rs` and `ClockReading` from the core; `HostClock` and `files.rs` adapt | 2.2 |
-| M4 Send | same | M2, `v0.2.1` | `rpc.rs` and the `send/` mechanism from the core; `TransferPlan` wraps `Plan` | 2.3 |
+| M4 Send (merged, Bramble #916) | same | M2, `v0.2.1` | `rpc.rs` and the `send/` mechanism from the core; `TransferPlan` wraps `Plan` | 2.3 |
 | G1 Viewing public key vector | same | nothing | one field in the privacy generator | Golden tests |
 | G2 Multisig coordination generator | same | `main` merged in | a new fixture for the 2.5 rules | Golden tests |
 | F1, F2 Fixture copies | here | G1, G2 | files copied unchanged, sha256 rows and the Bramble commit line updated, the test that reads them | Golden tests |
 
-M4 is the one adoption PR left. G1 and G2 can start now (`main` was merged into the branch by
+Every adoption PR for what is ported has merged, so by the Process rule 2.4 may start. G1 and G2
+can start now (`main` was merged into the branch by
 Bramble #908); G2 is the long pole for 2.5. #908 also regenerated four fixtures
 (`extension-transactions-copy.json`, `extension-privacy-copy.json`, `extension-privacy-rules.json`,
 `portfolio-parity.jsonl`), so the copies here are behind Bramble until the next fixture copy.
