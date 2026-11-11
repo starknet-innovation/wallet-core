@@ -48,7 +48,7 @@ mobile holds no copy of what this repo has ported. A step is done when both halv
 | 2.2 Accounts | A1 (#39), F3 (#40) and A2 (#41) open as a stack | G3 open (Bramble #918); M5 open (Bramble #921), pinning A2's branch tip by `rev` until a tag follows |
 | 2.3 Transactions | done (#22, #25, #31) | done (Bramble #916), at `v0.2.1` |
 | 2.4a Shims | open (#43) | M6 open (Bramble #922) |
-| 2.4b Portfolio | open (#44) | M7 open (Bramble #M7PR) |
+| 2.4b Portfolio | open (#44) | M7 open (Bramble #923) |
 | 2.4c–d Reads, 2.5 Multisig, 2.6 Catalogs, 2.7 Swap | not started; F1 and F2 open (#42) for 2.4d and 2.5 | not started; G1 and G2 open (Bramble #919, #920) |
 | 3 Extension | not started; `js/package.json` is private | n/a |
 
@@ -83,7 +83,7 @@ Ports (A*) and fixture copies (F*) are PRs here.
 | 2.4a Shims (open, #43) | here, stacked on F1/F2 | nothing | `js/*` and `history::time` copied; `js_trim` and `short_label` move to `js::num` | 2.4 |
 | M6 Shims (open, Bramble #922) | Bramble, stacked on M5 | 2.4a | `js/` and `history/time.rs` deleted, re-exported from the core | 2.4 |
 | 2.4b Portfolio (open, #44) | here, stacked on 2.4a | 2.4a | `portfolio/*`, `catalog.rs`, account ids; three parity suites over `portfolio-parity.jsonl` | 2.4 |
-| M7 Portfolio (open, Bramble #M7PR) | Bramble, stacked on M6 | 2.4b | `portfolio/` becomes FFI wrappers and copy over the core; `networks.rs` builds the core's catalog records | 2.4 |
+| M7 Portfolio (open, Bramble #923) | Bramble, stacked on M6 | 2.4b | `portfolio/` becomes FFI wrappers and copy over the core; `networks.rs` builds the core's catalog records | 2.4 |
 
 Every adoption PR for what is ported has merged, so by the Process rule the next port may start.
 2.2 Accounts goes first: it is the unfinished half of a step, it is smaller than any part of 2.4,
@@ -402,7 +402,8 @@ Each phase names the crate a module lands in; the table above decides anything n
 
       After M5, mobile names Krusty (`krusty_kms_common`) only for `ChainId` and `KmsError` in
       `kms.rs` and `networks.rs`, which 2.6 replaces with `wallet_core::NetworkId` and
-      `wallet_core::Error`, and in `argent_multisig.rs` (2.5).
+      `wallet_core::Error`, and in `argent_multisig.rs` (2.5). Since M7 (2.4b) `networks.rs` uses the
+      core's `NetworkId` and no longer names Krusty; `kms.rs` and `argent_multisig.rs` remain.
    3. **Sans-IO transactions**: `rpc.rs`, `send/*` and transaction hashing, Argent and Braavos
       paths, into `wallet-core`; Bramble's defaults (fee margins, which flows it offers) stay
       with the Bramble crate. Done:
