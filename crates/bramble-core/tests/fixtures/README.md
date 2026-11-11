@@ -44,10 +44,12 @@ Generators are under `scripts/` in Bramble; each fixture's is reached from
 
 Read today: `extension-parity.json` (`parity.rs`, `vault_parity.rs`),
 `accounts-parity-families-sepolia.json` and `nostr-multisig-parity.json` (`parity.rs`), both
-`accounts-parity-families-*.json` and `accounts.json` (`accounts_parity.rs`), and every
+`accounts-parity-families-*.json` and `accounts.json` (`accounts_parity.rs`), both
+`accounts-parity-scan*.json` and `accounts.json` (`accounts_scan_parity.rs`; `accounts.json` and
+the scan's shapes also feed `accounts_scan_mechanism.rs`), and every
 `extension-transactions-*.json` except `-observation` (`transactions_*_parity.rs`). The rest sit
 here unused until their Phase 2 step moves the matching mobile parity test in (see `docs/PLAN.md`,
-Phase 1); `accounts-parity-scan*.json` wait for A2.
+Phase 1).
 
 Not here, because they are not extension output: `vault-*.json` and `migration-v1-to-v5.golden.json`
 (earlier mobile cores), `ui-coordination.json` (iOS UI suite) and `rust-gift-wrap.json` (Rust
