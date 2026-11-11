@@ -2,9 +2,9 @@
 
 Written by the Bramble extension's real code paths, never by hand. Bramble
 (`starknet-innovation/mc-wallet`) is the source: `bun run mobile:parity` writes every file below into
-`mobile/core/tests/fixtures/`, except `accounts.json`, `networks.json`, `privacy.json` and
-`token-registry.json`, which `bun run mobile:assets` renders from the extension's account, network,
-privacy-routing and token tables into `mobile/core/generated/`. Syncing is copying them here
+`mobile/core/tests/fixtures/`, except `accounts.json`, `multisig.json`, `networks.json`, `privacy.json` and
+`token-registry.json`, which `bun run mobile:assets` renders from the extension's account, multisig,
+network, privacy-routing and token tables into `mobile/core/generated/`. Syncing is copying them here
 unchanged, all at one Bramble commit. `tests/fixtures.rs` checks this table against the directory:
 every file must be listed, and its sha256 must match.
 
@@ -25,6 +25,7 @@ Generators are under `scripts/` in Bramble; each fixture's is reached from
 | `accounts-parity-scan.json` | `mobile-parity-scan.ts` | `1dec0dea47148d4f8b1f3d4ab3e527e99e1e2b344a70880cfb776aff0afa7b80` |
 | `accounts-parity-scan-signing.json` | `mobile-parity-scan.ts` | `650589076793744ea3057610c2e7afb1985c265efac1c3dc05ea580f6ac1f01e` |
 | `accounts.json` | `generate-mobile-assets.ts` (`mobile-assets/accounts.ts`) | `67bfdf2f70406e7e3f694ea97a66431d1d7e3ad33c153f86bf6780693eb259d3` |
+| `multisig.json` | `generate-mobile-assets.ts` | `70d6712f8cb5d7f3b09a87d7896919b835295f9c3e52a86cea9da85b4222676e` |
 | `networks.json` | `generate-mobile-assets.ts` | `7c143b575ddb42550bfe3e4caffaad3de22d9b1ae8b7acdfa71d5ee50744e296` |
 | `privacy.json` | `generate-mobile-assets.ts` | `0b006b43134c739688678d34c3f0327c7b2c4f4e735e3c3ab49af7bcd229262e` |
 | `token-registry.json` | `generate-mobile-assets.ts` | `83b8a9a6ae6fe98650daa28969828e29936d1e2c8f1e6cd130cd7a3560a88255` |
@@ -50,7 +51,9 @@ Generators are under `scripts/` in Bramble; each fixture's is reached from
 | `extension-transactions-wire.json` | `generate-mobile-transaction-vectors.ts` | `a4e8085ad6b5e14f05c66f291b8198a167cae729e639a812c7af908d412d8e3d` |
 
 Read today: `extension-parity.json` (`parity.rs`, `vault_parity.rs`),
-`accounts-parity-families-sepolia.json` and `nostr-multisig-parity.json` (`parity.rs`), `extension-privacy-wire.json`'s viewing keys (`parity.rs`), both
+`accounts-parity-families-sepolia.json` and `nostr-multisig-parity.json` (`parity.rs`;
+`nostr-multisig-parity.json`'s `argent`, `classHash` and `joins` with `multisig.json` as Bramble's
+pinned class and limits also in `multisig_parity.rs`), `extension-privacy-wire.json`'s viewing keys (`parity.rs`), both
 `accounts-parity-families-*.json` and `accounts.json` (`accounts_parity.rs`), both
 `accounts-parity-scan*.json` and `accounts.json` (`accounts_scan_parity.rs`; `accounts.json` and
 the scan's shapes also feed `accounts_scan_mechanism.rs`), and every
