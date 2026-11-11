@@ -1,7 +1,7 @@
 //! Starknet wallet core.
 //!
 //! Key custody through Krusty KMS (`kms`), Nostr coordination identity (`nostr`), the felt
-//! grammar they share (`felt`), the encrypted vault (`envelope`, `container`) and the host
+//! grammar they share (`felt`), where an account lives (`accounts`), the encrypted vault (`envelope`, `container`) and the host
 //! storage and clock it runs on (`host`), sans-IO JSON-RPC (`rpc`) and the transfer mechanism
 //! (`send`), as plain Rust. This crate holds mechanism only: product choices
 //! (which account version a wallet deploys, which salt, what crosses an FFI boundary) are
@@ -13,6 +13,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod accounts;
 pub mod container;
 pub mod envelope;
 pub mod felt;
@@ -23,9 +24,9 @@ pub mod rpc;
 pub mod send;
 
 pub use kms::{
-    derive_argent_legacy_keypair, derive_oz_account_address, derive_starknet_keypair,
-    derive_strk20_viewing_key, generate_mnemonic, oz_account_class_hash, sign_stark_hash,
-    stark_public_key, validate_mnemonic, NetworkId, StarkKeypair, StarkSignature,
+    account_key, account_public_key, derive_argent_legacy_keypair, derive_oz_account_address,
+    derive_starknet_keypair, derive_strk20_viewing_key, generate_mnemonic, oz_account_class_hash,
+    sign_stark_hash, stark_public_key, validate_mnemonic, NetworkId, StarkKeypair, StarkSignature,
     StarkXOnlyKeypair,
 };
 pub use krusty_kms_common::SecretFelt;

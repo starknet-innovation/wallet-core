@@ -12,6 +12,7 @@ use krusty_kms_common::{ChainId, SecretFelt};
 use starknet_types_core::felt::Felt;
 use zeroize::Zeroizing;
 
+use crate::accounts::Ladder;
 use crate::felt;
 use crate::Error;
 
@@ -205,6 +206,41 @@ pub fn derive_argent_legacy_keypair(
         private_key: key,
         public_key_x: checked_non_zero(public, "derive")?,
     })
+}
+
+/// The signing key of the account at `index` on `ladder`. Every account key goes through here,
+/// so a record's ladder decides which tree its index walks.
+pub fn account_key(
+    mnemonic: &str,
+    passphrase: Option<&str>,
+    ladder: Ladder,
+    index: u32,
+) -> Result<SecretFelt, Error> {
+    // Krusty's argument order is (address index, account index).
+    Ok(match ladder {
+        Ladder::Account => derive_starknet_keypair(mnemonic, 0, index, passphrase)?.private_key,
+        Ladder::Address => derive_starknet_keypair(mnemonic, index, 0, passphrase)?.private_key,
+        Ladder::ArgentX if passphrase.is_some() => {
+            return Err(Error::invalid("Ready accounts take no passphrase"))
+        }
+        Ladder::ArgentX => derive_argent_legacy_keypair(mnemonic, index)?.private_key,
+    })
+}
+
+/// The public key (x-coordinate) of `account_key`; the key itself is dropped inside the call.
+pub fn account_public_key(
+    mnemonic: &str,
+    passphrase: Option<&str>,
+    ladder: Ladder,
+    index: u32,
+) -> Result<Felt, Error> {
+    let key = account_key(mnemonic, passphrase, ladder, index)?;
+    let public =
+        krusty_kms::stark_public_key(key.expose_secret()).map_err(|_| Error::kms("public key"))?;
+    if public == Felt::ZERO {
+        return Err(Error::kms("public key"));
+    }
+    Ok(public)
 }
 
 /// The counterfactual OpenZeppelin account address for a public key, class and deployment salt.
