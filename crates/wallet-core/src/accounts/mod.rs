@@ -10,6 +10,8 @@
 //! `ArgentShape::Unlisted`.
 
 pub mod advisory;
+pub mod scan;
+mod scan_rules;
 
 use krusty_kms::{
     AccountClass, ArgentAccount, ArgentConstructorLayout, BraavosAccount, OpenZeppelinAccount,

@@ -15,6 +15,7 @@ use std::collections::HashMap;
 use serde_json::json;
 use starknet_types_core::felt::Felt;
 
+use super::scan::{Found, ScanConfig};
 use super::{AccountFamily, Ladder};
 use crate::kms::{self, NetworkId};
 use crate::rpc::{self, Request};
@@ -258,6 +259,41 @@ pub fn own_viewing_public_key(
     let viewing_key = kms::derive_strk20_viewing_key(&key, &chain_id, &felt::canonical(pool))?;
     let public = kms::stark_public_key(&viewing_key)?;
     felt::parse(&public).ok_or_else(|| Error::kms("viewing public key"))
+}
+
+/// Settles one deployed candidate's advisory verdicts. The own viewing key is derived only for
+/// an account the pool holds a non-zero key for.
+pub(crate) fn settle(
+    found: &mut Found,
+    gathered: &Gathered,
+    public_key: &Felt,
+    block_time: Option<u64>,
+    phrase: &str,
+    passphrase: Option<&str>,
+    config: &ScanConfig,
+) {
+    found.restriction = restriction(
+        found.family,
+        gathered,
+        public_key,
+        block_time,
+        &config.authorizations,
+    );
+    let Some(pool) = config.privacy_pool else {
+        return;
+    };
+    let (ladder, account_index) = (found.ladder, found.account_index);
+    found.privacy_elsewhere = registered_elsewhere(gathered, || {
+        own_viewing_public_key(
+            phrase,
+            passphrase,
+            ladder,
+            account_index,
+            config.network,
+            &pool,
+        )
+        .ok()
+    });
 }
 
 #[cfg(test)]
