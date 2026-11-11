@@ -331,3 +331,41 @@ fn public_keys_of_derived_keys_match_the_extension() {
         .is_err()
     );
 }
+
+/// The public viewing key the extension would register for an account in the privacy pool
+/// (`previewStrk20ViewingPublicKey`), composed two ways: from the account key through the scoped
+/// viewing key, and by the recovery scan's `own_viewing_public_key`.
+#[test]
+fn viewing_public_keys_match_the_extension() {
+    use starknet_wallet_core::accounts::{advisory::own_viewing_public_key, Ladder};
+    use starknet_wallet_core::{account_key, felt};
+    let fixture = fixture("extension-privacy-wire.json");
+    let mnemonic = text(&fixture["mnemonic"]);
+    let keys = &fixture["viewingKeys"];
+    let (chain_id, pool) = (text(&keys["chainId"]), text(&keys["pool"]));
+    assert_eq!(chain_id, felt::canonical(&NetworkId::Mainnet.chain_id()));
+    let accounts = keys["accounts"].as_array().unwrap();
+    assert_eq!(accounts.len(), 2);
+    for vector in accounts {
+        let index = u32::try_from(vector["accountIndex"].as_u64().unwrap()).unwrap();
+        let expected = text(&vector["viewingPublicKey"]);
+        let key = account_key(&mnemonic, None, Ladder::Account, index).unwrap();
+        let viewing_key =
+            starknet_wallet_core::derive_strk20_viewing_key(&key, &chain_id, &pool).unwrap();
+        assert_eq!(
+            starknet_wallet_core::stark_public_key(&viewing_key).unwrap(),
+            expected,
+            "{index}"
+        );
+        let own = own_viewing_public_key(
+            &mnemonic,
+            None,
+            Ladder::Account,
+            index,
+            NetworkId::Mainnet,
+            &felt::parse(&pool).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(felt::canonical(&own), expected, "{index}");
+    }
+}

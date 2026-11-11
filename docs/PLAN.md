@@ -72,7 +72,7 @@ Ports (A*) and fixture copies (F*) are PRs here.
 | M4 Send (merged, Bramble #916) | same | M2, `v0.2.1` | `rpc.rs` and the `send/` mechanism from the core; `TransferPlan` wraps `Plan` | 2.3 |
 | G1 Viewing public key vector (open, Bramble #919) | same, stacked on G3 | nothing | one field in the privacy generator | Golden tests |
 | G2 Multisig coordination generator (open, Bramble #920) | same, stacked on G1 | `main` merged in | three new fixtures, `nostr-coordination-parity-{rules,relays,paging}.json`, for the 2.5 rules | Golden tests |
-| F1, F2 Fixture copies | here | G1, G2 | files copied unchanged, sha256 rows and the Bramble commit line updated, the test that reads them | Golden tests |
+| F1, F2 Fixture copies (open, #F12PR) | here, stacked on A2 | G1, G2 | files copied unchanged, sha256 rows and the Bramble commit line updated, the test that reads them | Golden tests |
 | G3 Recovery scan generator (open, Bramble #918) | Bramble, `feature/mobile-wallet` | nothing | `accounts-parity-scan.json` and `accounts-parity-scan-signing.json`: shapes, creatable and keep rules, scan target, signing verdicts, registered elsewhere | Golden tests |
 | F3 Catalog and scan copies (open, #40) | here | G3 | both `accounts-parity-scan*.json` and `generated/accounts.json` copied as fixtures; every other fixture re-copied at the same Bramble commit | 2.2, Accounts |
 | A1 Account addresses (done, #39) | here | nothing | `Ladder`, `AccountFamily`, `family_address` in `wallet-core`; tested over both families fixtures | 2.2, Accounts |
@@ -663,7 +663,8 @@ seals with fresh randomness are kept while the extension still opens them.
   its row and the commit line, and add a test in `parity.rs` that
   `stark_public_key(derive_strk20_viewing_key(..))` equals it. As built (Bramble #919):
   `computeViewingKeys()` is in `scripts/mobile-privacy-wire.ts`, and each phrase account gains
-  `viewingPublicKey`; mobile matched it with no change.
+  `viewingPublicKey`; mobile matched it with no change. F1 (#F12PR) copied it; `parity.rs` checks both that
+  composition and `accounts::advisory::own_viewing_public_key` against it.
 - **G2, the multisig coordination generator** (Bramble, `feature/mobile-wallet`). It needs
   `main` merged into the branch first: `multisig-nostr-publish.ts` and
   `multisig-sync-window.ts` exist only on `main`, and the generators only on the branch. A new
