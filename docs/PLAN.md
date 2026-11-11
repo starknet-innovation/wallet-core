@@ -53,7 +53,7 @@ mobile holds no copy of what this repo has ported. A step is done when both halv
 | 2.4d Privacy | open (#46) | M9 open (Bramble #925) |
 | 2.5a Multisig account | open (#47) | M10 open (Bramble #926) |
 | 2.5b Multisig coordination | open (#48); `check.sh all` fails only at `package` until the version is bumped (see Process) | M11 open (Bramble #927) |
-| 2.6 Catalogs | open (#49); `check.sh all` fails only at `package` until the version is bumped | M12 open (Bramble #M12PR) |
+| 2.6 Catalogs | open (#49); `check.sh all` fails only at `package` until the version is bumped | M12 open (Bramble #928) |
 | 2.7 Swap | not started | not started |
 | 3 Extension | not started; `js/package.json` is private | n/a |
 
@@ -98,7 +98,7 @@ Ports (A*) and fixture copies (F*) are PRs here.
 | 2.5b Multisig coordination (open, #48) | here, stacked on 2.5a | 2.5a, F2 | `nostr::{relay_url, relay, sync, sync_window}` in `wallet-core`; `coordination` (constants, relay policy, recipients, sender rule) in `bramble-core`; `nostr_coordination_parity.rs` over all three G2 fixtures | 2.5 |
 | M11 Multisig coordination (open, Bramble #927) | Bramble, stacked on M10 | 2.5b | `nostr_relay.rs` and the window and relay rules of `coordination.rs` over the core; mobile keeps its own relay constants until 2.7 | 2.5 |
 | 2.6 Catalogs (open, #49) | here, stacked on 2.5b | 2.5b | `bramble-core`'s `generated/` and `catalogs`; `PortfolioPolicy`, `HistoryPolicy` and `TokenRegistry::aliases` in `wallet-core`, Bramble's values in `bramble-core` | 2.6 |
-| M12 Catalogs (open, Bramble #M12PR) | Bramble, stacked on M11 | 2.6 | mobile passes its policies and alias; `kms.rs` uses `wallet_core` types and the direct `krusty-kms` pins go | 2.6 |
+| M12 Catalogs (open, Bramble #928) | Bramble, stacked on M11 | 2.6 | mobile passes its policies and alias; `kms.rs` uses `wallet_core` types and the direct `krusty-kms` pins go | 2.6 |
 
 Every adoption PR for what is ported has merged, so by the Process rule the next port may start.
 2.2 Accounts goes first: it is the unfinished half of a step, it is smaller than any part of 2.4,
