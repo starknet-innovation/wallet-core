@@ -9,7 +9,7 @@
 use std::collections::BTreeSet;
 
 use super::bodies::BlockRef;
-use super::config::{Limits, Route};
+use super::config::{is_service_url, Limits, Route};
 use super::json::Ordered;
 use super::notes::Totals;
 pub use super::plan_steps::requested_token_keys;
@@ -87,8 +87,8 @@ pub struct PrivacyReadPlan {
 impl PrivacyReadPlan {
     /// A read for the account at `address` (the wallet's `account_id`) on `network`, over its
     /// tokens in catalog order, through `route` (with any override the wallet allows already
-    /// applied) and under `limits`. `NotConfigured` when the route has OHTTP on or is another
-    /// network's.
+    /// applied) and under `limits`. `NotConfigured` when the route has OHTTP on, is another
+    /// network's, or names a discovery URL that is not an `https` service URL.
     pub fn new(
         network: &NetworkInfo,
         account_id: String,
@@ -96,7 +96,8 @@ impl PrivacyReadPlan {
         route: Route,
         limits: Limits,
     ) -> Result<Self, PrivacyError> {
-        if route.ohttp || route.network != network.network {
+        if route.ohttp || route.network != network.network || !is_service_url(&route.discovery_url)
+        {
             return Err(PrivacyError::NotConfigured);
         }
         Ok(Self {

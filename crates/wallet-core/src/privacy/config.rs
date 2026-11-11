@@ -34,6 +34,23 @@ pub struct Limits {
     pub discovery_budget_ms: u64,
 }
 
+/// The extension's bound on a service URL (`isServiceUrl` in `@bramble/core/service-url`).
+pub const MAX_SERVICE_URL_BYTES: usize = 2048;
+
+/// Whether `url` is a service URL the viewing key may be posted to (`isServiceUrl`): `https`
+/// only, printable ASCII, no trailing slash, and no query, fragment, credentials or backslash.
+/// A wallet's loader checks this when it reads its routing; the plan checks it again before it
+/// will build a body, so no routing it is handed can send the key over plaintext.
+pub fn is_service_url(url: &str) -> bool {
+    url.len() <= MAX_SERVICE_URL_BYTES
+        && url.strip_prefix("https://").is_some_and(|rest| {
+            !rest.is_empty()
+                && !url.ends_with('/')
+                && url.bytes().all(|b| b.is_ascii_graphic())
+                && !url.contains(['?', '#', '@', '\\'])
+        })
+}
+
 /// The plain (non-OHTTP) route for `network`, if `routes` has one.
 pub fn route_for(routes: &[Route], network: NetworkId) -> Option<&Route> {
     routes
@@ -87,5 +104,24 @@ mod tests {
         assert!(route_for(&testing::routes(), NetworkId::Sepolia).is_none());
         // Even with a URL and a pool in place, `ohttp: true` refuses it.
         assert!(route_for(&[testing::mainnet(true)], NetworkId::Mainnet).is_none());
+    }
+
+    #[test]
+    fn the_key_is_only_posted_to_an_https_service_url() {
+        assert!(is_service_url("https://d.example/discovery"));
+        for refused in [
+            "http://d.example/discovery",
+            "https://",
+            "https://d.example/",
+            "https://d.example/?x=1",
+            "https://user@d.example",
+            "https://d.example/#x",
+            "https://d.example\\x",
+            "https://d.example/a b",
+            "ws://d.example",
+            "",
+        ] {
+            assert!(!is_service_url(refused), "{refused}");
+        }
     }
 }
