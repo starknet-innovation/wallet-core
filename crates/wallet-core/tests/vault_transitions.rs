@@ -5,33 +5,32 @@ use starknet_wallet_core::container::{
     new_dek, seal_new, Randomness, DEK_SCOPE, FORMAT, PAYLOAD_SCOPE,
 };
 use starknet_wallet_core::envelope::SealingKey;
+use starknet_wallet_core::Error;
 
 // ================================================================
 // Tests for VaultFile::with_payload transitions
 // ================================================================
 
-/// VaultFile_with_payload under a DEK the password slot does not wrap, with a version change.
+/// VaultFile_with_payload under a DEK the slots do not wrap, with a version change.
 /// Transition: "Derive file with new dek, version mismatch" (1234bc4bc5bec1db)
 ///
-/// `with_payload` documents a same-DEK contract but does not enforce it. A foreign DEK keeps the
-/// old password slot, so a password unlock no longer opens the payload. This pins that hazard;
-/// it is not a supported way to rotate the DEK.
+/// Refused: the kept password slot would no longer open the payload.
 #[test]
-fn derive_file_with_new_dek_version_mismatch_strands_password_unlock() {
+fn derive_file_with_new_dek_version_mismatch_is_refused() {
     let key = SealingKey::from_parts("fixture passphrase", [1; 16], &"ef".repeat(16));
-    let dek = [3u8; 32];
-    let file = seal_new(&key, &dek, 2, b"payload_v2", &Randomness::draw().unwrap()).unwrap();
+    let file = seal_new(
+        &key,
+        &[3; 32],
+        2,
+        b"payload_v2",
+        &Randomness::draw().unwrap(),
+    )
+    .unwrap();
 
-    let foreign_dek = [4u8; 32];
-    let new_file = file.with_payload(&foreign_dek, 3, b"payload_v3").unwrap();
-
-    assert_eq!(new_file.version, 3);
-    assert_eq!(new_file.password_slot, file.password_slot);
-    assert_eq!(new_file.lineage, file.lineage);
-
-    let (password_dek, _) = new_file.open_dek("fixture passphrase").unwrap();
-    assert_eq!(*password_dek, dek);
-    assert!(new_file.open_payload(&password_dek).is_err());
+    assert!(matches!(
+        file.with_payload(&[4; 32], 3, b"payload_v3"),
+        Err(Error::InvalidInput { .. })
+    ));
 }
 
 /// VaultFile_with_payload: when dek already bound to file and payload version matches.
@@ -74,26 +73,26 @@ fn derive_file_with_existing_dek_version_match() {
     assert_ne!(new_file.payload.iv, file.payload.iv);
 }
 
-/// VaultFile_with_payload under a DEK the password slot does not wrap, same version.
+/// VaultFile_with_payload under a DEK the slots do not wrap, same version.
 /// Transition: "Derive file with new dek, version match" (f85f6b43856ae536)
 ///
-/// Same hazard as above without a version change: the password unlock is stranded.
+/// Refused, as above, whether or not the version changes.
 #[test]
-fn derive_file_with_new_dek_version_match_strands_password_unlock() {
+fn derive_file_with_new_dek_version_match_is_refused() {
     let key = SealingKey::from_parts("fixture passphrase", [1; 16], &"ef".repeat(16));
-    let dek = [3u8; 32];
-    let file = seal_new(&key, &dek, 2, b"payload_v2", &Randomness::draw().unwrap()).unwrap();
+    let file = seal_new(
+        &key,
+        &[3; 32],
+        2,
+        b"payload_v2",
+        &Randomness::draw().unwrap(),
+    )
+    .unwrap();
 
-    let foreign_dek = [5u8; 32];
-    let new_file = file
-        .with_payload(&foreign_dek, 2, b"payload_v2_new")
-        .unwrap();
-
-    assert_eq!(new_file.version, 2);
-    assert_eq!(new_file.password_slot, file.password_slot);
-
-    let (password_dek, _) = new_file.open_dek("fixture passphrase").unwrap();
-    assert!(new_file.open_payload(&password_dek).is_err());
+    assert!(matches!(
+        file.with_payload(&[5; 32], 2, b"payload_v2_new"),
+        Err(Error::InvalidInput { .. })
+    ));
 }
 
 /// VaultFile_with_payload: when dek already bound to file and payload version differs.
@@ -128,71 +127,46 @@ fn derive_file_with_existing_dek_version_mismatch() {
 // Tests for VaultFile::seal_biometric and set_biometric_slot transitions
 // ================================================================
 
-/// VaultFile_set_biometric_slot on a file whose payload is under a foreign DEK, same version.
+/// VaultFile_seal_biometric under a DEK the file does not hold, same version.
 /// Transition: "Set biometric slot with only foreign key" (1de29e9fac609a3a)
 ///
-/// The biometric slot wraps the foreign DEK and opens the payload; the password slot still
-/// wraps the original DEK and does not. The two unlock paths disagree.
+/// Refused: the slot would unwrap a key that opens nothing. No slot is produced.
 #[test]
-fn set_biometric_slot_with_only_foreign_key_splits_unlock_paths() {
+fn set_biometric_slot_with_only_foreign_key_is_refused() {
     let key = SealingKey::from_parts("fixture passphrase", [1; 16], &"ef".repeat(16));
-    let dek = [3u8; 32];
-    let file = seal_new(&key, &dek, 2, b"payload_v2", &Randomness::draw().unwrap()).unwrap();
+    let file = seal_new(
+        &key,
+        &[3; 32],
+        2,
+        b"payload_v2",
+        &Randomness::draw().unwrap(),
+    )
+    .unwrap();
 
-    let foreign_dek = [4u8; 32];
-    let mut file = file
-        .with_payload(&foreign_dek, 2, b"payload_v2_new")
-        .unwrap();
-
-    let wrap_secret = [9; 32];
-    let slot = file
-        .seal_biometric(&foreign_dek, &wrap_secret, String::new())
-        .unwrap();
+    assert!(matches!(
+        file.seal_biometric(&[4; 32], &[9; 32], String::new()),
+        Err(Error::InvalidInput { .. })
+    ));
     assert!(file.biometric_slot.is_none());
-    file.biometric_slot = Some(slot.clone());
-    assert_eq!(slot.id.len(), 32);
-    assert_eq!(slot.domain, "");
-
-    let bio_dek = file.open_biometric(&wrap_secret).unwrap();
-    assert_eq!(*bio_dek, foreign_dek);
-    assert_eq!(
-        file.open_payload(&bio_dek).unwrap().as_slice(),
-        b"payload_v2_new"
-    );
-
-    let (password_dek, _) = file.open_dek("fixture passphrase").unwrap();
-    assert!(file.open_payload(&password_dek).is_err());
 }
 
-/// VaultFile_set_biometric_slot on a foreign-DEK file whose version also changed.
+/// VaultFile_seal_biometric under a foreign DEK on a file whose version changed.
 /// Transition: "Set biometric slot with foreign key and version mismatch" (7b52ea80dad3a0e9)
 ///
-/// As above: only the biometric path opens the payload.
+/// Refused, as above; the version upgrade under the file's own DEK still goes through.
 #[test]
-fn set_biometric_slot_with_foreign_key_and_version_mismatch_splits_unlock_paths() {
+fn set_biometric_slot_with_foreign_key_and_version_mismatch_is_refused() {
     let key = SealingKey::from_parts("fixture passphrase", [1; 16], &"ef".repeat(16));
     let dek = [3u8; 32];
     let file = seal_new(&key, &dek, 2, b"payload_v2", &Randomness::draw().unwrap()).unwrap();
-
-    let foreign_dek = [4u8; 32];
-    let mut file = file.with_payload(&foreign_dek, 3, b"payload_v3").unwrap();
-
-    let wrap_secret = [9; 32];
-    let slot = file
-        .seal_biometric(&foreign_dek, &wrap_secret, String::new())
-        .unwrap();
-    file.biometric_slot = Some(slot);
+    let file = file.with_payload(&dek, 3, b"payload_v3").unwrap();
     assert_eq!(file.version, 3);
 
-    let bio_dek = file.open_biometric(&wrap_secret).unwrap();
-    assert_eq!(*bio_dek, foreign_dek);
-    assert_eq!(
-        file.open_payload(&bio_dek).unwrap().as_slice(),
-        b"payload_v3"
-    );
-
-    let (password_dek, _) = file.open_dek("fixture passphrase").unwrap();
-    assert!(file.open_payload(&password_dek).is_err());
+    assert!(matches!(
+        file.seal_biometric(&[4; 32], &[9; 32], String::new()),
+        Err(Error::InvalidInput { .. })
+    ));
+    assert!(file.biometric_slot.is_none());
 }
 
 /// VaultFile_set_biometric_slot: when file uses own DEK and version matches.

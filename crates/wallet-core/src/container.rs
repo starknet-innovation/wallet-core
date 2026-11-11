@@ -282,12 +282,16 @@ impl VaultFile {
     /// The same file with a `version` `payload` re-sealed under a fresh IV and commit; no KDF,
     /// same DEK, same slots. Re-sealing an older container at the current version is how it is
     /// upgraded in place.
+    ///
+    /// Fails closed unless `dek` opens the current payload. The slots are kept, so a DEK they
+    /// do not wrap would leave a file the passphrase (and biometric) unlock can no longer read.
     pub fn with_payload(
         &self,
         dek: &[u8; 32],
         version: u32,
         payload: &[u8],
     ) -> Result<Self, Error> {
+        self.require_dek(dek)?;
         Ok(Self {
             version,
             payload: seal_payload(dek, &self.lineage, payload, &random()?, &random()?)?,
@@ -295,13 +299,22 @@ impl VaultFile {
         })
     }
 
-    /// A biometric slot wrapping `dek` under the host's 32-byte wrap secret.
+    /// Fails closed unless `dek` is this file's DEK, i.e. it opens the current payload.
+    fn require_dek(&self, dek: &[u8; 32]) -> Result<(), Error> {
+        self.open_payload(dek)
+            .map(drop)
+            .map_err(|_| Error::invalid("data key does not open this vault"))
+    }
+
+    /// A biometric slot wrapping `dek` under the host's 32-byte wrap secret. Fails closed unless
+    /// `dek` opens the current payload: a slot wrapping any other key would unlock nothing.
     pub fn seal_biometric(
         &self,
         dek: &[u8; 32],
         wrap_secret: &[u8; 32],
         domain: String,
     ) -> Result<BiometricSlot, Error> {
+        self.require_dek(dek)?;
         let id = random_hex::<16>()?;
         let iv = random::<12>()?;
         let aad = biometric_aad(&self.lineage, &id, &domain);
@@ -354,6 +367,24 @@ mod tests {
             Err(Error::WrongPassword)
         ));
         assert!(file.open_payload(&[4u8; 32]).is_err());
+    }
+
+    #[test]
+    fn a_payload_is_resealed_only_under_the_dek_the_slots_wrap() {
+        let key = SealingKey::from_parts("fixture passphrase", [1; 16], &"ef".repeat(16));
+        let dek = [3u8; 32];
+        let file = seal_new(&key, &dek, 4, b"{}", &Randomness::draw().unwrap()).unwrap();
+        assert!(matches!(
+            file.with_payload(&[4u8; 32], 5, b"{}"),
+            Err(Error::InvalidInput { .. })
+        ));
+        assert!(matches!(
+            file.seal_biometric(&[4u8; 32], &[9; 32], String::new()),
+            Err(Error::InvalidInput { .. })
+        ));
+        let upgraded = file.with_payload(&dek, 5, b"[]").unwrap();
+        let (opened, _) = upgraded.open_dek("fixture passphrase").unwrap();
+        assert_eq!(upgraded.open_payload(&opened).unwrap().as_slice(), b"[]");
     }
 
     #[test]
