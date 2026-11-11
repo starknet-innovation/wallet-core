@@ -9,8 +9,16 @@ through UniFFI as one library for the browser extension (wasm32, npm
 - **Bramble's policy.** The OpenZeppelin account version Bramble deploys (`OZ_ACCOUNT_VERSION`),
   the salt its `KmsPort` defaults to, its multisig coordination policy (`coordination`: the
   `bramble.multisig` identifier, the default relays and "one custom relay replaces them", the page
-  cap, the sync window, recipient selection and the sender rule), and, as `docs/PLAN.md` lands,
-  the v12 vault schema and migrations and catalogs.
+  cap, the sync window, recipient selection and the sender rule), its portfolio and history
+  choices (`PORTFOLIO_POLICY`, `HISTORY_POLICY`), and, as `docs/PLAN.md` lands, the v12 vault
+  schema and migrations.
+- **Bramble's catalogs.** `catalogs` embeds `generated/` (`networks.json`, `token-registry.json`,
+  `accounts.json`, `multisig.json`, rendered by Bramble's `bun run mobile:assets` and copied
+  unchanged) and parses each once: the networks and token registry `wallet-core` takes as
+  `Catalogs`, the account classes with `resolve_class`, `argent_shape` and `send_authorization`,
+  and the pinned multisig class and limits. A file that does not parse fails loudly on first use.
+  `tests/catalogs.rs` holds each to its copy under `tests/fixtures/`. Plain Rust until 2.7 exports
+  them.
 - **The only FFI crate.** UniFFI scaffolding, `CoreError`, `core_info()`, and remote exports of
   `wallet-core`'s records. Functions keep the names and argument order of the extension's
   `KmsPort`. Built as `lib`, `cdylib` and `staticlib`; `uniffi.toml` keeps mobile's module names.
