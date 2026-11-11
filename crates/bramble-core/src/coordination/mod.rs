@@ -3,8 +3,9 @@
 //! reviewed relays and "one custom relay replaces them", the page cap, the sync window, and who a
 //! coordination message goes to and is trusted from. Names follow the extension's
 //! `multisig-coordination-ops.ts`, `nostr-relay.ts`, `multisig-sync-window.ts`,
-//! `multisig-nostr-publish.ts` and `preferences-nostr.ts`. Plain Rust for now; the UniFFI surface
-//! arrives with the swap (docs/PLAN.md, 2.7).
+//! `multisig-nostr-publish.ts` and `preferences-nostr.ts`. Plain Rust; the mobile wallet's
+//! coordination file, checkpoints, held packages and trust judgement (`file`, `mobile` only) are
+//! built on these.
 
 use starknet_wallet_core::accounts::multisig::signer_guid_hex;
 use starknet_wallet_core::js::num::js_trim;
@@ -13,6 +14,11 @@ use starknet_wallet_core::nostr::relay_url::is_nostr_relay_url;
 use starknet_wallet_core::nostr::sync_window::SyncLookbacks;
 
 use crate::CoreError;
+
+#[cfg(feature = "mobile")]
+mod file;
+#[cfg(feature = "mobile")]
+pub use file::*;
 
 /// `MULTISIG_NOSTR_IDENTIFIER`: the application kind Krusty authenticates on coordination wraps.
 pub const MULTISIG_NOSTR_IDENTIFIER: &str = "bramble.multisig";

@@ -22,6 +22,8 @@ mod account_names;
 mod argent_multisig;
 mod avatar;
 mod class_declared;
+mod contact_card;
+mod contacts;
 mod container;
 mod files;
 mod groups;
@@ -31,6 +33,7 @@ pub use kms::Ladder;
 mod multisig_rpc;
 mod multisig_store;
 mod nostr;
+mod nostr_relay;
 mod portfolio;
 mod public_store;
 mod records;
@@ -39,6 +42,10 @@ mod rpc_request;
 mod ui;
 mod vault;
 
+pub use account_catalog::{
+    account_classes, account_family_name, copy_feedback, group_icons, recovery_limits,
+    AccountClassInfo, AccountFamily, CopyFeedback, RecoveryLimits,
+};
 pub use account_names::{
     account_display_name, account_label, account_preview_label, friendly_account_name,
     is_account_label,
@@ -46,8 +53,12 @@ pub use account_names::{
 pub use argent_multisig::{ArgentMultisigConfig, ArgentMultisigPrediction};
 pub use avatar::{AccountAvatar, AvatarPaint, AvatarPart, AvatarShape};
 pub use class_declared::ClassDeclaredRead;
+pub use contact_card::{ContactCardParse, WalletContactCard};
+pub use contacts::Contact;
 pub use groups::AccountGroup;
 pub use multisig_rpc::{MultisigAuthorityRead, MultisigAuthorityStatus};
+pub use networks::{NetworkInfo, TokenInfo};
+pub use nostr_relay::RelayStep;
 pub use rpc_request::{RpcRequest, RpcResponse};
 pub use ui::{PassphraseLevel, PassphraseStrength};
 
