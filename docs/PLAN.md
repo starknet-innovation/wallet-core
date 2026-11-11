@@ -52,7 +52,7 @@ mobile holds no copy of what this repo has ported. A step is done when both halv
 | 2.4c History and activity | open (#45) | M8 open (Bramble #924) |
 | 2.4d Privacy | open (#46) | M9 open (Bramble #925) |
 | 2.5a Multisig account | open (#47) | M10 open (Bramble #926) |
-| 2.5b Multisig coordination | open (#48); `check.sh all` fails only at `package` until the version is bumped (see Process) | M11 open (Bramble #M11PR) |
+| 2.5b Multisig coordination | open (#48); `check.sh all` fails only at `package` until the version is bumped (see Process) | M11 open (Bramble #927) |
 | 2.6 Catalogs, 2.7 Swap | not started | not started |
 | 3 Extension | not started; `js/package.json` is private | n/a |
 
@@ -95,7 +95,7 @@ Ports (A*) and fixture copies (F*) are PRs here.
 | 2.5a Multisig account (open, #47) | here, stacked on 2.4d | 2.4d | `accounts::{multisig, multisig_records, multisig_read, multisig_declared}`, `js::felt::lenient_hex_felt`; `multisig_parity.rs` over `multisig.json` copied as a fixture | 2.5 |
 | M10 Multisig account (open, Bramble #926) | Bramble, stacked on M9 | 2.5a | `argent_multisig.rs`, `multisig_rpc.rs` and `class_declared.rs` become wrappers passing Bramble's class; `multisig_store.rs` keeps the file; mobile stops naming Krusty outside `kms.rs` | 2.5 |
 | 2.5b Multisig coordination (open, #48) | here, stacked on 2.5a | 2.5a, F2 | `nostr::{relay_url, relay, sync, sync_window}` in `wallet-core`; `coordination` (constants, relay policy, recipients, sender rule) in `bramble-core`; `nostr_coordination_parity.rs` over all three G2 fixtures | 2.5 |
-| M11 Multisig coordination (open, Bramble #M11PR) | Bramble, stacked on M10 | 2.5b | `nostr_relay.rs` and the window and relay rules of `coordination.rs` over the core; mobile keeps its own relay constants until 2.7 | 2.5 |
+| M11 Multisig coordination (open, Bramble #927) | Bramble, stacked on M10 | 2.5b | `nostr_relay.rs` and the window and relay rules of `coordination.rs` over the core; mobile keeps its own relay constants until 2.7 | 2.5 |
 
 Every adoption PR for what is ported has merged, so by the Process rule the next port may start.
 2.2 Accounts goes first: it is the unfinished half of a step, it is smaller than any part of 2.4,
@@ -915,5 +915,12 @@ Added 2026-11-09 after reviewing the first day's work. Items marked *proposed* a
   G4); the owner is not named.
 - When a second wallet wants `wallet-core`: publish it to crates.io, and whether it ships its own
   UniFFI feature or each wallet keeps exporting from its own crate (today's answer).
+- *Provisional, 2.5b*: the core accepts `ws:` relays on loopback, as the extension does (its
+  fixture says so); mobile keeps refusing every `ws:` relay as a platform rule (App Transport
+  Security and `usesCleartextTraffic=false` block cleartext), on top of the core's grammar
+  (M11, Bramble #927). Revisit if a mobile build ever needs a local relay.
+- *Provisional, 2.5b*: mobile reads one page per relay (the core at a page cap of 1) until 2.7,
+  because paging needs a third `RelayStep` variant across the FFI and the bindings may not
+  change before then. Three paging cases stay listed as mobile's differences until 2.7.
 - Which modules count as mobile-only glue, and whether they live in the app or in `bramble-core`
   behind mobile's build (Phase 2).
