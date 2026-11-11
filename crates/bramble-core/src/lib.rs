@@ -9,7 +9,8 @@
 //! - multisig coordination: the identifier, relays, page cap, sync window and who is a
 //!   co-signer (`coordination`, plain Rust until the swap);
 //! - its catalogs (`catalogs`: networks, token registry, account classes, multisig constants,
-//!   embedded from `generated/`), plain Rust until the swap;
+//!   embedded from `generated/`) and its portfolio and history choices (`PORTFOLIO_POLICY`,
+//!   `HISTORY_POLICY`), plain Rust until the swap;
 //! - later, the v12 vault schema and migrations (docs/PLAN.md).
 //!
 //! Functions keep the names and argument order the extension's `KmsPort` uses.
@@ -58,6 +59,25 @@ pub const SEND_POLICY: starknet_wallet_core::send::plan::Policy =
         fee_margin_percent: FEE_MARGIN_PERCENT,
         reviewed_fee_headroom: REVIEWED_FEE_HEADROOM,
         confirmation_delays_ms: &CONFIRMATION_DELAYS_MS,
+    };
+
+/// Bramble's portfolio choices, for `starknet_wallet_core::portfolio`'s stores: the schema tag of
+/// its saved portfolio documents, CoinGecko (`prices-feed.ts`), and fiat on mainnet only.
+pub const PORTFOLIO_POLICY: starknet_wallet_core::portfolio::PortfolioPolicy =
+    starknet_wallet_core::portfolio::PortfolioPolicy {
+        schema: "bramble.mobile.portfolio.v1",
+        price_api_base: "https://api.coingecko.com/api/v3",
+        price_network: NetworkId::Mainnet,
+    };
+
+/// Bramble's history choices, for `starknet_wallet_core::history`: `STARKSCAN_API_BASE`
+/// (`history/starkscan.ts`), `matchingToken`'s untracked-token name, and the pre-confirmed
+/// `PROVISIONAL_TX_HINT`.
+pub const HISTORY_POLICY: starknet_wallet_core::history::HistoryPolicy =
+    starknet_wallet_core::history::HistoryPolicy {
+        explorer_api_base: "https://starkscan.co/v1",
+        untracked_token_name: "Untracked token",
+        preconfirmed_hint: "Pre-confirmed, not final yet. Bramble tells you if it doesn't settle.",
     };
 
 /// Every failure the core reports across the FFI boundary.

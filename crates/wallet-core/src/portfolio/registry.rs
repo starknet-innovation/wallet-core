@@ -1,7 +1,7 @@
 //! Token identity and the curated registry: `wallet-model/preferences` (`tokenConfigId`,
 //! `withTokenId`, `isTokenConfig`, `isTokenSymbol`, `isTokenName`), `portfolio/token-registry.ts`
 //! (`knownTokensForNetwork`, symbol folding, `LEGITIMATE_ALIASES`, `tokenSpamReasons`) and the
-//! side panel's `tokenGlyph`. The registry and the bundled-logo set are the wallet's
+//! side panel's `tokenGlyph`. The registry, its aliases and the bundled-logo set are the wallet's
 //! (`catalog::TokenRegistry`; Bramble generates its own from the extension), passed in, never
 //! restated here.
 
@@ -13,11 +13,6 @@ use crate::js::num::{js_trim, utf16_len, utf16_slice};
 use crate::NetworkId;
 
 const MAX_PLAUSIBLE_DECIMALS: u8 = 24;
-/// Registry symbols with an allow-listed second deployment (`LEGITIMATE_ALIASES`).
-const LEGITIMATE_ALIASES: &[(&str, &[&str])] = &[(
-    "USDC",
-    &["0x053c91253bc9682c04929ca02ed00b3e423f6710d2ee7e0d5ebb06f3ecf368a8"],
-)];
 
 /// `tokenConfigId` over `withTokenId`'s canonical address: `<networkId>:<symbol>:<address>`.
 pub fn token_config_id(network: NetworkId, symbol: String, address: String) -> String {
@@ -172,16 +167,17 @@ pub fn spam_reasons(
         .collect();
     // A curated contract is never a spoof of a curated sibling whose ticker folds alike (native
     // USDC beside bridged USDC.e). Any other contract is genuine only when it is an explicitly
-    // allowlisted alternate deployment.
+    // allowlisted alternate deployment (the registry's `aliases`, `LEGITIMATE_ALIASES`).
     let curated = lookalikes
         .iter()
         .any(|known| same_felt(&known.address, address));
     let spoofs = !curated
         && lookalikes.iter().any(|known| {
-            let aliases = LEGITIMATE_ALIASES
+            let aliases = registry
+                .aliases
                 .iter()
-                .find(|(s, _)| *s == known.symbol)
-                .map_or(&[][..], |(_, a)| *a);
+                .find(|alias| alias.symbol == known.symbol)
+                .map_or(&[][..], |alias| &alias.addresses[..]);
             !aliases.iter().any(|alias| same_felt(alias, address))
         });
     if spoofs {

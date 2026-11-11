@@ -6,6 +6,7 @@
 
 mod portfolio_support;
 
+use bramble_core::{HISTORY_POLICY, PORTFOLIO_POLICY};
 use portfolio_support::{catalogs, Memory};
 use starknet_wallet_core::activity::feed::stored;
 use starknet_wallet_core::activity::store::ACTIVITY_FILE;
@@ -38,7 +39,7 @@ fn record_activity(log: &mut ActivityLog<'_>, entry: &ActivityEntry) -> bool {
 }
 
 fn tracked() -> Vec<TokenConfig> {
-    TokenPreferences::new(None, catalogs())
+    TokenPreferences::new(None, catalogs(), PORTFOLIO_POLICY)
         .tracked(NetworkId::Mainnet)
         .into_iter()
         .map(|t| t.token)
@@ -53,7 +54,7 @@ fn caches_reject_unknown_or_tampered_documents() {
         r#"{"schema":"bramble.mobile.portfolio.v1","prices":{"fetchedAt":1,"prices":{"x":{"usd":1}}}}"#,
         r#"{"schema":"bramble.mobile.portfolio.v1","prices":{"fetchedAt":1,"prices":{},"evil":1}}"#,
     ] {
-        let book = PriceBook::new(Some(doc.into()));
+        let book = PriceBook::new(Some(doc.into()), PORTFOLIO_POLICY);
         match book.plan(
             NetworkId::Mainnet,
             vec![STRK.into()],
@@ -67,7 +68,7 @@ fn caches_reject_unknown_or_tampered_documents() {
             PricePlan::Fetch { .. } => panic!("cached-only never fetches"),
         }
     }
-    let snapshots = BalanceSnapshots::new(Some(r#"{"schema":"bramble.mobile.portfolio.v1","snapshots":[{"accountId":"SN_MAIN:0x0ab","balances":[],"fetchedAt":1,"networkId":"SN_MAIN"}]}"#.into()));
+    let snapshots = BalanceSnapshots::new(Some(r#"{"schema":"bramble.mobile.portfolio.v1","snapshots":[{"accountId":"SN_MAIN:0x0ab","balances":[],"fetchedAt":1,"networkId":"SN_MAIN"}]}"#.into()), PORTFOLIO_POLICY);
     assert_eq!(
         snapshots.plan("SN_MAIN:0x0ab".into(), NetworkId::Mainnet, 2.0, true, false),
         BalancePlan::Empty
@@ -80,7 +81,7 @@ fn caches_reject_unknown_or_tampered_documents() {
         )
         .unwrap();
     let mut log = ActivityLog::new(&storage);
-    assert!(ActivityBook::new()
+    assert!(ActivityBook::new(HISTORY_POLICY)
         .cached(&mut log, "SN_MAIN:0xab".into(), NetworkId::Mainnet)
         .entries
         .is_empty());
@@ -91,20 +92,22 @@ fn preferences_default_on_corruption_but_protect_newer_files() {
     let corrupt = TokenPreferences::new(
         Some(r#"{"schema":"bramble.mobile.portfolio.v1","tokens":"nope"}"#.into()),
         catalogs(),
+        PORTFOLIO_POLICY,
     );
     assert!(!corrupt.read_only());
     assert_eq!(corrupt.tracked(NetworkId::Mainnet).len(), 2);
     let newer = TokenPreferences::new(
         Some(r#"{"schema":"bramble.mobile.portfolio.v2","tokens":[]}"#.into()),
         catalogs(),
+        PORTFOLIO_POLICY,
     );
     assert!(newer.read_only() && newer.persisted().is_none());
-    let mut prefs = TokenPreferences::new(None, catalogs());
+    let mut prefs = TokenPreferences::new(None, catalogs(), PORTFOLIO_POLICY);
     prefs.set_display_currency(DisplayCurrency::Gbp);
     let id = prefs.tracked(NetworkId::Mainnet)[0].token.id.clone();
     prefs.set_hidden(id.clone(), true).unwrap();
     prefs.set_hidden(id.clone(), true).unwrap();
-    let mut again = TokenPreferences::new(prefs.persisted(), catalogs());
+    let mut again = TokenPreferences::new(prefs.persisted(), catalogs(), PORTFOLIO_POLICY);
     assert_eq!(again.display_currency(), DisplayCurrency::Gbp);
     assert!(again.tracked(NetworkId::Mainnet)[0].hidden_from_home);
     assert!(again.set_hidden(String::new(), true).is_err());
@@ -118,7 +121,7 @@ fn preferences_default_on_corruption_but_protect_newer_files() {
 
 #[test]
 fn balance_snapshots_follow_cached_balances() {
-    let mut snapshots = BalanceSnapshots::new(None);
+    let mut snapshots = BalanceSnapshots::new(None, PORTFOLIO_POLICY);
     let id = account_id();
     assert_eq!(
         snapshots.plan(id.clone(), NetworkId::Mainnet, 1_000.0, false, false),
@@ -147,7 +150,7 @@ fn balance_snapshots_follow_cached_balances() {
     );
     let failed = snapshots.failed(id.clone(), NetworkId::Mainnet).unwrap();
     assert!(failed.stale && failed.balances == vec![row]);
-    let restored = BalanceSnapshots::new(Some(snapshots.persisted()));
+    let restored = BalanceSnapshots::new(Some(snapshots.persisted()), PORTFOLIO_POLICY);
     assert!(
         matches!(restored.plan(id, NetworkId::Mainnet, 90_000.0, true, false), BalancePlan::Serve { view } if view.stale)
     );
@@ -198,7 +201,7 @@ fn page(items: &str) -> HttpOutcome {
 fn history_cadence_and_lane_authority() {
     let storage = Memory::default();
     let mut log = ActivityLog::new(&storage);
-    let mut book = ActivityBook::new();
+    let mut book = ActivityBook::new(HISTORY_POLICY);
     let id = account_id();
     assert!(
         book.history_due(&mut log, id.clone(), NetworkId::Mainnet, false, 0.0),
@@ -291,7 +294,7 @@ fn history_cadence_and_lane_authority() {
     assert!(!book.history_due(&mut log, id.clone(), NetworkId::Mainnet, false, 66_000.0));
     assert!(book.history_due(&mut log, id.clone(), NetworkId::Mainnet, false, 67_000.0));
     // A new book and a new log over the same storage: what a restart sees.
-    let restored = ActivityBook::new();
+    let restored = ActivityBook::new(HISTORY_POLICY);
     let mut reopened = ActivityLog::new(&storage);
     let cached = restored.cached(&mut reopened, id, NetworkId::Mainnet);
     assert!(cached.history_unavailable && cached.entries == vec![local]);
@@ -301,7 +304,7 @@ fn history_cadence_and_lane_authority() {
 fn starkscan_cooldown_is_in_memory_only() {
     let storage = Memory::default();
     let mut log = ActivityLog::new(&storage);
-    let mut book = ActivityBook::new();
+    let mut book = ActivityBook::new(HISTORY_POLICY);
     let id = account_id();
     let limited = HttpOutcome {
         status: 429,
@@ -330,7 +333,7 @@ fn starkscan_cooldown_is_in_memory_only() {
         .map(|bytes| String::from_utf8(bytes).unwrap())
         .unwrap_or_default();
     assert!(!saved.contains("RetryAt"), "the cooldown is never written");
-    let restored = ActivityBook::new();
+    let restored = ActivityBook::new(HISTORY_POLICY);
     assert!(
         restored
             .starkscan_request(id, NetworkId::Mainnet, tracked(), true, 2_000.0)

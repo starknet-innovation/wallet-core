@@ -4,6 +4,7 @@
 
 mod portfolio_support;
 
+use bramble_core::HISTORY_POLICY;
 use portfolio_support::*;
 use starknet_wallet_core::activity::ActivityLog;
 use starknet_wallet_core::history::activity::{
@@ -42,7 +43,7 @@ fn expected_entries(value: &JsValue) -> JsValue {
 fn starkscan_request_pages_cooldowns_and_retry_after() {
     let block = at(&fixture(), "starkscan").clone();
     let tracked: Vec<TokenConfig> = list(&block, "tracked").iter().map(token).collect();
-    let request = ActivityBook::new()
+    let request = ActivityBook::new(HISTORY_POLICY)
         .starkscan_request(account_id(), NetworkId::Mainnet, tracked.clone(), true, 0.0)
         .unwrap();
     let want = at(&block, "request");
@@ -77,7 +78,13 @@ fn starkscan_request_pages_cooldowns_and_retry_after() {
             body: Some(body.into_bytes()),
             timed_out: false,
         };
-        let rows = transfers_to_activity(&outcome, &account_id(), NetworkId::Mainnet, &tracked);
+        let rows = transfers_to_activity(
+            &outcome,
+            &account_id(),
+            NetworkId::Mainnet,
+            &tracked,
+            &HISTORY_POLICY,
+        );
         match at(c, "out") {
             JsValue::Null => assert!(rows.is_none(), "{} should fail", text(c, "name")),
             out => assert_eq!(
@@ -112,7 +119,7 @@ fn starkscan_request_pages_cooldowns_and_retry_after() {
             .map(|offset| {
                 let storage = Memory::default();
                 let mut log = ActivityLog::new(&storage);
-                let mut book = ActivityBook::new();
+                let mut book = ActivityBook::new(HISTORY_POLICY);
                 assert!(book
                     .starkscan_apply(
                         &mut log,
@@ -288,7 +295,7 @@ fn history_scan_fails_over_to_the_next_endpoint() {
     // Every endpoint failing leaves only the local log, marked unavailable.
     let storage = Memory::default();
     let mut log = ActivityLog::new(&storage);
-    let book = ActivityBook::new();
+    let book = ActivityBook::new(HISTORY_POLICY);
     let view = book.mark_unavailable(&mut log, account_id(), NetworkId::Mainnet, 1_000.0);
     assert!(view.history_unavailable && view.entries.is_empty());
     assert!(!book.history_due(&mut log, account_id(), NetworkId::Mainnet, false, 30_000.0));

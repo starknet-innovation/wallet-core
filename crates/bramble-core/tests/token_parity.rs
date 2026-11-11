@@ -4,6 +4,7 @@
 
 mod portfolio_support;
 
+use bramble_core::PORTFOLIO_POLICY;
 use portfolio_support::*;
 use starknet_wallet_core::js::json::JsValue;
 use starknet_wallet_core::portfolio::model::{TokenBalance, TokenConfig};
@@ -50,7 +51,7 @@ fn tokens_ids_registry_spam_home_and_glyphs() {
             c
         );
     }
-    let prefs = TokenPreferences::new(None, catalogs());
+    let prefs = TokenPreferences::new(None, catalogs(), PORTFOLIO_POLICY);
     let defaults: Vec<TokenConfig> = [NetworkId::Mainnet, NetworkId::Sepolia]
         .iter()
         .flat_map(|n| prefs.tracked(*n))
@@ -125,7 +126,7 @@ fn tokens_ids_registry_spam_home_and_glyphs() {
         JsValue::Array(mobile_tracked).to_json(),
         at(home, "hidden").to_json()
     );
-    let prefs = TokenPreferences::new(Some(doc), catalogs());
+    let prefs = TokenPreferences::new(Some(doc), catalogs(), PORTFOLIO_POLICY);
     assert!(!prefs.read_only());
     let balances: Vec<TokenBalance> = list(home, "balances")
         .iter()
@@ -172,7 +173,9 @@ fn add_token_matches_the_handler() {
         let out = at(c, "out");
         match token_metadata_judge(NetworkId::Mainnet, address, 1, replies) {
             TokenMetaOutcome::Token { token } => {
-                let added = TokenPreferences::new(None, catalogs()).add(token).unwrap();
+                let added = TokenPreferences::new(None, catalogs(), PORTFOLIO_POLICY)
+                    .add(token)
+                    .unwrap();
                 assert_eq!(
                     added.token,
                     portfolio_support::token(at(out, "token")),

@@ -6,6 +6,7 @@
 
 mod portfolio_support;
 
+use bramble_core::HISTORY_POLICY;
 use portfolio_support::*;
 use starknet_wallet_core::history::activity::{
     ActivityEntry, ActivityKind, TransferDirection, TxStatus,
@@ -178,7 +179,7 @@ fn activity_rows_match_the_side_panel() {
             assert_model(&activity_row_model(entry, &tokens), expected, &ctx);
         }
         assert_eq!(entries.len(), list(block, "models").len());
-        let groups = activity_groups(entries, tokens, Some(now), catalogs());
+        let groups = activity_groups(entries, tokens, Some(now), catalogs(), &HISTORY_POLICY);
         let headings: Vec<String> = groups.iter().map(|g| g.heading.clone()).collect();
         assert_eq!(
             headings,

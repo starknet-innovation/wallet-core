@@ -38,11 +38,21 @@ pub struct RegistryToken {
     pub symbol: String,
 }
 
-/// The curated token registry and the addresses (64-digit spelling) the wallet bundles a logo for.
+/// A registry symbol's allow-listed second deployments (`LEGITIMATE_ALIASES`): contracts the spam
+/// heuristic never reads as a spoof of `symbol` (Bramble's: bridged USDC.e for USDC).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TokenAlias {
+    pub symbol: String,
+    pub addresses: Vec<String>,
+}
+
+/// The curated token registry, the addresses (64-digit spelling) the wallet bundles a logo for,
+/// and the allow-listed alternate deployments of its symbols.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TokenRegistry {
     pub tokens: Vec<RegistryToken>,
     pub logos: Vec<String>,
+    pub aliases: Vec<TokenAlias>,
 }
 
 /// Both catalogs, borrowed, for the code that needs the networks and the registry together.
@@ -121,6 +131,7 @@ pub(crate) mod testing {
                 entry(USDC, "USDC", "USD Coin", 6),
             ],
             logos: vec![STRK.into()],
+            aliases: Vec::new(),
         }
     }
 }

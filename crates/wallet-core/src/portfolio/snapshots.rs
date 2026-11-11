@@ -7,6 +7,7 @@ use serde_json::{json, Value};
 use super::model::{network_code, network_from_code, TokenBalance, TokenConfig};
 use super::prices::PriceView;
 use super::tokens::is_token_config;
+use super::PortfolioPolicy;
 use crate::history::explorer::is_account_id_for_network;
 use crate::history::time::format_saved_data_label;
 use crate::js::json::{self, JsValue};
@@ -158,9 +159,10 @@ fn parse_snapshot(value: &JsValue) -> Option<Snapshot> {
 
 /// Bounded, validated last-known balances (`snapshots.json`, at most 50 scopes). A wallet that
 /// shares one store across threads wraps it in its own lock.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct BalanceSnapshots {
     snapshots: Vec<Snapshot>,
+    policy: PortfolioPolicy,
 }
 
 impl BalanceSnapshots {
@@ -173,12 +175,13 @@ impl BalanceSnapshots {
 }
 
 impl BalanceSnapshots {
-    /// Loads `snapshots.json`; invalid entries are dropped, an unreadable file reads as empty.
-    pub fn new(persisted: Option<String>) -> Self {
+    /// Loads `snapshots.json` under `policy.schema`; invalid entries are dropped, an unreadable
+    /// file reads as empty.
+    pub fn new(persisted: Option<String>, policy: PortfolioPolicy) -> Self {
         let doc = persisted
             .as_deref()
             .and_then(json::parse)
-            .filter(|d| d.get("schema").and_then(JsValue::as_str) == Some(super::SCHEMA));
+            .filter(|d| d.get("schema").and_then(JsValue::as_str) == Some(policy.schema));
         let mut snapshots: Vec<Snapshot> = doc
             .as_ref()
             .and_then(|d| d.get("snapshots"))
@@ -187,7 +190,7 @@ impl BalanceSnapshots {
             .unwrap_or_default();
         let excess = snapshots.len().saturating_sub(MAX_SCOPES);
         snapshots.drain(..excess);
-        Self { snapshots }
+        Self { snapshots, policy }
     }
 
     /// `cachedBalances`: serve a fresh (< 60 s) snapshot unless forced, serve any snapshot when
@@ -268,7 +271,7 @@ impl BalanceSnapshots {
                         "fetchedAt": s.fetched_at, "networkId": network_code(s.network) })
             })
             .collect();
-        json!({ "schema": super::SCHEMA, "snapshots": items }).to_string()
+        json!({ "schema": self.policy.schema, "snapshots": items }).to_string()
     }
 
     pub fn clear(&mut self) {

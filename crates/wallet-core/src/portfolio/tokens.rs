@@ -14,6 +14,7 @@ pub use super::registry::{
     is_token_name, is_token_symbol, normalize_token_symbol, starknet_glyph, strk_address,
     with_token_id,
 };
+use super::PortfolioPolicy;
 use crate::catalog::{network_info, Catalogs, TokenRegistry};
 use crate::js::felt::same_felt;
 use crate::js::json::{self, JsValue};
@@ -148,16 +149,18 @@ pub struct TokenPreferences<'a> {
     prefs: Prefs,
     read_only: bool,
     catalogs: Catalogs<'a>,
+    policy: PortfolioPolicy,
 }
 
 impl<'a> TokenPreferences<'a> {
-    pub fn new(persisted: Option<String>, catalogs: Catalogs<'a>) -> Self {
+    /// Loads `preferences.json` under `policy.schema`.
+    pub fn new(persisted: Option<String>, catalogs: Catalogs<'a>, policy: PortfolioPolicy) -> Self {
         let doc = persisted.as_deref().and_then(json::parse);
         let schema = doc
             .as_ref()
             .and_then(|d| d.get("schema"))
             .and_then(JsValue::as_str);
-        let read_only = doc.is_some() && schema != Some(super::SCHEMA);
+        let read_only = doc.is_some() && schema != Some(policy.schema);
         let prefs = doc
             .as_ref()
             .filter(|_| !read_only)
@@ -167,6 +170,7 @@ impl<'a> TokenPreferences<'a> {
             prefs,
             read_only,
             catalogs,
+            policy,
         }
     }
 
@@ -310,7 +314,7 @@ impl<'a> TokenPreferences<'a> {
             .map(|(n, allowed)| (network_code(*n).to_string(), Value::Bool(*allowed)))
             .collect();
         Some(
-            json!({ "schema": super::SCHEMA, "tokens": tokens, "hiddenTokens": prefs.hidden,
+            json!({ "schema": self.policy.schema, "tokens": tokens, "hiddenTokens": prefs.hidden,
                     "displayCurrency": prefs.currency.code(), "explorerFallback": fallback })
             .to_string(),
         )
@@ -321,6 +325,7 @@ impl<'a> TokenPreferences<'a> {
 mod tests {
     use super::*;
     use crate::catalog::{testing, NetworkInfo};
+    use crate::portfolio::TEST_POLICY;
 
     fn catalogs<'a>(networks: &'a [NetworkInfo], registry: &'a TokenRegistry) -> Catalogs<'a> {
         Catalogs { networks, registry }
@@ -330,14 +335,15 @@ mod tests {
     fn defaults_and_round_trip() {
         let (networks, registry) = (testing::networks(), testing::registry());
         let cat = catalogs(&networks, &registry);
-        let prefs = TokenPreferences::new(None, cat);
+        let prefs = TokenPreferences::new(None, cat, TEST_POLICY);
         assert_eq!(prefs.tracked(NetworkId::Mainnet).len(), 2);
         let doc = prefs.persisted().unwrap();
-        let again = TokenPreferences::new(Some(doc.clone()), cat);
+        let again = TokenPreferences::new(Some(doc.clone()), cat, TEST_POLICY);
         assert_eq!(again.persisted().unwrap(), doc);
         let newer = TokenPreferences::new(
-            Some(r#"{"schema":"bramble.mobile.portfolio.v9"}"#.into()),
+            Some(r#"{"schema":"wallet.portfolio.v9"}"#.into()),
             cat,
+            TEST_POLICY,
         );
         assert!(newer.read_only());
         assert_eq!(newer.persisted(), None);
@@ -346,7 +352,7 @@ mod tests {
     #[test]
     fn spam_is_hidden_on_add() {
         let (networks, registry) = (testing::networks(), testing::registry());
-        let mut prefs = TokenPreferences::new(None, catalogs(&networks, &registry));
+        let mut prefs = TokenPreferences::new(None, catalogs(&networks, &registry), TEST_POLICY);
         let fake = with_token_id(NetworkId::Mainnet, "0x1234", "USDC", "USD Coin", 6);
         let outcome = prefs.add(fake).unwrap();
         assert!(outcome.hidden_as_spam);
@@ -359,7 +365,7 @@ mod tests {
     #[test]
     fn spam_is_not_a_known_token_for_the_send_review() {
         let (networks, registry) = (testing::networks(), testing::registry());
-        let mut prefs = TokenPreferences::new(None, catalogs(&networks, &registry));
+        let mut prefs = TokenPreferences::new(None, catalogs(&networks, &registry), TEST_POLICY);
         prefs
             .add(with_token_id(
                 NetworkId::Mainnet,
