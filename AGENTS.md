@@ -87,6 +87,15 @@ Grep first; extend in place rather than adding a sibling.
   of bodies and replies is `rpc::{Request, Response}`; selectors sit in `send::plan_probe`.
 - The send state machine is `send::plan::Plan`; a wallet's session, keys and activity log reach
   it only through `PlanHost`, and its numbers through `Policy` (Bramble's: `SEND_POLICY`).
+- Network and token records (`NetworkInfo`, `TokenInfo`, `TokenRegistry`, borrowed together as
+  `Catalogs`) live in `crates/wallet-core/src/catalog.rs`; the core bundles none, the wallet
+  passes its own in. A network's catalog spelling (`SN_MAIN`) is `NetworkId::catalog_id`.
+- Portfolio lives in `crates/wallet-core/src/portfolio/`: the price book (`prices::PriceBook`,
+  its cache in `price_cache.rs`), saved balances (`snapshots::BalanceSnapshots`), tracked tokens
+  (`tokens::TokenPreferences`), token identity, registry and spam (`registry.rs`), on-chain token
+  reads (`token_meta.rs`), fiat and amount display (`fiat.rs`), the HTTP and portfolio RPC wire
+  contract (`wire.rs`). Account ids are `history::explorer::{canonical_account_id,
+  is_account_id_for_network}`.
 - Only `wallet-core` depends on Krusty (`kms.rs`, `nostr.rs`, `accounts/`, `send/`); `bramble-core` goes through
   `wallet-core` and never names `krusty_kms`.
 
