@@ -6,6 +6,8 @@
 //!
 //! - which OpenZeppelin account version Bramble deploys, and the salt its `KmsPort` defaults to;
 //! - which functions cross the FFI boundary (`raw-keys`);
+//! - multisig coordination: the identifier, relays, page cap, sync window and who is a
+//!   co-signer (`coordination`, plain Rust until the swap);
 //! - later, the v12 vault schema, catalogs and migrations (docs/PLAN.md).
 //!
 //! Functions keep the names and argument order the extension's `KmsPort` uses.
@@ -23,6 +25,8 @@ pub use starknet_wallet_core::{NetworkId, NostrApplicationData, StarkSignature};
 extern crate uniffi_runtime_wasm as _;
 
 uniffi::setup_scaffolding!();
+
+pub mod coordination;
 
 /// The OpenZeppelin account version Bramble deploys (`OZ_ACCOUNT_VERSION` in
 /// `vault/src/accounts/account-contract.ts`). Pinned, never Krusty's `latest`: a manifest bump
