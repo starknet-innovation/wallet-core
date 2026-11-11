@@ -1,6 +1,13 @@
-//! Activity history. For now only what portfolio snapshots share with it: the fixed-UTC
-//! timestamp rendering (`time`) and account-id validation (`explorer`); the rest of mobile's
-//! `history/*` follows in plan step 2.4c.
+//! Activity: the Starkscan lane, the RPC history scan, the local log's cadence, and the row
+//! presentation, each a sans-IO port of the extension's TypeScript. The log itself is
+//! `crate::activity`; catalogs (`crate::catalog`) are arguments.
 
+pub mod activity;
+pub mod activity_book;
+pub mod activity_rules;
+pub mod appearance;
+pub mod classify;
+pub mod events;
 pub mod explorer;
+pub mod starkscan;
 pub mod time;
