@@ -47,7 +47,7 @@ mobile holds no copy of what this repo has ported. A step is done when both halv
 | 2.2 Vault | done (#19) | done (Bramble #911), at `v0.1.0`; the vault → v12 migration is placed in 2.7 (see 2.7), owner not named |
 | 2.2 Accounts | A1 (#39), F3 (#40) and A2 (#41) open as a stack | G3 open (Bramble #918); M5 open (Bramble #921), pinning A2's branch tip by `rev` until a tag follows |
 | 2.3 Transactions | done (#22, #25, #31) | done (Bramble #916), at `v0.2.1` |
-| 2.4a Shims | open (#24APR) | M6 open (Bramble #M6PR) |
+| 2.4a Shims | open (#43) | M6 open (Bramble #M6PR) |
 | 2.4b–d Reads, 2.5 Multisig, 2.6 Catalogs, 2.7 Swap | not started; F1 and F2 open (#42) for 2.4d and 2.5 | not started; G1 and G2 open (Bramble #919, #920) |
 | 3 Extension | not started; `js/package.json` is private | n/a |
 
@@ -79,7 +79,7 @@ Ports (A*) and fixture copies (F*) are PRs here.
 | A1 Account addresses (done, #39) | here | nothing | `Ladder`, `AccountFamily`, `family_address` in `wallet-core`; tested over both families fixtures | 2.2, Accounts |
 | A2 Recovery scan (open, #41) | here | A1, F3 | `accounts::{scan, advisory}`, `rpc::Request`; tested over the scan fixture and mobile's canned-node cases | 2.2, Accounts |
 | M5 Accounts (open, Bramble #921) | Bramble, `feature/mobile-wallet`, stacked on G2 | A2 and its tag (a `rev` until then) | `kms_accounts.rs` and `recovery_advisory.rs` go; `recovery_scan.rs` becomes a wrapper | 2.2, Accounts |
-| 2.4a Shims (open, #24APR) | here, stacked on F1/F2 | nothing | `js/*` and `history::time` copied; `js_trim` and `short_label` move to `js::num` | 2.4 |
+| 2.4a Shims (open, #43) | here, stacked on F1/F2 | nothing | `js/*` and `history::time` copied; `js_trim` and `short_label` move to `js::num` | 2.4 |
 | M6 Shims (open, Bramble #M6PR) | Bramble, stacked on M5 | 2.4a | `js/` and `history/time.rs` deleted, re-exported from the core | 2.4 |
 
 Every adoption PR for what is ported has merged, so by the Process rule the next port may start.
@@ -469,7 +469,7 @@ Each phase names the crate a module lands in; the table above decides anything n
          into `wallet-core::js`, with `send::calls::{js_trim, short_label}` moving beside them,
          and `history/time.rs` (no crate imports), whose `format_saved_data_label`
          `portfolio/snapshots.rs` uses. Unit tests only; their golden coverage comes through the
-         later parts. Done (#24APR): the eight `js` files and `time.rs` are byte copies of
+         later parts. Done (#43): the eight `js` files and `time.rs` are byte copies of
          mobile's; `short_label` joined `js::num`, and `send::calls` re-exports both names. M6
          (Bramble #M6PR) makes mobile's `js` and `history::time` re-exports and points its
          private `js_trim` and `short_label` copies at the core.
