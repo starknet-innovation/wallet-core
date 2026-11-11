@@ -17,9 +17,11 @@
 
 #![forbid(unsafe_code)]
 
-use starknet_wallet_core::Zeroizing;
+#[cfg(any(feature = "raw-keys", feature = "mobile"))]
+pub(crate) use starknet_wallet_core::felt;
 #[cfg(feature = "raw-keys")]
-use starknet_wallet_core::{felt, SecretFelt};
+use starknet_wallet_core::SecretFelt;
+use starknet_wallet_core::Zeroizing;
 pub use starknet_wallet_core::{NetworkId, NostrApplicationData, StarkSignature};
 
 // The wasm2 player needs the allocator and panic hook this crate exports; nothing else
@@ -31,6 +33,10 @@ uniffi::setup_scaffolding!();
 
 pub mod catalogs;
 pub mod coordination;
+
+// The mobile wallet's surface, at the crate root where mobile had it.
+#[cfg(feature = "mobile")]
+include!("mobile.rs");
 
 /// The OpenZeppelin account version Bramble deploys (`OZ_ACCOUNT_VERSION` in
 /// `vault/src/accounts/account-contract.ts`). Pinned, never Krusty's `latest`: a manifest bump
@@ -100,6 +106,19 @@ pub enum CoreError {
     /// A node reply the core will not interpret.
     #[error("rpc failure: {reason}")]
     Rpc { reason: String },
+    // Mobile's variants, after the extension's so its bindings keep their order.
+    #[error("wallet is locked")]
+    Locked,
+    #[error("no wallet on this device")]
+    NoWallet,
+    #[error("a wallet already exists on this device")]
+    WalletExists,
+    /// Too many wrong passphrases: no attempt is allowed for `retry_after_ms`.
+    #[error("too many attempts; retry in {retry_after_ms} ms")]
+    Throttled { retry_after_ms: u64 },
+    /// Nostr coordination failed; `reason` is a fixed operation name, never input text.
+    #[error("coordination failure: {reason}")]
+    Coordination { reason: String },
 }
 
 impl From<starknet_wallet_core::Error> for CoreError {
@@ -119,6 +138,7 @@ impl From<starknet_wallet_core::Error> for CoreError {
 // wallet-core's records and enums, exported as they are. Its keypairs hold `SecretFelt`; the
 // `raw-keys` records below are where a key becomes text, and only for the FFI.
 
+#[cfg_attr(feature = "mobile", doc = "A network the mobile wallet supports.")]
 #[uniffi::remote(Enum)]
 pub enum NetworkId {
     Mainnet,
