@@ -1,6 +1,6 @@
 //! Starknet wallet core.
 //!
-//! Key custody through Krusty KMS (`kms`), Nostr coordination identity (`nostr`), the felt
+//! Key custody through Krusty KMS (`kms`), Nostr coordination identity and sans-IO relay work (`nostr`), the felt
 //! grammar they share (`felt`), where an account lives (`accounts`), the encrypted vault (`envelope`, `container`) and the host
 //! storage and clock it runs on (`host`), sans-IO JSON-RPC (`rpc`) and the transfer mechanism
 //! (`send`), portfolio reads and display (`portfolio`), activity history (`history`, over the

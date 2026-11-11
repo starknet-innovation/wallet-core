@@ -2,6 +2,10 @@
 //! Bramble's `wallet-model/nostr` ones, kept as generic resource bounds, and public so a wallet
 //! checks relay traffic with the same grammar the core does. The private key is derived per call
 //! into a `Zeroizing` buffer, only borrowed by Krusty, and never returned.
+//!
+//! The relay side of coordination is sans-IO in the submodules: the relay-URL grammar
+//! (`relay_url`), relay selection, gift-wrap batches and publishing (`relay`), the paged sync
+//! (`sync`) and the sync window (`sync_window`). The host keeps the sockets.
 
 use serde::Serialize;
 use serde_json::Value;

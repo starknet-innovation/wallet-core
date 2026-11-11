@@ -113,6 +113,12 @@ Grep first; extend in place rather than adding a sibling.
   reply judging (`judge.rs`, `notes.rs`), the order-keeping JSON the cursor echo needs
   (`privacy::json`, stricter than `js::json`), routing and limits records (`config.rs`), and the
   gates (`gates.rs`, `home.rs`). `DeploymentState` is `send::types`.
+- Nostr relay work lives beside the keys in `crates/wallet-core/src/nostr/`: the relay-URL
+  grammar (`relay_url::is_nostr_relay_url`), relay selection, frame parsing, gift-wrap batches and
+  publishing (`relay.rs`: `valid_relay_urls`, `parsed_gift_wraps`, `PublishJudge`,
+  `publish_many_nostr_gift_wraps`), the paged sync (`sync::SyncJudge`) and the sync window
+  (`sync_window.rs`). Bramble's numbers for them (`RELAY_LIMITS`, `SYNC_LOOKBACKS`) and its
+  recipient and sender rules are `bramble-core`'s `coordination.rs`.
 - Only `wallet-core` depends on Krusty (`kms.rs`, `nostr.rs`, `accounts/`, `send/`); `bramble-core` goes through
   `wallet-core` and never names `krusty_kms`.
 
