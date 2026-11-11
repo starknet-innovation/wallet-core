@@ -14,7 +14,11 @@ through [`bramble-core`](../bramble-core).
   sans-IO recovery scan (`accounts::scan`) walks a caller-given list of shapes over an index
   ladder, probes each address and keeps what has history; its advisory reads
   (`accounts::advisory`) say whether this wallet can sign for a deployed account and whether a
-  privacy pool holds another wallet's viewing key for it.
+  privacy pool holds another wallet's viewing key for it. Argent Multisig 0.2 accounts
+  (`accounts::multisig*`): signer GUIDs, the GUID-sorted configuration, constructor calldata and
+  counterfactual address under a caller-given class and signer limit, the extension's stored
+  record shape and its validation rules, and two sans-IO reads: the threshold and signers at one
+  pinned block, and whether the class is declared.
 - **Nostr coordination identity** (`nostr`): the wallet's BIP-340 key, NIP-59 gift wrap and open
   for application data, with bounds on event and data sizes.
 - **The encrypted vault** (`envelope`, `container`): envelope v3 and the DEK container,

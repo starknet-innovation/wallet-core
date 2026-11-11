@@ -85,6 +85,11 @@ Grep first; extend in place rather than adding a sibling.
   tokens, pool and `Authorization`s); its signer and privacy-pool reads and verdicts are
   `accounts::advisory`, whose own viewing public key is `own_viewing_public_key`. A host's batch
   of bodies and replies is `rpc::{Request, Response}`; selectors sit in `send::plan_probe`.
+- Argent multisig accounts are `accounts::multisig` (GUIDs, normalised config, calldata, address,
+  over a caller's `ArgentMultisigClass`), `accounts::multisig_records` (the extension's
+  `ArgentMultisigRecord` and its validators), `accounts::multisig_read` (the pinned-block
+  authority read) and `accounts::multisig_declared` (the class-declared read). `lenient_hex_felt`
+  (hex in any case with trailing JavaScript whitespace) is `js::felt`.
 - The send state machine is `send::plan::Plan`; a wallet's session, keys and activity log reach
   it only through `PlanHost`, and its numbers through `Policy` (Bramble's: `SEND_POLICY`).
 - Network and token records (`NetworkInfo`, `TokenInfo`, `TokenRegistry`, borrowed together as
