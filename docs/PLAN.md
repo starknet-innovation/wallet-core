@@ -45,7 +45,7 @@ mobile holds no copy of what this repo has ported. A step is done when both halv
 | 0 Scaffold, 1 Golden suite | done | n/a |
 | 2.1 KMS, Nostr, felt | done (#13, #20) | done (Bramble #907, #909), at `v0.1.0` |
 | 2.2 Vault | done (#19) | done (Bramble #911), at `v0.1.0`; the vault → v12 migration is placed in 2.7 (see 2.7), owner not named |
-| 2.2 Accounts | A1 done (#39); A2 not started | M5, after A2 |
+| 2.2 Accounts | A1 done (#39); F3 open (#F3PR); A2 not started | G3 open (Bramble #G3PR); M5, after A2 |
 | 2.3 Transactions | done (#22, #25, #31) | done (Bramble #916), at `v0.2.1` |
 | 2.4 Reads (a–d), 2.5 Multisig, 2.6 Catalogs, 2.7 Swap | not started | not started |
 | 3 Extension | not started; `js/package.json` is private | n/a |
@@ -73,8 +73,8 @@ Ports (A*) and fixture copies (F*) are PRs here.
 | G1 Viewing public key vector | same | nothing | one field in the privacy generator | Golden tests |
 | G2 Multisig coordination generator | same | `main` merged in | a new fixture for the 2.5 rules | Golden tests |
 | F1, F2 Fixture copies | here | G1, G2 | files copied unchanged, sha256 rows and the Bramble commit line updated, the test that reads them | Golden tests |
-| G3 Recovery scan generator | Bramble, `feature/mobile-wallet` | nothing | `accounts-parity-scan.json`: shapes, creatable rule, scan target, signing verdicts | Golden tests |
-| F3 Catalog and scan copies | here | G3 | `accounts-parity-scan.json` and `generated/accounts.json` copied as fixtures | 2.2, Accounts |
+| G3 Recovery scan generator (open, Bramble #G3PR) | Bramble, `feature/mobile-wallet` | nothing | `accounts-parity-scan.json` and `accounts-parity-scan-signing.json`: shapes, creatable and keep rules, scan target, signing verdicts, registered elsewhere | Golden tests |
+| F3 Catalog and scan copies (open, #F3PR) | here | G3 | both `accounts-parity-scan*.json` and `generated/accounts.json` copied as fixtures; every other fixture re-copied at the same Bramble commit | 2.2, Accounts |
 | A1 Account addresses (done, #39) | here | nothing | `Ladder`, `AccountFamily`, `family_address` in `wallet-core`; tested over both families fixtures | 2.2, Accounts |
 | A2 Recovery scan | here | A1, F3 | `accounts::{scan, advisory}`, `rpc::Request`; tested over the scan fixture and mobile's canned-node cases | 2.2, Accounts |
 | M5 Accounts | Bramble, `feature/mobile-wallet` | A2 and its tag | `kms_accounts.rs` and `recovery_advisory.rs` go; `recovery_scan.rs` becomes a wrapper | 2.2, Accounts |
@@ -85,8 +85,9 @@ and it has to land before 2.7 (see the Krusty constraint under Unassigned module
 start now and in parallel; A2 waits for F3. G1 and G2 can also start now (`main` was merged into
 the branch by Bramble #908); G2 is the long pole for 2.5. #908 also regenerated four fixtures
 (`extension-transactions-copy.json`, `extension-privacy-copy.json`, `extension-privacy-rules.json`,
-`portfolio-parity.jsonl`), so the copies here are behind Bramble; F3 re-copies every file at one
-Bramble commit, which also brings those four up to date.
+`portfolio-parity.jsonl`), so the copies here were behind Bramble; F3 re-copied every file at one
+Bramble commit (G3's, `860a90ec`), which brought those four up to date. Every test here passes
+over the re-copied files with no change to the core.
 
 ## Generic and Bramble
 
@@ -677,7 +678,10 @@ seals with fresh randomness are kept while the extension still opens them.
   exports `recoveryScanShapes` and `isCreatableCandidate` from
   `apps/extension/src/background/onboarding/onboarding-ops.ts` (module-private today; move them
   beside `recoveryScanTarget` in `wallet-model/src/accounts/recovery.ts`) and writes
-  `accounts-parity-scan.json` from `scripts/mobile-parity-accounts.ts`, with sections:
+  `accounts-parity-scan.json` from `scripts/mobile-parity-accounts.ts`, with sections (as built:
+  a sibling `scripts/mobile-parity-scan.ts` writes two files, the signing verdicts in
+  `accounts-parity-scan-signing.json`, because Bramble's 500-line limit covers JSON; the keep rule
+  is exported too, as `keepsRecoveryCandidate`):
   - shapes in order, with and without a BIP-39 passphrase, and each shape's creatable flag;
   - `recoveryScanTarget` and the keep rule over fixed candidate sets (a quiet wallet, a ladder of
     real accounts, the `maxScannedIndexes` ceiling, a manual index);
