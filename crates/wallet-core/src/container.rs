@@ -435,20 +435,9 @@ mod tests {
         ));
     }
 
-    struct Memory(std::cell::RefCell<std::collections::HashMap<String, Vec<u8>>>);
-    impl Storage for Memory {
-        fn read(&self, key: &str) -> Result<Option<Vec<u8>>, Error> {
-            Ok(self.0.borrow().get(key).cloned())
-        }
-        fn write(&self, key: &str, value: &[u8]) -> Result<(), Error> {
-            self.0.borrow_mut().insert(key.into(), value.to_vec());
-            Ok(())
-        }
-    }
-
     #[test]
     fn a_container_round_trips_through_storage() {
-        let storage = Memory(Default::default());
+        let storage = crate::host::testing::Memory::default();
         assert!(read(&storage, "vault.json", 5).unwrap().is_none());
         let key = SealingKey::from_parts("fixture passphrase", [1; 16], &"ef".repeat(16));
         let file = seal_new(&key, &[3u8; 32], 5, b"{}", &Randomness::draw().unwrap()).unwrap();

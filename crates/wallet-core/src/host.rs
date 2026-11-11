@@ -11,6 +11,10 @@ pub trait Storage {
     /// Replaces the value under `key` atomically and durably: an interrupted write leaves the old
     /// value, and a completed one has reached the disk.
     fn write(&self, key: &str, value: &[u8]) -> Result<(), Error>;
+    /// Moves the value under `from` to `to`, replacing any value there; an error when there is
+    /// nothing under `from` or the move fails. The activity log sets a file it cannot read aside
+    /// with it rather than overwrite it (`activity::store`).
+    fn rename(&self, from: &str, to: &str) -> Result<(), Error>;
 }
 
 /// A clock that is monotonic and scoped to one boot.
@@ -62,6 +66,33 @@ impl ClockReading {
             return None;
         }
         self.monotonic_ms.checked_sub(earlier_ms)
+    }
+}
+
+/// In-memory `Storage` for this crate's unit tests.
+#[cfg(test)]
+pub(crate) mod testing {
+    use super::*;
+    use std::cell::RefCell;
+    use std::collections::BTreeMap;
+
+    #[derive(Default)]
+    pub(crate) struct Memory(pub(crate) RefCell<BTreeMap<String, Vec<u8>>>);
+
+    impl Storage for Memory {
+        fn read(&self, key: &str) -> Result<Option<Vec<u8>>, Error> {
+            Ok(self.0.borrow().get(key).cloned())
+        }
+        fn write(&self, key: &str, value: &[u8]) -> Result<(), Error> {
+            self.0.borrow_mut().insert(key.into(), value.to_vec());
+            Ok(())
+        }
+        fn rename(&self, from: &str, to: &str) -> Result<(), Error> {
+            let value = self.0.borrow_mut().remove(from);
+            let value = value.ok_or_else(|| Error::storage("rename"))?;
+            self.0.borrow_mut().insert(to.into(), value);
+            Ok(())
+        }
     }
 }
 
