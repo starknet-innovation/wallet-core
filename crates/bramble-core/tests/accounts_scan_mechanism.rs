@@ -312,6 +312,10 @@ fn a_manual_index_keeps_the_scan_position_and_lists_creatable_accounts() {
         scan.next(PHRASE, None, &config, Some(0x8000_0000)),
         Err(Error::InvalidInput { .. })
     ));
+    // strkd's agent index is Bramble's to reserve, and the scan never derives it.
+    assert_eq!(config.reserved_indexes, [0x4147_4e54]);
+    assert!(config.limits.max_scanned_indexes < config.reserved_indexes[0]);
+    assert!(scan.next(PHRASE, None, &config, Some(0x4147_4e54)).is_err());
 }
 
 #[test]

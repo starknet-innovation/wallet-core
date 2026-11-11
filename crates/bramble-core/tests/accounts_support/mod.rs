@@ -13,8 +13,6 @@ use starknet_wallet_core::{felt, oz_account_class_hash, Felt, NetworkId};
 /// The published E2E phrase every account fixture is derived from.
 pub const PHRASE: &str =
     "habit hope tip crystal because grunt nation idea electric witness alert like";
-/// Bramble's reserved agent index (`RESERVED_AGENT_ACCOUNT_INDEX`), never scanned.
-pub const RESERVED_AGENT_INDEX: u32 = 0x4147_4e54;
 
 pub fn fixture(name: &str) -> Value {
     let path = format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"));
@@ -146,7 +144,10 @@ pub fn scan_config(
         network,
         shapes,
         limits: limits(&scan),
-        reserved_indexes: vec![RESERVED_AGENT_INDEX],
+        // strkd's agent index (`RESERVED_AGENT_ACCOUNT_INDEX`), never derived or scanned.
+        reserved_indexes: vec![
+            u32::try_from(catalog()["reservedAgentIndex"].as_u64().unwrap()).unwrap(),
+        ],
         tokens,
         privacy_pool,
         authorizations: authorizations(),
