@@ -52,7 +52,7 @@ mobile holds no copy of what this repo has ported. A step is done when both halv
 | 2.4c History and activity | open (#45) | M8 open (Bramble #924) |
 | 2.4d Privacy | open (#46) | M9 open (Bramble #925) |
 | 2.5a Multisig account | open (#47) | M10 open (Bramble #926) |
-| 2.5b Multisig coordination | open (#25BPR); `check.sh all` fails only at `package` until the version is bumped (see Process) | M11 open (Bramble #M11PR) |
+| 2.5b Multisig coordination | open (#48); `check.sh all` fails only at `package` until the version is bumped (see Process) | M11 open (Bramble #M11PR) |
 | 2.6 Catalogs, 2.7 Swap | not started | not started |
 | 3 Extension | not started; `js/package.json` is private | n/a |
 
@@ -94,7 +94,7 @@ Ports (A*) and fixture copies (F*) are PRs here.
 | M9 Privacy (open, Bramble #925) | Bramble, stacked on M8 | 2.4d | `privacy/` becomes the FFI object, the routing loader and the `PrivacyHost` over the session | 2.4 |
 | 2.5a Multisig account (open, #47) | here, stacked on 2.4d | 2.4d | `accounts::{multisig, multisig_records, multisig_read, multisig_declared}`, `js::felt::lenient_hex_felt`; `multisig_parity.rs` over `multisig.json` copied as a fixture | 2.5 |
 | M10 Multisig account (open, Bramble #926) | Bramble, stacked on M9 | 2.5a | `argent_multisig.rs`, `multisig_rpc.rs` and `class_declared.rs` become wrappers passing Bramble's class; `multisig_store.rs` keeps the file; mobile stops naming Krusty outside `kms.rs` | 2.5 |
-| 2.5b Multisig coordination (open, #25BPR) | here, stacked on 2.5a | 2.5a, F2 | `nostr::{relay_url, relay, sync, sync_window}` in `wallet-core`; `coordination` (constants, relay policy, recipients, sender rule) in `bramble-core`; `nostr_coordination_parity.rs` over all three G2 fixtures | 2.5 |
+| 2.5b Multisig coordination (open, #48) | here, stacked on 2.5a | 2.5a, F2 | `nostr::{relay_url, relay, sync, sync_window}` in `wallet-core`; `coordination` (constants, relay policy, recipients, sender rule) in `bramble-core`; `nostr_coordination_parity.rs` over all three G2 fixtures | 2.5 |
 | M11 Multisig coordination (open, Bramble #M11PR) | Bramble, stacked on M10 | 2.5b | `nostr_relay.rs` and the window and relay rules of `coordination.rs` over the core; mobile keeps its own relay constants until 2.7 | 2.5 |
 
 Every adoption PR for what is ported has merged, so by the Process rule the next port may start.
@@ -571,7 +571,7 @@ Each phase names the crate a module lands in; the table above decides anything n
       matching keep mobile's judging, since `send::judge`'s would change those verdicts; the
       records keep serde (they are the extension's stored JSON shape); the observed-authority
       fallback and the registry file stay in mobile; `lenient_hex_felt` moved from mobile's
-      `contact_card.rs` into `js::felt`. **2.5b, the coordination** (done, #25BPR), the rest of this
+      `contact_card.rs` into `js::felt`. **2.5b, the coordination** (done, #48), the rest of this
       section, with the extension's names and arguments (snake-cased): `nostr::relay_url`
       (`is_nostr_relay_url`, which now accepts `ws:` on `127.0.0.1` and `localhost` as the
       extension does), `nostr::relay` (`valid_relay_urls`, `parsed_gift_wraps` in the extension's
