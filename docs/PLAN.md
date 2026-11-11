@@ -48,7 +48,8 @@ mobile holds no copy of what this repo has ported. A step is done when both halv
 | 2.2 Accounts | A1 (#39), F3 (#40) and A2 (#41) open as a stack | G3 open (Bramble #918); M5 open (Bramble #921), pinning A2's branch tip by `rev` until a tag follows |
 | 2.3 Transactions | done (#22, #25, #31) | done (Bramble #916), at `v0.2.1` |
 | 2.4a Shims | open (#43) | M6 open (Bramble #922) |
-| 2.4b–d Reads, 2.5 Multisig, 2.6 Catalogs, 2.7 Swap | not started; F1 and F2 open (#42) for 2.4d and 2.5 | not started; G1 and G2 open (Bramble #919, #920) |
+| 2.4b Portfolio | open (#24BPR) | M7 open (Bramble #M7PR) |
+| 2.4c–d Reads, 2.5 Multisig, 2.6 Catalogs, 2.7 Swap | not started; F1 and F2 open (#42) for 2.4d and 2.5 | not started; G1 and G2 open (Bramble #919, #920) |
 | 3 Extension | not started; `js/package.json` is private | n/a |
 
 `v0.1.0` is tagged at `35abc8b` (GitHub release only) and was what M2 and M3 pinned. `v0.2.0`
@@ -81,6 +82,8 @@ Ports (A*) and fixture copies (F*) are PRs here.
 | M5 Accounts (open, Bramble #921) | Bramble, `feature/mobile-wallet`, stacked on G2 | A2 and its tag (a `rev` until then) | `kms_accounts.rs` and `recovery_advisory.rs` go; `recovery_scan.rs` becomes a wrapper | 2.2, Accounts |
 | 2.4a Shims (open, #43) | here, stacked on F1/F2 | nothing | `js/*` and `history::time` copied; `js_trim` and `short_label` move to `js::num` | 2.4 |
 | M6 Shims (open, Bramble #922) | Bramble, stacked on M5 | 2.4a | `js/` and `history/time.rs` deleted, re-exported from the core | 2.4 |
+| 2.4b Portfolio (open, #24BPR) | here, stacked on 2.4a | 2.4a | `portfolio/*`, `catalog.rs`, account ids; three parity suites over `portfolio-parity.jsonl` | 2.4 |
+| M7 Portfolio (open, Bramble #M7PR) | Bramble, stacked on M6 | 2.4b | `portfolio/` becomes FFI wrappers and copy over the core; `networks.rs` builds the core's catalog records | 2.4 |
 
 Every adoption PR for what is ported has merged, so by the Process rule the next port may start.
 2.2 Accounts goes first: it is the unfinished half of a step, it is smaller than any part of 2.4,
@@ -479,6 +482,18 @@ Each phase names the crate a module lands in; the table above decides anything n
          `portfolio_parity.rs`, `token_parity.rs`, `portfolio_state.rs`. It reads `networks` six
          times: this is where the 2.6 rule first applies, so define the network and token
          records in `wallet-core` here, once, as arguments, and every later part reuses them.
+         Done (#24BPR): `catalog.rs` holds `NetworkInfo`, `TokenInfo`, `TokenRegistry` and the
+         borrowed `Catalogs`, plain records with no serde (Bramble parses its own JSON), and
+         `NetworkId` gains the extension's spelling (`catalog_id`). `PriceBook`,
+         `BalanceSnapshots` and `TokenPreferences` are plain values with `&mut self`; mobile
+         keeps the FFI objects as wrappers around a lock. `strk_address` answers `None` where
+         mobile panicked on a catalog without STRK. Two functions that only return a sentence
+         (`token_network_error`, `balance_failure_copy`) stay Bramble's. `canonical_account_id`
+         came with `is_account_id_for_network`. `networks.json` and `token-registry.json` are
+         copied as fixtures for the tests. `portfolio_state.rs` moved its portfolio cases; its
+         history and activity cases follow in 2.4c. Still in `wallet-core` and candidates for
+         2.6: the `bramble.mobile.portfolio.v1` schema string, the curated USDC.e alias, the
+         CoinGecko base URL and the rule that only mainnet has fiat prices.
       3. **2.4c History and activity** (3,565): `history/*` and `activity/*`, which import each
          other. Oracle `portfolio-parity.jsonl` rows and `extension-transactions-observation.json`;
          tests `history_parity.rs`, `row_parity.rs`, and the explorer-URL and activity-store
