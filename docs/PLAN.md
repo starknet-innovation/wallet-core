@@ -49,7 +49,7 @@ mobile holds no copy of what this repo has ported. A step is done when both halv
 | 2.3 Transactions | done (#22, #25, #31) | done (Bramble #916), at `v0.2.1` |
 | 2.4a Shims | open (#43) | M6 open (Bramble #922) |
 | 2.4b Portfolio | open (#44) | M7 open (Bramble #923) |
-| 2.4c History and activity | open (#45) | M8 open (Bramble #M8PR) |
+| 2.4c History and activity | open (#45) | M8 open (Bramble #924) |
 | 2.4d Privacy, 2.5 Multisig, 2.6 Catalogs, 2.7 Swap | not started; F1 and F2 open (#42) for 2.4d and 2.5 | not started; G1 and G2 open (Bramble #919, #920) |
 | 3 Extension | not started; `js/package.json` is private | n/a |
 
@@ -86,7 +86,7 @@ Ports (A*) and fixture copies (F*) are PRs here.
 | 2.4b Portfolio (open, #44) | here, stacked on 2.4a | 2.4a | `portfolio/*`, `catalog.rs`, account ids; three parity suites over `portfolio-parity.jsonl` | 2.4 |
 | M7 Portfolio (open, Bramble #923) | Bramble, stacked on M6 | 2.4b | `portfolio/` becomes FFI wrappers and copy over the core; `networks.rs` builds the core's catalog records | 2.4 |
 | 2.4c History and activity (open, #45) | here, stacked on 2.4b | 2.4b | `history/*`, `activity/*`, `Storage::rename`; `history_parity.rs`, `row_parity.rs` and the cases 2.3 and 2.4b left behind | 2.4 |
-| M8 History and activity (open, Bramble #M8PR) | Bramble, stacked on M7 | 2.4c | `history/` and `activity/` become FFI wrappers, copy and the file lock over the core | 2.4 |
+| M8 History and activity (open, Bramble #924) | Bramble, stacked on M7 | 2.4c | `history/` and `activity/` become FFI wrappers, copy and the file lock over the core | 2.4 |
 
 Every adoption PR for what is ported has merged, so by the Process rule the next port may start.
 2.2 Accounts goes first: it is the unfinished half of a step, it is smaller than any part of 2.4,
