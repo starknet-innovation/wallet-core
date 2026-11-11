@@ -10,6 +10,8 @@
 //! `ArgentShape::Unlisted`.
 
 pub mod advisory;
+pub mod multisig;
+pub mod multisig_records;
 pub mod scan;
 mod scan_rules;
 
