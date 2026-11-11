@@ -93,7 +93,10 @@ check_deny() { run cargo deny check; }
 
 # Builds each crate from its .crate file, as crates.io would. bramble-core resolves wallet-core
 # through a local registry, so this works before wallet-core is published. Needs a clean tree.
-check_package() { run cargo package --locked --workspace; }
+# Its own target directory: the packaged bramble-core builds against the published
+# starknet-wallet-core, and its library has no hash in its file name (cdylib, staticlib), so in
+# the shared target it would overwrite the workspace's and break the next `cargo test`.
+check_package() { run cargo package --locked --workspace --target-dir target/package-verify; }
 
 check_wasm() {
   local want have=""
