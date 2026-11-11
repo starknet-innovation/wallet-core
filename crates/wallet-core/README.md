@@ -23,12 +23,16 @@ through [`bramble-core`](../bramble-core).
   replies, and derives and plans a transfer. The host carries the bytes.
 - **The felt grammar** (`felt`): strict parsing, canonical lowercase hex and the private-key range.
   Everything else here goes through it.
+- **JavaScript semantics** (`js`, `history::time`): `trim`, UTF-16 slices, `Number` and
+  `toFixed` formatting, `BigInt` parsing, `JSON`, a step- and depth-budgeted regex matcher that
+  fails closed, and `Intl`'s fixed-UTC dates, reproduced bit for bit so display output matches
+  the extension's.
 - **Mechanism, with decisions as arguments.** The account version, the salt, the network: the
   caller passes them in.
 - **Secret-careful.** Private keys are `SecretFelt`, mnemonics and passphrases are `Zeroizing`
   where the API allows, and errors carry a fixed reason or operation name, never input text.
 
-As `docs/PLAN.md` lands, portfolio, history and privacy logic join it here.
+As `docs/PLAN.md` lands, portfolio, the rest of history, and privacy logic join it here.
 
 ## What it is NOT
 
