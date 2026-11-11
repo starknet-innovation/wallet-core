@@ -39,6 +39,19 @@ pub fn utf16_slice(value: &str, start: usize, end: usize) -> String {
     String::from_utf16_lossy(&units[start..end])
 }
 
+/// `accountLabel` / `shortAddress`: `a.slice(0, 6) + "…" + a.slice(-4)` on UTF-16 units, with no
+/// length guard (as in JavaScript).
+pub fn short_label(value: &str) -> String {
+    let units: Vec<u16> = value.encode_utf16().collect();
+    let head = &units[..6.min(units.len())];
+    let tail = &units[units.len().saturating_sub(4)..];
+    format!(
+        "{}…{}",
+        String::from_utf16_lossy(head),
+        String::from_utf16_lossy(tail)
+    )
+}
+
 /// `Number(value)` for a string (`StringToNumber`): NaN for anything outside the grammar.
 pub fn string_to_number(value: &str) -> f64 {
     let text = js_trim(value);
