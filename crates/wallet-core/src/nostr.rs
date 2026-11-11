@@ -10,6 +10,7 @@ use zeroize::Zeroizing;
 use crate::kms::{check_derivation_input, utf16_length};
 use crate::Error;
 
+pub mod relay;
 pub mod relay_url;
 
 /// NIP-59 gift-wrap kind.
