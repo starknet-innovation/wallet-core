@@ -12,6 +12,7 @@ use crate::Error;
 
 pub mod relay;
 pub mod relay_url;
+pub mod sync;
 
 /// NIP-59 gift-wrap kind.
 pub const GIFT_WRAP_KIND: u64 = 1_059;
