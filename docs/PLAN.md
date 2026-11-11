@@ -50,7 +50,7 @@ mobile holds no copy of what this repo has ported. A step is done when both halv
 | 2.4a Shims | open (#43) | M6 open (Bramble #922) |
 | 2.4b Portfolio | open (#44) | M7 open (Bramble #923) |
 | 2.4c History and activity | open (#45) | M8 open (Bramble #924) |
-| 2.4d Privacy | open (#24DPR) | M9 open (Bramble #M9PR) |
+| 2.4d Privacy | open (#46) | M9 open (Bramble #M9PR) |
 | 2.5 Multisig, 2.6 Catalogs, 2.7 Swap | not started; F1 and F2 open (#42) for 2.4d and 2.5 | not started; G1 and G2 open (Bramble #919, #920) |
 | 3 Extension | not started; `js/package.json` is private | n/a |
 
@@ -88,7 +88,7 @@ Ports (A*) and fixture copies (F*) are PRs here.
 | M7 Portfolio (open, Bramble #923) | Bramble, stacked on M6 | 2.4b | `portfolio/` becomes FFI wrappers and copy over the core; `networks.rs` builds the core's catalog records | 2.4 |
 | 2.4c History and activity (open, #45) | here, stacked on 2.4b | 2.4b | `history/*`, `activity/*`, `Storage::rename`; `history_parity.rs`, `row_parity.rs` and the cases 2.3 and 2.4b left behind | 2.4 |
 | M8 History and activity (open, Bramble #924) | Bramble, stacked on M7 | 2.4c | `history/` and `activity/` become FFI wrappers, copy and the file lock over the core | 2.4 |
-| 2.4d Privacy (open, #24DPR) | here, stacked on 2.4c | 2.4c, F1 | `privacy/*` with `PrivacyHost`; the privacy parity and plan suites | 2.4 |
+| 2.4d Privacy (open, #46) | here, stacked on 2.4c | 2.4c, F1 | `privacy/*` with `PrivacyHost`; the privacy parity and plan suites | 2.4 |
 | M9 Privacy (open, Bramble #M9PR) | Bramble, stacked on M8 | 2.4d | `privacy/` becomes the FFI object, the routing loader and the `PrivacyHost` over the session | 2.4 |
 
 Every adoption PR for what is ported has merged, so by the Process rule the next port may start.
@@ -520,7 +520,7 @@ Each phase names the crate a module lands in; the table above decides anything n
       4. **2.4d Privacy** (3,007): `privacy/*`. `plan.rs` and `plan_steps.rs` hold `WalletCore`
          as `send/plan*.rs` did, so they take a host trait the way `Plan` takes `PlanHost`;
          `wallet_ext.rs` stays in mobile. Oracle `extension-privacy-*.json` and G1's vector;
-         tests `privacy_parity.rs`, `privacy_plan.rs`. Done (#24DPR): `privacy/*` as plain
+         tests `privacy_parity.rs`, `privacy_plan.rs`. Done (#46): `privacy/*` as plain
          Rust. `PrivacyReadPlan` is a `&mut self` state machine lent a `PrivacyHost` on every
          `advance`, whose one method returns the scoped viewing key as a `SecretFelt` or `None`
          (locked, or the account gone); the wallet keeps the session, the generation check and
