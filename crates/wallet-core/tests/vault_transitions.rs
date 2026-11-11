@@ -6,6 +6,18 @@ use starknet_wallet_core::container::{
 };
 use starknet_wallet_core::envelope::SealingKey;
 
+/// A payload document carrying its own version, as the vault's caller writes it. The Quint
+/// model's `payloadVersion(payload)` is this field; the container never reads it.
+fn doc(version: u32, body: &str) -> Vec<u8> {
+    serde_json::to_vec(&serde_json::json!({ "version": version, "body": body })).unwrap()
+}
+
+/// The version a payload document claims.
+fn doc_version(bytes: &[u8]) -> u32 {
+    let value: serde_json::Value = serde_json::from_slice(bytes).unwrap();
+    u32::try_from(value["version"].as_u64().unwrap()).unwrap()
+}
+
 // ================================================================
 // Tests for VaultFile::with_payload transitions
 // ================================================================
@@ -20,12 +32,14 @@ use starknet_wallet_core::envelope::SealingKey;
 fn derive_file_with_new_dek_version_mismatch_strands_password_unlock() {
     let key = SealingKey::from_parts("fixture passphrase", [1; 16], &"ef".repeat(16));
     let dek = [3u8; 32];
-    let file = seal_new(&key, &dek, 2, b"payload_v2", &Randomness::draw().unwrap()).unwrap();
+    let file = seal_new(&key, &dek, 2, &doc(2, "a"), &Randomness::draw().unwrap()).unwrap();
 
     let foreign_dek = [4u8; 32];
-    let new_file = file.with_payload(&foreign_dek, 3, b"payload_v3").unwrap();
+    let new_file = file.with_payload(&foreign_dek, 3, &doc(2, "b")).unwrap();
 
     assert_eq!(new_file.version, 3);
+    let opened = new_file.open_payload(&foreign_dek).unwrap();
+    assert_ne!(doc_version(&opened), new_file.version);
     assert_eq!(new_file.password_slot, file.password_slot);
     assert_eq!(new_file.lineage, file.lineage);
 
@@ -45,7 +59,7 @@ fn derive_file_with_existing_dek_version_match() {
         &key,
         &dek,
         version,
-        b"payload_v4",
+        &doc(4, "a"),
         &Randomness::draw().unwrap(),
     )
     .unwrap();
@@ -56,9 +70,9 @@ fn derive_file_with_existing_dek_version_match() {
     assert_eq!(*opened_dek, dek);
 
     // Now re-seal with the SAME dek and SAME version
-    let new_payload = b"payload_v4_updated";
+    let new_payload = doc(version, "b");
 
-    let result = file.with_payload(&dek, version, new_payload);
+    let result = file.with_payload(&dek, version, &new_payload);
     assert!(result.is_ok());
 
     let new_file = result.unwrap();
@@ -82,12 +96,10 @@ fn derive_file_with_existing_dek_version_match() {
 fn derive_file_with_new_dek_version_match_strands_password_unlock() {
     let key = SealingKey::from_parts("fixture passphrase", [1; 16], &"ef".repeat(16));
     let dek = [3u8; 32];
-    let file = seal_new(&key, &dek, 2, b"payload_v2", &Randomness::draw().unwrap()).unwrap();
+    let file = seal_new(&key, &dek, 2, &doc(2, "a"), &Randomness::draw().unwrap()).unwrap();
 
     let foreign_dek = [5u8; 32];
-    let new_file = file
-        .with_payload(&foreign_dek, 2, b"payload_v2_new")
-        .unwrap();
+    let new_file = file.with_payload(&foreign_dek, 2, &doc(2, "b")).unwrap();
 
     assert_eq!(new_file.version, 2);
     assert_eq!(new_file.password_slot, file.password_slot);
@@ -102,22 +114,23 @@ fn derive_file_with_new_dek_version_match_strands_password_unlock() {
 fn derive_file_with_existing_dek_version_mismatch() {
     let key = SealingKey::from_parts("fixture passphrase", [1; 16], &"ef".repeat(16));
     let dek = [3u8; 32];
-    let file = seal_new(&key, &dek, 2, b"payload_v2", &Randomness::draw().unwrap()).unwrap();
+    let file = seal_new(&key, &dek, 2, &doc(2, "a"), &Randomness::draw().unwrap()).unwrap();
 
     // Re-seal with SAME dek but DIFFERENT version
     let new_version = 3;
-    let new_payload = b"payload_v3";
+    let new_payload = doc(2, "b");
 
-    let result = file.with_payload(&dek, new_version, new_payload);
+    let result = file.with_payload(&dek, new_version, &new_payload);
     assert!(result.is_ok());
 
     let new_file = result.unwrap();
     // Verify the changes:
     // - version updated
     assert_eq!(new_file.version, new_version);
-    // - payload re-sealed under same dek
+    // - payload re-sealed under same dek, still claiming its own version
     let opened_payload = new_file.open_payload(&dek).unwrap();
     assert_eq!(opened_payload.as_slice(), new_payload);
+    assert_ne!(doc_version(&opened_payload), new_file.version);
     // - password slot unchanged
     assert_eq!(new_file.password_slot, file.password_slot);
     // - payload IV changed
@@ -137,12 +150,10 @@ fn derive_file_with_existing_dek_version_mismatch() {
 fn set_biometric_slot_with_only_foreign_key_splits_unlock_paths() {
     let key = SealingKey::from_parts("fixture passphrase", [1; 16], &"ef".repeat(16));
     let dek = [3u8; 32];
-    let file = seal_new(&key, &dek, 2, b"payload_v2", &Randomness::draw().unwrap()).unwrap();
+    let file = seal_new(&key, &dek, 2, &doc(2, "a"), &Randomness::draw().unwrap()).unwrap();
 
     let foreign_dek = [4u8; 32];
-    let mut file = file
-        .with_payload(&foreign_dek, 2, b"payload_v2_new")
-        .unwrap();
+    let mut file = file.with_payload(&foreign_dek, 2, &doc(2, "b")).unwrap();
 
     let wrap_secret = [9; 32];
     let slot = file
@@ -155,10 +166,7 @@ fn set_biometric_slot_with_only_foreign_key_splits_unlock_paths() {
 
     let bio_dek = file.open_biometric(&wrap_secret).unwrap();
     assert_eq!(*bio_dek, foreign_dek);
-    assert_eq!(
-        file.open_payload(&bio_dek).unwrap().as_slice(),
-        b"payload_v2_new"
-    );
+    assert_eq!(file.open_payload(&bio_dek).unwrap().as_slice(), doc(2, "b"));
 
     let (password_dek, _) = file.open_dek("fixture passphrase").unwrap();
     assert!(file.open_payload(&password_dek).is_err());
@@ -172,10 +180,10 @@ fn set_biometric_slot_with_only_foreign_key_splits_unlock_paths() {
 fn set_biometric_slot_with_foreign_key_and_version_mismatch_splits_unlock_paths() {
     let key = SealingKey::from_parts("fixture passphrase", [1; 16], &"ef".repeat(16));
     let dek = [3u8; 32];
-    let file = seal_new(&key, &dek, 2, b"payload_v2", &Randomness::draw().unwrap()).unwrap();
+    let file = seal_new(&key, &dek, 2, &doc(2, "a"), &Randomness::draw().unwrap()).unwrap();
 
     let foreign_dek = [4u8; 32];
-    let mut file = file.with_payload(&foreign_dek, 3, b"payload_v3").unwrap();
+    let mut file = file.with_payload(&foreign_dek, 3, &doc(2, "b")).unwrap();
 
     let wrap_secret = [9; 32];
     let slot = file
@@ -186,9 +194,10 @@ fn set_biometric_slot_with_foreign_key_and_version_mismatch_splits_unlock_paths(
 
     let bio_dek = file.open_biometric(&wrap_secret).unwrap();
     assert_eq!(*bio_dek, foreign_dek);
-    assert_eq!(
-        file.open_payload(&bio_dek).unwrap().as_slice(),
-        b"payload_v3"
+    assert_eq!(file.open_payload(&bio_dek).unwrap().as_slice(), doc(2, "b"));
+    assert_ne!(
+        doc_version(&file.open_payload(&bio_dek).unwrap()),
+        file.version
     );
 
     let (password_dek, _) = file.open_dek("fixture passphrase").unwrap();
@@ -206,7 +215,7 @@ fn set_biometric_slot_with_matching_key_and_version() {
         &key,
         &dek,
         version,
-        b"payload_v4",
+        &doc(4, "a"),
         &Randomness::draw().unwrap(),
     )
     .unwrap();
@@ -235,10 +244,10 @@ fn set_biometric_slot_with_matching_key_and_version() {
 fn set_biometric_slot_with_only_version_mismatch() {
     let key = SealingKey::from_parts("fixture passphrase", [1; 16], &"ef".repeat(16));
     let dek = [3u8; 32];
-    let mut file = seal_new(&key, &dek, 2, b"payload_v2", &Randomness::draw().unwrap()).unwrap();
+    let mut file = seal_new(&key, &dek, 2, &doc(2, "a"), &Randomness::draw().unwrap()).unwrap();
 
     // Re-seal to create a version mismatch (same dek, different version)
-    file = file.with_payload(&dek, 3, b"payload_v3").unwrap();
+    file = file.with_payload(&dek, 3, &doc(2, "b")).unwrap();
 
     // Create and set biometric slot
     let wrap_secret = [7; 32];
@@ -251,9 +260,13 @@ fn set_biometric_slot_with_only_version_mismatch() {
     assert_eq!(file.version, 3);
     assert!(file.biometric_slot.is_some());
 
-    // Verify biometric slot works
+    // Verify biometric slot works and the payload still claims its own version
     let bio_dek = file.open_biometric(&wrap_secret).unwrap();
     assert_eq!(*bio_dek, dek);
+    assert_ne!(
+        doc_version(&file.open_payload(&bio_dek).unwrap()),
+        file.version
+    );
 }
 
 // ================================================================
@@ -347,16 +360,25 @@ fn seal_new_roundtrip_preserves_structure() {
 fn with_payload_preserves_slots_and_lineage() {
     let key = SealingKey::from_parts("passphrase", [3; 16], &"cd".repeat(16));
     let dek = [6u8; 32];
-    let file = seal_new(&key, &dek, 2, b"original", &Randomness::draw().unwrap()).unwrap();
+    let mut file = seal_new(&key, &dek, 2, b"original", &Randomness::draw().unwrap()).unwrap();
+    let wrap_secret = [7; 32];
+    file.biometric_slot = Some(
+        file.seal_biometric(&dek, &wrap_secret, String::new())
+            .unwrap(),
+    );
 
     let original_lineage = file.lineage.clone();
     let original_slot = file.password_slot.clone();
+    let original_biometric = file.biometric_slot.clone();
 
     let new_file = file.with_payload(&dek, 2, b"updated").unwrap();
 
-    // Verify lineage and password slot are preserved
+    // Verify lineage and both slots are preserved, and both still unwrap the DEK
     assert_eq!(new_file.lineage, original_lineage);
     assert_eq!(new_file.password_slot, original_slot);
+    assert_eq!(new_file.biometric_slot, original_biometric);
+    assert_eq!(*new_file.open_dek("passphrase").unwrap().0, dek);
+    assert_eq!(*new_file.open_biometric(&wrap_secret).unwrap(), dek);
 
     // Verify payload changed
     assert_ne!(new_file.payload.iv, file.payload.iv);
