@@ -49,7 +49,8 @@ mobile holds no copy of what this repo has ported. A step is done when both halv
 | 2.3 Transactions | done (#22, #25, #31) | done (Bramble #916), at `v0.2.1` |
 | 2.4a Shims | open (#43) | M6 open (Bramble #922) |
 | 2.4b Portfolio | open (#44) | M7 open (Bramble #923) |
-| 2.4c–d Reads, 2.5 Multisig, 2.6 Catalogs, 2.7 Swap | not started; F1 and F2 open (#42) for 2.4d and 2.5 | not started; G1 and G2 open (Bramble #919, #920) |
+| 2.4c History and activity | open (#24CPR) | M8 open (Bramble #M8PR) |
+| 2.4d Privacy, 2.5 Multisig, 2.6 Catalogs, 2.7 Swap | not started; F1 and F2 open (#42) for 2.4d and 2.5 | not started; G1 and G2 open (Bramble #919, #920) |
 | 3 Extension | not started; `js/package.json` is private | n/a |
 
 `v0.1.0` is tagged at `35abc8b` (GitHub release only) and was what M2 and M3 pinned. `v0.2.0`
@@ -84,6 +85,8 @@ Ports (A*) and fixture copies (F*) are PRs here.
 | M6 Shims (open, Bramble #922) | Bramble, stacked on M5 | 2.4a | `js/` and `history/time.rs` deleted, re-exported from the core | 2.4 |
 | 2.4b Portfolio (open, #44) | here, stacked on 2.4a | 2.4a | `portfolio/*`, `catalog.rs`, account ids; three parity suites over `portfolio-parity.jsonl` | 2.4 |
 | M7 Portfolio (open, Bramble #923) | Bramble, stacked on M6 | 2.4b | `portfolio/` becomes FFI wrappers and copy over the core; `networks.rs` builds the core's catalog records | 2.4 |
+| 2.4c History and activity (open, #24CPR) | here, stacked on 2.4b | 2.4b | `history/*`, `activity/*`, `Storage::rename`; `history_parity.rs`, `row_parity.rs` and the cases 2.3 and 2.4b left behind | 2.4 |
+| M8 History and activity (open, Bramble #M8PR) | Bramble, stacked on M7 | 2.4c | `history/` and `activity/` become FFI wrappers, copy and the file lock over the core | 2.4 |
 
 Every adoption PR for what is ported has merged, so by the Process rule the next port may start.
 2.2 Accounts goes first: it is the unfinished half of a step, it is smaller than any part of 2.4,
@@ -498,7 +501,19 @@ Each phase names the crate a module lands in; the table above decides anything n
       3. **2.4c History and activity** (3,565): `history/*` and `activity/*`, which import each
          other. Oracle `portfolio-parity.jsonl` rows and `extension-transactions-observation.json`;
          tests `history_parity.rs`, `row_parity.rs`, and the explorer-URL and activity-store
-         cases 2.3 left out of `transactions_rules_parity.rs`.
+         cases 2.3 left out of `transactions_rules_parity.rs`. Done (#24CPR): `history/*` and
+         `activity/*` as plain Rust. The activity log is `ActivityLog` over `host::Storage`,
+         which gains one method, `rename`, for setting an unreadable file aside (the vault never
+         calls it; it is a breaking change for anyone implementing `Storage`). The process-wide
+         file lock becomes `&mut self`: the wallet keeps one log per file and serialises calls.
+         The 4 MiB bound is checked on the bytes read, since `Storage` reports no size, and a
+         read that errors is set aside like a corrupt file. `ActivityBook` and `HistoryScan`
+         are plain values. `ActivityKind` is defined in `history::activity` (it was only in
+         mobile's send wrapper). Explorer links take the network catalog and answer `None` for
+         a network it lacks. Staying Bramble's: the empty-state and unavailable notices, the
+         failure-notice sentence (with its fixture loops, in mobile's tests), deleting the log
+         with the wallet, and the iOS icon-name test. Still in `wallet-core` and candidates for
+         2.6: the Starkscan API base URL, "Untracked token", and row hints that name Bramble.
       4. **2.4d Privacy** (3,007): `privacy/*`. `plan.rs` and `plan_steps.rs` hold `WalletCore`
          as `send/plan*.rs` did, so they take a host trait the way `Plan` takes `PlanHost`;
          `wallet_ext.rs` stays in mobile. Oracle `extension-privacy-*.json` and G1's vector;
