@@ -45,7 +45,7 @@ mobile holds no copy of what this repo has ported. A step is done when both halv
 | 0 Scaffold, 1 Golden suite | done | n/a |
 | 2.1 KMS, Nostr, felt | done (#13, #20) | done (Bramble #907, #909), at `v0.1.0` |
 | 2.2 Vault | done (#19) | done (Bramble #911), at `v0.1.0`; the vault → v12 migration is placed in 2.7 (see 2.7), owner not named |
-| 2.2 Accounts | described (2.2, Accounts), not started: A1, A2 | M5, after A2 |
+| 2.2 Accounts | A1 done (#TBD); A2 not started | M5, after A2 |
 | 2.3 Transactions | done (#22, #25, #31) | done (Bramble #916), at `v0.2.1` |
 | 2.4 Reads (a–d), 2.5 Multisig, 2.6 Catalogs, 2.7 Swap | not started | not started |
 | 3 Extension | not started; `js/package.json` is private | n/a |
@@ -75,7 +75,7 @@ Ports (A*) and fixture copies (F*) are PRs here.
 | F1, F2 Fixture copies | here | G1, G2 | files copied unchanged, sha256 rows and the Bramble commit line updated, the test that reads them | Golden tests |
 | G3 Recovery scan generator | Bramble, `feature/mobile-wallet` | nothing | `accounts-parity-scan.json`: shapes, creatable rule, scan target, signing verdicts | Golden tests |
 | F3 Catalog and scan copies | here | G3 | `accounts-parity-scan.json` and `generated/accounts.json` copied as fixtures | 2.2, Accounts |
-| A1 Account addresses | here | nothing | `Ladder`, `AccountFamily`, `family_address` in `wallet-core`; tested over both families fixtures | 2.2, Accounts |
+| A1 Account addresses (done, #TBD) | here | nothing | `Ladder`, `AccountFamily`, `family_address` in `wallet-core`; tested over both families fixtures | 2.2, Accounts |
 | A2 Recovery scan | here | A1, F3 | `accounts::{scan, advisory}`, `rpc::Request`; tested over the scan fixture and mobile's canned-node cases | 2.2, Accounts |
 | M5 Accounts | Bramble, `feature/mobile-wallet` | A2 and its tag | `kms_accounts.rs` and `recovery_advisory.rs` go; `recovery_scan.rs` becomes a wrapper | 2.2, Accounts |
 
@@ -125,7 +125,8 @@ tools/check.sh             the one check entrypoint: CI, hooks and agents run it
 crates/wallet-core/        generic: package starknet-wallet-core, lib starknet_wallet_core
   src/lib.rs               Error, KRUSTY_VERSION, re-exports
   src/felt.rs              strict lowercase-hex felt grammar
-  src/kms.rs               key custody over Krusty
+  src/kms.rs               key custody over Krusty, account keys per ladder
+  src/accounts/            ladders, account families, family addresses and constructor calldata
   src/nostr.rs             coordination identity, NIP-59 wrap/open
   src/envelope.rs          the extension's EncryptedEnvelope v3 (PBKDF2-SHA-256, AES-256-GCM)
   src/container.rs         vault container: DEK, passphrase and biometric slots, sealed payload
@@ -140,6 +141,7 @@ crates/bramble-core/       Bramble: lib bramble_core, the cdylib/staticlib/wasm3
   uniffi.toml              Swift/Kotlin module names, as mobile's
   tests/parity.rs          extension fixtures and known-answer vectors
   tests/vault_parity.rs    envelope and DEK slot the extension sealed
+  tests/accounts_parity.rs  every family, ladder and class the extension derives
   tests/transactions_*_parity.rs  send rules; every body, hash and signing; the plan over every capture
   tests/fixtures.rs        holds tests/fixtures/ to its README manifest (sha256 per file)
   tests/fixtures/          copied from Bramble; README is the manifest
@@ -183,8 +185,7 @@ Each phase names the crate a module lands in; the table above decides anything n
    `rust-gift-wrap.json` runs the other way (Rust writes it, the extension opens it). Those move
    with their modules as ordinary regression fixtures. The golden fixtures for modules not yet
    ported sit in this repo unused until their phase: `portfolio-parity.jsonl`,
-   `extension-privacy-*.json`, `extension-transactions-observation.json` (2.4),
-   `accounts-parity-families-mainnet.json` (2.2 accounts, A1), and
+   `extension-privacy-*.json`, `extension-transactions-observation.json` (2.4), and
    `accounts-parity-recovery.json` and `accounts-parity-rules.json` (Bramble's wording and rules,
    2.7). Where the
    extension has behaviour mobile ports but no generator covers it, the generator is added in
@@ -350,8 +351,11 @@ Each phase names the crate a module lands in; the table above decides anything n
         (it deploys with Argent 0.4 calldata at its own address); its class-rules test stays in
         mobile with `resolve_class`. The test
         reads the class table from `generated/accounts.json` once F3 copies it; until then it
-        reads only the classes the families fixtures name. `parity.rs`'s
-        `every_family_ladder_matches_the_extension` then goes through `account_key`.
+        holds the extension's layouts for the four Argent classes the families fixtures name.
+        `parity.rs`'s `every_family_ladder_matches_the_extension` stays as it is: it checks the
+        FFI's raw-key exports, which `accounts_parity.rs` does not reach. Done: `Ladder`,
+        `AccountFamily`, `ArgentLayout` and `ArgentShape`, `family_address` and
+        `constructor_calldata` in `accounts/mod.rs`; `kms::{account_key, account_public_key}`.
       - **A2, recovery scan** (needs A1, F3). `accounts::{scan, advisory}` and `rpc::Request`.
         Tests: `accounts_scan_parity.rs` over `accounts-parity-scan.json` (G3: shapes, creatable
         rule, scan target, keep rule, signing verdicts, registered elsewhere), and
