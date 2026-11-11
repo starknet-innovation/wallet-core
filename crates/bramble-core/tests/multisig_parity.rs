@@ -2,9 +2,10 @@
 //! `starknet_wallet_core::accounts::multisig` on Bramble's pinned class:
 //! `nostr-multisig-parity.json` holds the extension's signer GUIDs, normalised configurations,
 //! constructor calldata, counterfactual addresses, refusals and joined records
-//! (`account-contracts.ts`, `repository-schema.ts`); `multisig.json` is Bramble's pinned class and
-//! limits as `bun run mobile:assets` renders them. A wrong address here is lost funds.
+//! (`account-contracts.ts`, `repository-schema.ts`); Bramble's pinned class and limits come from
+//! `bramble_core::catalogs::multisig` (`generated/multisig.json`). A wrong address here is lost funds.
 
+use bramble_core::catalogs::multisig;
 use serde_json::{json, Value};
 use starknet_wallet_core::accounts::multisig::{
     normalize, predict, signer_guid_hex, ArgentMultisigClass, ArgentMultisigConfig,
@@ -32,18 +33,11 @@ fn strings(value: &Value) -> Vec<String> {
 
 /// Bramble's pinned Argent Multisig 0.2 class and signer limit.
 fn class() -> ArgentMultisigClass {
-    let constants = fixture("multisig.json");
-    ArgentMultisigClass::new(
-        constants["argentMultisig"]["classHash"].as_str().unwrap(),
-        constants["limits"]["signers"].as_u64().unwrap() as usize,
-    )
-    .unwrap()
+    multisig::argent_multisig_class().clone()
 }
 
 fn name_length() -> usize {
-    fixture("multisig.json")["limits"]["nameLength"]
-        .as_u64()
-        .unwrap() as usize
+    multisig::get().limits.name_length
 }
 
 fn config(vector: &Value) -> ArgentMultisigConfig {

@@ -10,9 +10,7 @@ mod accounts_support;
 
 use std::cell::Cell;
 
-use accounts_support::{
-    authorizations, catalog, felt_at, fixture, limits, scan_config, scan_shape, PHRASE,
-};
+use accounts_support::{authorizations, felt_at, fixture, limits, scan_config, scan_shape, PHRASE};
 use bramble_core::OZ_ACCOUNT_VERSION;
 use serde_json::{json, Value};
 use starknet_wallet_core::accounts::advisory::{self, Gathered, Read, Restriction};
@@ -23,6 +21,12 @@ use starknet_wallet_core::accounts::{
 use starknet_wallet_core::{
     account_public_key, felt, oz_account_class_hash, Error, Felt, NetworkId,
 };
+
+/// The extension's account tables (`account-types.ts`), as `bun run mobile:assets` renders them:
+/// the evidence Krusty is checked against below.
+fn catalog() -> Value {
+    fixture("accounts.json")
+}
 
 fn scan() -> Value {
     fixture("accounts-parity-scan.json")

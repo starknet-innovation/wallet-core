@@ -8,7 +8,9 @@
 //! - which functions cross the FFI boundary (`raw-keys`);
 //! - multisig coordination: the identifier, relays, page cap, sync window and who is a
 //!   co-signer (`coordination`, plain Rust until the swap);
-//! - later, the v12 vault schema, catalogs and migrations (docs/PLAN.md).
+//! - its catalogs (`catalogs`: networks, token registry, account classes, multisig constants,
+//!   embedded from `generated/`), plain Rust until the swap;
+//! - later, the v12 vault schema and migrations (docs/PLAN.md).
 //!
 //! Functions keep the names and argument order the extension's `KmsPort` uses.
 
@@ -26,6 +28,7 @@ extern crate uniffi_runtime_wasm as _;
 
 uniffi::setup_scaffolding!();
 
+pub mod catalogs;
 pub mod coordination;
 
 /// The OpenZeppelin account version Bramble deploys (`OZ_ACCOUNT_VERSION` in

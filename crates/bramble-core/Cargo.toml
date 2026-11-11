@@ -38,9 +38,11 @@ starknet-wallet-core = { version = "=0.2.2", path = "../wallet-core" }
 # Bindings for Swift, Kotlin and (through uniffi-bindgen-react-native's wasm2 flavour) TypeScript.
 uniffi = { version = "=0.31.2" }
 thiserror = { version = "=2.0.21" }
+# Bramble's catalogs (`generated/*.json`); the versions wallet-core pins.
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = { version = "=1.0.154" }
 
 [dev-dependencies]
-serde_json = { version = "=1.0.154" }
 # Golden-fixture hashes (tests/fixtures.rs); the same version wallet-core uses for vault crypto.
 sha2 = { version = "=0.11.1" }
 
