@@ -94,8 +94,14 @@ Grep first; extend in place rather than adding a sibling.
   its cache in `price_cache.rs`), saved balances (`snapshots::BalanceSnapshots`), tracked tokens
   (`tokens::TokenPreferences`), token identity, registry and spam (`registry.rs`), on-chain token
   reads (`token_meta.rs`), fiat and amount display (`fiat.rs`), the HTTP and portfolio RPC wire
-  contract (`wire.rs`). Account ids are `history::explorer::{canonical_account_id,
-  is_account_id_for_network}`.
+  contract (`wire.rs`). Account ids and explorer links are `history::explorer`
+  (`activity_account_id`, `canonical_account_id`, `explorer_transaction_url`, ...).
+- Activity lives in `crates/wallet-core/src/history/` and `activity/`: the row type
+  (`history::activity::ActivityEntry`, `ActivityKind`), the Starkscan lane (`starkscan.rs`), the
+  RPC history scan (`events::HistoryScan`), the read cadence (`activity_book::ActivityBook`), row
+  presentation (`appearance.rs`, `classify.rs`); the one log is `activity::ActivityLog` over
+  `host::Storage` (status text and `monotonic` in `activity::store`, the observation windows in
+  `activity::observation`).
 - Only `wallet-core` depends on Krusty (`kms.rs`, `nostr.rs`, `accounts/`, `send/`); `bramble-core` goes through
   `wallet-core` and never names `krusty_kms`.
 

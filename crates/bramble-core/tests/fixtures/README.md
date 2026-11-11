@@ -53,10 +53,14 @@ Read today: `extension-parity.json` (`parity.rs`, `vault_parity.rs`),
 `accounts-parity-families-*.json` and `accounts.json` (`accounts_parity.rs`), both
 `accounts-parity-scan*.json` and `accounts.json` (`accounts_scan_parity.rs`; `accounts.json` and
 the scan's shapes also feed `accounts_scan_mechanism.rs`), and every
-`extension-transactions-*.json` except `-observation` (`transactions_*_parity.rs`), and
-`portfolio-parity.jsonl`'s prices, fiat, token and balance blocks with `networks.json` and
-`token-registry.json` as Bramble's catalogs (`portfolio_parity.rs`, `token_parity.rs`; the
-catalogs also feed `portfolio_state.rs`). The rest sit
+`extension-transactions-*.json` (`transactions_*_parity.rs`; `-observation` in
+`transactions_rules_parity.rs`; `-status`'s `notices` sentences are Bramble's copy, which mobile
+asserts), and `portfolio-parity.jsonl` (all but `status.empty`, Bramble's
+empty-state copy, which mobile asserts, and the top-level `activity.onChain`, which no test has
+read) with `networks.json` and
+`token-registry.json` as Bramble's catalogs (`portfolio_parity.rs`, `token_parity.rs`,
+`history_parity.rs`, `row_parity.rs`; the catalogs also feed `portfolio_state.rs` and
+`transactions_rules_parity.rs`'s explorer links). The rest sit
 here unused until their Phase 2 step moves the matching mobile parity test in (see `docs/PLAN.md`,
 Phase 1).
 

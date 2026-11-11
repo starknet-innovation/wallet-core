@@ -1,13 +1,19 @@
-//! Stateful behaviour of the portfolio objects that the parity fixture cannot pin on its own:
-//! persistence and schema guards, the balance-snapshot cadence and fiat formatting bounds, with
-//! Bramble's catalogs as the arguments. Mobile's activity-book, history-cadence and Starkscan
-//! cases follow with history (plan step 2.4c); its key-boundary check is
+//! Stateful behaviour of the portfolio and activity objects that the parity fixture cannot pin on
+//! its own: persistence and schema guards, the balance-snapshot and history-read cadences, the
+//! Starkscan lane's authority, and fiat formatting bounds, with Bramble's catalogs as the
+//! arguments and the activity log in memory. Mobile's key-boundary check is
 //! `starknet_wallet_core::portfolio`'s own unit test, over the core's sources.
 
 mod portfolio_support;
 
-use portfolio_support::catalogs;
-use starknet_wallet_core::history::explorer::canonical_account_id;
+use portfolio_support::{catalogs, Memory};
+use starknet_wallet_core::activity::feed::stored;
+use starknet_wallet_core::activity::store::ACTIVITY_FILE;
+use starknet_wallet_core::activity::ActivityLog;
+use starknet_wallet_core::history::activity::{ActivityEntry, ActivityKind, TxStatus};
+use starknet_wallet_core::history::activity_book::ActivityBook;
+use starknet_wallet_core::history::explorer::activity_account_id;
+use starknet_wallet_core::host::Storage;
 use starknet_wallet_core::portfolio::fiat::format_fiat;
 use starknet_wallet_core::portfolio::model::{DisplayCurrency, TokenBalance, TokenConfig};
 use starknet_wallet_core::portfolio::prices::{PriceBook, PricePlan};
@@ -15,14 +21,20 @@ use starknet_wallet_core::portfolio::snapshots::{
     network_data_issue, BalanceHealth, BalancePlan, BalanceSnapshots,
 };
 use starknet_wallet_core::portfolio::tokens::TokenPreferences;
+use starknet_wallet_core::portfolio::wire::HttpOutcome;
 use starknet_wallet_core::NetworkId;
 
 const ACCOUNT: &str = "0x208361e3911b1d93a704400b88e7e53a89171fce64dbb48f8479e4f44b398d9";
 const STRK: &str = "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d";
 
-// Mobile's `activity_account_id(NetworkId::Mainnet, ACCOUNT)`, which is this.
 fn account_id() -> String {
-    canonical_account_id(&format!("SN_MAIN:{ACCOUNT}")).unwrap()
+    activity_account_id(NetworkId::Mainnet, ACCOUNT.into()).unwrap()
+}
+
+// Records a row the way a submitted transaction is recorded (mobile's `record_activity`);
+// `false` when the store refuses it.
+fn record_activity(log: &mut ActivityLog<'_>, entry: &ActivityEntry) -> bool {
+    stored(entry).is_some_and(|stored| log.record(stored))
 }
 
 fn tracked() -> Vec<TokenConfig> {
@@ -60,6 +72,18 @@ fn caches_reject_unknown_or_tampered_documents() {
         snapshots.plan("SN_MAIN:0x0ab".into(), NetworkId::Mainnet, 2.0, true, false),
         BalancePlan::Empty
     );
+    let storage = Memory::default();
+    storage
+        .write(
+            ACTIVITY_FILE,
+            br#"{"version":1,"scopes":{"SN_MAIN:0xab":[{"accountId":"SN_MAIN:0xab","hash":"0xZZ"}]}}"#,
+        )
+        .unwrap();
+    let mut log = ActivityLog::new(&storage);
+    assert!(ActivityBook::new()
+        .cached(&mut log, "SN_MAIN:0xab".into(), NetworkId::Mainnet)
+        .entries
+        .is_empty());
 }
 
 #[test]
@@ -159,4 +183,158 @@ fn formatted_fiat_never_leaks_exponents_or_nan() {
     }
     assert_eq!(format_fiat(f64::NAN, DisplayCurrency::Usd), "$0.00");
     assert_eq!(format_fiat(f64::INFINITY, DisplayCurrency::Usd), "$0.00");
+}
+
+fn page(items: &str) -> HttpOutcome {
+    HttpOutcome {
+        status: 200,
+        retry_after: None,
+        body: Some(format!(r#"{{"items":[{items}],"nextCursor":null}}"#).into_bytes()),
+        timed_out: false,
+    }
+}
+
+#[test]
+fn history_cadence_and_lane_authority() {
+    let storage = Memory::default();
+    let mut log = ActivityLog::new(&storage);
+    let mut book = ActivityBook::new();
+    let id = account_id();
+    assert!(
+        book.history_due(&mut log, id.clone(), NetworkId::Mainnet, false, 0.0),
+        "never synced"
+    );
+    assert!(
+        book.starkscan_request(id.clone(), NetworkId::Mainnet, tracked(), false, 0.0)
+            .is_none(),
+        "lane not permitted"
+    );
+    assert!(
+        book.starkscan_request(id.clone(), NetworkId::Mainnet, Vec::new(), true, 0.0)
+            .is_none(),
+        "no tracked tokens"
+    );
+    let request = book
+        .starkscan_request(id.clone(), NetworkId::Mainnet, tracked(), true, 1_000.0)
+        .unwrap();
+    assert!(
+        request.url.starts_with("https://")
+            && request
+                .headers
+                .iter()
+                .all(|h| !h.name.to_lowercase().contains("key"))
+    );
+    let view = book
+        .starkscan_apply(
+            &mut log,
+            id.clone(),
+            NetworkId::Mainnet,
+            tracked(),
+            page(""),
+            1_000.0,
+        )
+        .expect("an answering page is authoritative");
+    assert!(view.entries.is_empty() && !view.history_unavailable);
+    assert!(!book.history_due(
+        &mut log,
+        id.clone(),
+        NetworkId::Mainnet,
+        false,
+        1_000.0 + 299_000.0
+    ));
+    assert!(book.history_due(
+        &mut log,
+        id.clone(),
+        NetworkId::Mainnet,
+        false,
+        1_000.0 + 300_000.0
+    ));
+    assert!(
+        book.history_due(&mut log, id.clone(), NetworkId::Mainnet, true, 2_000.0),
+        "refresh forces"
+    );
+    assert!(
+        book.history_due(&mut log, id.clone(), NetworkId::Mainnet, false, 500.0),
+        "sync in the future"
+    );
+    let local = ActivityEntry {
+        account_id: id.clone(),
+        amount: None,
+        counterparty: None,
+        direction: None,
+        failure_notice: None,
+        finalized_on_l1: None,
+        hash: "0x0abc".into(),
+        kind: ActivityKind::Invoke,
+        network: NetworkId::Mainnet,
+        not_found_count: None,
+        status: TxStatus::Pending,
+        submitted_at: 5_000,
+        summary: "Send 1 STRK to 0x1234…abcd".into(),
+        token: None,
+        token_address: None,
+    };
+    assert!(record_activity(&mut log, &local));
+    assert!(
+        book.history_due(&mut log, id.clone(), NetworkId::Mainnet, false, 6_000.0),
+        "a local row newer than the sync"
+    );
+    assert!(!record_activity(
+        &mut log,
+        &ActivityEntry {
+            summary: String::new(),
+            ..local.clone()
+        }
+    ));
+    let view = book.mark_unavailable(&mut log, id.clone(), NetworkId::Mainnet, 7_000.0);
+    assert!(view.history_unavailable && view.entries == vec![local.clone()]);
+    assert!(!book.history_due(&mut log, id.clone(), NetworkId::Mainnet, false, 66_000.0));
+    assert!(book.history_due(&mut log, id.clone(), NetworkId::Mainnet, false, 67_000.0));
+    // A new book and a new log over the same storage: what a restart sees.
+    let restored = ActivityBook::new();
+    let mut reopened = ActivityLog::new(&storage);
+    let cached = restored.cached(&mut reopened, id, NetworkId::Mainnet);
+    assert!(cached.history_unavailable && cached.entries == vec![local]);
+}
+
+#[test]
+fn starkscan_cooldown_is_in_memory_only() {
+    let storage = Memory::default();
+    let mut log = ActivityLog::new(&storage);
+    let mut book = ActivityBook::new();
+    let id = account_id();
+    let limited = HttpOutcome {
+        status: 429,
+        retry_after: Some("60".into()),
+        body: None,
+        timed_out: false,
+    };
+    assert!(book
+        .starkscan_apply(
+            &mut log,
+            id.clone(),
+            NetworkId::Mainnet,
+            tracked(),
+            limited,
+            1_000.0
+        )
+        .is_none());
+    assert!(
+        book.starkscan_request(id.clone(), NetworkId::Mainnet, tracked(), true, 2_000.0)
+            .is_none(),
+        "cooling down"
+    );
+    let saved = storage
+        .read(ACTIVITY_FILE)
+        .unwrap()
+        .map(|bytes| String::from_utf8(bytes).unwrap())
+        .unwrap_or_default();
+    assert!(!saved.contains("RetryAt"), "the cooldown is never written");
+    let restored = ActivityBook::new();
+    assert!(
+        restored
+            .starkscan_request(id, NetworkId::Mainnet, tracked(), true, 2_000.0)
+            .is_some(),
+        "a restart clears it, like createStarkscanClient"
+    );
 }
