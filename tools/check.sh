@@ -16,8 +16,9 @@ Usage: bash tools/check.sh <mode>...
 
   fmt         cargo fmt --check
   guardrails  pins in sync, actions SHA-pinned, no print macros in src, 500-line cap
-  lint        clippy: default features, mobile profile (--no-default-features), wasm32
-  test        cargo test
+  lint        clippy: default features, mobile (with its tests), mobile profile
+              (--no-default-features --features mobile), wasm32
+  test        cargo test: default features, then with mobile's suite (--features mobile,testing)
   deny        cargo deny check
   package     cargo package: both crates build from what crates.io would receive
   wasm        build the npm package through ubrn, then type-check and test it
@@ -38,7 +39,12 @@ fail() {
 toolchain_version() { sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml; }
 locked_wasm_bindgen() { awk '/^name = "wasm-bindgen"$/ { f = 1; next } f && /^version = / { gsub(/^version = "|"$/, ""); print; exit }' Cargo.lock; }
 
-check_fmt() { run cargo fmt --all --check; }
+# cargo fmt does not follow `include!`, so mobile's modules (included by bramble-core's lib.rs) are
+# checked from the file that declares them.
+check_fmt() {
+  run cargo fmt --all --check
+  run rustfmt --edition 2021 --check crates/bramble-core/src/mobile.rs
+}
 
 check_guardrails() {
   failed=0
@@ -83,11 +89,15 @@ check_guardrails() {
 
 check_lint() {
   run cargo clippy --all-targets --locked -- -D warnings
-  run cargo clippy --locked --no-default-features -- -D warnings
+  run cargo clippy --all-targets --locked -p bramble-core --features mobile,testing -- -D warnings
+  run cargo clippy --locked --no-default-features --features bramble-core/mobile -- -D warnings
   run cargo clippy --locked --target wasm32-unknown-unknown -- -D warnings
 }
 
-check_test() { run cargo test --locked --no-fail-fast; }
+check_test() {
+  run cargo test --locked --no-fail-fast
+  run cargo test --locked --no-fail-fast -p bramble-core --features mobile,testing
+}
 
 check_deny() { run cargo deny check; }
 
