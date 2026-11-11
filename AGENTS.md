@@ -88,9 +88,19 @@ Grep first; extend in place rather than adding a sibling.
 
 ## Releases
 
-- The tag `v<x.y.z>` must equal both crate versions and `js/package.json`;
-  `release.yml` refuses otherwise.
-- While `js/package.json` is `private` (until Phase 3.1), a tag makes a GitHub release only;
-  mobile pins `wallet-core` by that tag.
-- npm publishes through OIDC trusted publishing only. Never add an npm token or publish locally.
+- Both crates share the workspace version. The tag `v<x.y.z>` must equal it and
+  `js/package.json`; `release.yml` (npm) and `publish-crates.yml` (crates.io) refuse otherwise.
+- While `js/package.json` is `private` (until Phase 3.1), `release.yml` makes a GitHub release
+  only; the crates still go to crates.io from the same tag, and mobile pins `wallet-core` by that
+  tag.
+- npm and crates.io publish through OIDC trusted publishing only. Never add a registry token or
+  publish locally. crates.io publishing also waits on a reviewer in the `crates-io` environment,
+  which admins cannot bypass.
+- The one exception: crates.io attaches trusted publishing only to a crate that exists, so a new
+  crate name's first version is published once by a maintainer, with a token scoped to that
+  crate and revoked straight after, from a clean checkout of the commit that will be tagged
+  (`publish-crate.sh` fails the release unless the version on crates.io is that commit's
+  package). Then add the trusted publisher (this repo, `publish-crates.yml`, environment
+  `crates-io`) before the next tag.
+- A version on crates.io can be yanked but never replaced or deleted: bump, don't retag.
 - Only a maintainer tags, and only a merged `main` commit. Never move or recreate a tag.

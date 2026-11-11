@@ -25,8 +25,8 @@ through UniFFI as one library for the browser extension (wasm32, npm
   `wallet-core`; this crate passes Bramble's constants in and converts types. If it isn't
   Bramble's choice or an FFI concern, it belongs in `wallet-core`.
 - **Not a Krusty client.** It never names `krusty_kms`; everything goes through `wallet-core`.
-- **Not a generic SDK.** Another wallet should depend on `wallet-core` directly or add its own
-  `<wallet>-core` crate next to this one.
+- **Not a generic SDK.** It is on crates.io, but another wallet should depend on `wallet-core`
+  directly or add its own `<wallet>-core` crate next to this one.
 - **Not the JavaScript package.** The npm entry point and generated TypeScript live in `js/`; this
   crate is the Rust they wrap.
 - **Not a source of fixtures.** Files under `tests/fixtures/` are copied unchanged from Bramble and

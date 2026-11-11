@@ -1,4 +1,4 @@
-# wallet-core
+# wallet-core (`starknet-wallet-core`)
 
 Generic Starknet wallet logic in plain Rust. Any Starknet wallet can build on it; Bramble does,
 through [`bramble-core`](../bramble-core).
@@ -40,14 +40,11 @@ As `docs/PLAN.md` lands, portfolio, history and privacy logic join it here.
 
 ## Using it
 
-Not on crates.io. Depend on it by git tag; both crates share one version and one `v*` tag.
-
-```toml
-wallet-core = { package = "starknet-wallet-core", git = "https://github.com/starknet-innovation/wallet-core", tag = "v0.2.1" }
-```
+Published to crates.io as `starknet-wallet-core` (lib `starknet_wallet_core`) with `bramble-core`,
+from the same `v*` tag and at the same version.
 
 ```rust
-use wallet_core::{derive_starknet_keypair, sign_stark_hash, Zeroizing};
+use starknet_wallet_core::{derive_starknet_keypair, sign_stark_hash, Zeroizing};
 
 let mnemonic = Zeroizing::new(phrase);
 let pair = derive_starknet_keypair(&mnemonic, 0, 0, None)?;

@@ -134,6 +134,8 @@ crates/bramble-core/       Bramble: lib bramble_core, the cdylib/staticlib/wasm3
 js/                        npm package @starknet-innovation/bramble-core: ubrn config,
                            entrypoint, smoke test over the built wasm
 .github/workflows/         ci.yml (rust + wasm jobs), release.yml (tag → npm, with provenance),
+                           publish-crates.yml (tag → crates.io, starknet-wallet-core then
+                           bramble-core),
                            advisories.yml (weekly `cargo deny check advisories` on main)
 ```
 

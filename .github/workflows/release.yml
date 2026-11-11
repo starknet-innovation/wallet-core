@@ -17,7 +17,14 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
+      # As publish-crates.yml: a tag off main makes no release anywhere.
+      - name: Release commit must be on main
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor HEAD origin/main \
+            || { echo "::error::release tag must point to a commit reachable from main"; exit 1; }
       - name: Install Rust toolchain
         run: |
           rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --target wasm32-unknown-unknown
@@ -30,8 +37,10 @@ jobs:
         run: |
           tag="${GITHUB_REF_NAME#v}"
           pkg="$(node -p "require('./js/package.json').version")"
-          crate="$(grep -m1 '^version = ' crates/bramble-core/Cargo.toml | cut -d'"' -f2)"
-          core="$(grep -m1 '^version = ' crates/wallet-core/Cargo.toml | cut -d'"' -f2)"
+          crate="$(cargo metadata --no-deps --format-version 1 --locked \
+            | jq -r '.packages[] | select(.name == "bramble-core") | .version')"
+          core="$(cargo metadata --no-deps --format-version 1 --locked \
+            | jq -r '.packages[] | select(.name == "starknet-wallet-core") | .version')"
           test "$tag" = "$pkg" && test "$tag" = "$crate" && test "$tag" = "$core"
       - run: cargo install wasm-bindgen-cli --version 0.2.130 --locked
       - run: bash tools/check.sh wasm
