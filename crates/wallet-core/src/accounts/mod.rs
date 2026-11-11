@@ -9,6 +9,8 @@
 //! closed. A class Krusty does not list is refused unless the caller vouches for it with
 //! `ArgentShape::Unlisted`.
 
+pub mod advisory;
+
 use krusty_kms::{
     AccountClass, ArgentAccount, ArgentConstructorLayout, BraavosAccount, OpenZeppelinAccount,
     SaltPolicy,
