@@ -2,9 +2,9 @@
 
 Written by the Bramble extension's real code paths, never by hand. Bramble
 (`starknet-innovation/mc-wallet`) is the source: `bun run mobile:parity` writes every file below into
-`mobile/core/tests/fixtures/`, except `accounts.json`, `networks.json` and `token-registry.json`,
-which `bun run mobile:assets` renders from the extension's account, network and token tables into
-`mobile/core/generated/`. Syncing is copying them here
+`mobile/core/tests/fixtures/`, except `accounts.json`, `networks.json`, `privacy.json` and
+`token-registry.json`, which `bun run mobile:assets` renders from the extension's account, network,
+privacy-routing and token tables into `mobile/core/generated/`. Syncing is copying them here
 unchanged, all at one Bramble commit. `tests/fixtures.rs` checks this table against the directory:
 every file must be listed, and its sha256 must match.
 
@@ -26,6 +26,7 @@ Generators are under `scripts/` in Bramble; each fixture's is reached from
 | `accounts-parity-scan-signing.json` | `mobile-parity-scan.ts` | `650589076793744ea3057610c2e7afb1985c265efac1c3dc05ea580f6ac1f01e` |
 | `accounts.json` | `generate-mobile-assets.ts` (`mobile-assets/accounts.ts`) | `67bfdf2f70406e7e3f694ea97a66431d1d7e3ad33c153f86bf6780693eb259d3` |
 | `networks.json` | `generate-mobile-assets.ts` | `7c143b575ddb42550bfe3e4caffaad3de22d9b1ae8b7acdfa71d5ee50744e296` |
+| `privacy.json` | `generate-mobile-assets.ts` | `0b006b43134c739688678d34c3f0327c7b2c4f4e735e3c3ab49af7bcd229262e` |
 | `token-registry.json` | `generate-mobile-assets.ts` | `83b8a9a6ae6fe98650daa28969828e29936d1e2c8f1e6cd130cd7a3560a88255` |
 | `nostr-multisig-parity.json` | `mobile-assets/write-nostr-multisig-parity.ts` | `445cbbcbb0104350709ac3cfc93a74a6dc5af2286de674e0512ceb020ed6357e` |
 | `nostr-coordination-parity-rules.json` | `mobile-assets/write-nostr-coordination-parity.ts` | `961cebd8144d12397dcfda445b30708d63156e528d7b3c7edd3d71ef18bf4c4b` |
@@ -60,7 +61,11 @@ empty-state copy, which mobile asserts, and the top-level `activity.onChain`, wh
 read) with `networks.json` and
 `token-registry.json` as Bramble's catalogs (`portfolio_parity.rs`, `token_parity.rs`,
 `history_parity.rs`, `row_parity.rs`; the catalogs also feed `portfolio_state.rs` and
-`transactions_rules_parity.rs`'s explorer links). The rest sit
+`transactions_rules_parity.rs`'s explorer links), and `extension-privacy-wire.json` and
+`extension-privacy-rules.json` with `privacy.json` as Bramble's privacy routing and `networks.json`
+(`privacy_parity.rs`, `privacy_gates_parity.rs`, `privacy_plan.rs`). `extension-privacy-copy.json` is the source of
+Bramble's generated Swift and Kotlin privacy copy; no Rust function returns those sentences, so
+no test here reads it. The rest sit
 here unused until their Phase 2 step moves the matching mobile parity test in (see `docs/PLAN.md`,
 Phase 1).
 
