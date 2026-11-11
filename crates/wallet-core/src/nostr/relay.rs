@@ -119,6 +119,134 @@ pub fn parsed_gift_wraps(
     Ok(events)
 }
 
+/// Publish judging for one relay (`RelayConnection.publish`): EVENT frames out, OK frames in. A
+/// false OK whose message starts with `duplicate:` counts as accepted; the first OK for an event
+/// decides it.
+#[derive(Debug, Clone)]
+pub struct PublishJudge {
+    events: Vec<NostrEvent>,
+    acks: Vec<Option<bool>>,
+}
+
+impl PublishJudge {
+    /// A judge for validated, distinct gift wraps.
+    pub fn new(events: Vec<NostrEvent>) -> Self {
+        let acks = vec![None; events.len()];
+        Self { events, acks }
+    }
+
+    /// The EVENT frames to send.
+    pub fn event_frames(&self) -> Vec<String> {
+        self.events
+            .iter()
+            .map(|event| json!(["EVENT", event]).to_string())
+            .collect()
+    }
+
+    /// Judges one frame; `Finish` once every event is acknowledged.
+    pub fn accept_frame(&mut self, frame: &str) -> RelayStep {
+        if let Some(parts) = parse_frame(frame) {
+            let accepted = parts.get(2).and_then(Value::as_bool);
+            let duplicate = parts
+                .get(3)
+                .and_then(Value::as_str)
+                .is_some_and(|message| message.to_lowercase().starts_with("duplicate:"));
+            if let (Some("OK"), Some(id), Some(accepted)) = (
+                parts.first().and_then(Value::as_str),
+                parts.get(1).and_then(Value::as_str),
+                accepted,
+            ) {
+                if let Some(index) = self.events.iter().position(|event| event.id == id) {
+                    self.acks[index].get_or_insert(accepted || duplicate);
+                }
+            }
+        }
+        if self.acks.iter().all(Option::is_some) {
+            RelayStep::Finish { close_frame: None }
+        } else {
+            RelayStep::Continue
+        }
+    }
+
+    /// Whether each event was accepted; anything unacknowledged (the relay failed, timed out or
+    /// closed) was not.
+    pub fn accepted(&self) -> Vec<bool> {
+        self.acks.iter().map(|ack| ack.unwrap_or(false)).collect()
+    }
+}
+
+/// Acknowledgement counts across relays, one per event; "Nostr relays are unavailable" when no
+/// relay accepted anything, as `publishWithPool`.
+pub fn publish_counts(per_relay: &[Vec<bool>]) -> Result<Vec<u32>, RelayError> {
+    let count = per_relay.first().map_or(0, Vec::len);
+    let counts: Vec<u32> = (0..count)
+        .map(|index| {
+            let accepted = per_relay
+                .iter()
+                .filter(|acks| acks.get(index) == Some(&true))
+                .count();
+            u32::try_from(accepted).unwrap_or(u32::MAX)
+        })
+        .collect();
+    if counts.iter().all(|count| *count == 0) {
+        return Err(RelayError::RelaysUnavailable);
+    }
+    Ok(counts)
+}
+
+/// One `publishManyNostrGiftWraps`: the same EVENT frames to every selected relay, one
+/// [`PublishJudge`] per relay, then the counts.
+#[derive(Debug, Clone)]
+pub struct PublishMany {
+    relays: Vec<String>,
+    judges: Vec<PublishJudge>,
+}
+
+/// Starts `publishManyNostrGiftWraps(giftWraps, { relayUrls })`: the batch is checked first, then
+/// the relay selection, as `publishWithPool` does.
+pub fn publish_many_nostr_gift_wraps(
+    gift_wraps: &[NostrGiftWrapDelivery],
+    relay_urls: &[String],
+    limits: RelayLimits,
+) -> Result<PublishMany, RelayError> {
+    let events = parsed_gift_wraps(gift_wraps)?;
+    valid_relay_urls(relay_urls, limits.max_relays)?;
+    Ok(PublishMany {
+        relays: relay_urls.to_vec(),
+        judges: vec![PublishJudge::new(events); relay_urls.len()],
+    })
+}
+
+impl PublishMany {
+    /// The selected relays, in order; `relay` below indexes this list.
+    pub fn relay_urls(&self) -> &[String] {
+        &self.relays
+    }
+
+    /// The EVENT frames to send to each relay.
+    pub fn event_frames(&self) -> Vec<String> {
+        self.judges
+            .first()
+            .map(PublishJudge::event_frames)
+            .unwrap_or_default()
+    }
+
+    /// Judges one frame from relay `relay`; a frame for a relay outside the list finishes it.
+    pub fn accept_frame(&mut self, relay: usize, frame: &str) -> RelayStep {
+        match self.judges.get_mut(relay) {
+            Some(judge) => judge.accept_frame(frame),
+            None => RelayStep::Finish { close_frame: None },
+        }
+    }
+
+    /// The acknowledgement count of each wrap, in delivery order, once every relay has finished,
+    /// failed or timed out.
+    pub fn acknowledgements(&self) -> Result<Vec<u32>, RelayError> {
+        let per_relay: Vec<Vec<bool>> = self.judges.iter().map(PublishJudge::accepted).collect();
+        publish_counts(&per_relay)
+    }
+}
+
 #[cfg(test)]
 #[path = "relay_tests.rs"]
 mod tests;
