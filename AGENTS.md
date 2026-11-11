@@ -55,7 +55,8 @@ cargo test -p bramble-core <name>   # narrow loop while iterating
   never reach logs, error messages, `Debug`/`Display` output or UniFFI error strings. Hold them in
   `Zeroizing` where the API allows. Library code has no print macros (checked).
 - **The mobile build exports no raw keys.** Anything that takes or returns a raw private key goes
-  behind the `raw-keys` feature; `--no-default-features` must stay clean (clippy checks it).
+  behind the `raw-keys` feature; `--no-default-features --features mobile` must stay clean
+  (clippy checks it).
 - **Fixtures are evidence, not inputs.** Never edit a file under `tests/fixtures/` to make a test
   pass. Regenerate it in Bramble, copy it unchanged, and update its sha256 row (and the Bramble
   commit line) in the fixtures README.

@@ -9,7 +9,7 @@
 - [ ] `bash tools/check.sh all` passes (or say which mode could not run, and why)
 - [ ] Behaviour changes come with tests; parity changes with regenerated fixtures
 - [ ] No secret can reach a log, error, `Debug` output or UniFFI error string
-- [ ] The mobile build (`--no-default-features`) gains no raw-key export
+- [ ] The mobile build (`--no-default-features --features mobile`) gains no raw-key export
 
 ## Fixtures
 
