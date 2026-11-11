@@ -45,7 +45,7 @@ mobile holds no copy of what this repo has ported. A step is done when both halv
 | 0 Scaffold, 1 Golden suite | done | n/a |
 | 2.1 KMS, Nostr, felt | done (#13, #20) | done (Bramble #907, #909), at `v0.1.0` |
 | 2.2 Vault | done (#19) | done (Bramble #911), at `v0.1.0`; the vault → v12 migration is placed in 2.7 (see 2.7), owner not named |
-| 2.2 Accounts | A1 (#39), F3 (#40) and A2 (#41) open as a stack | G3 open (Bramble #918); M5 open (Bramble #M5PR), pinning A2's branch tip by `rev` until a tag follows |
+| 2.2 Accounts | A1 (#39), F3 (#40) and A2 (#41) open as a stack | G3 open (Bramble #918); M5 open (Bramble #921), pinning A2's branch tip by `rev` until a tag follows |
 | 2.3 Transactions | done (#22, #25, #31) | done (Bramble #916), at `v0.2.1` |
 | 2.4 Reads (a–d), 2.5 Multisig, 2.6 Catalogs, 2.7 Swap | not started | not started |
 | 3 Extension | not started; `js/package.json` is private | n/a |
@@ -72,12 +72,12 @@ Ports (A*) and fixture copies (F*) are PRs here.
 | M4 Send (merged, Bramble #916) | same | M2, `v0.2.1` | `rpc.rs` and the `send/` mechanism from the core; `TransferPlan` wraps `Plan` | 2.3 |
 | G1 Viewing public key vector (open, Bramble #919) | same, stacked on G3 | nothing | one field in the privacy generator | Golden tests |
 | G2 Multisig coordination generator (open, Bramble #920) | same, stacked on G1 | `main` merged in | three new fixtures, `nostr-coordination-parity-{rules,relays,paging}.json`, for the 2.5 rules | Golden tests |
-| F1, F2 Fixture copies (open, #F12PR) | here, stacked on A2 | G1, G2 | files copied unchanged, sha256 rows and the Bramble commit line updated, the test that reads them | Golden tests |
+| F1, F2 Fixture copies (open, #42) | here, stacked on A2 | G1, G2 | files copied unchanged, sha256 rows and the Bramble commit line updated, the test that reads them | Golden tests |
 | G3 Recovery scan generator (open, Bramble #918) | Bramble, `feature/mobile-wallet` | nothing | `accounts-parity-scan.json` and `accounts-parity-scan-signing.json`: shapes, creatable and keep rules, scan target, signing verdicts, registered elsewhere | Golden tests |
 | F3 Catalog and scan copies (open, #40) | here | G3 | both `accounts-parity-scan*.json` and `generated/accounts.json` copied as fixtures; every other fixture re-copied at the same Bramble commit | 2.2, Accounts |
 | A1 Account addresses (done, #39) | here | nothing | `Ladder`, `AccountFamily`, `family_address` in `wallet-core`; tested over both families fixtures | 2.2, Accounts |
 | A2 Recovery scan (open, #41) | here | A1, F3 | `accounts::{scan, advisory}`, `rpc::Request`; tested over the scan fixture and mobile's canned-node cases | 2.2, Accounts |
-| M5 Accounts (open, Bramble #M5PR) | Bramble, `feature/mobile-wallet`, stacked on G2 | A2 and its tag (a `rev` until then) | `kms_accounts.rs` and `recovery_advisory.rs` go; `recovery_scan.rs` becomes a wrapper | 2.2, Accounts |
+| M5 Accounts (open, Bramble #921) | Bramble, `feature/mobile-wallet`, stacked on G2 | A2 and its tag (a `rev` until then) | `kms_accounts.rs` and `recovery_advisory.rs` go; `recovery_scan.rs` becomes a wrapper | 2.2, Accounts |
 
 Every adoption PR for what is ported has merged, so by the Process rule the next port may start.
 2.2 Accounts goes first: it is the unfinished half of a step, it is smaller than any part of 2.4,
@@ -663,7 +663,7 @@ seals with fresh randomness are kept while the extension still opens them.
   its row and the commit line, and add a test in `parity.rs` that
   `stark_public_key(derive_strk20_viewing_key(..))` equals it. As built (Bramble #919):
   `computeViewingKeys()` is in `scripts/mobile-privacy-wire.ts`, and each phrase account gains
-  `viewingPublicKey`; mobile matched it with no change. F1 (#F12PR) copied it; `parity.rs` checks both that
+  `viewingPublicKey`; mobile matched it with no change. F1 (#42) copied it; `parity.rs` checks both that
   composition and `accounts::advisory::own_viewing_public_key` against it.
 - **G2, the multisig coordination generator** (Bramble, `feature/mobile-wallet`). It needs
   `main` merged into the branch first: `multisig-nostr-publish.ts` and
