@@ -15,6 +15,7 @@
 #![forbid(unsafe_code)]
 
 pub mod accounts;
+pub mod catalog;
 pub mod container;
 pub mod envelope;
 pub mod felt;
