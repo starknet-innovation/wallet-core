@@ -5,7 +5,8 @@
 
 use super::big::{parse_bigint, JsBigInt};
 use super::json::JsValue;
-use super::num::js_trim;
+use super::num::{is_js_whitespace, js_trim};
+use starknet_types_core::felt::Felt;
 
 /// `isStarkFieldElement`: `0x` + 1–64 lowercase hex digits, below the field prime.
 pub fn is_stark_field_element(value: &str) -> bool {
@@ -80,6 +81,32 @@ pub fn canonical_address(value: &str) -> Option<String> {
     padded_felt(&lower)
 }
 
+/// Hex digits (any case) to a felt below the prime; `None` for anything else.
+fn hex_digits(digits: &str) -> Option<Felt> {
+    if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    let significant = digits.trim_start_matches('0').to_ascii_lowercase();
+    if significant.len() > 64 {
+        return None;
+    }
+    crate::felt::parse(&format!(
+        "0x{}",
+        if significant.is_empty() {
+            "0"
+        } else {
+            &significant
+        }
+    ))
+}
+
+/// `canonicalFelt(value)` for `0x`-prefixed hex, non-zero: `BigInt` accepts trailing whitespace
+/// and any digit case. Returns the canonical (minimal) felt.
+pub fn lenient_hex_felt(value: &str) -> Option<Felt> {
+    let digits = value.strip_prefix("0x")?;
+    hex_digits(digits.trim_end_matches(is_js_whitespace)).filter(|f| *f != Felt::ZERO)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -107,5 +134,15 @@ mod tests {
         assert_eq!(two("-1", "0"), None);
         assert_eq!(two(&format!("0x1{}", "0".repeat(32)), "0"), None);
         assert_eq!(two("", "0"), None);
+    }
+
+    #[test]
+    fn lenient_hex_felt_takes_any_case_and_trailing_whitespace() {
+        let canonical = |value: &str| lenient_hex_felt(value).map(|f| crate::felt::canonical(&f));
+        assert_eq!(canonical("0x00AB\n").as_deref(), Some("0xab"));
+        assert_eq!(canonical("0xab"), Some("0xab".into()));
+        for bad in ["0x0", "0x", " 0xab", "0x ab", "ab", "0xg", "0XAB"] {
+            assert_eq!(lenient_hex_felt(bad), None, "{bad:?}");
+        }
     }
 }
