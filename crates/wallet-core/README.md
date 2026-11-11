@@ -8,6 +8,9 @@ through [`bramble-core`](../bramble-core).
 - **Key custody over Krusty KMS** (`kms`): BIP-39 mnemonic generation and validation, Stark
   derivation at `m/44'/9004'/…`, Ready (Argent legacy) derivation, RFC-6979 Stark signing, STRK20
   viewing keys, OpenZeppelin account class hash and counterfactual address.
+- **Accounts** (`accounts`): which key tree an index walks (`Ladder`), the account families, and
+  the counterfactual address and constructor calldata of a key under a caller-given class and
+  salt. Argent layouts are checked against Krusty's, and fail closed when they disagree.
 - **Nostr coordination identity** (`nostr`): the wallet's BIP-340 key, NIP-59 gift wrap and open
   for application data, with bounds on event and data sizes.
 - **The encrypted vault** (`envelope`, `container`): envelope v3 and the DEK container,

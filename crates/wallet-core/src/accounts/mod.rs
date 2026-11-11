@@ -132,8 +132,8 @@ fn argent(class_hash: Felt, shape: ArgentShape) -> Result<ArgentAccount, Error> 
     ))
 }
 
-/// Krusty's preset for `family` at `class_hash`. `argent` is required for Argent and refused
-/// for the others.
+/// Krusty's preset for `family` at `class_hash`. `argent_shape` is required for Argent and
+/// refused for the others.
 fn preset(
     family: AccountFamily,
     class_hash: &Felt,
@@ -150,7 +150,7 @@ fn preset(
         (AccountFamily::Braavos, None) => Box::new(BraavosAccount::with_class_hash(*class_hash)),
         _ => {
             return Err(Error::invalid(
-                "an Argent account, and only one, names its layout",
+                "only an Argent account names a layout, and it must",
             ))
         }
     })

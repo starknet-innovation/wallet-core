@@ -368,6 +368,17 @@ mod tests {
     }
 
     #[test]
+    fn ladders_step_different_fields_from_one_root() {
+        let key = |ladder, index| account_public_key(PHRASE, None, ladder, index).unwrap();
+        // Index 0 is `m/44'/9004'/0'/0/0` on both BIP-44 ladders; from 1 they part.
+        assert_eq!(key(Ladder::Account, 0), key(Ladder::Address, 0));
+        assert_ne!(key(Ladder::Account, 1), key(Ladder::Address, 1));
+        assert_ne!(key(Ladder::Account, 0), key(Ladder::ArgentX, 0));
+        assert!(account_key(PHRASE, Some("p"), Ladder::ArgentX, 0).is_err());
+        assert!(account_key(PHRASE, Some("p"), Ladder::Address, 0).is_ok());
+    }
+
+    #[test]
     fn keys_are_redacted_in_debug_output() {
         let pair = derive_starknet_keypair(PHRASE, 0, 0, None).unwrap();
         let secret = felt::canonical(pair.private_key.expose_secret());
