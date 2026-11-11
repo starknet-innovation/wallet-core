@@ -10,6 +10,14 @@ use super::u256::U256;
 use crate::kms::NetworkId;
 use crate::Felt;
 
+/// What a `getClassHashAt` answer says about an account contract.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeploymentState {
+    Deployed,
+    Undeployed,
+    Unknown,
+}
+
 /// Whether the account's STRK covers the fee (and the amount, when STRK is sent).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FeeAffordability {

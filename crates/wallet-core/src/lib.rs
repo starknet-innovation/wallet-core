@@ -3,8 +3,9 @@
 //! Key custody through Krusty KMS (`kms`), Nostr coordination identity (`nostr`), the felt
 //! grammar they share (`felt`), where an account lives (`accounts`), the encrypted vault (`envelope`, `container`) and the host
 //! storage and clock it runs on (`host`), sans-IO JSON-RPC (`rpc`) and the transfer mechanism
-//! (`send`), portfolio reads and display (`portfolio`) and activity history (`history`, over the
-//! activity log in `activity`) over caller-given network and token catalogs (`catalog`), and the
+//! (`send`), portfolio reads and display (`portfolio`), activity history (`history`, over the
+//! activity log in `activity`) and STRK20 private-balance reads (`privacy`) over caller-given
+//! network, token and privacy catalogs (`catalog`, `privacy::config`), and the
 //! JavaScript semantics (`js`) display output depends on, as plain Rust. This crate holds mechanism only: product choices
 //! (which account version a wallet deploys, which salt, what crosses an FFI boundary) are
 //! arguments here and constants in the wallet's own crate (`bramble-core` for Bramble). It has
@@ -27,6 +28,7 @@ pub mod js;
 pub mod kms;
 pub mod nostr;
 pub mod portfolio;
+pub mod privacy;
 pub mod rpc;
 pub mod send;
 
