@@ -45,7 +45,7 @@ mobile holds no copy of what this repo has ported. A step is done when both halv
 | 0 Scaffold, 1 Golden suite | done | n/a |
 | 2.1 KMS, Nostr, felt | done (#13, #20) | done (Bramble #907, #909), at `v0.1.0` |
 | 2.2 Vault | done (#19) | done (Bramble #911), at `v0.1.0`; the vault → v12 migration is placed in 2.7 (see 2.7), owner not named |
-| 2.2 Accounts | A1 (#39), F3 (#40) and A2 (#A2PR) open as a stack | G3 open (Bramble #918); M5 open (Bramble #M5PR), pinning A2's branch tip by `rev` until a tag follows |
+| 2.2 Accounts | A1 (#39), F3 (#40) and A2 (#41) open as a stack | G3 open (Bramble #918); M5 open (Bramble #M5PR), pinning A2's branch tip by `rev` until a tag follows |
 | 2.3 Transactions | done (#22, #25, #31) | done (Bramble #916), at `v0.2.1` |
 | 2.4 Reads (a–d), 2.5 Multisig, 2.6 Catalogs, 2.7 Swap | not started | not started |
 | 3 Extension | not started; `js/package.json` is private | n/a |
@@ -76,7 +76,7 @@ Ports (A*) and fixture copies (F*) are PRs here.
 | G3 Recovery scan generator (open, Bramble #918) | Bramble, `feature/mobile-wallet` | nothing | `accounts-parity-scan.json` and `accounts-parity-scan-signing.json`: shapes, creatable and keep rules, scan target, signing verdicts, registered elsewhere | Golden tests |
 | F3 Catalog and scan copies (open, #40) | here | G3 | both `accounts-parity-scan*.json` and `generated/accounts.json` copied as fixtures; every other fixture re-copied at the same Bramble commit | 2.2, Accounts |
 | A1 Account addresses (done, #39) | here | nothing | `Ladder`, `AccountFamily`, `family_address` in `wallet-core`; tested over both families fixtures | 2.2, Accounts |
-| A2 Recovery scan (open, #A2PR) | here | A1, F3 | `accounts::{scan, advisory}`, `rpc::Request`; tested over the scan fixture and mobile's canned-node cases | 2.2, Accounts |
+| A2 Recovery scan (open, #41) | here | A1, F3 | `accounts::{scan, advisory}`, `rpc::Request`; tested over the scan fixture and mobile's canned-node cases | 2.2, Accounts |
 | M5 Accounts (open, Bramble #M5PR) | Bramble, `feature/mobile-wallet`, stacked on G2 | A2 and its tag (a `rev` until then) | `kms_accounts.rs` and `recovery_advisory.rs` go; `recovery_scan.rs` becomes a wrapper | 2.2, Accounts |
 
 Every adoption PR for what is ported has merged, so by the Process rule the next port may start.
