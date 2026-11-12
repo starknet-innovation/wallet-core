@@ -40,8 +40,8 @@ As of 2026-11-11. Every Phase 2 step has two halves: the mechanism lands here, t
 its copy and depends on this one. Both halves are done for 2.1, the vault and transactions, so
 mobile holds no copy of what this repo has ported. A step is done when both halves are.
 As of 2026-11-12 every remaining step has both halves open as stacked draft PRs (#39–#50 here,
-Bramble #918–#929); what is left is a maintainer's: review and merge, the version bump and tag
-(see Process), moving each adoption's `rev` to that tag, and the vault v5 → v12 migration.
+Bramble #918–#929); what is left is a maintainer's: review and merge, a tag (0.3.0: the API broke since 0.2.2),
+moving each adoption's `rev` to that tag, and the vault v5 → v12 migration.
 
 | Step | Here | Mobile (`mc-wallet`, `feature/mobile-wallet`, at `01bd6517`) |
 | --- | --- | --- |
@@ -55,9 +55,9 @@ Bramble #918–#929); what is left is a maintainer's: review and merge, the vers
 | 2.4c History and activity | open (#45) | M8 open (Bramble #924) |
 | 2.4d Privacy | open (#46) | M9 open (Bramble #925) |
 | 2.5a Multisig account | open (#47) | M10 open (Bramble #926) |
-| 2.5b Multisig coordination | open (#48); `check.sh all` fails only at `package` until the version is bumped (see Process) | M11 open (Bramble #927) |
-| 2.6 Catalogs | open (#49); `check.sh all` fails only at `package` until the version is bumped | M12 open (Bramble #928) |
-| 2.7 Swap | port open (#50), behind the `mobile` feature; `check.sh all` fails only at `package` until the version is bumped | M13 open (Bramble #929): `mobile/core` becomes a shell over this crate |
+| 2.5b Multisig coordination | open (#48) | M11 open (Bramble #927) |
+| 2.6 Catalogs | open (#49) | M12 open (Bramble #928) |
+| 2.7 Swap | port open (#50), behind the `mobile` feature | M13 open (Bramble #929): `mobile/core` becomes a shell over this crate |
 | 3 Extension | not started; `js/package.json` is private | n/a |
 
 `v0.1.0` is tagged at `35abc8b` (GitHub release only) and was what M2 and M3 pinned. `v0.2.0`
@@ -915,13 +915,14 @@ Added 2026-11-09 after reviewing the first day's work. Items marked *proposed* a
   each mobile adoption PR pins `wallet-core` by `rev` at its port branch's tip and says it moves
   to a tag before merge. A port branch a mobile branch pins only gains commits; it is not
   rebased or amended. This is the proposed rule below, used because nothing can be tagged yet.
-- **The package check needs a version bump from 2.5b on (2026-11-11).** `check.sh`'s `package`
-  step builds `bramble-core` against the `starknet-wallet-core` version crates.io serves, and
-  0.2.2 is published. From 2.5b, `bramble-core`'s library uses `wallet-core` APIs 0.2.2 lacks, so
-  the step fails until the workspace version moves (to 0.3.0: 2.4c's `Storage::rename` already
-  broke the API). Bumping is a maintainer's call and these PRs do not do it; each states that
-  every other mode passes, and that with the version at 0.3.0 in a scratch copy the package step
-  passes too.
+- **The package check and a stale local Cargo cache (2026-11-12).** On the machine that ran
+  these ports, `check.sh`'s `package` step failed from 2.5b on, which was first put down to the
+  published 0.2.2 lacking the APIs `bramble-core` now uses. Wrong: `cargo package --workspace`
+  verifies `bramble-core` against the workspace's own `wallet-core`, and CI's package step passed
+  on #48 and #49; the local failure came from a stale extracted copy of the published 0.2.2 in
+  `~/.cargo/registry/src`. With a clean `CARGO_HOME`, `check.sh all` passes on #48, #49 and #50
+  at 0.2.2. The breaking changes since 0.2.2 (`Storage::rename`, 2.6's constructors) still call
+  for 0.3.0 at the next release.
 - *Proposed*: **mobile may pin a `rev` between tags** during Phase 2. Every tag needs a version
   bump in three files, and `Cargo.lock` records the commit either way. Tags would mark 2.7 and
   each npm publish. `AGENTS.md` says mobile pins a tag; change both together if agreed.
