@@ -12,6 +12,7 @@ use serde_json::Value;
 use zeroize::Zeroizing;
 
 use crate::kms::{check_derivation_input, utf16_length};
+use crate::scrub::scrubbed;
 use crate::Error;
 
 pub mod relay;
@@ -164,7 +165,8 @@ pub fn has_recipient_tag(event: &NostrEvent, recipient: &str) -> bool {
         .any(|tag| tag.len() >= 2 && tag[0] == "p" && tag[1] == recipient)
 }
 
-/// The coordination private key at `m/44'/1237'/account_index'/0/address_index`.
+/// The coordination private key at `m/44'/1237'/account_index'/0/address_index`. Call it inside
+/// `scrubbed`, together with the Krusty call that uses the key.
 fn private_key(
     mnemonic: &str,
     address_index: u32,
@@ -184,8 +186,10 @@ pub fn derive_nostr_public_key(
     account_index: u32,
     passphrase: Option<&str>,
 ) -> Result<String, Error> {
-    let key = private_key(mnemonic, address_index, account_index, passphrase)?;
-    let public = krusty_kms::nostr_public_key(&key).map_err(|_| Error::kms("nostr public key"))?;
+    let public = scrubbed(|| {
+        let key = private_key(mnemonic, address_index, account_index, passphrase)?;
+        krusty_kms::nostr_public_key(&key).map_err(|_| Error::kms("nostr public key"))
+    })?;
     let hex: String = public.iter().map(|b| format!("{b:02x}")).collect();
     if !is_public_key(&hex) {
         return Err(Error::kms("nostr public key"));
@@ -213,15 +217,17 @@ pub fn wrap_nostr_application_data(
     {
         return Err(Error::invalid("invalid nostr application data"));
     }
-    let key = private_key(mnemonic, address_index, account_index, passphrase)?;
-    let wrapped = krusty_kms::wrap_nostr_application_data_at(
-        &key,
-        recipient_public_key,
-        identifier,
-        content,
-        created_at,
-    )
-    .map_err(|_| Error::kms("nostr wrap"))?;
+    let wrapped = scrubbed(|| {
+        let key = private_key(mnemonic, address_index, account_index, passphrase)?;
+        krusty_kms::wrap_nostr_application_data_at(
+            &key,
+            recipient_public_key,
+            identifier,
+            content,
+            created_at,
+        )
+        .map_err(|_| Error::kms("nostr wrap"))
+    })?;
     match parse_event_json(&wrapped) {
         Some(event)
             if event.kind == GIFT_WRAP_KIND && has_recipient_tag(&event, recipient_public_key) =>
@@ -262,9 +268,10 @@ pub fn open_nostr_event(
         .ok()
         .filter(|json| parse_event_json(json).is_some_and(|e| e.kind == GIFT_WRAP_KIND))
         .ok_or_else(|| Error::invalid("invalid nostr gift wrap"))?;
-    let key = private_key(mnemonic, address_index, account_index, passphrase)?;
-    let opened = krusty_kms::open_nostr_application_data(&key, &json)
-        .map_err(|_| Error::kms("nostr open"))?;
+    let opened = scrubbed(|| {
+        let key = private_key(mnemonic, address_index, account_index, passphrase)?;
+        krusty_kms::open_nostr_application_data(&key, &json).map_err(|_| Error::kms("nostr open"))
+    })?;
     let valid = is_application_data(&opened.content)
         && is_identifier(&opened.identifier)
         && is_public_key(&opened.sender_public_key);

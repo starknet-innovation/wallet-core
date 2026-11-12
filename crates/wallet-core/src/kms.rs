@@ -14,6 +14,7 @@ use zeroize::Zeroizing;
 
 use crate::accounts::{family_address, AccountFamily, Ladder};
 use crate::felt;
+use crate::scrub::scrubbed;
 use crate::Error;
 
 /// Mnemonic lengths Krusty generates and the extension accepts.
@@ -150,14 +151,16 @@ pub fn generate_mnemonic(word_count: u8) -> Result<Zeroizing<String>, Error> {
     if !MNEMONIC_WORD_COUNTS.contains(&word_count) {
         return Err(Error::invalid("unsupported word count"));
     }
-    let phrase = Zeroizing::new(
-        krusty_kms::generate_mnemonic(usize::from(word_count))
-            .map_err(|_| Error::kms("generate"))?,
-    );
-    if !validate_mnemonic(&phrase) {
-        return Err(Error::kms("generate"));
-    }
-    Ok(phrase)
+    scrubbed(|| {
+        let phrase = Zeroizing::new(
+            krusty_kms::generate_mnemonic(usize::from(word_count))
+                .map_err(|_| Error::kms("generate"))?,
+        );
+        if !validate_mnemonic(&phrase) {
+            return Err(Error::kms("generate"));
+        }
+        Ok(phrase)
+    })
 }
 
 /// Whether text is a checksummed BIP-39 English phrase of a supported length. The text is judged
@@ -170,7 +173,7 @@ pub fn validate_mnemonic(mnemonic: &str) -> bool {
     MNEMONIC_WORD_COUNTS
         .iter()
         .any(|count| usize::from(*count) == words)
-        && krusty_kms::validate_mnemonic(mnemonic).is_ok()
+        && scrubbed(|| krusty_kms::validate_mnemonic(mnemonic).is_ok())
 }
 
 /// The Starknet keypair at `m/44'/9004'/account_index'/0/address_index`, Krusty's argument order.
@@ -181,22 +184,24 @@ pub fn derive_starknet_keypair(
     passphrase: Option<&str>,
 ) -> Result<StarkKeypair, Error> {
     check_derivation_input(mnemonic, passphrase)?;
-    let pair = krusty_kms::derive_keypair_with_coin_type(
-        mnemonic,
-        address_index,
-        account_index,
-        STARKNET_COIN_TYPE,
-        passphrase,
-    )
-    .map_err(|_| Error::kms("derive"))?;
-    let public = pair
-        .public_key
-        .to_affine()
+    scrubbed(|| {
+        let pair = krusty_kms::derive_keypair_with_coin_type(
+            mnemonic,
+            address_index,
+            account_index,
+            STARKNET_COIN_TYPE,
+            passphrase,
+        )
         .map_err(|_| Error::kms("derive"))?;
-    Ok(StarkKeypair {
-        private_key: checked_secret(pair.private_key, "derive")?,
-        public_key_x: checked_non_zero(public.x(), "derive")?,
-        public_key_y: checked_non_zero(public.y(), "derive")?,
+        let public = pair
+            .public_key
+            .to_affine()
+            .map_err(|_| Error::kms("derive"))?;
+        Ok(StarkKeypair {
+            private_key: checked_secret(pair.private_key, "derive")?,
+            public_key_x: checked_non_zero(public.x(), "derive")?,
+            public_key_y: checked_non_zero(public.y(), "derive")?,
+        })
     })
 }
 
@@ -208,19 +213,21 @@ pub fn derive_argent_legacy_keypair(
     address_index: u32,
 ) -> Result<StarkXOnlyKeypair, Error> {
     check_derivation_input(mnemonic, None)?;
-    // Krusty returns this key as a plain `Felt`; it moves straight into a `SecretFelt`.
-    let key = checked_secret(
-        SecretFelt::new(
-            krusty_kms::derive_argent_legacy_private_key(mnemonic, address_index, 0)
-                .map_err(|_| Error::kms("derive"))?,
-        ),
-        "derive",
-    )?;
-    let public =
-        krusty_kms::stark_public_key(key.expose_secret()).map_err(|_| Error::kms("derive"))?;
-    Ok(StarkXOnlyKeypair {
-        private_key: key,
-        public_key_x: checked_non_zero(public, "derive")?,
+    scrubbed(|| {
+        // Krusty returns this key as a plain `Felt`; it moves straight into a `SecretFelt`.
+        let key = checked_secret(
+            SecretFelt::new(
+                krusty_kms::derive_argent_legacy_private_key(mnemonic, address_index, 0)
+                    .map_err(|_| Error::kms("derive"))?,
+            ),
+            "derive",
+        )?;
+        let public =
+            krusty_kms::stark_public_key(key.expose_secret()).map_err(|_| Error::kms("derive"))?;
+        Ok(StarkXOnlyKeypair {
+            private_key: key,
+            public_key_x: checked_non_zero(public, "derive")?,
+        })
     })
 }
 
@@ -233,13 +240,15 @@ pub fn account_key(
     index: u32,
 ) -> Result<SecretFelt, Error> {
     // Krusty's argument order is (address index, account index).
-    Ok(match ladder {
-        Ladder::Account => derive_starknet_keypair(mnemonic, 0, index, passphrase)?.private_key,
-        Ladder::Address => derive_starknet_keypair(mnemonic, index, 0, passphrase)?.private_key,
-        Ladder::ArgentX if passphrase.is_some() => {
-            return Err(Error::invalid("Ready accounts take no passphrase"))
-        }
-        Ladder::ArgentX => derive_argent_legacy_keypair(mnemonic, index)?.private_key,
+    scrubbed(|| {
+        Ok(match ladder {
+            Ladder::Account => derive_starknet_keypair(mnemonic, 0, index, passphrase)?.private_key,
+            Ladder::Address => derive_starknet_keypair(mnemonic, index, 0, passphrase)?.private_key,
+            Ladder::ArgentX if passphrase.is_some() => {
+                return Err(Error::invalid("Ready accounts take no passphrase"))
+            }
+            Ladder::ArgentX => derive_argent_legacy_keypair(mnemonic, index)?.private_key,
+        })
     })
 }
 
@@ -250,13 +259,15 @@ pub fn account_public_key(
     ladder: Ladder,
     index: u32,
 ) -> Result<Felt, Error> {
-    let key = account_key(mnemonic, passphrase, ladder, index)?;
-    let public =
-        krusty_kms::stark_public_key(key.expose_secret()).map_err(|_| Error::kms("public key"))?;
-    if public == Felt::ZERO {
-        return Err(Error::kms("public key"));
-    }
-    Ok(public)
+    scrubbed(|| {
+        let key = account_key(mnemonic, passphrase, ladder, index)?;
+        let public = krusty_kms::stark_public_key(key.expose_secret())
+            .map_err(|_| Error::kms("public key"))?;
+        if public == Felt::ZERO {
+            return Err(Error::kms("public key"));
+        }
+        Ok(public)
+    })
 }
 
 /// The counterfactual OpenZeppelin account address for a public key, class and deployment salt.
@@ -297,7 +308,8 @@ pub fn sign_stark_hash(
 ) -> Result<StarkSignature, Error> {
     let key = usable_key(private_key, "invalid signing input")?;
     let hash = parse_felt(message_hash, "invalid signing input")?;
-    let signature = krusty_kms::sign_stark_hash(key, &hash).map_err(|_| Error::kms("sign"))?;
+    let signature =
+        scrubbed(|| krusty_kms::sign_stark_hash(key, &hash)).map_err(|_| Error::kms("sign"))?;
     Ok(StarkSignature {
         public_key: checked_non_zero(signature.public_key, "sign")?,
         r: checked_scalar(&signature.r, "sign")?,
@@ -309,7 +321,8 @@ pub fn sign_stark_hash(
 /// compare it with the key a privacy pool holds without the private key leaving Rust.
 pub fn stark_public_key(private_key: &SecretFelt) -> Result<String, Error> {
     let key = usable_key(private_key, "invalid public-key input")?;
-    let public = krusty_kms::stark_public_key(key).map_err(|_| Error::kms("public key"))?;
+    let public =
+        scrubbed(|| krusty_kms::stark_public_key(key)).map_err(|_| Error::kms("public key"))?;
     checked_non_zero(public, "public key")
 }
 
@@ -330,11 +343,13 @@ pub fn derive_strk20_viewing_key(
         }
     }
     // Krusty returns the viewing key as a plain `Felt`; it moves straight into a `SecretFelt`.
-    let viewing_key = SecretFelt::new(
-        krusty_kms::derive_scoped_strk20_viewing_key(key, chain_id, pool_address)
-            .map_err(|_| Error::kms("viewing key"))?,
-    );
-    checked_secret(viewing_key, "viewing key")
+    scrubbed(|| {
+        let viewing_key = SecretFelt::new(
+            krusty_kms::derive_scoped_strk20_viewing_key(key, chain_id, pool_address)
+                .map_err(|_| Error::kms("viewing key"))?,
+        );
+        checked_secret(viewing_key, "viewing key")
+    })
 }
 
 #[cfg(test)]

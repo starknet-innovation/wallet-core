@@ -763,10 +763,15 @@ today's exposure; it is a bridge, not the target.
 - Not a hard boundary: wasm memory is readable by any script in the extension's context, so code
   execution there can still sign or read it. What this removes is accidental exposure (logs,
   error strings, serialisation, GC copies) and unreliable erasure.
-- Locking wipes what the core holds. RustCrypto does not wipe stack temporaries
-  (`RustCrypto/meta#38`), so `envelope.rs` overwrites 16 KiB of stack after each KDF and AES-GCM
-  call, not at lock. Not covered: registers; on wasm32, values the engine keeps in wasm locals,
-  on its native stack outside linear memory; and a memory read while unlocked or during an unlock.
+- Locking wipes what the core holds. Neither RustCrypto nor Krusty wipes stack temporaries
+  (`RustCrypto/meta#38`), so every function that takes or makes a secret runs its body through
+  `scrub::scrubbed`, which overwrites 128 KiB of stack afterwards: the vault's KDF and AES-GCM
+  calls, phrase generation and checks, every key derivation, Stark signing and public keys, the
+  STRK20 viewing key, and Nostr's key, wrap and open. A phrase derivation, the deepest, uses about
+  67 KiB; a test keeps every such call within the scrubbed size. Not covered: a secret a function
+  returns by value (moving it out copies it into the caller's frames, so the extension's raw-key
+  exports leave one copy); registers; on wasm32, values the engine keeps in wasm locals, on its
+  native stack outside linear memory; and a memory read while unlocked or during an unlock.
 
 Two things the target does not yet answer (both in Open questions, both to settle before 3.2 is
 designed, neither measured or tested yet):

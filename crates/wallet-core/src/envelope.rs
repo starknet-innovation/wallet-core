@@ -12,8 +12,9 @@ use aes_gcm::{Aes256Gcm, Nonce};
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
-use zeroize::{Zeroize, Zeroizing};
+use zeroize::Zeroizing;
 
+use crate::scrub::scrubbed;
 use crate::Error;
 
 /// Current PBKDF2 strength, identical to the extension's `KDF_ITERATIONS`.
@@ -53,28 +54,6 @@ pub fn random<const N: usize>() -> Result<[u8; N], Error> {
     let mut bytes = [0u8; N];
     getrandom::fill(&mut bytes).map_err(|_| Error::storage("entropy unavailable"))?;
     Ok(bytes)
-}
-
-/// How much stack `scrubbed` overwrites; the KDF and AES-GCM calls use about 2 KiB.
-const SCRUB_BYTES: usize = 16 * 1024;
-
-/// Runs `f`, then overwrites the stack it used. RustCrypto does not wipe stack temporaries
-/// (HMAC key states, AES round-key copies, the last plaintext block), and declines to.
-///
-/// `f` runs one frame down in `run` so that `scrub_stack`, called from the same depth, lays its
-/// buffer over everything `f` touched; were `f` inlined here, its locals would sit above it.
-fn scrubbed<T>(f: impl FnOnce() -> T) -> T {
-    #[inline(never)]
-    fn run<T>(f: impl FnOnce() -> T) -> T {
-        f()
-    }
-    #[inline(never)]
-    fn scrub_stack() {
-        [0u8; SCRUB_BYTES].zeroize();
-    }
-    let out = run(f);
-    scrub_stack();
-    out
 }
 
 fn derive_key(password: &str, salt: &[u8], iterations: u32) -> Zeroizing<[u8; 32]> {
