@@ -76,9 +76,10 @@ pub(crate) fn parse_frame(frame: &str) -> Option<Vec<Value>> {
     if frame.len() > MAX_RELAY_FRAME_BYTES {
         return None;
     }
-    let value: Value = serde_json::from_str(frame).ok()?;
-    let parts = value.as_array()?;
-    (parts.len() <= 4).then(|| parts.clone())
+    match serde_json::from_str(frame).ok()? {
+        Value::Array(parts) if parts.len() <= 4 => Some(parts),
+        _ => None,
+    }
 }
 
 /// `NostrGiftWrapDelivery`: one recipient-bound gift wrap awaiting relay acknowledgement.
