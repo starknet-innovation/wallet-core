@@ -54,7 +54,7 @@ mobile holds no copy of what this repo has ported. A step is done when both halv
 | 2.5a Multisig account | open (#47) | M10 open (Bramble #926) |
 | 2.5b Multisig coordination | open (#48); `check.sh all` fails only at `package` until the version is bumped (see Process) | M11 open (Bramble #927) |
 | 2.6 Catalogs | open (#49); `check.sh all` fails only at `package` until the version is bumped | M12 open (Bramble #928) |
-| 2.7 Swap | port open (#50), behind the `mobile` feature; `check.sh all` fails only at `package` until the version is bumped | M13 open (Bramble #M13PR): `mobile/core` becomes a shell over this crate |
+| 2.7 Swap | port open (#50), behind the `mobile` feature; `check.sh all` fails only at `package` until the version is bumped | M13 open (Bramble #929): `mobile/core` becomes a shell over this crate |
 | 3 Extension | not started; `js/package.json` is private | n/a |
 
 `v0.1.0` is tagged at `35abc8b` (GitHub release only) and was what M2 and M3 pinned. `v0.2.0`
@@ -100,7 +100,7 @@ Ports (A*) and fixture copies (F*) are PRs here.
 | 2.6 Catalogs (open, #49) | here, stacked on 2.5b | 2.5b | `bramble-core`'s `generated/` and `catalogs`; `PortfolioPolicy`, `HistoryPolicy` and `TokenRegistry::aliases` in `wallet-core`, Bramble's values in `bramble-core` | 2.6 |
 | M12 Catalogs (open, Bramble #928) | Bramble, stacked on M11 | 2.6 | mobile passes its policies and alias; `kms.rs` uses `wallet_core` types and the direct `krusty-kms` pins go | 2.6 |
 | 2.7 Swap, port (open, #50) | here, stacked on 2.6 | 2.6, M12 | every Bramble file of `mobile/core` into `bramble-core` behind `mobile`; mobile's tests and regression fixtures; `check.sh` covers the mobile surface | 2.7 |
-| M13 Swap (open, Bramble #M13PR) | Bramble, stacked on M12 | the 2.7 port; the v5 → v12 step, if it is to land first | `mobile/core` becomes a shell depending on `bramble-core`; build scripts, regenerated bindings, app changes the bindings force, the `generated/` drift test | 2.7 |
+| M13 Swap (open, Bramble #929) | Bramble, stacked on M12 | the 2.7 port; the v5 → v12 step, if it is to land first | `mobile/core` becomes a shell depending on `bramble-core`; build scripts, regenerated bindings, app changes the bindings force, the `generated/` drift test | 2.7 |
 
 Every adoption PR for what is ported has merged, so by the Process rule the next port may start.
 2.2 Accounts goes first: it is the unfinished half of a step, it is smaller than any part of 2.4,
@@ -646,7 +646,10 @@ Each phase names the crate a module lands in; the table above decides anything n
       `default-features = false, features = ["mobile"]`; the build scripts build the dependency
       (`cargo build -p bramble-core --lib`), which yields the same library names, and its own
       bindgen reads this crate's `uniffi.toml`, so Swift and Kotlin keep their module names. A test
-      there holds `generated/` to `catalogs::GENERATED`.
+      there holds `generated/` to `catalogs::GENERATED`. As built (Bramble #929): as above, with
+      `uniffi.toml` gone (the bindgen reads this crate's) and cargo-ndk given `--manifest-path`;
+      no Swift or Kotlin app code changed; both apps build and pass their unit tests on the
+      regenerated bindings, which equal this crate's.
 
       **The mobile vault → v12 migration** (proposed placement; it needs a named owner). Mobile
       writes vault version 5 (`migrations.rs`: its own chain, v1 → v5, inside the DEK container);
