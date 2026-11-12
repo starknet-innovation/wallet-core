@@ -45,7 +45,7 @@ mobile holds no copy of what this repo has ported. A step is done when both halv
 | 0 Scaffold, 1 Golden suite | done | n/a |
 | 2.1 KMS, Nostr, felt | done (#13, #20) | done (Bramble #907, #909), at `v0.1.0` |
 | 2.2 Vault | done (#19) | done (Bramble #911), at `v0.1.0`; the vault → v12 migration is placed in 2.7 (see 2.7), owner not named |
-| 2.2 Accounts | A1 done (#39); F3 open (#40); A2 not started | G3 open (Bramble #918); M5, after A2 |
+| 2.2 Accounts | A1 (#39), F3 (#40) and A2 (#41) open as a stack | G3 open (Bramble #918); M5 open (Bramble #M5PR), pinning A2's branch tip by `rev` until a tag follows |
 | 2.3 Transactions | done (#22, #25, #31) | done (Bramble #916), at `v0.2.1` |
 | 2.4 Reads (a–d), 2.5 Multisig, 2.6 Catalogs, 2.7 Swap | not started | not started |
 | 3 Extension | not started; `js/package.json` is private | n/a |
@@ -70,14 +70,14 @@ Ports (A*) and fixture copies (F*) are PRs here.
 | M2 Take `wallet-core`: felt, Nostr, KMS (merged, Bramble #909) | same | M1, `v0.1.0` | adds the dependency; three modules become re-exports or glue; duplicate parity tests deleted | 2.1 step 3 |
 | M3 Vault (merged, Bramble #911) | same | M2 | `vault.rs`, `container.rs` and `ClockReading` from the core; `HostClock` and `files.rs` adapt | 2.2 |
 | M4 Send (merged, Bramble #916) | same | M2, `v0.2.1` | `rpc.rs` and the `send/` mechanism from the core; `TransferPlan` wraps `Plan` | 2.3 |
-| G1 Viewing public key vector | same | nothing | one field in the privacy generator | Golden tests |
-| G2 Multisig coordination generator | same | `main` merged in | a new fixture for the 2.5 rules | Golden tests |
+| G1 Viewing public key vector (open, Bramble #919) | same, stacked on G3 | nothing | one field in the privacy generator | Golden tests |
+| G2 Multisig coordination generator (open, Bramble #920) | same, stacked on G1 | `main` merged in | three new fixtures, `nostr-coordination-parity-{rules,relays,paging}.json`, for the 2.5 rules | Golden tests |
 | F1, F2 Fixture copies | here | G1, G2 | files copied unchanged, sha256 rows and the Bramble commit line updated, the test that reads them | Golden tests |
 | G3 Recovery scan generator (open, Bramble #918) | Bramble, `feature/mobile-wallet` | nothing | `accounts-parity-scan.json` and `accounts-parity-scan-signing.json`: shapes, creatable and keep rules, scan target, signing verdicts, registered elsewhere | Golden tests |
 | F3 Catalog and scan copies (open, #40) | here | G3 | both `accounts-parity-scan*.json` and `generated/accounts.json` copied as fixtures; every other fixture re-copied at the same Bramble commit | 2.2, Accounts |
 | A1 Account addresses (done, #39) | here | nothing | `Ladder`, `AccountFamily`, `family_address` in `wallet-core`; tested over both families fixtures | 2.2, Accounts |
-| A2 Recovery scan | here | A1, F3 | `accounts::{scan, advisory}`, `rpc::Request`; tested over the scan fixture and mobile's canned-node cases | 2.2, Accounts |
-| M5 Accounts | Bramble, `feature/mobile-wallet` | A2 and its tag | `kms_accounts.rs` and `recovery_advisory.rs` go; `recovery_scan.rs` becomes a wrapper | 2.2, Accounts |
+| A2 Recovery scan (open, #41) | here | A1, F3 | `accounts::{scan, advisory}`, `rpc::Request`; tested over the scan fixture and mobile's canned-node cases | 2.2, Accounts |
+| M5 Accounts (open, Bramble #M5PR) | Bramble, `feature/mobile-wallet`, stacked on G2 | A2 and its tag (a `rev` until then) | `kms_accounts.rs` and `recovery_advisory.rs` go; `recovery_scan.rs` becomes a wrapper | 2.2, Accounts |
 
 Every adoption PR for what is ported has merged, so by the Process rule the next port may start.
 2.2 Accounts goes first: it is the unfinished half of a step, it is smaller than any part of 2.4,
@@ -363,7 +363,18 @@ Each phase names the crate a module lands in; the table above decides anything n
         `accounts_scan_mechanism.rs`, mobile's `tests/recovery.rs` scan cases against a canned
         node (a quiet wallet, activity across families, a pause and retry, exact ids, a manual
         index, a network reset) plus `recovery_scan.rs`'s and `recovery_advisory.rs`'s unit tests.
-        Tag after A2.
+        Tag after A2. Done, with these differences from the text above: `submit` takes the
+        phrase, passphrase and config again (mobile read its own session; the scan stores no
+        secret) and refuses another phrase or network; the config, candidates, keep rule and
+        gap limit are in a third file, `accounts/scan_rules.rs`; the scan keeps mobile's
+        class-hash judging as `scan::judge_class_hash`, built on `send::judge::answer`, because
+        `send::judge::class_hash` reads any result as deployed and does not return the class;
+        `ScanConfig` also carries the network, the reserved indexes and a `SaltRule` per shape;
+        limits that would underflow or pass `MAX_CANDIDATES` in one batch are refused; a Ready
+        shape under a BIP-39 passphrase fails the batch closed. The two Krusty-against-catalog
+        tests are in `accounts_scan_parity.rs`. One fixture case is not reproduced exactly: a
+        pool key spelled with more than 64 hex digits is read by the extension (`BigInt`) and
+        counts as no answer here (the felt grammar); the verdicts in the fixture agree.
       - **M5, mobile takes it** (Bramble, needs A2's tag). `kms_accounts.rs` and
         `recovery_advisory.rs` are deleted; `send/wallet_ext.rs`'s `deployment` takes its Argent
         calldata from `constructor_calldata`; `recovery_scan.rs` keeps the UniFFI step record and
@@ -651,7 +662,9 @@ seals with fresh randomness are kept while the extension still opens them.
   `extension-privacy-wire.json` under `viewingKeys`; mobile's `privacy_parity.rs` asserts it.
   F1 here: copy the fixtures at the new Bramble commit (only that file's hash changes), update
   its row and the commit line, and add a test in `parity.rs` that
-  `stark_public_key(derive_strk20_viewing_key(..))` equals it.
+  `stark_public_key(derive_strk20_viewing_key(..))` equals it. As built (Bramble #919):
+  `computeViewingKeys()` is in `scripts/mobile-privacy-wire.ts`, and each phrase account gains
+  `viewingPublicKey`; mobile matched it with no change.
 - **G2, the multisig coordination generator** (Bramble, `feature/mobile-wallet`). It needs
   `main` merged into the branch first: `multisig-nostr-publish.ts` and
   `multisig-sync-window.ts` exist only on `main`, and the generators only on the branch. A new
@@ -671,7 +684,13 @@ seals with fresh randomness are kept while the extension still opens them.
   `tests/conformance/mobile-nostr-parity.test.ts` gains the drift check. Mobile's
   `nostr_relay.rs` and `coordination.rs` are tested against it where they already implement a
   rule, which shows where mobile and the extension differ before anything is ported. F2 here
-  copies it; it sits unused until 2.5.
+  copies it; it sits unused until 2.5. As built (Bramble #920): three files,
+  `nostr-coordination-parity-{rules,relays,paging}.json` (Bramble's 500-line limit covers JSON),
+  with no extension code extracted. Mobile differs in six cases, which its test lists and does
+  not assert: it refuses `ws:` on loopback where the extension accepts it, and it reads one page
+  per relay with no `until` cursor and filters seen wraps after the batch bound. It has no
+  gift-wrap batch validation, retry cut-off, recipient selection or `MAX_SYNC_PAGES` at all.
+  2.5 takes the extension's behaviour for each.
 - **G3, the recovery scan generator** (Bramble, `feature/mobile-wallet`). The families fixtures
   prove addresses and `accounts-parity-recovery.json` proves row wording, but nothing proves the
   scan itself: which shapes it walks, which coordinates it lists with no history, how far it
@@ -742,6 +761,10 @@ Added 2026-11-09 after reviewing the first day's work. Items marked *proposed* a
 - **The Status table is updated in the PR that changes it**, in either repo's half.
 - **Tags are signed.** `v0.1.0` is annotated but unsigned, and a tag is never moved, so it stays
   that way; later tags use `git tag -s`.
+- **Provisional, 2026-11-11**: the stacked port PRs (#39 onwards) are unmerged and untagged, so
+  each mobile adoption PR pins `wallet-core` by `rev` at its port branch's tip and says it moves
+  to a tag before merge. A port branch a mobile branch pins only gains commits; it is not
+  rebased or amended. This is the proposed rule below, used because nothing can be tagged yet.
 - *Proposed*: **mobile may pin a `rev` between tags** during Phase 2. Every tag needs a version
   bump in three files, and `Cargo.lock` records the commit either way. Tags would mark 2.7 and
   each npm publish. `AGENTS.md` says mobile pins a tag; change both together if agreed.

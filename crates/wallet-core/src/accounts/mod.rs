@@ -9,6 +9,10 @@
 //! closed. A class Krusty does not list is refused unless the caller vouches for it with
 //! `ArgentShape::Unlisted`. A Braavos class must be one Krusty lists as a deployment class.
 
+pub mod advisory;
+pub mod scan;
+mod scan_rules;
+
 use krusty_kms::{
     AccountClass, ArgentAccount, ArgentConstructorLayout, BraavosAccount, OpenZeppelinAccount,
     SaltPolicy,

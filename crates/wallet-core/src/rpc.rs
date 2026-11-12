@@ -3,7 +3,9 @@
 //! the operating system and no network code runs in Rust.
 //!
 //! Every response is untrusted: it must answer the request id it was sent under, and every
-//! value is range-checked before it is interpreted.
+//! value is range-checked before it is interpreted. `Request` and `Response` are the host's
+//! transport contract for the batched readers (the recovery scan): one body to POST, and the
+//! reply it read.
 
 use serde_json::{json, Value};
 
@@ -16,6 +18,53 @@ const BALANCE_OF_SELECTOR: &str =
 /// Longest response body the core will parse. Hosts stop reading a reply at this many bytes, so
 /// an untrusted endpoint cannot make the app buffer an unbounded body before the core refuses it.
 pub const MAX_RESPONSE_BYTES: usize = 64 * 1024;
+
+/// One JSON-RPC body for the host to POST, with the largest reply the core will judge for it.
+/// The host's transport stops reading and reports a transport failure past
+/// `max_response_bytes`, so a hostile endpoint cannot make the app buffer an unbounded body
+/// before the core's own size check runs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Request {
+    pub id: u64,
+    pub body: String,
+    pub max_response_bytes: u64,
+    /// An advisory read the core can do without: when its POST fails (a timeout, a non-200
+    /// status, a reply past `max_response_bytes`), the host answers it with an empty body instead
+    /// of failing the batch, and the core judges that as no answer.
+    pub optional: bool,
+}
+
+impl Request {
+    /// A request whose reply is bounded by the core's default `MAX_RESPONSE_BYTES`.
+    pub fn new(id: u64, body: String) -> Self {
+        Self::bounded(id, body, MAX_RESPONSE_BYTES)
+    }
+
+    /// A request whose reply may be up to `max_bytes` (a class definition, for example).
+    pub fn bounded(id: u64, body: String, max_bytes: usize) -> Self {
+        Self {
+            id,
+            body,
+            max_response_bytes: max_bytes as u64,
+            optional: false,
+        }
+    }
+
+    /// An advisory read whose transport failure the host answers with an empty body.
+    pub fn optional(id: u64, body: String, max_bytes: usize) -> Self {
+        Self {
+            optional: true,
+            ..Self::bounded(id, body, max_bytes)
+        }
+    }
+}
+
+/// A response body the host received for one request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Response {
+    pub id: u64,
+    pub body: String,
+}
 
 /// A JSON-RPC 2.0 request body.
 pub fn envelope(id: u64, method: &str, params: Value) -> String {

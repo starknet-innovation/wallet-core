@@ -78,6 +78,10 @@ Grep first; extend in place rather than adding a sibling.
   JavaScript `trim` and `shortAddress` are `send::calls::{js_trim, short_label}`.
 - Ladders, account families, family addresses and constructor calldata live in
   `crates/wallet-core/src/accounts/`; an account's key is `kms::account_key(.., ladder, index)`.
+- The recovery scan is `accounts::scan::Scan`, fed a `ScanConfig` (Bramble's shapes, limits,
+  tokens, pool and `Authorization`s); its signer and privacy-pool reads and verdicts are
+  `accounts::advisory`, whose own viewing public key is `own_viewing_public_key`. A host's batch
+  of bodies and replies is `rpc::{Request, Response}`; selectors sit in `send::plan_probe`.
 - The send state machine is `send::plan::Plan`; a wallet's session, keys and activity log reach
   it only through `PlanHost`, and its numbers through `Policy` (Bramble's: `SEND_POLICY`).
 - Only `wallet-core` depends on Krusty (`kms.rs`, `nostr.rs`, `accounts/`, `send/`); `bramble-core` goes through

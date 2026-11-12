@@ -16,7 +16,8 @@
 //! the review or submit path.
 //!
 //! The selectors and `braavos_signers` are public for a wallet's other reads of the same
-//! account state (Bramble's recovery advisory), so the signer-list grammar is written once.
+//! account state (the recovery advisory, `accounts::advisory`), so the signer-list grammar is
+//! written once.
 
 use crate::Felt;
 
@@ -33,6 +34,10 @@ pub const GET_GUARDIAN: &str = "0x24fd89f2d8a7798e705aa5361f39154ca43e03721c0518
 pub const GET_SIGNERS: &str = "0x2b8faca80de28f81027b46c4f3cb534c44616e721ae9f1e96539c6b54a1d932";
 pub const GET_DEFERRED_REMOVE_SIGNERS: &str =
     "0x3f4c3fd98c1f85cfe943da13a3e1970248bf364130b9590071520aa2ec61e93";
+/// A privacy pool's `get_public_key(address)`: the viewing key registered for an account (read
+/// by the recovery advisory, `accounts::advisory`).
+pub const GET_PUBLIC_KEY: &str =
+    "0x1a35984e05126dbecb7c3bb9929e7dd9106d460c59b1633739a5c733a5fb13b";
 
 /// `atAcceptedBlock`: three attempts, then the miss fails closed.
 const PIN_ATTEMPTS: u8 = 3;
@@ -359,6 +364,14 @@ mod tests {
             digest[0] &= 0x03;
             assert_eq!(Felt::from_bytes_be(&digest), selector(expected), "{name}");
         }
+    }
+
+    #[test]
+    fn get_public_key_is_starknet_keccak() {
+        use sha3::{Digest, Keccak256};
+        let mut digest: [u8; 32] = Keccak256::digest(b"get_public_key").into();
+        digest[0] &= 0x03;
+        assert_eq!(Felt::from_bytes_be(&digest), selector(GET_PUBLIC_KEY));
     }
 
     #[test]
