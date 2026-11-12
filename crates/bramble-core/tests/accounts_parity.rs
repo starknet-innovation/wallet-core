@@ -11,32 +11,6 @@ use starknet_wallet_core::accounts::{
 };
 use starknet_wallet_core::{account_public_key, felt, oz_account_class_hash, Felt, NetworkId};
 
-/// The extension's Argent table (`account-types.ts`, `constructorShape`), as Bramble `01bd6517`
-/// renders it into `mobile/core/generated/accounts.json`, for the classes the families fixtures name; Xverse's build is the one Krusty does
-/// not list. F3 copies `generated/accounts.json`, and this test then reads the table from it.
-const ARGENT_CLASSES: [(&str, &str, bool); 4] = [
-    (
-        "0x029927c8af6bccf3f6fda035981e765a7bdbf18a2dc0d630494f8758aa908e2b",
-        "owner-guardian",
-        false,
-    ),
-    (
-        "0x01a736d6ed154502257f02b1ccdf4d9d1089f80811cd6acad48e6b6a9d1f2003",
-        "owner-guardian",
-        false,
-    ),
-    (
-        "0x036078334509b514626504edc9fb252328d1a240e4e948bef8d0c08dff45927f",
-        "signer-owner-guardian-option",
-        false,
-    ),
-    (
-        "0x0663fc01a0dbe1bacc4cd2a4c856eb9784b255a20988aa33d4d52b6fc20bd024",
-        "signer-owner-guardian-option",
-        true,
-    ),
-];
-
 fn fixture(network: &str) -> Value {
     let path = format!(
         "{}/tests/fixtures/accounts-parity-families-{network}.json",
@@ -49,13 +23,27 @@ fn felt_at(value: &Value) -> Felt {
     felt::parse(value.as_str().unwrap()).unwrap()
 }
 
+/// The extension's account tables (`account-types.ts`), as `bun run mobile:assets` renders them.
+fn catalog() -> Value {
+    let path = format!(
+        "{}/tests/fixtures/accounts.json",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
+}
+
+/// The layout the extension's table (`constructorShape`) gives an Argent class; Xverse's build
+/// is the one Krusty does not list.
 fn argent_shape(class_hash: &Felt) -> ArgentShape {
-    let (_, layout, unlisted) = ARGENT_CLASSES
+    let catalog = catalog();
+    let entry = catalog["classes"]
+        .as_array()
+        .unwrap()
         .iter()
-        .find(|(hash, _, _)| felt::parse(hash).as_ref() == Some(class_hash))
+        .find(|entry| entry["family"] == "argent" && felt_at(&entry["classHash"]) == *class_hash)
         .expect("a class in the extension's Argent table");
-    let layout = ArgentLayout::from_wire(layout).unwrap();
-    if *unlisted {
+    let layout = ArgentLayout::from_wire(entry["constructorShape"].as_str().unwrap()).unwrap();
+    if felt_at(&catalog["xverseArgentClassHash"]) == *class_hash {
         ArgentShape::Unlisted(layout)
     } else {
         ArgentShape::Listed(layout)

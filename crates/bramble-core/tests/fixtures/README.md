@@ -2,13 +2,17 @@
 
 Written by the Bramble extension's real code paths, never by hand. Bramble
 (`starknet-innovation/mc-wallet`) is the source: `bun run mobile:parity` writes every file below into
-`mobile/core/tests/fixtures/`, and syncing is copying them here unchanged. `tests/fixtures.rs` checks
-this table against the directory: every file must be listed, and its sha256 must match.
+`mobile/core/tests/fixtures/`, except `accounts.json`, which `bun run mobile:assets` renders from
+the extension's account tables into `mobile/core/generated/`. Syncing is copying them here
+unchanged, all at one Bramble commit. `tests/fixtures.rs` checks this table against the directory:
+every file must be listed, and its sha256 must match.
 
-All files: Bramble commit `0a4bd84c3ed838ffe56ce2a702652dd9a7c3bca0` (`feature/mobile-wallet`,
-2026-11-06), privacy SDK `vendor/starknet-privacy` at `b40bf109` (Bramble's pin). Re-running
-`mobile:parity` there leaves no diff. Generators are under `scripts/` in Bramble; each is reached
-from `generate-mobile-parity-vectors.ts`.
+All files: Bramble commit `860a90ec80629fcbdce5efc88e4038b35f98bc7e` (`mobile/g3-recovery-scan-generator`,
+2026-11-11, the G3 generator on `feature/mobile-wallet` at `01bd6517`; not merged yet, so the
+commit line moves to the merged commit at the next copy), privacy SDK `vendor/starknet-privacy` at
+`b40bf109` (Bramble's pin). Re-running `mobile:parity` and `mobile:assets` there leaves no diff.
+Generators are under `scripts/` in Bramble; each fixture's is reached from
+`generate-mobile-parity-vectors.ts`.
 
 | File | Generator | sha256 |
 | --- | --- | --- |
@@ -17,17 +21,20 @@ from `generate-mobile-parity-vectors.ts`.
 | `accounts-parity-families-sepolia.json` | `mobile-parity-accounts.ts` | `6cfb3ecc0490ec06c8a53b50fc795b749a818e11d3410b06f1a8c8ba14514634` |
 | `accounts-parity-recovery.json` | `mobile-parity-accounts.ts` | `15fa78d7a9fa08a17e82585f83b1d8d6282c1e6c5414673b1d2d345c1f1f2c85` |
 | `accounts-parity-rules.json` | `mobile-parity-accounts.ts` | `48f09827f5fd82119b01e7f5f39b17af30a42e4684031b817b40422966d8dc14` |
+| `accounts-parity-scan.json` | `mobile-parity-scan.ts` | `1dec0dea47148d4f8b1f3d4ab3e527e99e1e2b344a70880cfb776aff0afa7b80` |
+| `accounts-parity-scan-signing.json` | `mobile-parity-scan.ts` | `650589076793744ea3057610c2e7afb1985c265efac1c3dc05ea580f6ac1f01e` |
+| `accounts.json` | `generate-mobile-assets.ts` (`mobile-assets/accounts.ts`) | `67bfdf2f70406e7e3f694ea97a66431d1d7e3ad33c153f86bf6780693eb259d3` |
 | `nostr-multisig-parity.json` | `mobile-assets/write-nostr-multisig-parity.ts` | `445cbbcbb0104350709ac3cfc93a74a6dc5af2286de674e0512ceb020ed6357e` |
-| `portfolio-parity.jsonl` | `mobile-parity-portfolio/` | `1cb005dc0c747b89f3ebdd354f8e71ad52de7c378338e191214d483514f06260` |
-| `extension-privacy-copy.json` | `generate-mobile-privacy-vectors.ts` | `115f913227bf95dce1f749172077fecffa0462b17b9bd649815c1429875ddfd2` |
-| `extension-privacy-rules.json` | `generate-mobile-privacy-vectors.ts` | `7fd6f242c6e55a9e14cebb596daa6052d9836cbbcebe5619b1a2d6824ccc8345` |
+| `portfolio-parity.jsonl` | `mobile-parity-portfolio/` | `89348ba0e6b64d5662ae5860a084b10492288bdd2029a88a3e99131cf2a27c7f` |
+| `extension-privacy-copy.json` | `generate-mobile-privacy-vectors.ts` | `62ef74e7e64fb79e01c00a5c95350d3ddd719340c5a50ee31e181ef7dff82838` |
+| `extension-privacy-rules.json` | `generate-mobile-privacy-vectors.ts` | `fa7729d067c5d1bdfb57d9857075622b97effba165f029d69732552ccb59ae70` |
 | `extension-privacy-wire.json` | `generate-mobile-privacy-vectors.ts` | `a74cc8d4a80a03309a6528436ff3d2962198860033ccca4d33b51d770bdfdc11` |
 | `extension-transactions-argent-refusals.json` | `generate-mobile-transaction-vectors.ts` | `f2eb7492ca5425e618b9954b22fc666bf7a2a4645438ba8837a1c3f6b78d2997` |
 | `extension-transactions-argent-upgraded.json` | `generate-mobile-transaction-vectors.ts` | `9d14e829c7c2dfccb940e150984036db18a528ddd65f134763371049981b8156` |
 | `extension-transactions-argent.json` | `generate-mobile-transaction-vectors.ts` | `854103a684d841a7ed2949ac238283d17a934cd7cba9a9d29b522868959edb5f` |
 | `extension-transactions-braavos-refusals.json` | `generate-mobile-transaction-vectors.ts` | `5c15ab334651870307d8259a6c75865f8a5e555fa53b2bf50d468879eeefa102` |
 | `extension-transactions-braavos.json` | `generate-mobile-transaction-vectors.ts` | `fe2a1bdaf2420700b70396b7214fcb706f2f6aab88fa46ee6fa17f1ed3fc9f4f` |
-| `extension-transactions-copy.json` | `generate-mobile-transaction-vectors.ts` | `fbb47bf42852b708f89ce9cf4be1fad0a6926fb571ad21817e3a536957849292` |
+| `extension-transactions-copy.json` | `generate-mobile-transaction-vectors.ts` | `7fdbd62e36e2e56696ec52a5600ea440dfbcbaee120c6243e7e68085e4fc93f8` |
 | `extension-transactions-observation.json` | `generate-mobile-transaction-vectors.ts` | `bc02c237f67d1ac646a86df25305f4be0181a8f3e44d19cf5c748bc898c01541` |
 | `extension-transactions-presentation.json` | `generate-mobile-transaction-vectors.ts` | `fcf33dbdc1d1273042910feae40525a10a73dca38f59808e8269ea4e61a4a4c5` |
 | `extension-transactions-rules.json` | `generate-mobile-transaction-vectors.ts` | `65673321490171d26684a2e133c23e821d8ac185227f220e21ca383e719af825` |
@@ -37,10 +44,10 @@ from `generate-mobile-parity-vectors.ts`.
 
 Read today: `extension-parity.json` (`parity.rs`, `vault_parity.rs`),
 `accounts-parity-families-sepolia.json` and `nostr-multisig-parity.json` (`parity.rs`), both
-`accounts-parity-families-*.json` (`accounts_parity.rs`), and every
+`accounts-parity-families-*.json` and `accounts.json` (`accounts_parity.rs`), and every
 `extension-transactions-*.json` except `-observation` (`transactions_*_parity.rs`). The rest sit
 here unused until their Phase 2 step moves the matching mobile parity test in (see `docs/PLAN.md`,
-Phase 1).
+Phase 1); `accounts-parity-scan*.json` wait for A2.
 
 Not here, because they are not extension output: `vault-*.json` and `migration-v1-to-v5.golden.json`
 (earlier mobile cores), `ui-coordination.json` (iOS UI suite) and `rust-gift-wrap.json` (Rust
