@@ -307,11 +307,7 @@ impl PriceBook {
         state.charts.insert(key, entry);
         if state.charts.len() > MAX_CHART_ENTRIES {
             let mut entries = std::mem::take(&mut state.charts).into_entries();
-            entries.sort_by(|a, b| {
-                b.1.fetched_at
-                    .partial_cmp(&a.1.fetched_at)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            });
+            entries.sort_by(|a, b| b.1.fetched_at.total_cmp(&a.1.fetched_at));
             entries.truncate(MAX_CHART_ENTRIES);
             state.charts = OrderedMap::from_entries(entries);
         }
