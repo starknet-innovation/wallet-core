@@ -44,6 +44,22 @@ impl NetworkId {
     pub fn chain_id(self) -> Felt {
         ChainId::from(self).as_felt()
     }
+
+    /// The extension's network id (`SN_MAIN`, `SN_SEPOLIA`), used in account ids, token ids and
+    /// stored records.
+    pub fn catalog_id(self) -> &'static str {
+        match self {
+            Self::Mainnet => "SN_MAIN",
+            Self::Sepolia => "SN_SEPOLIA",
+        }
+    }
+
+    /// The network a catalog id names; `None` for any other spelling.
+    pub fn from_catalog_id(value: &str) -> Option<Self> {
+        [Self::Mainnet, Self::Sepolia]
+            .into_iter()
+            .find(|network| network.catalog_id() == value)
+    }
 }
 
 /// Stark key material, as the extension's `StarkKeypair`.

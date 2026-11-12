@@ -2,8 +2,9 @@
 
 Written by the Bramble extension's real code paths, never by hand. Bramble
 (`starknet-innovation/mc-wallet`) is the source: `bun run mobile:parity` writes every file below into
-`mobile/core/tests/fixtures/`, except `accounts.json`, which `bun run mobile:assets` renders from
-the extension's account tables into `mobile/core/generated/`. Syncing is copying them here
+`mobile/core/tests/fixtures/`, except `accounts.json`, `networks.json` and `token-registry.json`,
+which `bun run mobile:assets` renders from the extension's account, network and token tables into
+`mobile/core/generated/`. Syncing is copying them here
 unchanged, all at one Bramble commit. `tests/fixtures.rs` checks this table against the directory:
 every file must be listed, and its sha256 must match.
 
@@ -24,6 +25,8 @@ Generators are under `scripts/` in Bramble; each fixture's is reached from
 | `accounts-parity-scan.json` | `mobile-parity-scan.ts` | `1dec0dea47148d4f8b1f3d4ab3e527e99e1e2b344a70880cfb776aff0afa7b80` |
 | `accounts-parity-scan-signing.json` | `mobile-parity-scan.ts` | `650589076793744ea3057610c2e7afb1985c265efac1c3dc05ea580f6ac1f01e` |
 | `accounts.json` | `generate-mobile-assets.ts` (`mobile-assets/accounts.ts`) | `67bfdf2f70406e7e3f694ea97a66431d1d7e3ad33c153f86bf6780693eb259d3` |
+| `networks.json` | `generate-mobile-assets.ts` | `7c143b575ddb42550bfe3e4caffaad3de22d9b1ae8b7acdfa71d5ee50744e296` |
+| `token-registry.json` | `generate-mobile-assets.ts` | `83b8a9a6ae6fe98650daa28969828e29936d1e2c8f1e6cd130cd7a3560a88255` |
 | `nostr-multisig-parity.json` | `mobile-assets/write-nostr-multisig-parity.ts` | `445cbbcbb0104350709ac3cfc93a74a6dc5af2286de674e0512ceb020ed6357e` |
 | `nostr-coordination-parity-rules.json` | `mobile-assets/write-nostr-coordination-parity.ts` | `961cebd8144d12397dcfda445b30708d63156e528d7b3c7edd3d71ef18bf4c4b` |
 | `nostr-coordination-parity-relays.json` | `mobile-assets/write-nostr-coordination-parity.ts` | `f5df889ec2e42ba1bf2271878f1af56572403f61e4c6875b97cec88ce125ca1b` |
@@ -50,7 +53,10 @@ Read today: `extension-parity.json` (`parity.rs`, `vault_parity.rs`),
 `accounts-parity-families-*.json` and `accounts.json` (`accounts_parity.rs`), both
 `accounts-parity-scan*.json` and `accounts.json` (`accounts_scan_parity.rs`; `accounts.json` and
 the scan's shapes also feed `accounts_scan_mechanism.rs`), and every
-`extension-transactions-*.json` except `-observation` (`transactions_*_parity.rs`). The rest sit
+`extension-transactions-*.json` except `-observation` (`transactions_*_parity.rs`), and
+`portfolio-parity.jsonl`'s prices, fiat, token and balance blocks with `networks.json` and
+`token-registry.json` as Bramble's catalogs (`portfolio_parity.rs`, `token_parity.rs`; the
+catalogs also feed `portfolio_state.rs`). The rest sit
 here unused until their Phase 2 step moves the matching mobile parity test in (see `docs/PLAN.md`,
 Phase 1).
 

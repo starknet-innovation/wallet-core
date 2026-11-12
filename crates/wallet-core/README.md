@@ -21,6 +21,10 @@ through [`bramble-core`](../bramble-core).
   byte-compatible with the extension's, over host storage and a clock (`host`).
 - **Sans-IO JSON-RPC and transfers** (`rpc`, `send`): builds node requests and reads their
   replies, and derives and plans a transfer. The host carries the bytes.
+- **Portfolio** (`portfolio`, `catalog`): fiat prices and 7-day charts with their
+  last-known-good cache, saved balances, tracked tokens with the registry's spam rules, ERC-20
+  metadata and balance reads, and the amount and fiat display rules, all sans-IO. Network and
+  token catalogs are records the caller passes in.
 - **The felt grammar** (`felt`): strict parsing, canonical lowercase hex and the private-key range.
   Everything else here goes through it.
 - **JavaScript semantics** (`js`, `history::time`): `trim`, UTF-16 slices, `Number` and
@@ -32,14 +36,14 @@ through [`bramble-core`](../bramble-core).
 - **Secret-careful.** Private keys are `SecretFelt`, mnemonics and passphrases are `Zeroizing`
   where the API allows, and errors carry a fixed reason or operation name, never input text.
 
-As `docs/PLAN.md` lands, portfolio, the rest of history, and privacy logic join it here.
+As `docs/PLAN.md` lands, the rest of history, and privacy logic join it here.
 
 ## What it is NOT
 
 - **Not a cryptography library.** Krusty KMS owns signing, derivation and mnemonic checks. This
   crate wraps it and fails closed when Krusty can't do something; it never carries a fallback.
 - **Not a product.** No Bramble policy, no constants like "the account version we deploy", no
-  catalogs, no vault schema or migrations. A product choice is an argument here and a constant in
+  bundled catalogs (`catalog` holds their shapes only), no vault schema or migrations. A product choice is an argument here and a constant in
   the wallet's own crate.
 - **Not an FFI crate.** No UniFFI, no wasm-bindgen, no `extern "C"`. A wallet exports what it
   needs from its own crate (Bramble's is `bramble-core`).
