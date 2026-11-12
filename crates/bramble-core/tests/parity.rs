@@ -14,6 +14,7 @@ fn text(value: &Value) -> String {
     value.as_str().unwrap().to_string()
 }
 
+#[cfg(feature = "raw-keys")]
 fn network(id: &str) -> NetworkId {
     match id {
         "SN_MAIN" => NetworkId::Mainnet,
@@ -95,6 +96,7 @@ fn known_answer_vectors_match_the_reviewed_extension_build() {
     );
 }
 
+#[cfg(feature = "extension")]
 #[test]
 fn coordination_keys_match_the_extension() {
     for vector in fixture("nostr-multisig-parity.json")["nostrKeys"]
@@ -109,6 +111,7 @@ fn coordination_keys_match_the_extension() {
     }
 }
 
+#[cfg(feature = "extension")]
 #[test]
 fn opens_the_extension_gift_wrap_and_refuses_its_variants() {
     let fixture = fixture("nostr-multisig-parity.json");
@@ -150,6 +153,7 @@ fn opens_the_extension_gift_wrap_and_refuses_its_variants() {
     }
 }
 
+#[cfg(feature = "extension")]
 #[test]
 fn gift_wraps_round_trip_between_the_two_identities() {
     let fixture = fixture("nostr-multisig-parity.json");

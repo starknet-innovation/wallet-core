@@ -406,6 +406,7 @@ mod tests {
         assert_eq!(core_info().core_version, env!("CARGO_PKG_VERSION"));
     }
 
+    #[cfg(feature = "extension")]
     #[test]
     fn an_omitted_salt_is_the_public_key() {
         let public_key = "0xb7ff7bf7404503b6df17fa28ea02dd529e58ddd0cfb3232db83ef27630f6aa";

@@ -18,7 +18,8 @@ Usage: bash tools/check.sh <mode>...
   guardrails  pins in sync, actions SHA-pinned, no print macros in src, 500-line cap
   lint        clippy: default features, mobile (with its tests), mobile profile
               (--no-default-features --features mobile), wasm32
-  test        cargo test: default features, then with mobile's suite (--features mobile,testing)
+  test        cargo test: default features, then mobile's suite as it ships
+              (--no-default-features --features mobile,testing)
   deny        cargo deny check
   package     cargo package: both crates build from what crates.io would receive
   wasm        build the npm package through ubrn, then type-check and test it
@@ -89,14 +90,14 @@ check_guardrails() {
 
 check_lint() {
   run cargo clippy --all-targets --locked -- -D warnings
-  run cargo clippy --all-targets --locked -p bramble-core --features mobile,testing -- -D warnings
+  run cargo clippy --all-targets --locked -p bramble-core --no-default-features --features mobile,testing -- -D warnings
   run cargo clippy --locked --no-default-features --features bramble-core/mobile -- -D warnings
   run cargo clippy --locked --target wasm32-unknown-unknown -- -D warnings
 }
 
 check_test() {
   run cargo test --locked --no-fail-fast
-  run cargo test --locked --no-fail-fast -p bramble-core --features mobile,testing
+  run cargo test --locked --no-fail-fast -p bramble-core --no-default-features --features mobile,testing
 }
 
 check_deny() { run cargo deny check; }
