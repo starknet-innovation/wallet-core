@@ -102,6 +102,12 @@ Grep first; extend in place rather than adding a sibling.
   presentation (`appearance.rs`, `classify.rs`); the one log is `activity::ActivityLog` over
   `host::Storage` (status text and `monotonic` in `activity::store`, the observation windows in
   `activity::observation`).
+- Privacy reads live in `crates/wallet-core/src/privacy/`: the read plan
+  (`plan::PrivacyReadPlan`, whose viewing key reaches it only through `PrivacyHost`, each reply in
+  `plan_steps.rs`), the discovery and pool-fee bodies (`bodies.rs`, the only writer of the key),
+  reply judging (`judge.rs`, `notes.rs`), the order-keeping JSON the cursor echo needs
+  (`privacy::json`, stricter than `js::json`), routing and limits records (`config.rs`), and the
+  gates (`gates.rs`, `home.rs`). `DeploymentState` is `send::types`.
 - Only `wallet-core` depends on Krusty (`kms.rs`, `nostr.rs`, `accounts/`, `send/`); `bramble-core` goes through
   `wallet-core` and never names `krusty_kms`.
 

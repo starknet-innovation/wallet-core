@@ -29,6 +29,11 @@ through [`bramble-core`](../bramble-core).
   scan, the history-read cadence, the activity row model and day groups, explorer links, and the
   wallet's one activity log (validated entries, status merge, the observation and retirement
   policy) stored through the host's `Storage`.
+- **STRK20 privacy reads** (`privacy`): the private-balance read as a sans-IO plan (chain id,
+  preflight, note discovery, pool fee) with byte-exact discovery bodies and judged replies, and
+  the privacy gates for Home, Receive, token detail and the journey. The viewing key comes from
+  the wallet through `PrivacyHost` for each request body and is never stored; routing and limits
+  are records the caller passes in. Read-only: nothing is submitted.
 - **The felt grammar** (`felt`): strict parsing, canonical lowercase hex and the private-key range.
   Everything else here goes through it.
 - **JavaScript semantics** (`js`, `history::time`): `trim`, UTF-16 slices, `Number` and
@@ -39,8 +44,6 @@ through [`bramble-core`](../bramble-core).
   caller passes them in.
 - **Secret-careful.** Private keys are `SecretFelt`, mnemonics and passphrases are `Zeroizing`
   where the API allows, and errors carry a fixed reason or operation name, never input text.
-
-As `docs/PLAN.md` lands, privacy logic joins it here.
 
 ## What it is NOT
 
