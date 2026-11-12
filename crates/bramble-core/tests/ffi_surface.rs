@@ -25,7 +25,7 @@ fn sources() -> Vec<(String, String)> {
 }
 
 /// `#[uniffi::export]`, written plainly or under `cfg_attr(feature = "mobile", ..)` (the catalog
-/// exports shared with the extension's build).
+/// exports shared with the extension's build); a mention in a comment or path is not one.
 fn is_export_attribute(line: &str) -> bool {
     let line = line.trim_start();
     line.starts_with("#[uniffi::export")
@@ -58,56 +58,91 @@ impl Exported {
     }
 }
 
-fn one_line(signature: &str) -> String {
-    signature.split_whitespace().collect::<Vec<_>>().join(" ")
+/// The declaration from `fn` on, when `line` declares a function: a visibility and `async`, `const`
+/// or `unsafe` before it are skipped, since uniffi exports every fn of an exported impl.
+fn declared_fn(line: &str) -> Option<&str> {
+    let mut rest = line;
+    loop {
+        if rest.starts_with("fn ") {
+            return Some(rest);
+        }
+        rest = [
+            "pub(crate) ",
+            "pub(super) ",
+            "pub ",
+            "async ",
+            "const ",
+            "unsafe ",
+        ]
+        .iter()
+        .find_map(|qualifier| rest.strip_prefix(qualifier))?;
+    }
 }
 
-/// Functions inside `#[uniffi::export]` items: a free fn, the `pub fn`s of an impl block, and the
-/// methods of a trait.
+/// The signature starting at `lines[0]` (from `first`), up to its body or the `;` that ends it.
+fn signature(first: &str, lines: &[&str]) -> String {
+    let mut text = String::new();
+    for line in std::iter::once(first).chain(lines.iter().skip(1).copied()) {
+        if let Some(body) = line.find('{') {
+            text.push_str(&line[..body]);
+            break;
+        }
+        text.push_str(line);
+        text.push(' ');
+        if line.trim_end().ends_with(';') {
+            break;
+        }
+    }
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Functions inside `#[uniffi::export]` items: a free fn, every fn of an impl block, and the
+/// methods of a trait. Panics on an export it reads no function under, so a shape this parser
+/// does not know is a failure, never a clean item.
 fn exported_signatures(source: &str) -> Vec<Exported> {
+    let lines: Vec<&str> = source.lines().collect();
     let mut signatures = Vec::new();
-    let mut rest = source;
-    while let Some(found) = rest.find("uniffi::export") {
-        // Only the attribute counts; a mention in a comment or path is skipped.
-        let start = rest[..found].rfind('\n').map_or(0, |at| at + 1);
-        if !is_export_attribute(rest[start..].lines().next().unwrap_or("")) {
-            rest = &rest[found + "uniffi::export".len()..];
+    for (at, line) in lines.iter().enumerate() {
+        if !is_export_attribute(line) {
             continue;
         }
-        let item = &rest[start..];
-        let head = item.lines().nth(1).unwrap_or("");
-        // An exported impl block or trait runs to its closing brace at column zero; a free fn to
-        // its body.
-        let end = if head.starts_with("impl") || head.starts_with("pub trait") {
-            item.find("\n}\n").unwrap_or(item.len())
-        } else {
-            item.find('{').unwrap_or(item.len())
+        // The item itself, past any further attributes and comments on it.
+        let Some(head) = (at + 1..lines.len()).find(|&i| {
+            let line = lines[i].trim_start();
+            !line.starts_with("#[") && !line.starts_with("//")
+        }) else {
+            panic!("an export attribute ends the file");
         };
-        let block = &item[..end];
-        if head.starts_with("pub trait") {
-            let mut cursor = block;
-            while let Some(at) = cursor.find("\n    fn ") {
-                let signature = &cursor[at + 1..];
-                let stop = signature.find([';', '{']).unwrap_or(signature.len());
-                signatures.push(Exported {
-                    signature: one_line(&signature[..stop]),
-                    foreign: true,
-                });
-                cursor = &signature[stop..];
-            }
-        } else {
-            let mut cursor = block;
-            while let Some(at) = cursor.find("pub fn ") {
-                let signature = &cursor[at..];
-                let stop = signature.find('{').unwrap_or(signature.len());
-                signatures.push(Exported {
-                    signature: one_line(&signature[..stop]),
-                    foreign: false,
-                });
-                cursor = &signature[stop..];
+        let before = signatures.len();
+        if let Some(declaration) = declared_fn(lines[head]) {
+            signatures.push(Exported {
+                signature: signature(declaration, &lines[head..]),
+                foreign: false,
+            });
+        } else if lines[head].starts_with("impl") || lines[head].starts_with("pub trait") {
+            let foreign = lines[head].starts_with("pub trait");
+            // Items run to the closing brace at column zero; methods sit at one indent.
+            for i in head + 1..lines.len() {
+                if lines[i] == "}" {
+                    break;
+                }
+                let method = lines[i]
+                    .strip_prefix("    ")
+                    .filter(|rest| !rest.starts_with(' '))
+                    .and_then(declared_fn);
+                if let Some(declaration) = method {
+                    signatures.push(Exported {
+                        signature: signature(declaration, &lines[i..]),
+                        foreign,
+                    });
+                }
             }
         }
-        rest = &item[end..];
+        assert!(
+            signatures.len() > before,
+            "the scan read no function under `{}`",
+            lines[head]
+        );
     }
     signatures
 }
@@ -116,14 +151,7 @@ fn exported_signatures(source: &str) -> Vec<Exported> {
 fn no_exported_function_returns_bytes() {
     let mut seen = 0;
     for (file, source) in sources() {
-        let signatures = exported_signatures(&source);
-        // A real export attribute the parser read nothing under is a blind spot, not a clean file.
-        let exports = source.lines().any(is_export_attribute);
-        assert!(
-            !exports || !signatures.is_empty(),
-            "{file}: the scan found no exported function"
-        );
-        for exported in signatures {
+        for exported in exported_signatures(&source) {
             seen += 1;
             let outgoing = exported.outgoing();
             assert!(
