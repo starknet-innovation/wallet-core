@@ -75,7 +75,10 @@ Grep first; extend in place rather than adding a sibling.
   `crates/wallet-core/src/envelope.rs` and `container.rs`; host I/O goes through `host.rs`.
 - JSON-RPC bodies and reply judging live in `rpc.rs` and `send/{rpc_bodies,judge}.rs`; v3
   transaction hashes in `send/sign.rs`; fee bounds in `send/fees.rs`; u256 in `send/u256.rs`.
-  JavaScript `trim` and `shortAddress` are `send::calls::{js_trim, short_label}`.
+- JavaScript semantics live in `crates/wallet-core/src/js/`: `trim`, `shortAddress`, UTF-16
+  lengths and `Number` formatting in `js::num` (`js_trim`, `short_label`; `send::calls`
+  re-exports both), `BigInt` in `js::big`, `JSON` in `js::json`, the budgeted regex matcher in
+  `js::regex`, felt helpers over them in `js::felt`. Fixed-UTC dates are `history::time`.
 - Ladders, account families, family addresses and constructor calldata live in
   `crates/wallet-core/src/accounts/`; an account's key is `kms::account_key(.., ladder, index)`.
 - The recovery scan is `accounts::scan::Scan`, fed a `ScanConfig` (Bramble's shapes, limits,

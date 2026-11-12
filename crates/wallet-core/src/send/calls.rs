@@ -30,29 +30,8 @@ pub enum SendAmountError {
     TooLarge,
 }
 
-/// Whether `c` is removed by JavaScript's `trim()` (WhiteSpace and LineTerminator). Rust's
-/// `is_whitespace` adds U+0085 and omits U+FEFF, so both are special-cased.
-fn is_js_whitespace(c: char) -> bool {
-    (c.is_whitespace() && c != '\u{85}') || c == '\u{feff}'
-}
-
-/// JavaScript `String.prototype.trim`.
-pub fn js_trim(value: &str) -> &str {
-    value.trim_matches(is_js_whitespace)
-}
-
-/// `accountLabel` / `shortAddress`: `a.slice(0, 6) + "…" + a.slice(-4)` on UTF-16 units, with no
-/// length guard (as in JavaScript).
-pub fn short_label(value: &str) -> String {
-    let units: Vec<u16> = value.encode_utf16().collect();
-    let head = &units[..6.min(units.len())];
-    let tail = &units[units.len().saturating_sub(4)..];
-    format!(
-        "{}…{}",
-        String::from_utf16_lossy(head),
-        String::from_utf16_lossy(tail)
-    )
-}
+/// JavaScript `trim` and `shortAddress`, re-exported from `js` so existing callers keep their path.
+pub use crate::js::num::{js_trim, short_label};
 
 /// `starknet_keccak("transfer")`, checked against a Keccak implementation in the tests and
 /// against starknet.js `getSelectorFromName` by the fixture.
