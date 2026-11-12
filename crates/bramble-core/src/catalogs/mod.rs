@@ -70,4 +70,18 @@ mod tests {
         listed.sort();
         assert_eq!(listed, on_disk);
     }
+
+    // `policy.json` is copied in with the rest, but the code reads compiled constants; a policy
+    // change that reaches only the JSON would otherwise pass unnoticed.
+    #[test]
+    fn policy_matches_the_compiled_constants() {
+        let policy: serde_json::Value =
+            serde_json::from_str(include_str!("../../generated/policy.json")).unwrap();
+        assert_eq!(policy["idleLockMs"], crate::wallet::IDLE_LOCK_MS);
+        assert_eq!(policy["kdfIterations"], crate::vault::KDF_ITERATIONS);
+        assert_eq!(
+            policy["minPassphraseLength"],
+            crate::vault::MIN_PASSWORD_LENGTH
+        );
+    }
 }

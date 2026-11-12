@@ -17,6 +17,14 @@
 
 #![forbid(unsafe_code)]
 
+// The mobile build exports no raw keys. Cargo unifies features, so one dependent that forgets
+// `default-features = false` would silently add them; refuse that build instead. Only the test
+// suites, which run mobile's tests beside the extension's, combine the two.
+#[cfg(all(feature = "mobile", feature = "raw-keys", not(feature = "testing")))]
+compile_error!(
+    "`mobile` with `raw-keys` exports raw private keys; build mobile with --no-default-features"
+);
+
 #[cfg(any(feature = "raw-keys", feature = "mobile"))]
 pub(crate) use starknet_wallet_core::felt;
 #[cfg(feature = "raw-keys")]

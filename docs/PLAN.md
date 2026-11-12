@@ -36,28 +36,28 @@ Decisions, 2026-11-09:
 
 ## Status
 
-As of 2026-11-11. Every Phase 2 step has two halves: the mechanism lands here, then mobile deletes
-its copy and depends on this one. Both halves are done for 2.1, the vault and transactions, so
+Every Phase 2 step has two halves: the mechanism lands here, then mobile deletes its copy and
+depends on this one. Both halves are done for 2.1, the vault and transactions, so
 mobile holds no copy of what this repo has ported. A step is done when both halves are.
-As of 2026-11-12 every remaining step has both halves open as stacked draft PRs (#39–#50 here,
-Bramble #918–#929); what is left is a maintainer's: review and merge, a tag (0.3.0: the API broke since 0.2.2),
-moving each adoption's `rev` to that tag, and the vault v5 → v12 migration.
+As of 2026-11-12 every port here is merged (#39–#50); the adoptions (Bramble #918–#929) are open.
+What is left is a maintainer's: a tag (0.3.0: the API broke since 0.2.2), moving each adoption's
+`rev` to that tag and merging it, and the vault v5 → v12 migration.
 
 | Step | Here | Mobile (`mc-wallet`, `feature/mobile-wallet`, at `01bd6517`) |
 | --- | --- | --- |
 | 0 Scaffold, 1 Golden suite | done | n/a |
 | 2.1 KMS, Nostr, felt | done (#13, #20) | done (Bramble #907, #909), at `v0.1.0` |
 | 2.2 Vault | done (#19) | done (Bramble #911), at `v0.1.0`; the vault → v12 migration is placed in 2.7 (see 2.7), owner not named |
-| 2.2 Accounts | A1 (#39), F3 (#40) and A2 (#41) open as a stack | G3 open (Bramble #918); M5 open (Bramble #921), pinning A2's branch tip by `rev` until a tag follows |
+| 2.2 Accounts | done (A1 #39, F3 #40, A2 #41) | G3 open (Bramble #918); M5 open (Bramble #921), pinning A2's branch tip by `rev` until a tag follows |
 | 2.3 Transactions | done (#22, #25, #31) | done (Bramble #916), at `v0.2.1` |
-| 2.4a Shims | open (#43) | M6 open (Bramble #922) |
-| 2.4b Portfolio | open (#44) | M7 open (Bramble #923) |
-| 2.4c History and activity | open (#45) | M8 open (Bramble #924) |
-| 2.4d Privacy | open (#46) | M9 open (Bramble #925) |
-| 2.5a Multisig account | open (#47) | M10 open (Bramble #926) |
-| 2.5b Multisig coordination | open (#48) | M11 open (Bramble #927) |
-| 2.6 Catalogs | open (#49) | M12 open (Bramble #928) |
-| 2.7 Swap | port open (#50), behind the `mobile` feature | M13 open (Bramble #929): `mobile/core` becomes a shell over this crate |
+| 2.4a Shims | done (#43) | M6 open (Bramble #922) |
+| 2.4b Portfolio | done (#44) | M7 open (Bramble #923) |
+| 2.4c History and activity | done (#45) | M8 open (Bramble #924) |
+| 2.4d Privacy | done (#46) | M9 open (Bramble #925) |
+| 2.5a Multisig account | done (#47) | M10 open (Bramble #926) |
+| 2.5b Multisig coordination | done (#48) | M11 open (Bramble #927) |
+| 2.6 Catalogs | done (#49) | M12 open (Bramble #928) |
+| 2.7 Swap | done (#50), behind the `mobile` feature | M13 open (Bramble #929): `mobile/core` becomes a shell over this crate |
 | 3 Extension | not started; `js/package.json` is private | n/a |
 
 `v0.1.0` is tagged at `35abc8b` (GitHub release only) and was what M2 and M3 pinned. `v0.2.0`

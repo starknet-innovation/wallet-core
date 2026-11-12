@@ -5,8 +5,6 @@
 //! the extension is lenient: hex digits may be upper-case and may end in JavaScript whitespace,
 //! because the extension reads them through `BigInt` and `String.prototype.trim`.
 
-use starknet_types_core::felt::Felt;
-
 use crate::networks::NetworkId;
 use crate::{felt, multisig_constants, nostr, CoreError};
 
@@ -37,49 +35,12 @@ pub enum ContactCardParse {
 /// JavaScript `String.prototype.trim`.
 pub use wallet_core::js::num::js_trim;
 
-/// Hex digits (any case) to a felt below the prime; `None` for anything else.
-fn hex_digits(digits: &str) -> Option<Felt> {
-    if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_hexdigit()) {
-        return None;
-    }
-    let significant = digits.trim_start_matches('0').to_ascii_lowercase();
-    if significant.len() > 64 {
-        return None;
-    }
-    felt::parse(&format!(
-        "0x{}",
-        if significant.is_empty() {
-            "0"
-        } else {
-            &significant
-        }
-    ))
-}
-
 /// `canonicalFelt(value)` for `0x`-prefixed hex, non-zero: `BigInt` accepts trailing whitespace
 /// and any digit case. Returns the canonical (minimal) felt.
 pub use wallet_core::js::felt::lenient_hex_felt;
 
 /// `canonicalAddress`: trimmed, lower-cased, at most 64 hex digits, non-zero; padded form.
-pub fn canonical_address(value: &str) -> Option<String> {
-    let lower = js_trim(value).to_ascii_lowercase();
-    let digits = lower.strip_prefix("0x")?;
-    if digits.len() > 64
-        || !digits
-            .bytes()
-            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-    {
-        return None;
-    }
-    hex_digits(digits)
-        .filter(|f| *f != Felt::ZERO)
-        .map(|f| padded(&f))
-}
-
-/// A felt at its full 64-digit width, `0x`-prefixed.
-pub fn padded(value: &Felt) -> String {
-    format!("0x{:0>64}", format!("{value:x}"))
-}
+pub use wallet_core::js::felt::canonical_address;
 
 /// Encodes a validated card; fails closed on any malformed part.
 pub fn encode(card: &WalletContactCard) -> Result<String, CoreError> {

@@ -129,7 +129,22 @@ mod tests {
         assert_eq!(c.limits.name_length, 48);
         assert_eq!(c.nostr.max_batch_items, 50);
         assert_eq!(c.relays.max_frame_bytes, 140_000);
-        assert_eq!(c.coordination.identifier, "bramble.multisig");
+        // `coordination` restates these for code that runs without the catalog; one regenerated
+        // file must not move one copy and leave the other.
+        use crate::coordination as co;
+        assert_eq!(c.coordination.identifier, co::MULTISIG_NOSTR_IDENTIFIER);
+        assert_eq!(c.relays.defaults, co::MULTISIG_NOSTR_RELAYS);
+        let lookbacks = (
+            co::NOSTR_SYNC_LOOKBACK_SECONDS,
+            co::NOSTR_INCREMENTAL_LOOKBACK_SECONDS,
+        );
+        assert_eq!(
+            (
+                c.coordination.sync_lookback_seconds,
+                c.coordination.incremental_lookback_seconds
+            ),
+            (lookbacks.0 as u64, lookbacks.1 as u64)
+        );
         assert!(c.card_network_ids.iter().any(|id| id == "SN_MAIN"));
     }
 }
