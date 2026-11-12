@@ -12,8 +12,9 @@ use starknet_wallet_core::accounts::{
 use starknet_wallet_core::{account_public_key, felt, oz_account_class_hash, Felt, NetworkId};
 
 /// The extension's Argent table (`account-types.ts`, `constructorShape`), as Bramble `01bd6517`
-/// renders it into `mobile/core/generated/accounts.json`, for the classes the families fixtures name; Xverse's build is the one Krusty does
-/// not list. F3 copies `generated/accounts.json`, and this test then reads the table from it.
+/// renders it into `mobile/core/generated/accounts.json`, for the classes the families fixtures
+/// name; Xverse's build is the one Krusty does not list. F3 copies `generated/accounts.json`,
+/// and this test then reads the table from it.
 const ARGENT_CLASSES: [(&str, &str, bool); 4] = [
     (
         "0x029927c8af6bccf3f6fda035981e765a7bdbf18a2dc0d630494f8758aa908e2b",
