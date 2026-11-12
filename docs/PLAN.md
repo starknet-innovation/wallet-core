@@ -613,6 +613,10 @@ today's exposure; it is a bridge, not the target.
 - Not a hard boundary: wasm memory is readable by any script in the extension's context, so code
   execution there can still sign or read it. What this removes is accidental exposure (logs,
   error strings, serialisation, GC copies) and unreliable erasure.
+- Locking wipes what the core holds, and the stack the vault crypto used: RustCrypto does not
+  wipe stack temporaries (`RustCrypto/meta#38`), so `envelope.rs` overwrites 16 KiB of stack
+  after each KDF and AES-GCM call. Not covered: registers, and a memory read while unlocked or
+  during an unlock.
 
 Two things the target does not yet answer (both in Open questions, both to settle before 3.2 is
 designed, neither measured or tested yet):

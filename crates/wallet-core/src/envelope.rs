@@ -12,7 +12,7 @@ use aes_gcm::{Aes256Gcm, Nonce};
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::Error;
 
@@ -55,10 +55,34 @@ pub fn random<const N: usize>() -> Result<[u8; N], Error> {
     Ok(bytes)
 }
 
+/// How much stack `scrubbed` overwrites; the KDF and AES-GCM calls use about 2 KiB.
+const SCRUB_BYTES: usize = 16 * 1024;
+
+#[inline(never)]
+fn run<T>(f: impl FnOnce() -> T) -> T {
+    f()
+}
+
+#[inline(never)]
+fn scrub_stack() {
+    let mut buf = [0u8; SCRUB_BYTES];
+    buf.zeroize();
+}
+
+/// Runs `f`, then overwrites the stack it used. RustCrypto does not wipe stack temporaries
+/// (HMAC key states, AES round-key copies, the last plaintext block), and declines to.
+fn scrubbed<T>(f: impl FnOnce() -> T) -> T {
+    let out = run(f);
+    scrub_stack();
+    out
+}
+
 fn derive_key(password: &str, salt: &[u8], iterations: u32) -> Zeroizing<[u8; 32]> {
-    let mut key = Zeroizing::new([0u8; 32]);
-    pbkdf2::pbkdf2_hmac::<sha2::Sha256>(password.as_bytes(), salt, iterations, key.as_mut());
-    key
+    scrubbed(|| {
+        let mut key = Zeroizing::new([0u8; 32]);
+        pbkdf2::pbkdf2_hmac::<sha2::Sha256>(password.as_bytes(), salt, iterations, key.as_mut());
+        key
+    })
 }
 
 pub(crate) fn decode<const N: usize>(value: &str) -> Option<[u8; N]> {
@@ -90,10 +114,12 @@ pub(crate) fn aead_seal(
     aad: &[u8],
     msg: &[u8],
 ) -> Result<Vec<u8>, Error> {
-    let cipher = Aes256Gcm::new_from_slice(key).map_err(|_| Error::storage("cipher init"))?;
-    cipher
-        .encrypt(&Nonce::from(*iv), Payload { msg, aad })
-        .map_err(|_| Error::storage("encrypt"))
+    scrubbed(|| {
+        let cipher = Aes256Gcm::new_from_slice(key).map_err(|_| Error::storage("cipher init"))?;
+        cipher
+            .encrypt(&Nonce::from(*iv), Payload { msg, aad })
+            .map_err(|_| Error::storage("encrypt"))
+    })
 }
 
 /// AES-256-GCM decryption under a raw 32-byte key; `None` when authentication fails.
@@ -103,11 +129,13 @@ pub(crate) fn aead_open(
     aad: &[u8],
     msg: &[u8],
 ) -> Option<Zeroizing<Vec<u8>>> {
-    let cipher = Aes256Gcm::new_from_slice(key).ok()?;
-    cipher
-        .decrypt(&Nonce::from(*iv), Payload { msg, aad })
-        .ok()
-        .map(Zeroizing::new)
+    scrubbed(|| {
+        let cipher = Aes256Gcm::new_from_slice(key).ok()?;
+        cipher
+            .decrypt(&Nonce::from(*iv), Payload { msg, aad })
+            .ok()
+            .map(Zeroizing::new)
+    })
 }
 
 impl SealingKey {
