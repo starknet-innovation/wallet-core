@@ -51,7 +51,8 @@ mobile holds no copy of what this repo has ported. A step is done when both halv
 | 2.4b Portfolio | open (#44) | M7 open (Bramble #923) |
 | 2.4c History and activity | open (#45) | M8 open (Bramble #924) |
 | 2.4d Privacy | open (#46) | M9 open (Bramble #925) |
-| 2.5 Multisig, 2.6 Catalogs, 2.7 Swap | not started; F1 and F2 open (#42) for 2.4d and 2.5 | not started; G1 and G2 open (Bramble #919, #920) |
+| 2.5a Multisig account | open (#47) | M10 open (Bramble #926) |
+| 2.5b Multisig coordination, 2.6 Catalogs, 2.7 Swap | not started; F1 and F2 open (#42) for 2.4d and 2.5 | not started; G1 and G2 open (Bramble #919, #920) |
 | 3 Extension | not started; `js/package.json` is private | n/a |
 
 `v0.1.0` is tagged at `35abc8b` (GitHub release only) and was what M2 and M3 pinned. `v0.2.0`
@@ -90,6 +91,8 @@ Ports (A*) and fixture copies (F*) are PRs here.
 | M8 History and activity (open, Bramble #924) | Bramble, stacked on M7 | 2.4c | `history/` and `activity/` become FFI wrappers, copy and the file lock over the core | 2.4 |
 | 2.4d Privacy (open, #46) | here, stacked on 2.4c | 2.4c, F1 | `privacy/*` with `PrivacyHost`; the privacy parity and plan suites | 2.4 |
 | M9 Privacy (open, Bramble #925) | Bramble, stacked on M8 | 2.4d | `privacy/` becomes the FFI object, the routing loader and the `PrivacyHost` over the session | 2.4 |
+| 2.5a Multisig account (open, #47) | here, stacked on 2.4d | 2.4d | `accounts::{multisig, multisig_records, multisig_read, multisig_declared}`, `js::felt::lenient_hex_felt`; `multisig_parity.rs` over `multisig.json` copied as a fixture | 2.5 |
+| M10 Multisig account (open, Bramble #926) | Bramble, stacked on M9 | 2.5a | `argent_multisig.rs`, `multisig_rpc.rs` and `class_declared.rs` become wrappers passing Bramble's class; `multisig_store.rs` keeps the file; mobile stops naming Krusty outside `kms.rs` | 2.5 |
 
 Every adoption PR for what is ported has merged, so by the Process rule the next port may start.
 2.2 Accounts goes first: it is the unfinished half of a step, it is smaller than any part of 2.4,
@@ -552,6 +555,22 @@ Each phase names the crate a module lands in; the table above decides anything n
         replaces the defaults", `MAX_SYNC_PAGES`, the sync window (30-day first lookback, 3-day
         incremental, retry cut-off), recipient selection and the sender rule (a saved contact on
         the network whose Stark key's Argent signer GUID is in the signer set).
+
+      It goes in two parts. **2.5a, the multisig account** (done, #47): mobile's
+      `argent_multisig.rs`, `multisig_rpc.rs`, `class_declared.rs` and the validators of
+      `multisig_store.rs`, into `wallet-core`'s `accounts::{multisig, multisig_read,
+      multisig_declared, multisig_records}`, so mobile names Krusty only in `kms.rs`. How it differs
+      from the table above: the pinned class and its signer limit travel together as an argument,
+      `ArgentMultisigClass` (no `bramble-core` constant yet: Bramble's value is
+      `generated/multisig.json`, which stays mobile's until 2.6, and the tests read a fixture copy
+      of it); the name-length limit is an argument to `is_record`; the reads are plain `&mut self`
+      values; replies go through `send::judge::answer` and `judge::chain`, while the block pin,
+      the class check (a zero class is unsupported, not undeployed) and code-only not-found
+      matching keep mobile's judging, since `send::judge`'s would change those verdicts; the
+      records keep serde (they are the extension's stored JSON shape); the observed-authority
+      fallback and the registry file stay in mobile; `lenient_hex_felt` moved from mobile's
+      `contact_card.rs` into `js::felt`. **2.5b, the coordination** (the rest of this section)
+      follows.
    6. **Catalogs**: `generated/*.json` are Bramble's; `wallet-core` takes catalogs as arguments.
    7. **Swap**: what remains in `mobile/core` that is Bramble's but not mobile-only (constants,
       v12 schema and migrations, catalogs, the UniFFI surface, `HostStorage` and `HostClock` as
