@@ -59,11 +59,26 @@ fn a_pathological_input_exhausts_the_budget_and_fails_closed() {
             .map(|m| m.is_some()),
         Ok(true)
     );
-    // A long hostile figure is abandoned at the depth budget instead of overflowing the stack.
-    let untrusted = Regex::new(r"(?<![\w.])(\d[\d,]*\.\d+)(?![\w.])", false);
-    let figures: Vec<char> = "1,".repeat(20_000).chars().collect();
-    assert_eq!(
-        untrusted.try_find_at(&figures, 0).map(|m| m.is_some()),
-        Err(Exhausted)
-    );
+}
+
+/// A long hostile figure is abandoned at the depth budget instead of overflowing the stack, on
+/// a stack no larger than a wallet's threads have (the test runner's own is twice this), and
+/// the longest summary a caller accepts (200 characters) is still decided.
+#[test]
+fn the_depth_budget_fits_a_small_stack_and_a_full_summary() {
+    let search = |text: String| {
+        std::thread::Builder::new()
+            .stack_size(1024 * 1024)
+            .spawn(move || {
+                let figure = Regex::new(r"(?<![\w.])(\d[\d,]*\.\d+)(?![\w.])", false);
+                let chars: Vec<char> = text.chars().collect();
+                figure.try_find_at(&chars, 0).map(|m| m.is_some())
+            })
+            .unwrap()
+            .join()
+            .unwrap()
+    };
+    assert_eq!(search("1,".repeat(20_000)), Err(Exhausted));
+    assert_eq!(search(format!("{}.5", "1".repeat(198))), Ok(true));
+    assert_eq!(search("1".repeat(200)), Ok(false));
 }
