@@ -80,8 +80,8 @@ Grep first; extend in place rather than adding a sibling.
   `crates/wallet-core/src/accounts/`; an account's key is `kms::account_key(.., ladder, index)`.
 - The send state machine is `send::plan::Plan`; a wallet's session, keys and activity log reach
   it only through `PlanHost`, and its numbers through `Policy` (Bramble's: `SEND_POLICY`).
-- Only `wallet-core` depends on Krusty (`kms.rs`, `nostr.rs`, `accounts/`, `send/`);
-  `bramble-core` goes through `wallet-core` and never names `krusty_kms`.
+- Only `wallet-core` depends on Krusty (`kms.rs`, `nostr.rs`, `accounts/`, `send/`); `bramble-core` goes through
+  `wallet-core` and never names `krusty_kms`.
 
 ## Commits and PRs
 
