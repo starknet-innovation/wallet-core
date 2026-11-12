@@ -36,7 +36,8 @@ cargo test -p bramble-core <name>   # narrow loop while iterating
   coordination, and as the plan lands, vault, transactions and portfolio. Plain Rust: no FFI, no
   UniFFI, no Bramble policy.
 - `crates/bramble-core` — Bramble's choices on top, exported through UniFFI. The only FFI crate.
-- `crates/bramble-core/tests/fixtures` — golden fixtures written by the extension (see its README).
+- `crates/bramble-core/tests/fixtures` — golden fixtures written by the extension (see its
+  README).
 - `js/` — the npm package: ubrn-generated wasm bindings plus a thin TypeScript entry.
 
 ## Hard rules
@@ -128,8 +129,8 @@ Grep first; extend in place rather than adding a sibling.
   `publish_many_nostr_gift_wraps`), the paged sync (`sync::SyncJudge`) and the sync window
   (`sync_window.rs`). Bramble's numbers for them (`RELAY_LIMITS`, `SYNC_LOOKBACKS`) and its
   recipient and sender rules are `bramble-core`'s `coordination.rs`.
-- Only `wallet-core` depends on Krusty (`kms.rs`, `nostr.rs`, `accounts/`, `send/`); `bramble-core` goes through
-  `wallet-core` and never names `krusty_kms`.
+- Only `wallet-core` depends on Krusty (`kms.rs`, `nostr.rs`, `accounts/`, `send/`);
+  `bramble-core` goes through `wallet-core` and never names `krusty_kms`.
 
 ## Commits and PRs
 
