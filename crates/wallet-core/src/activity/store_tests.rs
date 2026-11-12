@@ -137,6 +137,39 @@ fn corrupt_file_is_quarantined_not_overwritten() {
     assert!(storage.read(ACTIVITY_FILE).unwrap().is_none());
 }
 
+// Storage that cannot move files and, when `.1`, cannot read them either.
+struct Stuck(Memory, bool);
+impl Storage for Stuck {
+    fn read(&self, key: &str) -> Result<Option<Vec<u8>>, crate::Error> {
+        if self.1 {
+            return Err(crate::Error::storage("read"));
+        }
+        self.0.read(key)
+    }
+    fn write(&self, key: &str, value: &[u8]) -> Result<(), crate::Error> {
+        self.0.write(key, value)
+    }
+    fn rename(&self, _: &str, _: &str) -> Result<(), crate::Error> {
+        Err(crate::Error::storage("rename"))
+    }
+}
+
+#[test]
+fn a_file_that_cannot_be_set_aside_is_never_overwritten() {
+    for failing_reads in [false, true] {
+        let storage = Stuck(Memory::default(), failing_reads);
+        storage.0.write(ACTIVITY_FILE, b"{not json").unwrap();
+        let mut log = ActivityLog::new(&storage);
+        assert!(log.list(SCOPE).is_empty());
+        assert!(!log.record(entry("0xab", 1)));
+        log.mark_unavailable(SCOPE, 5);
+        assert_eq!(
+            storage.0.read(ACTIVITY_FILE).unwrap().as_deref(),
+            Some(&b"{not json"[..])
+        );
+    }
+}
+
 #[test]
 fn invalid_entries_are_dropped() {
     let storage = Memory::default();
