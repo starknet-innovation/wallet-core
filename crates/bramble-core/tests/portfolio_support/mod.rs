@@ -12,11 +12,32 @@ use serde_json::Value;
 use starknet_wallet_core::catalog::{
     Catalogs, NetworkInfo, RegistryToken, TokenInfo, TokenRegistry,
 };
+use starknet_wallet_core::host::Storage;
 use starknet_wallet_core::js::json::{parse as parse_json, JsValue};
 use starknet_wallet_core::portfolio::model::{DisplayCurrency, TokenConfig};
 use starknet_wallet_core::portfolio::prices::{PricePoint, PriceView};
 use starknet_wallet_core::portfolio::wire::HttpOutcome;
 use starknet_wallet_core::NetworkId;
+
+/// The host's storage in memory, for the activity log (mobile's tests used a temporary directory).
+#[derive(Default)]
+pub struct Memory(pub std::cell::RefCell<std::collections::BTreeMap<String, Vec<u8>>>);
+
+impl Storage for Memory {
+    fn read(&self, key: &str) -> Result<Option<Vec<u8>>, starknet_wallet_core::Error> {
+        Ok(self.0.borrow().get(key).cloned())
+    }
+    fn write(&self, key: &str, value: &[u8]) -> Result<(), starknet_wallet_core::Error> {
+        self.0.borrow_mut().insert(key.into(), value.to_vec());
+        Ok(())
+    }
+    fn rename(&self, from: &str, to: &str) -> Result<(), starknet_wallet_core::Error> {
+        let value = self.0.borrow_mut().remove(from);
+        let value = value.ok_or_else(|| starknet_wallet_core::Error::storage("rename"))?;
+        self.0.borrow_mut().insert(to.into(), value);
+        Ok(())
+    }
+}
 
 /// The fixture's JSON Lines (`{"block","value"}` per line) assembled into one object.
 pub fn fixture() -> JsValue {

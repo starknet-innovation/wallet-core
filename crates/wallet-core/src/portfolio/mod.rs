@@ -22,9 +22,9 @@ pub const SCHEMA: &str = "bramble.mobile.portfolio.v1";
 #[cfg(test)]
 mod tests {
     // Mobile's `portfolio_and_history_never_touch_key_material` (`tests/portfolio_state.rs`), over
-    // the files ported so far; history's join it as they move (plan step 2.4c).
+    // its files and the activity log's.
     #[test]
-    fn portfolio_never_touches_key_material() {
+    fn portfolio_and_history_never_touch_key_material() {
         let sources = [
             include_str!("fiat.rs"),
             include_str!("prices.rs"),
@@ -34,7 +34,18 @@ mod tests {
             include_str!("token_meta.rs"),
             include_str!("tokens.rs"),
             include_str!("wire.rs"),
+            include_str!("../history/activity.rs"),
+            include_str!("../history/activity_book.rs"),
+            include_str!("../history/activity_rules.rs"),
+            include_str!("../history/appearance.rs"),
+            include_str!("../history/classify.rs"),
+            include_str!("../history/events.rs"),
+            include_str!("../history/events/dating.rs"),
             include_str!("../history/explorer.rs"),
+            include_str!("../history/starkscan.rs"),
+            include_str!("../activity/feed.rs"),
+            include_str!("../activity/observation.rs"),
+            include_str!("../activity/store.rs"),
         ];
         for source in sources {
             for forbidden in [

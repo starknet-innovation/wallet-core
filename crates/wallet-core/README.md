@@ -25,6 +25,10 @@ through [`bramble-core`](../bramble-core).
   last-known-good cache, saved balances, tracked tokens with the registry's spam rules, ERC-20
   metadata and balance reads, and the amount and fiat display rules, all sans-IO. Network and
   token catalogs are records the caller passes in.
+- **Activity history** (`history`, `activity`): the Starkscan lane and the sans-IO RPC history
+  scan, the history-read cadence, the activity row model and day groups, explorer links, and the
+  wallet's one activity log (validated entries, status merge, the observation and retirement
+  policy) stored through the host's `Storage`.
 - **The felt grammar** (`felt`): strict parsing, canonical lowercase hex and the private-key range.
   Everything else here goes through it.
 - **JavaScript semantics** (`js`, `history::time`): `trim`, UTF-16 slices, `Number` and
@@ -36,7 +40,7 @@ through [`bramble-core`](../bramble-core).
 - **Secret-careful.** Private keys are `SecretFelt`, mnemonics and passphrases are `Zeroizing`
   where the API allows, and errors carry a fixed reason or operation name, never input text.
 
-As `docs/PLAN.md` lands, the rest of history, and privacy logic join it here.
+As `docs/PLAN.md` lands, privacy logic joins it here.
 
 ## What it is NOT
 
