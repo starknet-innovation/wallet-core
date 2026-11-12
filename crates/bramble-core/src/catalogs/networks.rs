@@ -22,6 +22,29 @@ pub const LEGITIMATE_ALIASES: [(&str, &[&str]); 1] = [(
     &["0x053c91253bc9682c04929ca02ed00b3e423f6710d2ee7e0d5ebb06f3ecf368a8"],
 )];
 
+/// An ERC-20 the wallet home queries by default.
+#[cfg(feature = "mobile")]
+#[uniffi::remote(Record)]
+pub struct TokenInfo {
+    pub address: String,
+    pub decimals: u8,
+    pub name: String,
+    pub symbol: String,
+}
+
+/// Public network metadata. RPC endpoints are tried in order; the host verifies
+/// `starknet_chainId` against `chain_id` before trusting any response.
+#[cfg(feature = "mobile")]
+#[uniffi::remote(Record)]
+pub struct NetworkInfo {
+    pub network: NetworkId,
+    pub chain_id: String,
+    pub explorer_base_url: String,
+    pub name: String,
+    pub rpc_urls: Vec<String>,
+    pub tokens: Vec<TokenInfo>,
+}
+
 #[derive(Deserialize)]
 struct RawToken {
     address: String,

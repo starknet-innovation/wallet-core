@@ -17,9 +17,20 @@
 
 #![forbid(unsafe_code)]
 
-use starknet_wallet_core::Zeroizing;
+// The mobile build exports no raw keys. Cargo unifies features, so one dependent that forgets
+// `default-features = false` would silently add them; refuse that build instead. Only the test
+// suites, which run mobile's tests beside the extension's, combine the two.
+#[cfg(all(feature = "mobile", feature = "raw-keys", not(feature = "testing")))]
+compile_error!(
+    "`mobile` with `raw-keys` exports raw private keys; build mobile with --no-default-features"
+);
+
+#[cfg(any(feature = "raw-keys", feature = "mobile"))]
+pub(crate) use starknet_wallet_core::felt;
 #[cfg(feature = "raw-keys")]
-use starknet_wallet_core::{felt, SecretFelt};
+use starknet_wallet_core::SecretFelt;
+#[cfg(feature = "extension")]
+use starknet_wallet_core::Zeroizing;
 pub use starknet_wallet_core::{NetworkId, NostrApplicationData, StarkSignature};
 
 // The wasm2 player needs the allocator and panic hook this crate exports; nothing else
@@ -31,6 +42,10 @@ uniffi::setup_scaffolding!();
 
 pub mod catalogs;
 pub mod coordination;
+
+// The mobile wallet's surface, at the crate root where mobile had it.
+#[cfg(feature = "mobile")]
+include!("mobile.rs");
 
 /// The OpenZeppelin account version Bramble deploys (`OZ_ACCOUNT_VERSION` in
 /// `vault/src/accounts/account-contract.ts`). Pinned, never Krusty's `latest`: a manifest bump
@@ -100,6 +115,19 @@ pub enum CoreError {
     /// A node reply the core will not interpret.
     #[error("rpc failure: {reason}")]
     Rpc { reason: String },
+    // Mobile's variants, after the extension's so its bindings keep their order.
+    #[error("wallet is locked")]
+    Locked,
+    #[error("no wallet on this device")]
+    NoWallet,
+    #[error("a wallet already exists on this device")]
+    WalletExists,
+    /// Too many wrong passphrases: no attempt is allowed for `retry_after_ms`.
+    #[error("too many attempts; retry in {retry_after_ms} ms")]
+    Throttled { retry_after_ms: u64 },
+    /// Nostr coordination failed; `reason` is a fixed operation name, never input text.
+    #[error("coordination failure: {reason}")]
+    Coordination { reason: String },
 }
 
 impl From<starknet_wallet_core::Error> for CoreError {
@@ -119,6 +147,7 @@ impl From<starknet_wallet_core::Error> for CoreError {
 // wallet-core's records and enums, exported as they are. Its keypairs hold `SecretFelt`; the
 // `raw-keys` records below are where a key becomes text, and only for the FFI.
 
+#[cfg_attr(feature = "mobile", doc = "A network the mobile wallet supports.")]
 #[uniffi::remote(Enum)]
 pub enum NetworkId {
     Mainnet,
@@ -132,6 +161,7 @@ pub struct StarkSignature {
     pub s: String,
 }
 
+#[cfg(feature = "extension")]
 #[uniffi::remote(Record)]
 pub struct NostrApplicationData {
     pub content: String,
@@ -191,6 +221,7 @@ pub fn core_info() -> CoreInfo {
 }
 
 /// Generates a fresh phrase from OS entropy.
+#[cfg(feature = "extension")]
 #[uniffi::export]
 pub fn generate_mnemonic(word_count: u8) -> Result<String, CoreError> {
     // The copy that crosses the boundary is the host's to wipe; this one is wiped on drop.
@@ -198,6 +229,7 @@ pub fn generate_mnemonic(word_count: u8) -> Result<String, CoreError> {
 }
 
 /// Whether text is a checksummed BIP-39 English phrase of a supported length.
+#[cfg(feature = "extension")]
 #[uniffi::export]
 pub fn validate_mnemonic(mnemonic: String) -> bool {
     starknet_wallet_core::validate_mnemonic(&Zeroizing::new(mnemonic))
@@ -246,6 +278,7 @@ pub fn derive_argent_legacy_keypair(
 /// The counterfactual OpenZeppelin account address. An omitted salt is the public key, as
 /// Bramble's `KmsPort` (Krusty's default) has it; Bramble's own OZ accounts pass `0x0`
 /// explicitly (`account-contract.ts`).
+#[cfg(feature = "extension")]
 #[uniffi::export]
 pub fn derive_oz_account_address(
     public_key_x: String,
@@ -261,6 +294,7 @@ pub fn derive_oz_account_address(
 }
 
 /// The OpenZeppelin account class Bramble deploys on `network`.
+#[cfg(feature = "extension")]
 #[uniffi::export]
 pub fn oz_account_class_hash(network: NetworkId) -> Result<String, CoreError> {
     Ok(starknet_wallet_core::oz_account_class_hash(
@@ -295,6 +329,7 @@ pub fn derive_strk20_viewing_key(
 }
 
 /// The wallet's coordination public key: BIP-340 x-only, 64 lowercase hex digits.
+#[cfg(feature = "extension")]
 #[uniffi::export]
 pub fn derive_nostr_public_key(
     mnemonic: String,
@@ -312,6 +347,7 @@ pub fn derive_nostr_public_key(
 }
 
 /// Wraps application data for one recipient at the host's clock (`created_at`, Unix seconds).
+#[cfg(feature = "extension")]
 #[uniffi::export]
 #[allow(clippy::too_many_arguments)]
 pub fn wrap_nostr_application_data(
@@ -338,6 +374,7 @@ pub fn wrap_nostr_application_data(
 }
 
 /// Opens one gift wrap addressed to this wallet.
+#[cfg(feature = "extension")]
 #[uniffi::export]
 pub fn open_nostr_application_data(
     mnemonic: String,

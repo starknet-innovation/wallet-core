@@ -24,14 +24,26 @@ path = "src/bin/uniffi-bindgen.rs"
 required-features = ["bindgen"]
 
 [features]
-default = ["raw-keys"]
+default = ["extension", "raw-keys"]
 # Swift/Kotlin binding generator (`cargo run --features bindgen --bin uniffi-bindgen`).
 bindgen = ["uniffi/cli"]
 # Exports the functions that take or return a raw Stark private key. The extension's vault
 # (schema v12) stores derived keys and hands them back for signing, so its build needs them;
 # mobile keeps keys inside the core and builds with `--no-default-features`. Removed in Phase 3.2
 # (docs/PLAN.md).
-raw-keys = []
+raw-keys = ["extension"]
+# The extension's KMS and Nostr exports that take or return a recovery phrase (generate, validate,
+# derive, wrap and open), and the OpenZeppelin address and class. Mobile's build leaves them out:
+# there the phrase stays inside `WalletCore` and crosses the FFI only for backup and reveal.
+extension = []
+# The mobile wallet's surface (`WalletCore`, its vault schema and stores, the portfolio, history,
+# privacy, send and coordination exports, biometric and backup glue), ported from Bramble's
+# `mobile/core` (docs/PLAN.md, 2.7). iOS and Android build `--no-default-features --features mobile`;
+# the extension's wasm32 build leaves it off.
+mobile = ["dep:starknet-types-core", "dep:bip39", "dep:zeroize"]
+# Integration-test hooks (`bramble_core::testing`: raw vault open/seal). Never enabled for the
+# shipped libraries; the mobile tests require it.
+testing = ["mobile"]
 
 [dependencies]
 starknet-wallet-core = { version = "=0.2.2", path = "../wallet-core" }
@@ -41,10 +53,23 @@ thiserror = { version = "=2.0.21" }
 # Bramble's catalogs (`generated/*.json`); the versions wallet-core pins.
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = { version = "=1.0.154" }
+# Felt types at the version Krusty uses (`avatar.rs`'s `NonZeroFelt`), so the lockfile holds one.
+starknet-types-core = { version = "=0.2.4", features = ["hash"], optional = true }
+# BIP-39 English word list for the recovery-phrase word assist (the version Krusty depends on).
+bip39 = { version = "=3.0.0", default-features = false, features = ["std"], optional = true }
+# The mobile wallet holds phrases and passphrases in `Zeroizing`; wallet-core's pin.
+zeroize = { version = "=1.9.1", features = ["derive"], optional = true }
 
 [dev-dependencies]
 # Golden-fixture hashes (tests/fixtures.rs); the same version wallet-core uses for vault crypto.
 sha2 = { version = "=0.11.1" }
+# The mobile tests (tests/wallet_migration.rs seals a vault as the first mobile core did, by
+# hand); wallet-core's pins, so the lockfile holds one copy.
+aes-gcm = { version = "=0.11.1", features = ["zeroize"] }
+pbkdf2 = { version = "=0.13.0", default-features = false, features = ["hmac"] }
+base64 = { version = "=0.22.1" }
+sha3 = { version = "=0.12.0" }
+tempfile = { version = "=3.27.0" }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 # The wasm2 player's allocator and panic hook; linked by the `extern crate` line in lib.rs.

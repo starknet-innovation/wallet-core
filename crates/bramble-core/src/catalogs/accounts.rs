@@ -17,8 +17,18 @@ use starknet_wallet_core::Felt;
 
 const CATALOG_JSON: &str = include_str!("../../generated/accounts.json");
 
+/// The account contract families the wallet can derive.
+#[cfg(feature = "mobile")]
+#[uniffi::remote(Enum)]
+pub enum AccountFamily {
+    OpenZeppelin,
+    Argent,
+    Braavos,
+}
+
 /// One known account class, as the extension's `ACCOUNT_CLASSES` lists it. Read-only.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "mobile", derive(uniffi::Record))]
 pub struct AccountClassInfo {
     pub family: AccountFamily,
     /// Canonical class hash.
@@ -35,6 +45,7 @@ pub struct AccountClassInfo {
 
 /// How long copy feedback lasts, from the extension's `dom.ts`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "mobile", derive(uniffi::Record))]
 pub struct CopyFeedback {
     pub confirm_ms: u32,
     pub success_toast_ms: u32,
@@ -43,6 +54,7 @@ pub struct CopyFeedback {
 
 /// Discovery bounds, the extension's `RECOVERY_SCAN_LIMITS`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "mobile", derive(uniffi::Record))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RecoveryLimits {
     pub batch_size: u32,
@@ -293,6 +305,7 @@ pub fn send_authorization(family: AccountFamily) -> Authorization {
 }
 
 /// `accountFamilyName`: "Bramble", "Ready", or "Braavos".
+#[cfg_attr(feature = "mobile", uniffi::export)]
 pub fn account_family_name(family: AccountFamily) -> String {
     let names = &catalog().family_names;
     match family {
@@ -303,6 +316,7 @@ pub fn account_family_name(family: AccountFamily) -> String {
 }
 
 /// Every known Argent and Braavos class, in the extension's table order.
+#[cfg_attr(feature = "mobile", uniffi::export)]
 pub fn account_classes() -> Vec<AccountClassInfo> {
     catalog()
         .classes
@@ -312,16 +326,19 @@ pub fn account_classes() -> Vec<AccountClassInfo> {
 }
 
 /// The icons a group may carry, the extension's `GROUP_ICONS`.
+#[cfg_attr(feature = "mobile", uniffi::export)]
 pub fn group_icons() -> Vec<String> {
     catalog().group_icons.clone()
 }
 
 /// Copy-feedback timings, from the extension's `dom.ts`.
+#[cfg_attr(feature = "mobile", uniffi::export)]
 pub fn copy_feedback() -> CopyFeedback {
     catalog().copy_feedback
 }
 
 /// Discovery bounds, the extension's `RECOVERY_SCAN_LIMITS`.
+#[cfg_attr(feature = "mobile", uniffi::export)]
 pub fn recovery_limits() -> RecoveryLimits {
     catalog().limits
 }

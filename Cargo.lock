@@ -203,15 +203,23 @@ dependencies = [
 name = "bramble-core"
 version = "0.2.2"
 dependencies = [
+ "aes-gcm",
+ "base64 0.22.1",
+ "bip39",
+ "pbkdf2",
  "serde",
  "serde_json",
  "sha2 0.11.1",
+ "sha3 0.12.0",
+ "starknet-types-core",
  "starknet-wallet-core",
+ "tempfile",
  "thiserror",
  "uniffi",
  "uniffi-runtime-wasm",
  "uniffi_core",
  "wasm-bindgen",
+ "zeroize",
 ]
 
 [[package]]
