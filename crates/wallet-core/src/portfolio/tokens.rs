@@ -160,7 +160,9 @@ impl<'a> TokenPreferences<'a> {
             .as_ref()
             .and_then(|d| d.get("schema"))
             .and_then(JsValue::as_str);
-        let read_only = doc.is_some() && schema != Some(policy.schema);
+        // Only a file that names another schema is a newer app's; JSON without one (`{}`, `null`)
+        // is unusable, reads as defaults and is overwritten like any corrupt file.
+        let read_only = schema.is_some_and(|s| s != policy.schema);
         let prefs = doc
             .as_ref()
             .filter(|_| !read_only)
@@ -347,6 +349,11 @@ mod tests {
         );
         assert!(newer.read_only());
         assert_eq!(newer.persisted(), None);
+        for unusable in ["{}", "null", "[]", r#"{"schema":1}"#] {
+            let prefs = TokenPreferences::new(Some(unusable.into()), cat, TEST_POLICY);
+            assert!(!prefs.read_only(), "{unusable}");
+            assert_eq!(prefs.persisted().unwrap(), doc, "{unusable}");
+        }
     }
 
     #[test]

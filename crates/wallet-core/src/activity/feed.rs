@@ -4,16 +4,13 @@
 //! log, so under the caller's lock a merge can never overwrite a status the transactions side
 //! just observed.
 
-use super::store::{ActivityLog, Entry, SyncRecord};
+use super::store::{ActivityLog, Entry, SyncRecord, MAX_ENTRIES_PER_SCOPE};
 use crate::history::activity::{entry_from_json, entry_to_json, merge_activity, ActivityEntry};
 use crate::history::activity_rules::without_planted_rows;
 use crate::js::json;
 
 /// Scopes whose history-read bookkeeping is kept (`activity.ts`'s sync cap).
 const MAX_SYNC_SCOPES: usize = 50;
-/// Rows kept per scope, newest first (`MAX_ACTIVITY_ENTRIES`).
-const MAX_ENTRIES_PER_SCOPE: usize = 200;
-
 /// A stored row as the typed record; `None` unless it passes `isActivityEntry`.
 pub fn typed(entry: &Entry) -> Option<ActivityEntry> {
     let text = serde_json::to_string(entry).ok()?;
