@@ -31,6 +31,7 @@ pub mod nostr;
 pub mod portfolio;
 pub mod privacy;
 pub mod rpc;
+mod scrub;
 pub mod send;
 
 pub use kms::{
