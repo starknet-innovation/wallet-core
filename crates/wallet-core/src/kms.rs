@@ -12,7 +12,7 @@ use krusty_kms_common::{ChainId, SecretFelt};
 use starknet_types_core::felt::Felt;
 use zeroize::Zeroizing;
 
-use crate::accounts::Ladder;
+use crate::accounts::{family_address, AccountFamily, Ladder};
 use crate::felt;
 use crate::Error;
 
@@ -253,8 +253,14 @@ pub fn derive_oz_account_address(
     let public_key = parse_felt(&public_key_x, "invalid address derivation input")?;
     let class_hash = parse_felt(&class_hash, "invalid address derivation input")?;
     let salt = parse_felt(&salt, "invalid address derivation input")?;
-    let address = krusty_kms::derive_oz_account_address(&public_key, &class_hash, Some(&salt))
-        .map_err(|_| Error::kms("address"))?;
+    // One placement for every family: `accounts::family_address`.
+    let address = family_address(
+        AccountFamily::OpenZeppelin,
+        &class_hash,
+        None,
+        &salt,
+        &public_key,
+    )?;
     Ok(felt::canonical(&address))
 }
 
@@ -347,6 +353,10 @@ mod tests {
         assert!(check_derivation_input(&"a".repeat(513), None).is_err());
         assert!(derive_oz_account_address("0xFF".into(), "0x1".into(), "0x0".into()).is_err());
         assert!(derive_oz_account_address("0x1".into(), "0x1".into(), "ff".into()).is_err());
+        // A zero key or class places nothing.
+        assert!(derive_oz_account_address("0x1".into(), "0x1".into(), "0x0".into()).is_ok());
+        assert!(derive_oz_account_address("0x0".into(), "0x1".into(), "0x0".into()).is_err());
+        assert!(derive_oz_account_address("0x1".into(), "0x0".into(), "0x0".into()).is_err());
     }
 
     #[test]
