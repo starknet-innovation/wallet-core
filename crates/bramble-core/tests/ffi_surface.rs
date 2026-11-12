@@ -48,7 +48,17 @@ const EXPORTING: [(&str, &str); 17] = [
 fn exported_signatures(source: &str) -> Vec<String> {
     let mut signatures = Vec::new();
     let mut rest = source;
-    while let Some(start) = rest.find("#[uniffi::export") {
+    while let Some(found) = rest.find("uniffi::export") {
+        // The attribute, written plainly or under `cfg_attr(feature = "mobile", ..)` (the catalog
+        // exports shared with the extension's build); a mention in a comment or path is skipped.
+        let start = rest[..found].rfind('\n').map_or(0, |at| at + 1);
+        let line = rest[start..].lines().next().unwrap_or("").trim_start();
+        if !(line.starts_with("#[uniffi::export")
+            || (line.starts_with("#[cfg_attr(") && line.contains("uniffi::export)")))
+        {
+            rest = &rest[found + "uniffi::export".len()..];
+            continue;
+        }
         let item = &rest[start..];
         // An exported impl block runs to its closing brace at column zero; a free fn to its body.
         let end = if item.lines().nth(1).is_some_and(|l| l.starts_with("impl")) {
@@ -78,7 +88,12 @@ fn exported_signatures(source: &str) -> Vec<String> {
 fn no_exported_function_returns_bytes() {
     let mut seen = 0;
     for (file, source) in EXPORTING {
-        for signature in exported_signatures(source) {
+        let signatures = exported_signatures(source);
+        assert!(
+            !signatures.is_empty(),
+            "{file}: the scan found no exported function"
+        );
+        for signature in signatures {
             seen += 1;
             let returns = signature.split("->").nth(1).unwrap_or("");
             assert!(
