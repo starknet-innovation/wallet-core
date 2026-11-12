@@ -7,7 +7,7 @@
 //! For Argent the caller also names the constructor layout its own reviewed table gives, and the
 //! two must agree: a disagreement would be a plausible address that matches nothing, so it fails
 //! closed. A class Krusty does not list is refused unless the caller vouches for it with
-//! `ArgentShape::Unlisted`.
+//! `ArgentShape::Unlisted`. A Braavos class must be one Krusty lists as a deployment class.
 
 use krusty_kms::{
     AccountClass, ArgentAccount, ArgentConstructorLayout, BraavosAccount, OpenZeppelinAccount,
@@ -147,7 +147,12 @@ fn preset(
         (AccountFamily::OpenZeppelin, None) => {
             Box::new(OpenZeppelinAccount::from_class_hash(*class_hash))
         }
-        (AccountFamily::Braavos, None) => Box::new(BraavosAccount::with_class_hash(*class_hash)),
+        // Krusty's checked constructor: only a base (deployment) class fixes an address. The
+        // class an upgraded Braavos account reports on chain derives one nothing can deploy.
+        (AccountFamily::Braavos, None) => Box::new(
+            BraavosAccount::try_with_class_hash(*class_hash)
+                .map_err(|_| Error::kms("class hash"))?,
+        ),
         _ => {
             return Err(Error::invalid(
                 "only an Argent account names a layout, and it must",
@@ -202,6 +207,9 @@ mod tests {
 
     const ARGENT_0_4: &str = "0x036078334509b514626504edc9fb252328d1a240e4e948bef8d0c08dff45927f";
     const XVERSE: &str = "0x0663fc01a0dbe1bacc4cd2a4c856eb9784b255a20988aa33d4d52b6fc20bd024";
+    const BRAAVOS_BASE: &str = "0x03d16c7a9a60b0593bd202f660a28c5d76e0403601d9ccc7e4fa253b6a70c201";
+    const BRAAVOS_IMPLEMENTATION: &str =
+        "0x03957f9f5a1cbfe918cedc2015c85200ca51a5f7506ecb6de98a5207b759bf8a";
     const SIGNER: ArgentLayout = ArgentLayout::SignerOwnerGuardianOption;
 
     fn felt(hex: &str) -> Felt {
@@ -265,6 +273,22 @@ mod tests {
         let oz = |shape| family_address(AccountFamily::OpenZeppelin, &key, shape, &key, &key);
         assert!(oz(None).is_ok());
         assert!(oz(Some(ArgentShape::Listed(SIGNER))).is_err());
-        assert!(family_address(AccountFamily::Braavos, &key, None, &key, &Felt::ZERO).is_err());
+    }
+
+    #[test]
+    fn braavos_places_only_krustys_deployment_classes() {
+        let key = Felt::from(7u64);
+        let place = |class: &str, public_key: &Felt| {
+            family_address(AccountFamily::Braavos, &felt(class), None, &key, public_key)
+        };
+        assert!(place(BRAAVOS_BASE, &key).is_ok());
+        assert!(place(BRAAVOS_BASE, &Felt::ZERO).is_err());
+        // The class an upgraded account runs, and a class Krusty does not know.
+        assert!(place(BRAAVOS_IMPLEMENTATION, &key).is_err());
+        assert!(place("0x7", &key).is_err());
+        let calldata =
+            |class: &str| constructor_calldata(AccountFamily::Braavos, &felt(class), None, &key);
+        assert_eq!(calldata(BRAAVOS_BASE).unwrap(), vec![key]);
+        assert!(calldata(BRAAVOS_IMPLEMENTATION).is_err());
     }
 }
