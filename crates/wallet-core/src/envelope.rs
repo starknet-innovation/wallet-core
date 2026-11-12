@@ -58,20 +58,20 @@ pub fn random<const N: usize>() -> Result<[u8; N], Error> {
 /// How much stack `scrubbed` overwrites; the KDF and AES-GCM calls use about 2 KiB.
 const SCRUB_BYTES: usize = 16 * 1024;
 
-#[inline(never)]
-fn run<T>(f: impl FnOnce() -> T) -> T {
-    f()
-}
-
-#[inline(never)]
-fn scrub_stack() {
-    let mut buf = [0u8; SCRUB_BYTES];
-    buf.zeroize();
-}
-
 /// Runs `f`, then overwrites the stack it used. RustCrypto does not wipe stack temporaries
 /// (HMAC key states, AES round-key copies, the last plaintext block), and declines to.
+///
+/// `f` runs one frame down in `run` so that `scrub_stack`, called from the same depth, lays its
+/// buffer over everything `f` touched; were `f` inlined here, its locals would sit above it.
 fn scrubbed<T>(f: impl FnOnce() -> T) -> T {
+    #[inline(never)]
+    fn run<T>(f: impl FnOnce() -> T) -> T {
+        f()
+    }
+    #[inline(never)]
+    fn scrub_stack() {
+        [0u8; SCRUB_BYTES].zeroize();
+    }
     let out = run(f);
     scrub_stack();
     out
