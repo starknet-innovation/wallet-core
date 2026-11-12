@@ -21,7 +21,7 @@ use super::types::{
 use crate::catalog::TokenInfo;
 use crate::send::judge::{answer, chain, ChainAnswer};
 use crate::send::u256::U256;
-use crate::{felt, rpc, SecretFelt};
+use crate::{felt, SecretFelt};
 
 /// The extension's `readRequestedTokens`, then the `balancesFrom` length cap.
 ///
@@ -233,8 +233,7 @@ impl PrivacyReadPlan {
                 .map(|k| self.discovery.totals.total(&k))
                 .unwrap_or_default();
             let balance = total.to_decimal();
-            let formatted = rpc::format_amount(&balance, token.decimals, token.decimals)
-                .unwrap_or_else(|_| "0".into());
+            let formatted = super::home::format_full(&balance, token.decimals);
             balances.push(PrivateBalance {
                 token_address: token.address.clone(),
                 symbol: token.symbol.clone(),

@@ -211,9 +211,9 @@ fn parse_page(value: &JsValue) -> Option<Vec<Transfer>> {
 }
 
 // `matchingToken`: the tracked token, or a synthetic one named `untracked_name` (Bramble's
-// "Untracked token") with safe decimals, and
-// whether the user tracks it. An untracked token is any contract that emitted a Transfer naming
-// the account, so nothing it reports about the other party is trustworthy.
+// "Untracked token") with safe decimals, and whether the user tracks it. An untracked token is any
+// contract that emitted a Transfer naming the account, so nothing it reports about the other party
+// is trustworthy.
 fn matching_token(
     tokens: &[TokenConfig],
     transfer: &Transfer,

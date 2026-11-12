@@ -10,8 +10,8 @@
 //! per scope (oldest dropped), de-duplicated by numeric hash, status moves forward only
 //! (`monotonicTxStatus`), and three consecutive not-found answers make an entry
 //! `rejected`. A file that cannot be read as version 1 is never overwritten blind: it is renamed
-//! `activity.v1.corrupt-<n>.json` (`Storage::rename`) and the store starts empty. Writes are
-//! `Storage::write`, which is atomic.
+//! `activity.v1.corrupt-<n>.json` (`Storage::rename`) and the store starts empty; if it cannot be
+//! renamed, every write is refused until it can. Writes are `Storage::write`, which is atomic.
 //!
 //! The log is an `ActivityLog` over the host's storage. Every operation is one read-modify-write
 //! of the file, so a wallet keeps one log per file and serialises every call on it (mobile holds
@@ -28,6 +28,7 @@ use crate::felt;
 use crate::history::activity::ActivityKind;
 use crate::history::activity_rules::{is_recorded_token_address, parse_direction};
 use crate::host::Storage;
+use crate::js::num::utf16_len;
 use crate::send::judge::{Observation, TxStatus};
 use crate::Felt;
 
@@ -35,7 +36,7 @@ use crate::Felt;
 pub const ACTIVITY_FILE: &str = "activity.v1.json";
 /// Where an unreadable log is set aside: this, then `<n>.json` for the first free `n` below 1000.
 pub const CORRUPT_FILE_PREFIX: &str = "activity.v1.corrupt-";
-const MAX_ENTRIES_PER_SCOPE: usize = 200;
+pub(super) const MAX_ENTRIES_PER_SCOPE: usize = 200;
 const MAX_FILE_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_TEXT: usize = 200;
 /// `NOT_FOUND_FAILURE_THRESHOLD` in `tx-observation.ts`.
@@ -162,7 +163,7 @@ pub fn monotonic(current: TxStatus, observed: TxStatus) -> TxStatus {
 fn detail_ok(value: &Option<String>) -> bool {
     value
         .as_ref()
-        .is_none_or(|text| !text.is_empty() && text.chars().count() <= MAX_TEXT)
+        .is_none_or(|text| !text.is_empty() && utf16_len(text) <= MAX_TEXT)
 }
 
 // `isActivityEntry`.
@@ -181,7 +182,7 @@ fn valid(entry: &Entry, scope: &str) -> bool {
         && parse_kind(&entry.kind).is_some()
         && parse_status(&entry.status).is_some()
         && !entry.summary.is_empty()
-        && entry.summary.chars().count() <= MAX_TEXT
+        && utf16_len(&entry.summary) <= MAX_TEXT
         && detail_ok(&entry.amount)
         && detail_ok(&entry.counterparty)
         && detail_ok(&entry.token)
@@ -198,31 +199,35 @@ fn valid(entry: &Entry, scope: &str) -> bool {
 }
 
 // The first free `activity.v1.corrupt-<n>.json` takes the file. A slot whose read fails counts
-// as taken, so an existing copy is never replaced.
-fn quarantine(storage: &dyn Storage) {
-    for n in 0..1000 {
-        let target = format!("{CORRUPT_FILE_PREFIX}{n}.json");
-        if matches!(storage.read(&target), Ok(None)) {
-            let _ = storage.rename(ACTIVITY_FILE, &target);
-            return;
-        }
-    }
+// as taken, so an existing copy is never replaced. Whether the file was moved.
+fn quarantine(storage: &dyn Storage) -> bool {
+    (0..1000)
+        .map(|n| format!("{CORRUPT_FILE_PREFIX}{n}.json"))
+        .find(|target| matches!(storage.read(target), Ok(None)))
+        .is_some_and(|target| storage.rename(ACTIVITY_FILE, &target).is_ok())
 }
 
 /// The wallet's activity log in the host's storage. See the module docs for the locking
 /// contract.
 pub struct ActivityLog<'a> {
     storage: &'a dyn Storage,
+    /// The last load found a file it could neither read nor set aside; saving would destroy it.
+    stuck: bool,
 }
 
 impl<'a> ActivityLog<'a> {
     /// The log stored under `ACTIVITY_FILE` in `storage`.
     pub fn new(storage: &'a dyn Storage) -> Self {
-        Self { storage }
+        Self {
+            storage,
+            stuck: false,
+        }
     }
 
-    /// Reads the log; an unreadable file is quarantined and reads as empty.
+    /// Reads the log; an unreadable file is quarantined and reads as empty. When it cannot be set
+    /// aside either, it also reads as empty and every save is refused until a load succeeds.
     pub(super) fn load_log(&mut self) -> Log {
+        self.stuck = false;
         let storage = self.storage;
         let empty = || Log {
             scopes: BTreeMap::new(),
@@ -240,7 +245,7 @@ impl<'a> ActivityLog<'a> {
             .and_then(|bytes| serde_json::from_slice::<File>(&bytes).ok())
             .filter(|parsed| parsed.version == 1);
         let Some(parsed) = parsed else {
-            quarantine(storage);
+            self.stuck = !quarantine(storage);
             return empty();
         };
         let sync = parsed
@@ -266,6 +271,9 @@ impl<'a> ActivityLog<'a> {
 
     /// Writes the whole log (`Storage::write`, atomic).
     pub(super) fn save_log(&mut self, log: &Log) -> bool {
+        if self.stuck {
+            return false;
+        }
         let scopes = &log.scopes;
         let file = File {
             version: 1,

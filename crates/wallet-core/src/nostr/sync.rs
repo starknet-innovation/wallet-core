@@ -101,8 +101,11 @@ fn base36(mut value: u64) -> String {
             break;
         }
     }
-    digits.reverse();
-    String::from_utf8(digits).unwrap_or_default()
+    digits
+        .iter()
+        .rev()
+        .map(|&digit| char::from(digit))
+        .collect()
 }
 
 fn subscription_id(sequence: u64) -> String {

@@ -30,7 +30,12 @@ pub const STEP_BUDGET: u32 = 300_000;
 /// Deepest nesting of matcher calls one search may reach. The matcher recurses once per consumed
 /// character (continuation passing), so a long hostile input would otherwise overflow the stack
 /// long before the step budget runs out; past this depth the search is abandoned the same way.
-pub const DEPTH_BUDGET: u32 = 1_500;
+///
+/// The extension's patterns reach about two levels per character, and a summary is at most 200
+/// characters, so 512 decides every input a caller accepts. It is not higher because the stack
+/// is the scarce thing: a level costs over a kilobyte in an unoptimised build, and a wallet runs
+/// this on threads with 512 KiB to 1 MiB (mobile's 1,500 overflowed a 1 MiB stack there).
+pub const DEPTH_BUDGET: u32 = 512;
 
 /// A search ran out of `STEP_BUDGET` before it could decide.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -96,7 +96,12 @@ impl PrivacyReadPlan {
         route: Route,
         limits: Limits,
     ) -> Result<Self, PrivacyError> {
-        if route.ohttp || route.network != network.network || !is_service_url(&route.discovery_url)
+        // `pool` scopes the viewing key and the discovery bodies; `pool_address` is the fee call's
+        // spelling. They must name one contract.
+        if route.ohttp
+            || route.network != network.network
+            || !is_service_url(&route.discovery_url)
+            || crate::felt::parse(&route.pool_address) != Some(route.pool)
         {
             return Err(PrivacyError::NotConfigured);
         }
@@ -134,8 +139,7 @@ impl PrivacyReadPlan {
             result,
             Ok(PrivacyStep::Post { .. } | PrivacyStep::Rpc { .. } | PrivacyStep::Wait { .. })
         ) {
-            self.stage = Stage::Closed;
-            self.discovery = Discovery::default();
+            self.close();
         }
         result
     }

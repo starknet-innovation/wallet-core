@@ -111,9 +111,8 @@ impl PriceBook {
     /// `getPrices`' decision: serve from the cache, or fetch these requests. Off the policy's
     /// `price_network` (mainnet) there is no fiat by design: the cache only ever holds that
     /// network's prices, and ETH and STRK share their addresses across networks, so it is never
-    /// served elsewhere (Sherlock 185). Freshness and the
-    /// reported capture time are per address, so one token's refresh never vouches for another's
-    /// age (mc-wallet #357).
+    /// served elsewhere (Sherlock 185). Freshness and the reported capture time are per address,
+    /// so one token's refresh never vouches for another's age (mc-wallet #357).
     pub fn plan(
         &self,
         network: NetworkId,
@@ -313,11 +312,7 @@ impl PriceBook {
         state.charts.insert(key, entry);
         if state.charts.len() > MAX_CHART_ENTRIES {
             let mut entries = std::mem::take(&mut state.charts).into_entries();
-            entries.sort_by(|a, b| {
-                b.1.fetched_at
-                    .partial_cmp(&a.1.fetched_at)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            });
+            entries.sort_by(|a, b| b.1.fetched_at.total_cmp(&a.1.fetched_at));
             entries.truncate(MAX_CHART_ENTRIES);
             state.charts = OrderedMap::from_entries(entries);
         }
