@@ -111,9 +111,8 @@ impl PriceBook {
     /// `getPrices`' decision: serve from the cache, or fetch these requests. Off the policy's
     /// `price_network` (mainnet) there is no fiat by design: the cache only ever holds that
     /// network's prices, and ETH and STRK share their addresses across networks, so it is never
-    /// served elsewhere (Sherlock 185). Freshness and the
-    /// reported capture time are per address, so one token's refresh never vouches for another's
-    /// age (mc-wallet #357).
+    /// served elsewhere (Sherlock 185). Freshness and the reported capture time are per address,
+    /// so one token's refresh never vouches for another's age (mc-wallet #357).
     pub fn plan(
         &self,
         network: NetworkId,

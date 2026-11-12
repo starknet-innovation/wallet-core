@@ -262,6 +262,29 @@ mod tests {
     }
 
     #[test]
+    fn only_an_allowlisted_alias_escapes_the_spoof_check() {
+        let mut registry = testing::registry();
+        registry.aliases.push(crate::catalog::TokenAlias {
+            symbol: "USDC".into(),
+            addresses: vec!["0x5".into()],
+        });
+        let spoof = |address: &str| {
+            spam_reasons(
+                &registry,
+                NetworkId::Mainnet,
+                address,
+                "USDC",
+                "USD Coin",
+                6,
+            )
+            .contains(&SpamReason::SymbolSpoof)
+        };
+        assert!(!spoof("0x5"));
+        assert!(!spoof("0x0005"), "compared as felts");
+        assert!(spoof("0x6"));
+    }
+
+    #[test]
     fn glyph_tone_and_letters() {
         let (networks, registry) = (testing::networks(), testing::registry());
         let glyph = token_glyph(&registry, "0x7".into(), "ABCDE".into());
