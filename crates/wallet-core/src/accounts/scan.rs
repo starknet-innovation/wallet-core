@@ -153,14 +153,17 @@ impl Scan {
             .shapes
             .len()
             .saturating_mul(usize::try_from(limits.batch_size).unwrap_or(usize::MAX));
-        if limits.batch_size == 0 || per_batch > MAX_CANDIDATES {
+        // No shapes would be a batch with nothing to probe, which no reply could ever finish.
+        if limits.batch_size == 0 || per_batch == 0 || per_batch > MAX_CANDIDATES {
             return Err(Error::invalid("invalid account search limits"));
         }
         let fingerprint = account_public_key(phrase, passphrase, Ladder::Account, 0)?;
         let key = (fingerprint, config.network);
         if self.key != Some(key) {
+            // Ids are never reused, so a late reply to the scan this replaces answers nothing.
             *self = Self {
                 key: Some(key),
+                next_id: self.next_id,
                 ..Self::new()
             };
         }
@@ -173,6 +176,15 @@ impl Scan {
             Some(index) => (index, index),
             None => {
                 let target = scan_target(&self.candidates, &limits);
+                // An index the wallet never derives is passed over here, so a batch always has
+                // something to probe; nothing above `max_index` is usable, so the walk ends there.
+                while self.next_index < target && !config.usable(self.next_index) {
+                    self.next_index = if self.next_index > limits.max_index {
+                        target
+                    } else {
+                        self.next_index + 1
+                    };
+                }
                 if self.next_index >= target {
                     return Ok(self.step(Vec::new(), &limits));
                 }
@@ -185,8 +197,7 @@ impl Scan {
             return Err(Error::invalid("too many accounts checked"));
         }
         let mut probes = Vec::new();
-        // The walk stays far below a reserved index and a manual one is refused above; this only
-        // holds the line if either bound ever moves.
+        // The batch starts on a usable index; one further in that is not is left out.
         for account_index in (start..=end).filter(|index| config.usable(*index)) {
             let mut keys: HashMap<Ladder, Felt> = HashMap::new();
             for shape in &config.shapes {

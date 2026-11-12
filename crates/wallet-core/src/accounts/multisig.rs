@@ -16,12 +16,6 @@ use starknet_types_core::hash::{Poseidon, StarkHash};
 
 use crate::{felt, Error};
 
-/// `2**251 - 256`: starknet.js reduces contract addresses modulo this bound.
-fn address_bound() -> Felt {
-    Felt::from_hex("0x7ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff00")
-        .expect("address bound is a felt")
-}
-
 /// The multisig class a wallet pins, and the most signers a configuration may have.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArgentMultisigClass {
@@ -179,10 +173,9 @@ pub fn predict(
     let (normalized, guids) = normalize(config, class)?;
     let calldata = constructor_calldata(&normalized, class)?;
     let felts: Vec<Felt> = calldata.iter().map(|value| calldata_felt(value)).collect();
-    let raw = krusty_kms::calculate_contract_address(&salt, &class.hash, &felts, &Felt::ZERO)
+    // Krusty already reduces the address below 2**251 - 256, as starknet.js does.
+    let address = krusty_kms::calculate_contract_address(&salt, &class.hash, &felts, &Felt::ZERO)
         .map_err(|_| Error::kms("multisig address"))?;
-    let bound = address_bound();
-    let address = if raw >= bound { raw - bound } else { raw };
     if address == Felt::ZERO {
         return Err(Error::kms("multisig address"));
     }

@@ -204,6 +204,14 @@ fn preparing_needs_plain_routing_for_the_network() {
         PrivacyReadPlan::new(mainnet(), "a".into(), address, ohttp, limits.clone()),
         Err(PrivacyError::NotConfigured)
     ));
+    let other_pool = starknet_wallet_core::privacy::config::Route {
+        pool: mainnet_route.pool + starknet_wallet_core::Felt::ONE,
+        ..mainnet_route.clone()
+    };
+    assert!(matches!(
+        PrivacyReadPlan::new(mainnet(), "a".into(), address, other_pool, limits.clone()),
+        Err(PrivacyError::NotConfigured)
+    ));
     let sepolia = network_info(portfolio_support::networks(), NetworkId::Sepolia).unwrap();
     assert!(matches!(
         PrivacyReadPlan::new(sepolia, "a".into(), address, mainnet_route, limits),
