@@ -54,7 +54,7 @@ mobile holds no copy of what this repo has ported. A step is done when both halv
 | 2.5a Multisig account | open (#47) | M10 open (Bramble #926) |
 | 2.5b Multisig coordination | open (#48); `check.sh all` fails only at `package` until the version is bumped (see Process) | M11 open (Bramble #927) |
 | 2.6 Catalogs | open (#49); `check.sh all` fails only at `package` until the version is bumped | M12 open (Bramble #928) |
-| 2.7 Swap | port open (#27PR), behind the `mobile` feature; `check.sh all` fails only at `package` until the version is bumped | M13 open (Bramble #M13PR): `mobile/core` becomes a shell over this crate |
+| 2.7 Swap | port open (#50), behind the `mobile` feature; `check.sh all` fails only at `package` until the version is bumped | M13 open (Bramble #M13PR): `mobile/core` becomes a shell over this crate |
 | 3 Extension | not started; `js/package.json` is private | n/a |
 
 `v0.1.0` is tagged at `35abc8b` (GitHub release only) and was what M2 and M3 pinned. `v0.2.0`
@@ -99,7 +99,7 @@ Ports (A*) and fixture copies (F*) are PRs here.
 | M11 Multisig coordination (open, Bramble #927) | Bramble, stacked on M10 | 2.5b | `nostr_relay.rs` and the window and relay rules of `coordination.rs` over the core; mobile keeps its own relay constants until 2.7 | 2.5 |
 | 2.6 Catalogs (open, #49) | here, stacked on 2.5b | 2.5b | `bramble-core`'s `generated/` and `catalogs`; `PortfolioPolicy`, `HistoryPolicy` and `TokenRegistry::aliases` in `wallet-core`, Bramble's values in `bramble-core` | 2.6 |
 | M12 Catalogs (open, Bramble #928) | Bramble, stacked on M11 | 2.6 | mobile passes its policies and alias; `kms.rs` uses `wallet_core` types and the direct `krusty-kms` pins go | 2.6 |
-| 2.7 Swap, port (open, #27PR) | here, stacked on 2.6 | 2.6, M12 | every Bramble file of `mobile/core` into `bramble-core` behind `mobile`; mobile's tests and regression fixtures; `check.sh` covers the mobile surface | 2.7 |
+| 2.7 Swap, port (open, #50) | here, stacked on 2.6 | 2.6, M12 | every Bramble file of `mobile/core` into `bramble-core` behind `mobile`; mobile's tests and regression fixtures; `check.sh` covers the mobile surface | 2.7 |
 | M13 Swap (open, Bramble #M13PR) | Bramble, stacked on M12 | the 2.7 port; the v5 → v12 step, if it is to land first | `mobile/core` becomes a shell depending on `bramble-core`; build scripts, regenerated bindings, app changes the bindings force, the `generated/` drift test | 2.7 |
 
 Every adoption PR for what is ported has merged, so by the Process rule the next port may start.
@@ -621,7 +621,7 @@ Each phase names the crate a module lands in; the table above decides anything n
       (same crate, lib and module names), Swift and Kotlin regenerate on UniFFI 0.29.5 → 0.31.2,
       and builds use `--no-default-features --features mobile`.
 
-      **The port** (open, #27PR): every file of `mobile/core/src` at Bramble
+      **The port** (open, #50): every file of `mobile/core/src` at Bramble
       `8d1f4b8c` except `bin/uniffi-bindgen.rs` moved, copied unchanged but for paths, behind
       `bramble-core`'s `mobile` feature; its modules keep their crate-root names (`src/mobile.rs`,
       included by `lib.rs`). Merged rather than copied: `CoreError` (the union, the extension's
