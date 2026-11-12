@@ -39,6 +39,9 @@ Decisions, 2026-11-09:
 As of 2026-11-11. Every Phase 2 step has two halves: the mechanism lands here, then mobile deletes
 its copy and depends on this one. Both halves are done for 2.1, the vault and transactions, so
 mobile holds no copy of what this repo has ported. A step is done when both halves are.
+As of 2026-11-12 every remaining step has both halves open as stacked draft PRs (#39–#50 here,
+Bramble #918–#929); what is left is a maintainer's: review and merge, the version bump and tag
+(see Process), moving each adoption's `rev` to that tag, and the vault v5 → v12 migration.
 
 | Step | Here | Mobile (`mc-wallet`, `feature/mobile-wallet`, at `01bd6517`) |
 | --- | --- | --- |
