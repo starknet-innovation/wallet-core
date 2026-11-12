@@ -177,8 +177,10 @@ quint-specs/               Quint models: vault, send, the bramble-core FFI
 ```
 
 Features (on `bramble-core`): `raw-keys` (default) exports the functions that take or return a raw
-Stark private key, which the extension's v12 vault needs until Phase 3.2; mobile builds
-`--no-default-features --features mobile`. `mobile` adds the mobile wallet's surface (2.7), and
+Stark private key, which the extension's v12 vault needs until Phase 3.2; `extension` (default,
+implied by `raw-keys`) exports the extension's other KMS and Nostr functions, several of which take
+or return a recovery phrase; mobile builds `--no-default-features --features mobile`, so neither
+reaches its bindings. `mobile` adds the mobile wallet's surface (2.7), and
 `testing` (implies `mobile`) its integration-test hooks. `bindgen` adds the Swift/Kotlin generator
 binary. `wallet-core` has no features.
 

@@ -24,14 +24,18 @@ path = "src/bin/uniffi-bindgen.rs"
 required-features = ["bindgen"]
 
 [features]
-default = ["raw-keys"]
+default = ["extension", "raw-keys"]
 # Swift/Kotlin binding generator (`cargo run --features bindgen --bin uniffi-bindgen`).
 bindgen = ["uniffi/cli"]
 # Exports the functions that take or return a raw Stark private key. The extension's vault
 # (schema v12) stores derived keys and hands them back for signing, so its build needs them;
 # mobile keeps keys inside the core and builds with `--no-default-features`. Removed in Phase 3.2
 # (docs/PLAN.md).
-raw-keys = []
+raw-keys = ["extension"]
+# The extension's KMS and Nostr exports that take or return a recovery phrase (generate, validate,
+# derive, wrap and open), and the OpenZeppelin address and class. Mobile's build leaves them out:
+# there the phrase stays inside `WalletCore` and crosses the FFI only for backup and reveal.
+extension = []
 # The mobile wallet's surface (`WalletCore`, its vault schema and stores, the portfolio, history,
 # privacy, send and coordination exports, biometric and backup glue), ported from Bramble's
 # `mobile/core` (docs/PLAN.md, 2.7). iOS and Android build `--no-default-features --features mobile`;

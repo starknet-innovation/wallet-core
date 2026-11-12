@@ -21,6 +21,7 @@
 pub(crate) use starknet_wallet_core::felt;
 #[cfg(feature = "raw-keys")]
 use starknet_wallet_core::SecretFelt;
+#[cfg(feature = "extension")]
 use starknet_wallet_core::Zeroizing;
 pub use starknet_wallet_core::{NetworkId, NostrApplicationData, StarkSignature};
 
@@ -152,6 +153,7 @@ pub struct StarkSignature {
     pub s: String,
 }
 
+#[cfg(feature = "extension")]
 #[uniffi::remote(Record)]
 pub struct NostrApplicationData {
     pub content: String,
@@ -211,6 +213,7 @@ pub fn core_info() -> CoreInfo {
 }
 
 /// Generates a fresh phrase from OS entropy.
+#[cfg(feature = "extension")]
 #[uniffi::export]
 pub fn generate_mnemonic(word_count: u8) -> Result<String, CoreError> {
     // The copy that crosses the boundary is the host's to wipe; this one is wiped on drop.
@@ -218,6 +221,7 @@ pub fn generate_mnemonic(word_count: u8) -> Result<String, CoreError> {
 }
 
 /// Whether text is a checksummed BIP-39 English phrase of a supported length.
+#[cfg(feature = "extension")]
 #[uniffi::export]
 pub fn validate_mnemonic(mnemonic: String) -> bool {
     starknet_wallet_core::validate_mnemonic(&Zeroizing::new(mnemonic))
@@ -266,6 +270,7 @@ pub fn derive_argent_legacy_keypair(
 /// The counterfactual OpenZeppelin account address. An omitted salt is the public key, as
 /// Bramble's `KmsPort` (Krusty's default) has it; Bramble's own OZ accounts pass `0x0`
 /// explicitly (`account-contract.ts`).
+#[cfg(feature = "extension")]
 #[uniffi::export]
 pub fn derive_oz_account_address(
     public_key_x: String,
@@ -281,6 +286,7 @@ pub fn derive_oz_account_address(
 }
 
 /// The OpenZeppelin account class Bramble deploys on `network`.
+#[cfg(feature = "extension")]
 #[uniffi::export]
 pub fn oz_account_class_hash(network: NetworkId) -> Result<String, CoreError> {
     Ok(starknet_wallet_core::oz_account_class_hash(
@@ -315,6 +321,7 @@ pub fn derive_strk20_viewing_key(
 }
 
 /// The wallet's coordination public key: BIP-340 x-only, 64 lowercase hex digits.
+#[cfg(feature = "extension")]
 #[uniffi::export]
 pub fn derive_nostr_public_key(
     mnemonic: String,
@@ -332,6 +339,7 @@ pub fn derive_nostr_public_key(
 }
 
 /// Wraps application data for one recipient at the host's clock (`created_at`, Unix seconds).
+#[cfg(feature = "extension")]
 #[uniffi::export]
 #[allow(clippy::too_many_arguments)]
 pub fn wrap_nostr_application_data(
@@ -358,6 +366,7 @@ pub fn wrap_nostr_application_data(
 }
 
 /// Opens one gift wrap addressed to this wallet.
+#[cfg(feature = "extension")]
 #[uniffi::export]
 pub fn open_nostr_application_data(
     mnemonic: String,

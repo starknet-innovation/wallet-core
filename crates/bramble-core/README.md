@@ -23,8 +23,10 @@ through UniFFI as one library for the browser extension (wasm32, npm
   `wallet-core`'s records. Functions keep the names and argument order of the extension's
   `KmsPort`. Built as `lib`, `cdylib` and `staticlib`; `uniffi.toml` keeps mobile's module names.
 - **The gate on raw keys.** The `raw-keys` feature (default, for the extension) exports the
-  functions that take or return a raw Stark private key. Mobile builds `--no-default-features` and
-  gets none of them.
+  functions that take or return a raw Stark private key. The `extension` feature (default, implied
+  by `raw-keys`) exports the extension's other KMS and Nostr functions, several of which take or
+  return a recovery phrase. Mobile builds `--no-default-features` and gets neither: its phrase
+  stays inside `WalletCore`.
 - **The mobile wallet, behind `mobile`.** iOS and Android build
   `--no-default-features --features mobile`: the `WalletCore` object (vault, accounts, send,
   portfolio, history, privacy, multisig coordination), its records and free functions, and the
