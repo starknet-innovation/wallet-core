@@ -4,11 +4,10 @@
 //! `deriveAccount` gives each family, ladder, index and passphrase over the real Krusty package.
 //! The class, salt and layout are Bramble's and go in as arguments; the key and address come out.
 
+use bramble_core::catalogs::account_address;
 use bramble_core::OZ_ACCOUNT_VERSION;
 use serde_json::Value;
-use starknet_wallet_core::accounts::{
-    family_address, AccountFamily, ArgentLayout, ArgentShape, Ladder,
-};
+use starknet_wallet_core::accounts::{family_address, AccountFamily, ArgentShape, Ladder};
 use starknet_wallet_core::{account_public_key, felt, oz_account_class_hash, Felt, NetworkId};
 
 fn fixture(network: &str) -> Value {
@@ -23,31 +22,12 @@ fn felt_at(value: &Value) -> Felt {
     felt::parse(value.as_str().unwrap()).unwrap()
 }
 
-/// The extension's account tables (`account-types.ts`), as `bun run mobile:assets` renders them.
-fn catalog() -> Value {
-    let path = format!(
-        "{}/tests/fixtures/accounts.json",
-        env!("CARGO_MANIFEST_DIR")
-    );
-    serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
-}
-
-/// The layout the extension's table (`constructorShape`) gives an Argent class; Xverse's build
-/// is the one Krusty does not list.
+/// The layout Bramble's catalog (`constructorShape`) gives an Argent class; Xverse's build is the
+/// one Krusty does not list.
 fn argent_shape(class_hash: &Felt) -> ArgentShape {
-    let catalog = catalog();
-    let entry = catalog["classes"]
-        .as_array()
+    account_address::argent_shape(AccountFamily::Argent, class_hash)
         .unwrap()
-        .iter()
-        .find(|entry| entry["family"] == "argent" && felt_at(&entry["classHash"]) == *class_hash)
-        .expect("a class in the extension's Argent table");
-    let layout = ArgentLayout::from_wire(entry["constructorShape"].as_str().unwrap()).unwrap();
-    if felt_at(&catalog["xverseArgentClassHash"]) == *class_hash {
-        ArgentShape::Unlisted(layout)
-    } else {
-        ArgentShape::Listed(layout)
-    }
+        .expect("a class in the extension's Argent table")
 }
 
 /// The ladder a vector was derived on: the extension's kind, with Braavos's `starknet-bip44`

@@ -13,10 +13,10 @@ use super::price_cache::{
     within_window, ChartEntry, Entry, PriceCache, State,
 };
 use super::wire::{HttpOutcome, HttpRequest};
+use super::PortfolioPolicy;
 use crate::Error;
 use crate::NetworkId;
 
-const COINGECKO_BASE: &str = "https://api.coingecko.com/api/v3";
 const CHART_DAYS: u32 = 7;
 pub use super::price_cache::PRICE_CHART_POINT_LIMIT;
 const PRICE_TTL_MS: f64 = 5.0 * 60.0 * 1000.0;
@@ -91,25 +91,28 @@ pub enum ChartPlan {
 
 /// Fiat prices and charts with their last-known-good cache (`prices.json`). A wallet that shares
 /// one book across threads wraps it in its own lock.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct PriceBook {
     state: State,
+    policy: PortfolioPolicy,
 }
 
 impl PriceBook {
     /// Loads a persisted `prices.json`; anything that fails the extension's validators reads as
     /// the empty cache (and is overwritten on the next persist), exactly as the extension does.
-    pub fn new(persisted: Option<String>) -> Self {
+    /// `policy` gives the schema, the price API and the one priced network.
+    pub fn new(persisted: Option<String>, policy: PortfolioPolicy) -> Self {
         Self {
-            state: load_state(persisted),
+            state: load_state(persisted, policy.schema),
+            policy,
         }
     }
 
-    /// `getPrices`' decision: serve from the cache, or fetch these requests. Off mainnet there is
-    /// no fiat by design: the cache only ever holds mainnet prices, and ETH and STRK share their
-    /// addresses across networks, so it is never served there (Sherlock 185). Freshness and the
-    /// reported capture time are per address, so one token's refresh never vouches for another's
-    /// age (mc-wallet #357).
+    /// `getPrices`' decision: serve from the cache, or fetch these requests. Off the policy's
+    /// `price_network` (mainnet) there is no fiat by design: the cache only ever holds that
+    /// network's prices, and ETH and STRK share their addresses across networks, so it is never
+    /// served elsewhere (Sherlock 185). Freshness and the reported capture time are per address,
+    /// so one token's refresh never vouches for another's age (mc-wallet #357).
     pub fn plan(
         &self,
         network: NetworkId,
@@ -118,7 +121,7 @@ impl PriceBook {
         now_ms: f64,
         cached_only: bool,
     ) -> PricePlan {
-        if network != NetworkId::Mainnet {
+        if network != self.policy.price_network {
             return PricePlan::Serve {
                 view: project(&addresses, None, &PriceCache::default(), currency, false),
             };
@@ -159,7 +162,8 @@ impl PriceBook {
                 .into_iter()
                 .map(|address| PriceRequest {
                     request: get_request(format!(
-                        "{COINGECKO_BASE}/simple/token_price/starknet?contract_addresses={}&vs_currencies=usd,eur,gbp&include_24hr_change=true",
+                        "{}/simple/token_price/starknet?contract_addresses={}&vs_currencies=usd,eur,gbp&include_24hr_change=true",
+                        self.policy.price_api_base,
                         encode_uri_component(&address)
                     )),
                     address,
@@ -180,7 +184,7 @@ impl PriceBook {
         outcomes: Vec<PriceOutcome>,
         attempted_at_ms: f64,
     ) -> PriceView {
-        if network != NetworkId::Mainnet {
+        if network != self.policy.price_network {
             return project(&addresses, None, &PriceCache::default(), currency, false);
         }
         let state = &mut self.state;
@@ -255,8 +259,8 @@ impl PriceBook {
         if crate::felt::parse_non_zero(&address).is_none() {
             return Err(Error::invalid("token address is not a field element"));
         }
-        // As with prices: the chart cache only ever holds mainnet charts.
-        if network != NetworkId::Mainnet {
+        // As with prices: the chart cache only ever holds the priced network's charts.
+        if network != self.policy.price_network {
             return Ok(ChartPlan::Serve { points: Vec::new() });
         }
         let key = format!("{}:{}", normalize_price_address(&address), currency.code());
@@ -273,7 +277,8 @@ impl PriceBook {
         }
         Ok(ChartPlan::Fetch {
             request: get_request(format!(
-                "{COINGECKO_BASE}/coins/starknet/contract/{}/market_chart?vs_currency={}&days={CHART_DAYS}",
+                "{}/coins/starknet/contract/{}/market_chart?vs_currency={}&days={CHART_DAYS}",
+                self.policy.price_api_base,
                 normalize_price_address(&address),
                 currency.code()
             )),
@@ -316,7 +321,7 @@ impl PriceBook {
 
     /// The `prices.json` document the host writes verbatim; public prices only.
     pub fn persisted(&self) -> String {
-        state_document(&self.state)
+        state_document(&self.state, self.policy.schema)
     }
 
     /// Forgets every cached price and chart.

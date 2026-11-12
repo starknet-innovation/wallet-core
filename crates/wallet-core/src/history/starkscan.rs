@@ -8,6 +8,7 @@
 use super::activity::{is_activity_entry, on_chain_activity_entry, ActivityEntry, DecodedTransfer};
 use super::explorer::account_id_address;
 use super::time::parse_iso_timestamp;
+use super::HistoryPolicy;
 use crate::js::big::parse_bigint;
 use crate::js::felt::{canonical_felt, is_stark_field_element, same_felt};
 use crate::js::json::{self, JsValue};
@@ -18,21 +19,25 @@ use crate::portfolio::wire::{
 };
 use crate::NetworkId;
 
-const STARKSCAN_API_BASE: &str = "https://starkscan.co/v1";
 const DEFAULT_COOLDOWN_MS: f64 = 30_000.0;
 const MAX_COOLDOWN_MS: f64 = 5.0 * 60_000.0;
 const MAX_PAGE_LIMIT: usize = 200;
 /// `MAX_HISTORY_ENTRIES`: rows one history read contributes.
 pub const MAX_HISTORY_ENTRIES: usize = 25;
 
-/// `GET {base}/{chainId}/transfers?limit=25&address=0x…` with `accept: application/json`; no API
-/// key exists, so no key header is ever sent.
-pub fn transfers_request(network: NetworkId, account_id: &str) -> HttpRequest {
+/// `GET {base}/{chainId}/transfers?limit=25&address=0x…` with `accept: application/json`, on
+/// `policy.explorer_api_base`; no API key exists, so no key header is ever sent.
+pub fn transfers_request(
+    network: NetworkId,
+    account_id: &str,
+    policy: &HistoryPolicy,
+) -> HttpRequest {
     let address = canonical_felt(account_id_address(account_id)).unwrap_or_default();
     HttpRequest {
         method: HttpMethod::Get,
         url: format!(
-            "{STARKSCAN_API_BASE}/{}/transfers?limit={MAX_HISTORY_ENTRIES}&address={address}",
+            "{}/{}/transfers?limit={MAX_HISTORY_ENTRIES}&address={address}",
+            policy.explorer_api_base,
             network_code(network)
         ),
         headers: vec![HttpHeader {
@@ -205,13 +210,15 @@ fn parse_page(value: &JsValue) -> Option<Vec<Transfer>> {
     Some(transfers)
 }
 
-// `matchingToken`: the tracked token, or a synthetic "Untracked token" with safe decimals, and
-// whether the user tracks it. An untracked token is any contract that emitted a Transfer naming
-// the account, so nothing it reports about the other party is trustworthy.
+// `matchingToken`: the tracked token, or a synthetic one named `untracked_name` (Bramble's
+// "Untracked token") with safe decimals, and whether the user tracks it. An untracked token is any
+// contract that emitted a Transfer naming the account, so nothing it reports about the other party
+// is trustworthy.
 fn matching_token(
     tokens: &[TokenConfig],
     transfer: &Transfer,
     network: NetworkId,
+    untracked_name: &str,
 ) -> Option<(TokenConfig, bool)> {
     if let Some(token) = tokens
         .iter()
@@ -228,7 +235,7 @@ fn matching_token(
             network,
             address,
             symbol: super::activity_rules::UNTRACKED_TOKEN_SYMBOL.into(),
-            name: "Untracked token".into(),
+            name: untracked_name.into(),
             decimals: decimals as u8,
         },
         false,
@@ -240,11 +247,12 @@ fn to_activity(
     account_id: &str,
     network: NetworkId,
     tokens: &[TokenConfig],
+    untracked_name: &str,
 ) -> Option<ActivityEntry> {
     if !transfer.erc20 {
         return None;
     }
-    let (token, tracked) = matching_token(tokens, transfer, network)?;
+    let (token, tracked) = matching_token(tokens, transfer, network, untracked_name)?;
     let account = account_id_address(account_id);
     let (counterparty, incoming) = if same_felt(&transfer.from_address, account) {
         (&transfer.to_address, false)
@@ -286,11 +294,13 @@ fn to_activity(
 
 /// Judges a transfers page into activity rows (`getStarkscanTransactionHistory`); `None` when
 /// the exchange or the body failed (the caller then applies `cooldown_ms` and runs the RPC scan).
+/// An untracked token's rows carry `policy.untracked_token_name`.
 pub fn transfers_to_activity(
     outcome: &HttpOutcome,
     account_id: &str,
     network: NetworkId,
     tokens: &[TokenConfig],
+    policy: &HistoryPolicy,
 ) -> Option<Vec<ActivityEntry>> {
     let body = outcome.body.as_ref()?;
     if !(200..300).contains(&outcome.status) || body.len() as u64 > STARKSCAN_BODY_LIMIT {
@@ -300,7 +310,7 @@ pub fn transfers_to_activity(
     let mut rows: Vec<ActivityEntry> = Vec::new();
     for entry in page
         .iter()
-        .filter_map(|t| to_activity(t, account_id, network, tokens))
+        .filter_map(|t| to_activity(t, account_id, network, tokens, policy.untracked_token_name))
     {
         let key = |e: &ActivityEntry| {
             (

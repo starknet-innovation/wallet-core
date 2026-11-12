@@ -53,7 +53,8 @@ mobile holds no copy of what this repo has ported. A step is done when both halv
 | 2.4d Privacy | open (#46) | M9 open (Bramble #925) |
 | 2.5a Multisig account | open (#47) | M10 open (Bramble #926) |
 | 2.5b Multisig coordination | open (#48); `check.sh all` fails only at `package` until the version is bumped (see Process) | M11 open (Bramble #927) |
-| 2.6 Catalogs, 2.7 Swap | not started | not started |
+| 2.6 Catalogs | open (#49); `check.sh all` fails only at `package` until the version is bumped | M12 open (Bramble #928) |
+| 2.7 Swap | not started | not started |
 | 3 Extension | not started; `js/package.json` is private | n/a |
 
 `v0.1.0` is tagged at `35abc8b` (GitHub release only) and was what M2 and M3 pinned. `v0.2.0`
@@ -96,6 +97,8 @@ Ports (A*) and fixture copies (F*) are PRs here.
 | M10 Multisig account (open, Bramble #926) | Bramble, stacked on M9 | 2.5a | `argent_multisig.rs`, `multisig_rpc.rs` and `class_declared.rs` become wrappers passing Bramble's class; `multisig_store.rs` keeps the file; mobile stops naming Krusty outside `kms.rs` | 2.5 |
 | 2.5b Multisig coordination (open, #48) | here, stacked on 2.5a | 2.5a, F2 | `nostr::{relay_url, relay, sync, sync_window}` in `wallet-core`; `coordination` (constants, relay policy, recipients, sender rule) in `bramble-core`; `nostr_coordination_parity.rs` over all three G2 fixtures | 2.5 |
 | M11 Multisig coordination (open, Bramble #927) | Bramble, stacked on M10 | 2.5b | `nostr_relay.rs` and the window and relay rules of `coordination.rs` over the core; mobile keeps its own relay constants until 2.7 | 2.5 |
+| 2.6 Catalogs (open, #49) | here, stacked on 2.5b | 2.5b | `bramble-core`'s `generated/` and `catalogs`; `PortfolioPolicy`, `HistoryPolicy` and `TokenRegistry::aliases` in `wallet-core`, Bramble's values in `bramble-core` | 2.6 |
+| M12 Catalogs (open, Bramble #928) | Bramble, stacked on M11 | 2.6 | mobile passes its policies and alias; `kms.rs` uses `wallet_core` types and the direct `krusty-kms` pins go | 2.6 |
 
 Every adoption PR for what is ported has merged, so by the Process rule the next port may start.
 2.2 Accounts goes first: it is the unfinished half of a step, it is smaller than any part of 2.4,
@@ -589,6 +592,24 @@ Each phase names the crate a module lands in; the table above decides anything n
       none is skipped. Left for 2.7 with the coordination file: the stored-relay normaliser,
       `is_trusted`'s package parsing and `is_checkpoint` (no fixture cases).
    6. **Catalogs**: `generated/*.json` are Bramble's; `wallet-core` takes catalogs as arguments.
+      Done (#49): `bramble-core` gains `generated/{networks,token-registry,accounts,multisig}.json`
+      (Bramble's assets, byte-identical to their fixture copies, which a test checks) and
+      `catalogs::{networks, accounts, account_address, multisig}`, mobile's loaders as plain Rust
+      (no UniFFI until 2.7), including `multisig_constants.rs` and the class rules of
+      `account_address.rs` (`resolve_class`, `argent_shape`), which the table below did not list.
+      The tests that hand-built catalog records now read these. `wallet-core`'s remaining
+      Bramble strings became arguments: `portfolio::PortfolioPolicy` (the
+      `bramble.mobile.portfolio.v1` schema, the price API base, the one priced network) for
+      `PriceBook`, `BalanceSnapshots` and `TokenPreferences`; `history::HistoryPolicy` (the
+      Starkscan API base, the untracked-token name, the pre-confirmed hint that names Bramble) for
+      `ActivityBook`, the Starkscan functions and `activity_groups`; and the USDC.e alias joined
+      the registry as `TokenRegistry::aliases`. Bramble's values are `PORTFOLIO_POLICY`,
+      `HISTORY_POLICY` and `LEGITIMATE_ALIASES` in `bramble-core`. All breaking. Left in
+      `wallet-core`: `container.rs`'s format strings (Open questions) and the extension's own copy
+      the fixtures check (row copy, activity labels, notices). Mobile keeps its own loaders and
+      copies of the policies until 2.7 swaps them for these; M12 follows the new signatures and
+      drops mobile's direct Krusty dependency (only `kms.rs` named it, for `ChainId` and
+      `SecretFelt`; `networks.rs` no longer did).
    7. **Swap**: what remains in `mobile/core` that is Bramble's but not mobile-only (constants,
       v12 schema and migrations, catalogs, the UniFFI surface, `HostStorage` and `HostClock` as
       `#[uniffi::export(with_foreign)]` traits adapting to `wallet-core`'s) moves into this

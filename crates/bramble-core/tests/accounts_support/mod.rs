@@ -1,13 +1,16 @@
-//! Shared by the account tests: the extension's class table (`accounts.json`) read as Bramble's
-//! choices for `starknet_wallet_core::accounts`, and the scan fixture's shapes as a `ScanConfig`.
+//! Shared by the account tests: Bramble's class table (`bramble_core::catalogs`, from
+//! `accounts.json`) as its choices for `starknet_wallet_core::accounts`, and the scan fixture's
+//! shapes as a `ScanConfig`.
 //! `accounts_scan_parity.rs` and `accounts_scan_mechanism.rs` both build `scan_config`, which
 //! reaches every helper here.
 
+use bramble_core::catalogs::account_address;
+use bramble_core::catalogs::accounts::{self, send_authorization};
 use bramble_core::OZ_ACCOUNT_VERSION;
 use serde_json::Value;
 use starknet_wallet_core::accounts::scan::{SaltRule, ScanConfig, ScanLimits, ScanShape};
-use starknet_wallet_core::accounts::{AccountFamily, ArgentLayout, ArgentShape, Ladder};
-use starknet_wallet_core::send::plan::{ArgentClass, Authorization};
+use starknet_wallet_core::accounts::{AccountFamily, ArgentShape, Ladder};
+use starknet_wallet_core::send::plan::Authorization;
 use starknet_wallet_core::{felt, oz_account_class_hash, Felt, NetworkId};
 
 /// The published E2E phrase every account fixture is derived from.
@@ -23,34 +26,12 @@ pub fn felt_at(value: &Value) -> Felt {
     felt::parse(value.as_str().unwrap()).unwrap()
 }
 
-/// The extension's account tables (`account-types.ts`), as `bun run mobile:assets` renders them.
-pub fn catalog() -> Value {
-    fixture("accounts.json")
-}
-
-fn classes(family: &str) -> Vec<Value> {
-    catalog()["classes"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|entry| entry["family"] == family)
-        .cloned()
-        .collect()
-}
-
-/// The layout the extension's table (`constructorShape`) gives an Argent class; Xverse's build
-/// is the one Krusty does not list.
+/// The layout Bramble's catalog (`constructorShape`) gives an Argent class; Xverse's build is the
+/// one Krusty does not list.
 pub fn argent_shape(class_hash: &Felt) -> ArgentShape {
-    let entry = classes("argent")
-        .into_iter()
-        .find(|entry| felt_at(&entry["classHash"]) == *class_hash)
-        .expect("a class in the extension's Argent table");
-    let layout = ArgentLayout::from_wire(entry["constructorShape"].as_str().unwrap()).unwrap();
-    if felt_at(&catalog()["xverseArgentClassHash"]) == *class_hash {
-        ArgentShape::Unlisted(layout)
-    } else {
-        ArgentShape::Listed(layout)
-    }
+    account_address::argent_shape(AccountFamily::Argent, class_hash)
+        .unwrap()
+        .expect("a class in the extension's Argent table")
 }
 
 /// The ladder a vector was derived on: the extension's kind, with Braavos's `starknet-bip44`
@@ -67,29 +48,11 @@ pub fn ladder(kind: &str, family: AccountFamily) -> Ladder {
     ladder
 }
 
-/// Bramble's send authorizations, from the class table (`send_authorization` in mobile).
+/// Bramble's send authorizations, from the class table (`send_authorization`).
 pub fn authorizations() -> Vec<Authorization> {
-    let catalog = catalog();
     vec![
-        Authorization::ArgentSignerArray {
-            classes: classes("argent")
-                .iter()
-                .map(|entry| ArgentClass {
-                    class_hash: felt_at(&entry["classHash"]),
-                    label: entry["label"].as_str().unwrap().into(),
-                    signer_array: entry["authorizationShape"] == "argent-signer-array",
-                })
-                .collect(),
-        },
-        Authorization::Braavos {
-            signing_classes: catalog["braavos"]["signingClassHashes"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(felt_at)
-                .collect(),
-            implementation: felt_at(&catalog["braavos"]["implementationClassHash"]),
-        },
+        send_authorization(AccountFamily::Argent),
+        send_authorization(AccountFamily::Braavos),
     ]
 }
 
@@ -145,9 +108,7 @@ pub fn scan_config(
         shapes,
         limits: limits(&scan),
         // strkd's agent index (`RESERVED_AGENT_ACCOUNT_INDEX`), never derived or scanned.
-        reserved_indexes: vec![
-            u32::try_from(catalog()["reservedAgentIndex"].as_u64().unwrap()).unwrap(),
-        ],
+        reserved_indexes: vec![accounts::catalog().reserved_agent_index],
         tokens,
         privacy_pool,
         authorizations: authorizations(),

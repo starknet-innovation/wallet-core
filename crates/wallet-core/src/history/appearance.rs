@@ -1,8 +1,9 @@
 //! Activity rows as the side panel renders them: `activity-format.ts` (`activityRowModel`) and
 //! `home-tabs.ts` (`transactionRow`, `transactionGroups`, `activityEmptyCopy`), over the
 //! classification in `classify.rs`. The explorer link and the token mark come from the caller's
-//! catalogs. The sentences that carry no rule (`activityEmptyCopy`, the unavailable notice) are
-//! the wallet's own.
+//! catalogs, and the pre-confirmed hint (which names the wallet) from its `HistoryPolicy`. The
+//! sentences that carry no rule (`activityEmptyCopy`, the unavailable notice) are the wallet's
+//! own.
 //!
 //! A row is a disclosure. Its summary shows the kind glyph, a heading that joins the verb and the
 //! amount, the truncated hash (linked to the explorer) with a copy control, a status word for a
@@ -15,15 +16,15 @@ pub use super::classify::ActivityDirection;
 use super::classify::{appearance, capitalise, compact_activity_amount, detail};
 use super::explorer::explorer_transaction_url;
 use super::time::{format_utc_clock, format_utc_date, utc_day_key};
+use super::HistoryPolicy;
 use crate::catalog::Catalogs;
 use crate::js::num::{js_trim, short_label};
 use crate::portfolio::model::TokenConfig;
 use crate::portfolio::tokens::{starknet_glyph, token_glyph, TokenGlyph};
 
-/// `PROVISIONAL_TX_HINT`: pending has not executed; pre-confirmed has, in a block not yet final.
+/// `PROVISIONAL_TX_HINT`: pending has not executed; pre-confirmed has, in a block not yet final
+/// (that hint names the wallet, so it is `HistoryPolicy::preconfirmed_hint`).
 const PENDING_HINT: &str = "Broadcast accepted. It can't be fee-bumped, replaced, or cancelled.";
-const PRECONFIRMED_HINT: &str =
-    "Pre-confirmed, not final yet. Bramble tells you if it doesn't settle.";
 const HASH_COPY_LABEL: &str = "Copy transaction hash";
 
 /// The status hue of a row's glyph and status word.
@@ -170,12 +171,17 @@ pub fn activity_row_model(entry: &ActivityEntry, tracked: &[TokenConfig]) -> Act
 }
 
 // `transactionRow` over `activityRowModel`.
-fn row(entry: &ActivityEntry, tracked: &[TokenConfig], catalogs: Catalogs<'_>) -> ActivityRow {
+fn row(
+    entry: &ActivityEntry,
+    tracked: &[TokenConfig],
+    catalogs: Catalogs<'_>,
+    policy: &HistoryPolicy,
+) -> ActivityRow {
     let model = activity_row_model(entry, tracked);
     let label = status_label(entry.status);
     let hint = match entry.status {
         TxStatus::Pending => Some(PENDING_HINT.to_string()),
-        TxStatus::Preconfirmed => Some(PRECONFIRMED_HINT.to_string()),
+        TxStatus::Preconfirmed => Some(policy.preconfirmed_hint.to_string()),
         _ => None,
     };
     let at = Some(entry.submitted_at as f64);
@@ -262,12 +268,13 @@ fn row(entry: &ActivityEntry, tracked: &[TokenConfig], catalogs: Catalogs<'_>) -
 /// `transactionGroups`: consecutive rows grouped by UTC day under "Today", "Yesterday",
 /// `DD Mon YYYY`, or "Undated". `tracked` is every tracked token (`preferences.tokens`), which
 /// resolves each row's token mark; `now_ms` enables Today/Yesterday; `catalogs` give the explorer
-/// and the logos.
+/// and the logos; `policy` the pre-confirmed hint.
 pub fn activity_groups(
     entries: Vec<ActivityEntry>,
     tracked: Vec<TokenConfig>,
     now_ms: Option<f64>,
     catalogs: Catalogs<'_>,
+    policy: &HistoryPolicy,
 ) -> Vec<ActivityDayGroup> {
     let today = now_ms.map(utc_day_key);
     let mut groups: Vec<(Option<i64>, ActivityDayGroup)> = Vec::new();
@@ -277,7 +284,7 @@ pub fn activity_groups(
         let key = date
             .as_ref()
             .map(|_| utc_day_key(entry.submitted_at as f64));
-        let row = row(entry, &tracked, catalogs);
+        let row = row(entry, &tracked, catalogs, policy);
         match groups.last_mut() {
             Some((last, group)) if *last == key => group.rows.push(row),
             _ => {

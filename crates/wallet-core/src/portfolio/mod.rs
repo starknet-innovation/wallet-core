@@ -1,8 +1,9 @@
 //! Portfolio: fiat prices and charts, tracked tokens, on-chain token reads and saved balances,
 //! each a sans-IO port of the extension's TypeScript (see Bramble's
-//! `mobile/docs/portfolio-activity.md`). Catalogs (`crate::catalog`) are arguments; the stores
-//! (`PriceBook`, `BalanceSnapshots`, `TokenPreferences`) are plain values a wallet wraps as it
-//! needs, and the user-facing copy that carries no rule stays with the wallet.
+//! `mobile/docs/portfolio-activity.md`). Catalogs (`crate::catalog`) and the wallet's choices
+//! (`PortfolioPolicy`) are arguments; the stores (`PriceBook`, `BalanceSnapshots`,
+//! `TokenPreferences`) are plain values a wallet wraps as it needs, and the user-facing copy that
+//! carries no rule stays with the wallet.
 
 pub mod fiat;
 pub mod model;
@@ -15,9 +16,31 @@ pub mod token_meta;
 pub mod tokens;
 pub mod wire;
 
-/// Schema tag of every persisted portfolio/activity document (`preferences.json`, `prices.json`,
-/// `snapshots.json`, `activity.json`). A later change bumps it and adds one adjacent migration.
-pub const SCHEMA: &str = "bramble.mobile.portfolio.v1";
+use crate::NetworkId;
+
+/// A wallet's portfolio choices, given to each store it builds (Bramble's: `bramble-core`'s
+/// `PORTFOLIO_POLICY`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PortfolioPolicy {
+    /// Schema tag of every persisted portfolio document (`preferences.json`, `prices.json`,
+    /// `snapshots.json`). A document under another tag reads as empty (preferences: as defaults,
+    /// never overwritten). A later change bumps it and adds one adjacent migration.
+    pub schema: &'static str,
+    /// The CoinGecko API base (`https://…/api/v3`) the price and chart requests are built on.
+    pub price_api_base: &'static str,
+    /// The one network with fiat prices; every other network is served none. One, because the
+    /// price cache is keyed by address alone and ETH and STRK share their addresses across
+    /// networks (Sherlock 185).
+    pub price_network: NetworkId,
+}
+
+/// A policy for this crate's unit tests; `bramble-core`'s tests run Bramble's.
+#[cfg(test)]
+pub(crate) const TEST_POLICY: PortfolioPolicy = PortfolioPolicy {
+    schema: "wallet.portfolio.v1",
+    price_api_base: "https://api.coingecko.com/api/v3",
+    price_network: NetworkId::Mainnet,
+};
 
 #[cfg(test)]
 mod tests {

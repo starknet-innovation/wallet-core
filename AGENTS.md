@@ -95,6 +95,14 @@ Grep first; extend in place rather than adding a sibling.
 - Network and token records (`NetworkInfo`, `TokenInfo`, `TokenRegistry`, borrowed together as
   `Catalogs`) live in `crates/wallet-core/src/catalog.rs`; the core bundles none, the wallet
   passes its own in. A network's catalog spelling (`SN_MAIN`) is `NetworkId::catalog_id`.
+- Bramble's catalogs live in `crates/bramble-core/src/catalogs/`, embedded from
+  `crates/bramble-core/generated/`: `networks` (`all`, `info`, `registry`, `catalogs()`, and
+  `LEGITIMATE_ALIASES`), `accounts` (the class table, family names, `send_authorization`,
+  `RecoveryLimits`, `ARGENT_SIGNER_ARRAY`), `account_address` (`resolve_class`, `argent_shape`)
+  and `multisig` (`argent_multisig_class`, the limits). Tests load them from there rather than
+  rebuilding records from fixture JSON. Bramble's portfolio and history choices are
+  `PORTFOLIO_POLICY` and `HISTORY_POLICY` in `bramble-core`'s `lib.rs` (the records are
+  `portfolio::PortfolioPolicy` and `history::HistoryPolicy`).
 - Portfolio lives in `crates/wallet-core/src/portfolio/`: the price book (`prices::PriceBook`,
   its cache in `price_cache.rs`), saved balances (`snapshots::BalanceSnapshots`), tracked tokens
   (`tokens::TokenPreferences`), token identity, registry and spam (`registry.rs`), on-chain token

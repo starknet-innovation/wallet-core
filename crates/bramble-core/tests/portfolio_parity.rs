@@ -4,6 +4,7 @@
 
 mod portfolio_support;
 
+use bramble_core::PORTFOLIO_POLICY;
 use portfolio_support::*;
 use starknet_wallet_core::js::json::JsValue;
 use starknet_wallet_core::js::num as t;
@@ -103,7 +104,7 @@ fn fiat_amounts_hero_and_rows() {
             c
         );
     }
-    let prefs = TokenPreferences::new(None, catalogs());
+    let prefs = TokenPreferences::new(None, catalogs(), PORTFOLIO_POLICY);
     for c in list(&fiat, "hero") {
         let balances: Vec<TokenBalance> = list(c, "balances")
             .iter()
@@ -255,7 +256,7 @@ fn urls(expected: &JsValue) -> Vec<String> {
 fn price_bodies_are_judged_like_the_extension() {
     let prices = at(&fixture(), "prices").clone();
     for c in list(&prices, "bodies") {
-        let mut book = PriceBook::new(None);
+        let mut book = PriceBook::new(None, PORTFOLIO_POLICY);
         let name = text(c, "name");
         let pad = opt_num(c, "pad").unwrap_or(0.0) as usize;
         for code in ["usd", "eur", "gbp"] {
@@ -284,20 +285,20 @@ fn price_bodies_are_judged_like_the_extension() {
 fn price_timelines_follow_get_prices() {
     let plans = at(at(&fixture(), "prices"), "plans").clone();
     for (name, steps) in plans.as_object().unwrap() {
-        let mut book = PriceBook::new(None);
+        let mut book = PriceBook::new(None, PORTFOLIO_POLICY);
         for (i, step) in steps.as_array().unwrap().iter().enumerate() {
             let (view, requested) = price_step(&mut book, step, 0);
             let expected = at(step, "out");
             assert_view(&view, expected, &format!("{name} step {i}"));
             assert_eq!(requested, urls(expected), "{name} step {i}: urls");
-            book = PriceBook::new(Some(book.persisted()));
+            book = PriceBook::new(Some(book.persisted()), PORTFOLIO_POLICY);
         }
     }
 }
 
 #[test]
 fn chart_timeline_follows_get_token_chart() {
-    let mut book = PriceBook::new(None);
+    let mut book = PriceBook::new(None, PORTFOLIO_POLICY);
     for (i, step) in list(&fixture(), "charts").iter().enumerate() {
         let (net, cur, now) = (
             network(&text(step, "networkId")),

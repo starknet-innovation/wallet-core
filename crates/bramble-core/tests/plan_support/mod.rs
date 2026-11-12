@@ -6,13 +6,16 @@ pub mod node;
 
 use std::cell::RefCell;
 
+use bramble_core::catalogs::accounts::{
+    catalog, send_authorization, AccountFamily, ARGENT_SIGNER_ARRAY,
+};
 use bramble_core::SEND_POLICY;
 use serde_json::{json, Value};
 use starknet_wallet_core::send::calls::ReviewFlag;
 use starknet_wallet_core::send::judge::{Observation, TxStatus};
 use starknet_wallet_core::send::plan::{
-    Account, ArgentClass, Authorization, Kind, PendingKind, PendingRecord, Plan, PlanHost,
-    SignRefusal, Token, Transfer, TransferRefusal,
+    Account, Kind, PendingKind, PendingRecord, Plan, PlanHost, SignRefusal, Token, Transfer,
+    TransferRefusal,
 };
 use starknet_wallet_core::send::sign::Deployment;
 use starknet_wallet_core::send::types::{SendStep, StepReply};
@@ -25,36 +28,9 @@ pub const STRK: &str = "0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f
 pub const ACCOUNT_1: &str = "0x3fa78c2861131190760b151f3ee110f473940eca3fec8cc423ecc307b5241a3";
 pub const ETH: &str = "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7";
 
-// Bramble's account catalog (`generated/accounts.json` at the fixtures' Bramble commit). It moves
-// here as data in Phase 2.6; a wrong value fails the captures below.
+// The OpenZeppelin class Bramble deploys (Krusty's at `OZ_ACCOUNT_VERSION`), as the node answers
+// it; a wrong value fails the captures below. The other classes come from `bramble_core::catalogs`.
 pub const OZ_CLASS: &str = "0x1d1777db36cdd06dd62cfde77b1b6ae06412af95d57a13dc40ac77b8a702381";
-pub const ARGENT: [(&str, &str, bool); 4] = [
-    (
-        "argent 0.3.1",
-        "0x29927c8af6bccf3f6fda035981e765a7bdbf18a2dc0d630494f8758aa908e2b",
-        false,
-    ),
-    (
-        "argent 0.3.0",
-        "0x1a736d6ed154502257f02b1ccdf4d9d1089f80811cd6acad48e6b6a9d1f2003",
-        false,
-    ),
-    (
-        "argent 0.4.0",
-        "0x36078334509b514626504edc9fb252328d1a240e4e948bef8d0c08dff45927f",
-        true,
-    ),
-    (
-        "argent 0.4.0 (Xverse)",
-        "0x663fc01a0dbe1bacc4cd2a4c856eb9784b255a20988aa33d4d52b6fc20bd024",
-        true,
-    ),
-];
-pub const BRAAVOS_DEPLOYMENT: &str =
-    "0x3d16c7a9a60b0593bd202f660a28c5d76e0403601d9ccc7e4fa253b6a70c201";
-pub const BRAAVOS_CURRENT: &str =
-    "0x3957f9f5a1cbfe918cedc2015c85200ca51a5f7506ecb6de98a5207b759bf8a";
-pub const BRAAVOS_LEGACY: &str = "0x816dd0297efc55dc1e7559020a3a825e81ef734b558f03c83325d4da7e6253";
 
 pub fn capture(name: &str) -> Value {
     let path = format!(
@@ -155,37 +131,30 @@ pub fn account(scenario: &Value, family: &str, public_key: Felt) -> Account {
         .unwrap();
     let record_class = scenario["recordClass"].as_str().unwrap_or("");
     // Mobile deploys only the pinned Argent 0.4.0 class or Xverse's build of it.
-    let argent_class = ARGENT
+    let argent_class = catalog()
+        .classes
         .iter()
-        .find(|(label, _, signer_array)| *label == record_class && *signer_array)
-        .map(|(_, hash, _)| f(hash));
-    let (authorization, candidate) = match family {
+        .find(|entry| {
+            entry.info.label == record_class
+                && entry.info.authorization_shape == ARGENT_SIGNER_ARRAY
+        })
+        .map(|entry| entry.class_hash);
+    let (family, candidate) = match family {
         "openzeppelin" => (
-            Authorization::StarkPair,
+            AccountFamily::OpenZeppelin,
             Some((f(OZ_CLASS), Felt::ZERO, vec![public_key])),
         ),
         "argent" => (
-            Authorization::ArgentSignerArray {
-                classes: ARGENT
-                    .iter()
-                    .map(|(label, hash, signer_array)| ArgentClass {
-                        class_hash: f(hash),
-                        label: (*label).into(),
-                        signer_array: *signer_array,
-                    })
-                    .collect(),
-            },
+            AccountFamily::Argent,
             // Krusty's Argent constructor: a Starknet signer and no guardian.
             argent_class.map(|class| (class, public_key, vec![Felt::ZERO, public_key, Felt::ONE])),
         ),
         _ => (
-            Authorization::Braavos {
-                signing_classes: vec![f(BRAAVOS_CURRENT), f(BRAAVOS_LEGACY)],
-                implementation: f(BRAAVOS_CURRENT),
-            },
+            AccountFamily::Braavos,
             Some((f(record_class), public_key, vec![public_key])),
         ),
     };
+    let authorization = send_authorization(family);
     let deployment = candidate
         .map(|(class_hash, salt, constructor_calldata)| Deployment {
             class_hash,
@@ -193,7 +162,9 @@ pub fn account(scenario: &Value, family: &str, public_key: Felt) -> Account {
             constructor_calldata,
         })
         .filter(|d| d.address() == Some(address))
-        .filter(|d| family != "braavos" || d.class_hash == f(BRAAVOS_DEPLOYMENT));
+        .filter(|d| {
+            family != AccountFamily::Braavos || d.class_hash == catalog().braavos_deployment
+        });
     Account {
         network: network(scenario),
         address,

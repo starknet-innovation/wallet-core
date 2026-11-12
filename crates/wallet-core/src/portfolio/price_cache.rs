@@ -346,11 +346,11 @@ pub(super) fn map_value(map: &OrderedMap<f64>) -> Value {
 /// Fiat prices and charts with their last-known-good cache (`prices.json`).
 /// Reads a persisted `prices.json`: an invalid price cache reads as empty, an invalid chart
 /// entry is dropped on its own.
-pub(super) fn load_state(persisted: Option<String>) -> State {
+pub(super) fn load_state(persisted: Option<String>, schema: &str) -> State {
     let doc = persisted
         .as_deref()
         .and_then(json::parse)
-        .filter(|d| d.get("schema").and_then(JsValue::as_str) == Some(super::SCHEMA));
+        .filter(|d| d.get("schema").and_then(JsValue::as_str) == Some(schema));
     let cache = parse_price_cache(doc.as_ref().and_then(|d| d.get("prices"))).unwrap_or_default();
     let mut charts = OrderedMap::default();
     if let Some(entries) = doc
@@ -368,7 +368,7 @@ pub(super) fn load_state(persisted: Option<String>) -> State {
 }
 
 /// The `prices.json` document for a state.
-pub(super) fn state_document(state: &State) -> String {
+pub(super) fn state_document(state: &State, schema: &str) -> String {
     let cache = &state.cache;
     let mut prices = Map::new();
     for (key, e) in cache.prices.entries() {
@@ -405,5 +405,6 @@ pub(super) fn state_document(state: &State) -> String {
         );
         charts.insert(key.clone(), Value::Object(entry));
     }
-    json!({ "schema": super::SCHEMA, "prices": Value::Object(price_doc), "charts": Value::Object(charts) }).to_string()
+    json!({ "schema": schema, "prices": Value::Object(price_doc), "charts": Value::Object(charts) })
+        .to_string()
 }

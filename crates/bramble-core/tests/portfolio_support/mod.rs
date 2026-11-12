@@ -1,17 +1,12 @@
 //! Readers for `fixtures/portfolio-parity.jsonl`, which the extension's own TypeScript writes
 //! (`scripts/mobile-parity-portfolio`), and Bramble's catalogs (`networks.json`,
-//! `token-registry.json`, as `bun run mobile:assets` renders them) read into
-//! `starknet_wallet_core::catalog`'s records. The parity fixture is read with the core's
+//! `token-registry.json`, as `bun run mobile:assets` renders them), as `bramble_core::catalogs`
+//! loads them into `starknet_wallet_core::catalog`'s records. The parity fixture is read with the core's
 //! JavaScript-faithful JSON reader so every expected number is exactly the double JavaScript
 //! produced.
 #![allow(dead_code)] // Each parity suite reads a different subset.
 
-use std::sync::OnceLock;
-
-use serde_json::Value;
-use starknet_wallet_core::catalog::{
-    Catalogs, NetworkInfo, RegistryToken, TokenInfo, TokenRegistry,
-};
+use starknet_wallet_core::catalog::{Catalogs, NetworkInfo, TokenRegistry};
 use starknet_wallet_core::host::Storage;
 use starknet_wallet_core::js::json::{parse as parse_json, JsValue};
 use starknet_wallet_core::portfolio::model::{DisplayCurrency, TokenConfig};
@@ -52,90 +47,19 @@ pub fn fixture() -> JsValue {
     JsValue::Object(blocks)
 }
 
-fn catalog_file(name: &str) -> Value {
-    let path = format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"));
-    serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
-}
-
-fn str_at(value: &Value, key: &str) -> String {
-    value[key].as_str().unwrap().to_string()
-}
-
-fn decimals(value: &Value) -> u8 {
-    u8::try_from(value["decimals"].as_u64().unwrap()).unwrap()
-}
-
-/// Bramble's network catalog, every network `NetworkId` names.
+/// Bramble's network catalog, every network `NetworkId` names (`bramble_core::catalogs`).
 pub fn networks() -> &'static [NetworkInfo] {
-    static NETWORKS: OnceLock<Vec<NetworkInfo>> = OnceLock::new();
-    NETWORKS.get_or_init(|| {
-        catalog_file("networks.json")["networks"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .filter_map(|entry| {
-                Some(NetworkInfo {
-                    network: NetworkId::from_catalog_id(entry["id"].as_str()?)?,
-                    chain_id: str_at(entry, "chainId"),
-                    explorer_base_url: str_at(entry, "explorerBaseUrl"),
-                    name: str_at(entry, "name"),
-                    rpc_urls: entry["rpcUrls"]
-                        .as_array()
-                        .unwrap()
-                        .iter()
-                        .map(|url| url.as_str().unwrap().to_string())
-                        .collect(),
-                    tokens: entry["tokens"]
-                        .as_array()
-                        .unwrap()
-                        .iter()
-                        .map(|t| TokenInfo {
-                            address: str_at(t, "address"),
-                            decimals: decimals(t),
-                            name: str_at(t, "name"),
-                            symbol: str_at(t, "symbol"),
-                        })
-                        .collect(),
-                })
-            })
-            .collect()
-    })
+    bramble_core::catalogs::networks::all()
 }
 
-/// Bramble's curated token registry and bundled logos.
+/// Bramble's curated token registry, bundled logos and aliases.
 pub fn registry() -> &'static TokenRegistry {
-    static REGISTRY: OnceLock<TokenRegistry> = OnceLock::new();
-    REGISTRY.get_or_init(|| {
-        let file = catalog_file("token-registry.json");
-        TokenRegistry {
-            tokens: file["tokens"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|t| RegistryToken {
-                    address: str_at(t, "address"),
-                    decimals: decimals(t),
-                    name: str_at(t, "name"),
-                    network_id: str_at(t, "networkId"),
-                    symbol: str_at(t, "symbol"),
-                })
-                .collect(),
-            logos: file["logos"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|logo| logo.as_str().unwrap().to_string())
-                .collect(),
-        }
-    })
+    bramble_core::catalogs::networks::registry()
 }
 
 /// Both of Bramble's catalogs.
 pub fn catalogs() -> Catalogs<'static> {
-    Catalogs {
-        networks: networks(),
-        registry: registry(),
-    }
+    bramble_core::catalogs::catalogs()
 }
 
 pub fn at<'a>(value: &'a JsValue, key: &str) -> &'a JsValue {

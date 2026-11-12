@@ -8,6 +8,7 @@
 use super::activity::{is_activity_entry, ActivityEntry};
 use super::explorer::is_account_id_for_network;
 use super::starkscan::{cooldown_ms, transfers_request, transfers_to_activity};
+use super::HistoryPolicy;
 use crate::activity::ActivityLog;
 use crate::js::num::is_safe_integer;
 use crate::portfolio::model::TokenConfig;
@@ -27,9 +28,10 @@ pub struct ActivityView {
 /// The history reads over the wallet's activity log, each given the log it reads and writes.
 /// Only Starkscan's cooldown (`retryAt`, in memory in the extension too) lives here, so a wallet
 /// keeps one per launch. A wallet that shares one across threads wraps it in its own lock.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct ActivityBook {
     retry_at: f64,
+    policy: HistoryPolicy,
 }
 
 /// A whole-millisecond clock reading, as the store keeps it; `None` for anything else.
@@ -38,9 +40,12 @@ fn stamp(now_ms: f64) -> Option<u64> {
 }
 
 impl ActivityBook {
-    /// A book with no cooldown.
-    pub fn new() -> Self {
-        Self::default()
+    /// A book with no cooldown, reading Starkscan as `policy` says.
+    pub fn new(policy: HistoryPolicy) -> Self {
+        Self {
+            retry_at: 0.0,
+            policy,
+        }
     }
 
     fn scoped(account_id: &str, network: NetworkId) -> bool {
@@ -127,7 +132,7 @@ impl ActivityBook {
         let tracked_here = tracked.iter().any(|t| t.network == network);
         let cooling = self.retry_at > now_ms;
         (explorer_allowed && tracked_here && !cooling && Self::scoped(&account_id, network))
-            .then(|| transfers_request(network, &account_id))
+            .then(|| transfers_request(network, &account_id, &self.policy))
     }
 
     /// An answering page is authoritative (merged and marked synced, even when empty). A failure
@@ -145,7 +150,7 @@ impl ActivityBook {
             .into_iter()
             .filter(|t| t.network == network)
             .collect();
-        match transfers_to_activity(&outcome, &account_id, network, &tokens) {
+        match transfers_to_activity(&outcome, &account_id, network, &tokens, &self.policy) {
             Some(rows) => {
                 self.retry_at = 0.0;
                 Some(self.merged_view(log, &account_id, network, &rows, now_ms))
