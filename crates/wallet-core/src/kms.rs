@@ -12,6 +12,7 @@ use krusty_kms_common::{ChainId, SecretFelt};
 use starknet_types_core::felt::Felt;
 use zeroize::Zeroizing;
 
+use crate::accounts::{family_address, AccountFamily, Ladder};
 use crate::felt;
 use crate::Error;
 
@@ -207,6 +208,41 @@ pub fn derive_argent_legacy_keypair(
     })
 }
 
+/// The signing key of the account at `index` on `ladder`. Every account key goes through here,
+/// so a record's ladder decides which tree its index walks.
+pub fn account_key(
+    mnemonic: &str,
+    passphrase: Option<&str>,
+    ladder: Ladder,
+    index: u32,
+) -> Result<SecretFelt, Error> {
+    // Krusty's argument order is (address index, account index).
+    Ok(match ladder {
+        Ladder::Account => derive_starknet_keypair(mnemonic, 0, index, passphrase)?.private_key,
+        Ladder::Address => derive_starknet_keypair(mnemonic, index, 0, passphrase)?.private_key,
+        Ladder::ArgentX if passphrase.is_some() => {
+            return Err(Error::invalid("Ready accounts take no passphrase"))
+        }
+        Ladder::ArgentX => derive_argent_legacy_keypair(mnemonic, index)?.private_key,
+    })
+}
+
+/// The public key (x-coordinate) of `account_key`; the key itself is dropped inside the call.
+pub fn account_public_key(
+    mnemonic: &str,
+    passphrase: Option<&str>,
+    ladder: Ladder,
+    index: u32,
+) -> Result<Felt, Error> {
+    let key = account_key(mnemonic, passphrase, ladder, index)?;
+    let public =
+        krusty_kms::stark_public_key(key.expose_secret()).map_err(|_| Error::kms("public key"))?;
+    if public == Felt::ZERO {
+        return Err(Error::kms("public key"));
+    }
+    Ok(public)
+}
+
 /// The counterfactual OpenZeppelin account address for a public key, class and deployment salt.
 /// The salt is required: it is the wallet's choice, and a wrong default moves every address.
 pub fn derive_oz_account_address(
@@ -217,8 +253,14 @@ pub fn derive_oz_account_address(
     let public_key = parse_felt(&public_key_x, "invalid address derivation input")?;
     let class_hash = parse_felt(&class_hash, "invalid address derivation input")?;
     let salt = parse_felt(&salt, "invalid address derivation input")?;
-    let address = krusty_kms::derive_oz_account_address(&public_key, &class_hash, Some(&salt))
-        .map_err(|_| Error::kms("address"))?;
+    // One placement for every family: `accounts::family_address`.
+    let address = family_address(
+        AccountFamily::OpenZeppelin,
+        &class_hash,
+        None,
+        &salt,
+        &public_key,
+    )?;
     Ok(felt::canonical(&address))
 }
 
@@ -311,6 +353,10 @@ mod tests {
         assert!(check_derivation_input(&"a".repeat(513), None).is_err());
         assert!(derive_oz_account_address("0xFF".into(), "0x1".into(), "0x0".into()).is_err());
         assert!(derive_oz_account_address("0x1".into(), "0x1".into(), "ff".into()).is_err());
+        // A zero key or class places nothing.
+        assert!(derive_oz_account_address("0x1".into(), "0x1".into(), "0x0".into()).is_ok());
+        assert!(derive_oz_account_address("0x0".into(), "0x1".into(), "0x0".into()).is_err());
+        assert!(derive_oz_account_address("0x1".into(), "0x0".into(), "0x0".into()).is_err());
     }
 
     #[test]
@@ -329,6 +375,17 @@ mod tests {
         assert!(derive_strk20_viewing_key(&order, sepolia, "0x123").is_err());
         assert!(derive_strk20_viewing_key(&one, sepolia, "0x123").is_ok());
         assert!(derive_argent_legacy_keypair(PHRASE, 1 << 31).is_err());
+    }
+
+    #[test]
+    fn ladders_step_different_fields_from_one_root() {
+        let key = |ladder, index| account_public_key(PHRASE, None, ladder, index).unwrap();
+        // Index 0 is `m/44'/9004'/0'/0/0` on both BIP-44 ladders; from 1 they part.
+        assert_eq!(key(Ladder::Account, 0), key(Ladder::Address, 0));
+        assert_ne!(key(Ladder::Account, 1), key(Ladder::Address, 1));
+        assert_ne!(key(Ladder::Account, 0), key(Ladder::ArgentX, 0));
+        assert!(account_key(PHRASE, Some("p"), Ladder::ArgentX, 0).is_err());
+        assert!(account_key(PHRASE, Some("p"), Ladder::Address, 0).is_ok());
     }
 
     #[test]

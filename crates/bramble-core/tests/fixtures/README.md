@@ -36,7 +36,8 @@ from `generate-mobile-parity-vectors.ts`.
 | `extension-transactions-wire.json` | `generate-mobile-transaction-vectors.ts` | `a4e8085ad6b5e14f05c66f291b8198a167cae729e639a812c7af908d412d8e3d` |
 
 Read today: `extension-parity.json` (`parity.rs`, `vault_parity.rs`),
-`accounts-parity-families-sepolia.json` and `nostr-multisig-parity.json` (`parity.rs`), and every
+`accounts-parity-families-sepolia.json` and `nostr-multisig-parity.json` (`parity.rs`), both
+`accounts-parity-families-*.json` (`accounts_parity.rs`), and every
 `extension-transactions-*.json` except `-observation` (`transactions_*_parity.rs`). The rest sit
 here unused until their Phase 2 step moves the matching mobile parity test in (see `docs/PLAN.md`,
 Phase 1).
