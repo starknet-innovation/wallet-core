@@ -2,6 +2,10 @@
 //! Bramble's `wallet-model/nostr` ones, kept as generic resource bounds, and public so a wallet
 //! checks relay traffic with the same grammar the core does. The private key is derived per call
 //! into a `Zeroizing` buffer, only borrowed by Krusty, and never returned.
+//!
+//! The relay side of coordination is sans-IO in the submodules: the relay-URL grammar
+//! (`relay_url`), relay selection, gift-wrap batches and publishing (`relay`), the paged sync
+//! (`sync`) and the sync window (`sync_window`). The host keeps the sockets.
 
 use serde::Serialize;
 use serde_json::Value;
@@ -10,14 +14,21 @@ use zeroize::Zeroizing;
 use crate::kms::{check_derivation_input, utf16_length};
 use crate::Error;
 
+pub mod relay;
+pub mod relay_url;
+pub mod sync;
+pub mod sync_window;
+
 /// NIP-59 gift-wrap kind.
 pub const GIFT_WRAP_KIND: u64 = 1_059;
 /// `MAX_NOSTR_EVENT_JSON_BYTES` in `wallet-model/nostr`.
 pub const MAX_EVENT_JSON_BYTES: usize = 131_070;
 /// `MAX_NOSTR_APPLICATION_DATA_BYTES` in `wallet-model/nostr`.
 pub const MAX_APPLICATION_DATA_BYTES: usize = 32_768;
+/// `MAX_NOSTR_BATCH_ITEMS` in `wallet-model/nostr`: the most wraps one publish or sync handles.
+pub const MAX_BATCH_ITEMS: usize = 50;
 /// JavaScript's `Number.MAX_SAFE_INTEGER`.
-const MAX_SAFE_INTEGER: u64 = (1 << 53) - 1;
+pub(crate) const MAX_SAFE_INTEGER: u64 = (1 << 53) - 1;
 
 /// A bounded signed event that passed `isNostrEvent`; authenticity is still unknown.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

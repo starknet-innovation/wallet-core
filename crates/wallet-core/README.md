@@ -19,8 +19,13 @@ through [`bramble-core`](../bramble-core).
   counterfactual address under a caller-given class and signer limit, the extension's stored
   record shape and its validation rules, and two sans-IO reads: the threshold and signers at one
   pinned block, and whether the class is declared.
-- **Nostr coordination identity** (`nostr`): the wallet's BIP-340 key, NIP-59 gift wrap and open
-  for application data, with bounds on event and data sizes.
+- **Nostr coordination** (`nostr`): the wallet's BIP-340 key, NIP-59 gift wrap and open for
+  application data, with bounds on event and data sizes; and around them, sans-IO, the relay-URL
+  grammar (`nostr::relay_url`), relay selection, gift-wrap batch validation and acknowledgement
+  counting (`nostr::relay`), the paged sync across relays (`nostr::sync`: unseen-first bounding,
+  the `until` cursor, the page cap, candidates interleaved across relays) and the sync window
+  (`nostr::sync_window`). The host keeps the WebSockets and the address book; relay counts, the
+  page cap and the lookbacks are arguments.
 - **The encrypted vault** (`envelope`, `container`): envelope v3 and the DEK container,
   byte-compatible with the extension's, over host storage and a clock (`host`).
 - **Sans-IO JSON-RPC and transfers** (`rpc`, `send`): builds node requests and reads their

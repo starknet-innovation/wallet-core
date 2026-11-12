@@ -66,7 +66,9 @@ read) with `networks.json` and
 `history_parity.rs`, `row_parity.rs`; the catalogs also feed `portfolio_state.rs` and
 `transactions_rules_parity.rs`'s explorer links), and `extension-privacy-wire.json` and
 `extension-privacy-rules.json` with `privacy.json` as Bramble's privacy routing and `networks.json`
-(`privacy_parity.rs`, `privacy_gates_parity.rs`, `privacy_plan.rs`). `extension-privacy-copy.json` is the source of
+(`privacy_parity.rs`, `privacy_gates_parity.rs`, `privacy_plan.rs`), and all three
+`nostr-coordination-parity-*.json` with `multisig.json`'s coordination, relay and Nostr values and
+`nostr-multisig-parity.json`'s `relayUrls` (`nostr_coordination_parity.rs`). `extension-privacy-copy.json` is the source of
 Bramble's generated Swift and Kotlin privacy copy; no Rust function returns those sentences, so
 no test here reads it. The rest sit
 here unused until their Phase 2 step moves the matching mobile parity test in (see `docs/PLAN.md`,

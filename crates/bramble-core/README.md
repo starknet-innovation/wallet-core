@@ -7,8 +7,10 @@ through UniFFI as one library for the browser extension (wasm32, npm
 ## What it is
 
 - **Bramble's policy.** The OpenZeppelin account version Bramble deploys (`OZ_ACCOUNT_VERSION`),
-  the salt its `KmsPort` defaults to, and, as `docs/PLAN.md` lands, the v12 vault schema and
-  migrations, catalogs and multisig coordination policy.
+  the salt its `KmsPort` defaults to, its multisig coordination policy (`coordination`: the
+  `bramble.multisig` identifier, the default relays and "one custom relay replaces them", the page
+  cap, the sync window, recipient selection and the sender rule), and, as `docs/PLAN.md` lands,
+  the v12 vault schema and migrations and catalogs.
 - **The only FFI crate.** UniFFI scaffolding, `CoreError`, `core_info()`, and remote exports of
   `wallet-core`'s records. Functions keep the names and argument order of the extension's
   `KmsPort`. Built as `lib`, `cdylib` and `staticlib`; `uniffi.toml` keeps mobile's module names.
