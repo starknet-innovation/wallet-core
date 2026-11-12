@@ -167,3 +167,75 @@ fn limits_and_the_phrase_are_held_to_the_scan() {
     config.network = NetworkId::Mainnet;
     assert!(scan.submit(PHRASE, None, &config, &[]).is_err());
 }
+
+/// A host submits only what it was asked to POST, so a batch with nothing to probe would never
+/// finish: no shapes is refused, and an index the wallet never derives is passed over.
+#[test]
+fn a_batch_always_has_something_to_probe() {
+    let oz = shape(AccountFamily::OpenZeppelin, Ladder::Account, OZ);
+    let mut scan = Scan::new();
+    assert!(matches!(
+        scan.next(PHRASE, None, &config(vec![]), None),
+        Err(Error::InvalidInput { .. })
+    ));
+    let mut reserved = config(vec![oz]);
+    reserved.limits.batch_size = 1;
+    reserved.reserved_indexes = vec![0, 1];
+    let step = scan.next(PHRASE, None, &reserved, None).unwrap();
+    assert_eq!(
+        (step.requests.len(), step.checked, step.complete),
+        (1, 2, false)
+    );
+    // Nothing above `max_index` is usable: the walk ends there instead of issuing empty batches.
+    let mut short = config(vec![oz]);
+    short.limits.max_index = 3;
+    let mut scan = Scan::new();
+    let step = scan.next(PHRASE, None, &short, None).unwrap();
+    assert_eq!(step.requests.len(), 4);
+    let none = r#"{"jsonrpc":"2.0","id":ID,"error":{"code":20,"message":"Contract not found"}}"#;
+    let zero = r#"{"jsonrpc":"2.0","id":ID,"result":["0x0","0x0"]}"#;
+    let answer = |step: &ScanStep, body: &str| -> Vec<Response> {
+        step.requests
+            .iter()
+            .map(|request| Response {
+                id: request.id,
+                body: body.replace("ID", &request.id.to_string()),
+            })
+            .collect()
+    };
+    let step = scan
+        .submit(PHRASE, None, &short, &answer(&step, none))
+        .unwrap();
+    let step = scan
+        .submit(PHRASE, None, &short, &answer(&step, zero))
+        .unwrap();
+    assert_eq!(
+        (step.requests.len(), step.checked, step.complete),
+        (0, 4, false)
+    );
+    let step = scan.next(PHRASE, None, &short, None).unwrap();
+    assert_eq!(
+        (step.requests.len(), step.checked, step.complete),
+        (0, 20, true)
+    );
+}
+
+/// Request ids keep counting when the phrase or network changes, so a late reply to the scan
+/// that was replaced cannot answer the new one.
+#[test]
+fn ids_are_not_reused_across_scans() {
+    let oz = shape(AccountFamily::OpenZeppelin, Ladder::Account, OZ);
+    let mut config = config(vec![oz]);
+    let mut scan = Scan::new();
+    let first = scan.next(PHRASE, None, &config, None).unwrap();
+    config.network = NetworkId::Mainnet;
+    let second = scan.next(PHRASE, None, &config, None).unwrap();
+    let last = first
+        .requests
+        .iter()
+        .map(|request| request.id)
+        .max()
+        .unwrap();
+    assert!(second.requests.iter().all(|request| request.id > last));
+    assert_eq!(second.checked, 0);
+}
