@@ -160,8 +160,10 @@ impl Scan {
         let fingerprint = account_public_key(phrase, passphrase, Ladder::Account, 0)?;
         let key = (fingerprint, config.network);
         if self.key != Some(key) {
+            // Ids are never reused, so a late reply to the scan this replaces answers nothing.
             *self = Self {
                 key: Some(key),
+                next_id: self.next_id,
                 ..Self::new()
             };
         }

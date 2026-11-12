@@ -219,3 +219,23 @@ fn a_batch_always_has_something_to_probe() {
         (0, 20, true)
     );
 }
+
+/// Request ids keep counting when the phrase or network changes, so a late reply to the scan
+/// that was replaced cannot answer the new one.
+#[test]
+fn ids_are_not_reused_across_scans() {
+    let oz = shape(AccountFamily::OpenZeppelin, Ladder::Account, OZ);
+    let mut config = config(vec![oz]);
+    let mut scan = Scan::new();
+    let first = scan.next(PHRASE, None, &config, None).unwrap();
+    config.network = NetworkId::Mainnet;
+    let second = scan.next(PHRASE, None, &config, None).unwrap();
+    let last = first
+        .requests
+        .iter()
+        .map(|request| request.id)
+        .max()
+        .unwrap();
+    assert!(second.requests.iter().all(|request| request.id > last));
+    assert_eq!(second.checked, 0);
+}
