@@ -106,11 +106,11 @@ fn write_vault(dir: &str, body: &[u8]) -> Result<(), crate::CoreError> {
 }
 
 /// Opens the wallet vault in `dir` (a current or older container) with the passphrase and
-/// returns its decrypted payload JSON as stored, without migrating it.
+/// returns its decrypted payload JSON as stored.
 pub fn open_vault(dir: &str, password: &str) -> Result<String, crate::CoreError> {
     let path = std::path::Path::new(dir).join(crate::wallet::VAULT_FILE);
     let json = std::fs::read_to_string(path).map_err(|_| crate::CoreError::NoWallet)?;
-    let plaintext = match crate::container::parse(&json, crate::migrations::VAULT_VERSION)? {
+    let plaintext = match crate::container::parse(&json, crate::vault_v13::SCHEMA_VERSION)? {
         crate::container::StoredVault::Container(file) => {
             let (dek, _) = file.open_dek(password)?;
             file.open_payload(&dek)?
@@ -120,6 +120,14 @@ pub fn open_vault(dir: &str, password: &str) -> Result<String, crate::CoreError>
         }
     };
     Ok(String::from_utf8(plaintext.to_vec()).expect("payload is UTF-8"))
+}
+
+/// Reads a decrypted v13 payload as the core does on unlock (every rule, every record and key
+/// re-derived) and writes it back as the core would.
+pub fn v13_round_trip(plaintext: &str) -> Result<String, crate::CoreError> {
+    let mut payload = crate::vault_v13::decode(plaintext.as_bytes())?;
+    let json = crate::vault_v13::encode(&mut payload)?;
+    Ok(String::from_utf8(json.to_vec()).expect("payload is UTF-8"))
 }
 
 /// Words one discovery row exactly as the scan would.

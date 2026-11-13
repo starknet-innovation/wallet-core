@@ -1,16 +1,16 @@
-//! The sealed vault payload (vault version 4, `migrations::VAULT_VERSION`): one record per account (family, class, index, salt,
-//! address, public key), one active account, labels, and groups. Field names follow the
-//! extension's vault records so a later port to its schema stays mechanical.
+//! The unlocked vault in memory: one record per account (family, class, ladder, index, salt,
+//! address, public key), one active account, and the phrase; beside them the wallet's labels,
+//! groups and backup flag, which live in `public_store`'s preferences file rather than the vault.
+//! `vault_v13` reads and writes the sealed form, the extension's schema v13.
 //!
-//! Nothing stored is trusted blindly. `open` validates every field, and re-derives every record
+//! Nothing stored is trusted blindly. `validate` checks every field, and re-derives every record
 //! from the phrase and compares it with what was stored, so a tampered or corrupted record fails
-//! closed rather than redirecting Receive or Copy to another address. Older payloads (an account
-//! count) reach this shape through the one migration chain in `migrations.rs`.
+//! closed rather than redirecting Receive or Copy to another address.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use serde::{Deserialize, Serialize};
 use starknet_types_core::felt::Felt;
+use wallet_core::{SecretFelt, StarkXOnlyKeypair};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::account_address::family_address;
@@ -19,7 +19,6 @@ use crate::account_names::{is_label, js_trim};
 use crate::files::storage;
 use crate::groups::{self, StoredGroup};
 use crate::kms::Ladder;
-use crate::migrations::VAULT_VERSION;
 use crate::networks::NetworkId;
 use crate::{felt, kms, CoreError};
 
@@ -34,9 +33,8 @@ pub(crate) fn is_usable_account_index(index: u32) -> bool {
     index <= MAX_ACCOUNT_INDEX && index != catalog().reserved_agent_index
 }
 
-/// One account as sealed in the vault. Public data only.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// One account record. Public data only.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct StoredAccount {
     pub account_index: u32,
     pub address: String,
@@ -44,57 +42,10 @@ pub(crate) struct StoredAccount {
     pub deployment_salt: Option<String>,
     pub family: String,
     pub id: String,
-    /// The key tree `account_index` walks. Absent before vault version 5 and required from 5 on:
-    /// every earlier record was derived on this wallet's own ladder, and the 4 → 5 step labels it
-    /// so, which keeps every record at the address it already had. Read it through `ladder()`.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "stored_ladder"
-    )]
-    pub ladder: Option<Ladder>,
+    /// The key tree `account_index` walks.
+    pub ladder: Ladder,
     pub network: String,
     pub public_key: String,
-}
-
-/// `Ladder` as the vault spells it (`account`, `address`, `argentx`). The core's `Ladder` carries
-/// no serde, so the stored names are this mirror's, unchanged from every vault already written.
-mod stored_ladder {
-    use serde::{Deserialize, Deserializer, Serialize, Serializer};
-
-    use crate::kms::Ladder;
-
-    #[derive(Serialize, Deserialize)]
-    #[serde(rename_all = "kebab-case")]
-    enum Name {
-        Account,
-        Address,
-        #[serde(rename = "argentx")]
-        ArgentX,
-    }
-
-    pub fn serialize<S: Serializer>(
-        ladder: &Option<Ladder>,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error> {
-        let name = ladder.map(|ladder| match ladder {
-            Ladder::Account => Name::Account,
-            Ladder::Address => Name::Address,
-            Ladder::ArgentX => Name::ArgentX,
-        });
-        name.serialize(serializer)
-    }
-
-    pub fn deserialize<'de, D: Deserializer<'de>>(
-        deserializer: D,
-    ) -> Result<Option<Ladder>, D::Error> {
-        let name = Option::<Name>::deserialize(deserializer)?;
-        Ok(name.map(|name| match name {
-            Name::Account => Ladder::Account,
-            Name::Address => Ladder::Address,
-            Name::ArgentX => Ladder::ArgentX,
-        }))
-    }
 }
 
 impl StoredAccount {
@@ -117,43 +68,46 @@ impl StoredAccount {
     }
 
     pub(crate) fn ladder(&self) -> Ladder {
-        self.ladder.expect("validated on open")
+        self.ladder
     }
 }
 
-/// Plaintext sealed inside the vault container. Only the phrase and passphrase are secret; they
-/// are zeroized on drop.
-#[derive(Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// One account key derived this session: the signing key (zeroized on drop) and the public
+/// y-coordinate the v13 record carries (`None` for Ready's x-only scheme).
+pub(crate) struct HeldKey {
+    pub private_key: SecretFelt,
+    pub public_key: Felt,
+    pub public_key_y: Option<String>,
+}
+
+/// The unlocked wallet. Only the phrase and the held keys are secret; both are zeroized on drop.
+#[derive(Zeroize, ZeroizeOnDrop)]
 pub(crate) struct VaultPayload {
     #[zeroize(skip)]
     pub accounts: Vec<StoredAccount>,
     #[zeroize(skip)]
     pub active_account_id: Option<String>,
-    /// Vault version 4: set when a wallet is created and cleared once its Confirm backup step
-    /// succeeds (`backup.rs`). Not secret. Absent in versions 1 to 3 and required from 4 on, so
-    /// an older payload carrying it, or a current one missing it, fails validation.
+    /// Set when a wallet is created and cleared once its Confirm backup step succeeds
+    /// (`backup.rs`). Kept in the preferences file.
     #[zeroize(skip)]
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub backup_pending: Option<bool>,
+    pub backup_pending: bool,
     #[zeroize(skip)]
     pub groups: Vec<StoredGroup>,
     #[zeroize(skip)]
     pub labels: BTreeMap<String, String>,
     pub mnemonic: String,
-    pub mnemonic_passphrase: Option<String>,
-    pub recovery_pending: bool,
-    pub version: u32,
+    /// Keys by coordinate, derived on open or on first write; `SecretFelt` zeroizes itself.
+    #[zeroize(skip)]
+    keys: HashMap<(Ladder, u32), HeldKey>,
 }
 
 /// The non-secret state a mutation may change, captured so a failed write can be rolled back.
 pub(crate) struct PublicState {
     accounts: Vec<StoredAccount>,
     active_account_id: Option<String>,
-    backup_pending: Option<bool>,
+    backup_pending: bool,
     groups: Vec<StoredGroup>,
     labels: BTreeMap<String, String>,
-    recovery_pending: bool,
 }
 
 impl VaultPayload {
@@ -162,20 +116,10 @@ impl VaultPayload {
     /// imported phrase is one the user already holds.
     pub(crate) fn new(
         mnemonic: String,
-        mnemonic_passphrase: Option<String>,
         first_account: Option<NetworkId>,
     ) -> Result<Self, CoreError> {
-        let mut payload = Self {
-            accounts: Vec::new(),
-            active_account_id: None,
-            backup_pending: Some(first_account.is_some()),
-            groups: Vec::new(),
-            labels: BTreeMap::new(),
-            mnemonic,
-            mnemonic_passphrase,
-            recovery_pending: first_account.is_none(),
-            version: VAULT_VERSION,
-        };
+        let mut payload = Self::opened(mnemonic, Vec::new(), None);
+        payload.backup_pending = first_account.is_some();
         if let Some(network) = first_account {
             let record = payload.derive(
                 AccountFamily::OpenZeppelin,
@@ -191,19 +135,64 @@ impl VaultPayload {
         Ok(payload)
     }
 
-    pub(crate) fn to_json(&self) -> Result<zeroize::Zeroizing<Vec<u8>>, CoreError> {
-        serde_json::to_vec(self)
-            .map(zeroize::Zeroizing::new)
-            .map_err(|_| storage("serialise vault"))
+    /// A vault's records as read, before validation, with no preferences yet.
+    pub(crate) fn opened(
+        mnemonic: String,
+        accounts: Vec<StoredAccount>,
+        active_account_id: Option<String>,
+    ) -> Self {
+        Self {
+            accounts,
+            active_account_id,
+            backup_pending: false,
+            groups: Vec::new(),
+            labels: BTreeMap::new(),
+            mnemonic,
+            keys: HashMap::new(),
+        }
+    }
+
+    /// An imported wallet waits for discovery until it holds an account (restore never writes
+    /// none).
+    pub(crate) fn recovery_pending(&self) -> bool {
+        self.accounts.is_empty()
     }
 
     pub(crate) fn public_key(&self, path: Ladder, index: u32) -> Result<Felt, CoreError> {
-        kms::public_key(
-            &self.mnemonic,
-            self.mnemonic_passphrase.as_deref(),
-            path,
-            index,
-        )
+        match self.keys.get(&(path, index)) {
+            Some(key) => Ok(key.public_key),
+            None => kms::public_key(&self.mnemonic, None, path, index),
+        }
+    }
+
+    /// Derives and holds the key of every record that has none yet.
+    pub(crate) fn derive_keys(&mut self) -> Result<(), CoreError> {
+        for record in &self.accounts {
+            let coordinate = (record.ladder, record.account_index);
+            if self.keys.contains_key(&coordinate) {
+                continue;
+            }
+            let (pair, public_key_y): (StarkXOnlyKeypair, _) =
+                wallet_core::account_keypair(&self.mnemonic, None, coordinate.0, coordinate.1)?;
+            let public_key =
+                felt::parse_non_zero(&pair.public_key_x).ok_or_else(|| CoreError::Kms {
+                    operation: "derive".into(),
+                })?;
+            let key = HeldKey {
+                private_key: pair.private_key,
+                public_key,
+                public_key_y,
+            };
+            self.keys.insert(coordinate, key);
+        }
+        Ok(())
+    }
+
+    /// The held key of `record`; call `derive_keys` first.
+    pub(crate) fn held_key(&self, record: &StoredAccount) -> Result<&HeldKey, CoreError> {
+        self.keys
+            .get(&(record.ladder, record.account_index))
+            .ok_or_else(invalid_payload)
     }
 
     /// Derives one record at `index` on `path`. Nothing here comes from the host except
@@ -240,8 +229,19 @@ impl VaultPayload {
             backup_pending: self.backup_pending,
             groups: self.groups.clone(),
             labels: self.labels.clone(),
-            recovery_pending: self.recovery_pending,
         }
+    }
+
+    /// Whether the sealed part (accounts, active account) moved since `before`.
+    pub(crate) fn vault_changed(&self, before: &PublicState) -> bool {
+        self.accounts != before.accounts || self.active_account_id != before.active_account_id
+    }
+
+    /// Whether the preferences (labels, groups, backup flag) moved since `before`.
+    pub(crate) fn preferences_changed(&self, before: &PublicState) -> bool {
+        self.labels != before.labels
+            || self.groups != before.groups
+            || self.backup_pending != before.backup_pending
     }
 
     pub(crate) fn restore(&mut self, state: PublicState) {
@@ -250,7 +250,6 @@ impl VaultPayload {
         self.backup_pending = state.backup_pending;
         self.groups = state.groups;
         self.labels = state.labels;
-        self.recovery_pending = state.recovery_pending;
     }
 }
 
@@ -275,7 +274,7 @@ pub(crate) fn record_at(
         account_index,
         id: format!("{}:{address}", network.catalog_id()),
         address,
-        ladder: Some(ladder),
+        ladder,
         class_hash: felt::canonical(&placed.class_hash),
         deployment_salt: placed.deployment_salt.as_ref().map(felt::canonical),
         family: family.wire().into(),
@@ -295,7 +294,7 @@ fn is_canonical_felt(value: &str, non_zero: bool) -> bool {
 }
 
 /// Which ladders a family's records may sit on. Every family may be on this wallet's own ladder,
-/// where every record before vault version 5 was derived; Braavos may also be on its vendor's
+/// where every account this wallet creates is derived; Braavos may also be on its vendor's
 /// address ladder, and Argent on Ready's.
 pub(crate) fn ladder_fits(family: AccountFamily, path: Ladder) -> bool {
     match path {
@@ -345,7 +344,7 @@ fn is_well_formed(record: &StoredAccount) -> bool {
         (_, Some(salt)) => is_canonical_felt(salt, false),
     };
     record.account_index <= MAX_ACCOUNT_INDEX
-        && record.ladder.is_some_and(|path| ladder_fits(family, path))
+        && ladder_fits(family, record.ladder)
         && is_canonical_felt(&record.address, true)
         && is_canonical_felt(&record.public_key, true)
         && is_canonical_felt(&record.class_hash, true)
@@ -356,18 +355,10 @@ fn is_well_formed(record: &StoredAccount) -> bool {
 // Every structural invariant, without derivation.
 fn is_consistent(payload: &VaultPayload) -> bool {
     let ids: HashSet<&str> = payload.accounts.iter().map(|r| r.id.as_str()).collect();
-    payload.version == VAULT_VERSION
-        && payload.backup_pending.is_some()
-        && kms::validate_mnemonic(&payload.mnemonic)
+    kms::validate_mnemonic(&payload.mnemonic)
         && payload.accounts.len() <= MAX_ACCOUNT_RECORDS
         && ids.len() == payload.accounts.len()
-        && payload.recovery_pending == payload.accounts.is_empty()
         && payload.accounts.iter().all(is_well_formed)
-        && (payload.mnemonic_passphrase.is_none()
-            || payload
-                .accounts
-                .iter()
-                .all(|r| r.ladder != Some(Ladder::ArgentX)))
         && match &payload.active_account_id {
             None => payload.accounts.is_empty(),
             Some(id) => ids.contains(id.as_str()),
@@ -379,24 +370,17 @@ fn is_consistent(payload: &VaultPayload) -> bool {
         && groups::is_valid(&payload.groups, &ids)
 }
 
-// Re-derives every record from the phrase; any difference is tampering or corruption.
-fn rederives(payload: &VaultPayload) -> Result<bool, CoreError> {
-    let mut keys: HashMap<(Ladder, u32), Felt> = HashMap::new();
+// Re-derives every record from the phrase, holding the keys; any difference is tampering or
+// corruption.
+fn rederives(payload: &mut VaultPayload) -> Result<bool, CoreError> {
+    payload.derive_keys()?;
     for record in &payload.accounts {
-        let coordinate = (record.ladder(), record.account_index);
-        let public_key = match keys.get(&coordinate) {
-            Some(key) => *key,
-            None => {
-                let key = payload.public_key(record.ladder(), record.account_index)?;
-                keys.insert(coordinate, key);
-                key
-            }
-        };
+        let public_key = payload.held_key(record)?.public_key;
         let family = record.family();
         let class_hash = (family != AccountFamily::OpenZeppelin).then(|| record.class_felt());
         let expected = record_at(
             family,
-            record.ladder(),
+            record.ladder,
             record.account_index,
             class_hash.as_ref(),
             record.salt_felt().as_ref(),
@@ -411,7 +395,7 @@ fn rederives(payload: &VaultPayload) -> Result<bool, CoreError> {
 }
 
 /// Checks a payload in full, re-deriving every record. Used on open.
-pub(crate) fn validate(payload: &VaultPayload) -> Result<(), CoreError> {
+pub(crate) fn validate(payload: &mut VaultPayload) -> Result<(), CoreError> {
     if !is_consistent(payload) || !rederives(payload)? {
         return Err(invalid_payload());
     }
@@ -425,31 +409,5 @@ pub(crate) fn check_consistent(payload: &VaultPayload) -> Result<(), CoreError> 
         Ok(())
     } else {
         Err(invalid_payload())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// The names vaults already on disk store: the core's `Ladder` has no serde, so these are
-    /// `stored_ladder`'s, and a rename would strand every vault-5 record.
-    #[test]
-    fn ladders_keep_the_names_the_vault_stores() {
-        for (ladder, name) in [
-            (Ladder::Account, "account"),
-            (Ladder::Address, "address"),
-            (Ladder::ArgentX, "argentx"),
-        ] {
-            let stored = stored_ladder::serialize(&Some(ladder), serde_json::value::Serializer);
-            assert_eq!(stored.unwrap(), serde_json::json!(name));
-            let read = stored_ladder::deserialize(serde_json::json!(name)).unwrap();
-            assert_eq!(read, Some(ladder));
-        }
-        assert_eq!(
-            stored_ladder::deserialize(serde_json::Value::Null).unwrap(),
-            None
-        );
-        assert!(stored_ladder::deserialize(serde_json::json!("ArgentX")).is_err());
     }
 }

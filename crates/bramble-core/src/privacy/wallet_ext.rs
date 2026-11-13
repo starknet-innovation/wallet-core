@@ -38,7 +38,7 @@ impl WalletCore {
             let record = signing_record(payload, account_id).map_err(|_| CoreError::Locked)?;
             kms::scoped_viewing_key(
                 &payload.mnemonic,
-                payload.mnemonic_passphrase.as_deref(),
+                None,
                 record.ladder(),
                 record.account_index,
                 chain_id,

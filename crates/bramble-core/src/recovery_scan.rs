@@ -38,9 +38,8 @@ pub(crate) struct ScanState {
     network: NetworkId,
 }
 
-/// Bramble's scan of `payload`'s phrase on `network`. A phrase opened with a BIP-39 passphrase
-/// has no Ready accounts, so their shapes are left out rather than failing the scan.
-fn config(payload: &VaultPayload, network: NetworkId) -> Result<ScanConfig, CoreError> {
+/// Bramble's scan on `network`. The vault holds no BIP-39 passphrase, so Ready's shapes are in.
+fn config(network: NetworkId) -> Result<ScanConfig, CoreError> {
     let catalog = catalog();
     let limits = catalog.limits;
     let tokens = networks::info(network)
@@ -54,7 +53,7 @@ fn config(payload: &VaultPayload, network: NetworkId) -> Result<ScanConfig, Core
         .collect::<Result<_, _>>()?;
     Ok(ScanConfig {
         network,
-        shapes: scan_shapes(payload.mnemonic_passphrase.is_none(), network)?,
+        shapes: scan_shapes(true, network)?,
         limits: ScanLimits {
             batch_size: limits.batch_size,
             default_count: limits.default_count,
@@ -100,18 +99,15 @@ pub(crate) fn next(
     network: NetworkId,
     manual_index: Option<u32>,
 ) -> Result<RecoveryScanStep, CoreError> {
-    let config = config(payload, network)?;
+    let config = config(network)?;
     let state = state.get_or_insert_with(|| ScanState {
         scan: Scan::new(),
         network,
     });
     state.network = network;
-    let step = state.scan.next(
-        &payload.mnemonic,
-        payload.mnemonic_passphrase.as_deref(),
-        &config,
-        manual_index,
-    )?;
+    let step = state
+        .scan
+        .next(&payload.mnemonic, None, &config, manual_index)?;
     Ok(worded(step))
 }
 
@@ -125,13 +121,10 @@ pub(crate) fn submit(
     let state = state.as_mut().ok_or_else(|| CoreError::InvalidInput {
         reason: "no account search in progress".into(),
     })?;
-    let config = config(payload, state.network)?;
-    let step = state.scan.submit(
-        &payload.mnemonic,
-        payload.mnemonic_passphrase.as_deref(),
-        &config,
-        responses,
-    )?;
+    let config = config(state.network)?;
+    let step = state
+        .scan
+        .submit(&payload.mnemonic, None, &config, responses)?;
     Ok(worded(step))
 }
 

@@ -46,8 +46,9 @@ M5–M13 (#921–#929) are merged into `feature/mobile-wallet`, whose `mobile/co
 that builds this crate's `bramble-core` at `tag = "v0.3.0"` with `features = ["mobile"]`. M7–M13
 merged into each other's stacked branches and reached `feature/mobile-wallet` through M6's merge.
 #54 (stack scrub after Krusty and Nostr secret calls) is merged after the tag and ships in the
-next release. M13 merged before the vault step that 2.7 placed ahead of it, so mobile still
-writes its own vault version 5. Left in Phase 2: the [vault switch](#vault-switch).
+next release. M13 merged before the vault step that 2.7 placed ahead of it, so mobile at
+`v0.3.0` still writes its own vault version 5. Left in Phase 2: the [vault switch](#vault-switch),
+whose generator G4 merged in Bramble (#947, `008f2968`) and whose core half is V1 (open).
 
 | Step | Here | Mobile (`mc-wallet`, `feature/mobile-wallet`) |
 | --- | --- | --- |
@@ -64,7 +65,7 @@ writes its own vault version 5. Left in Phase 2: the [vault switch](#vault-switc
 | 2.5b Multisig coordination | done (#48) | done (G2 Bramble #920, M11 #927) |
 | 2.6 Catalogs | done (#49) | done (M12, Bramble #928) |
 | 2.7 Swap | done (#50), behind the `mobile` feature | done (M13, Bramble #929), at `v0.3.0`: `mobile/core` is a shell over this crate |
-| Vault switch | not started | not started (G4, M14) |
+| Vault switch | V1 open | G4 done (Bramble #947); M14 not started |
 | 3 Extension | not started; `js/package.json` is private | n/a |
 
 `v0.1.0` is tagged at `35abc8b` (GitHub release only) and was what M2 and M3 pinned. `v0.2.0`
@@ -84,8 +85,7 @@ merged; each is described under its step in [Phases](#phases).
 
 | PR | Repo, base | Needs | What it is |
 | --- | --- | --- | --- |
-| G4 v13 vault generator | Bramble, `feature/mobile-wallet` | nothing | the extension's own store and schema code seal a v13 vault for the published phrase and a fixed account set; payload and sealed file written as fixtures |
-| V1 Vault switch | here | G4 | `bramble-core` writes the extension's v13 payload inside mobile's container; the v1 → v5 chain and its regression vaults go; G4's files copied as fixtures |
+| V1 Vault switch | here | G4 (merged, #947) | `bramble-core` writes the extension's v13 payload inside mobile's container; the v1 → v5 chain and its regression vaults go; G4's files copied as fixtures |
 | Release `v0.4.0` | here | V1, #55 | the format break, plus #54 |
 | M14 Take `v0.4.0` | Bramble, `feature/mobile-wallet` | `v0.4.0` | the pin moves; `importWallet` loses its unused `passphrase` argument at its call sites; both apps build; testers reset their wallets |
 
@@ -670,6 +670,26 @@ Each phase names the crate a module lands in; the table above decides anything n
       - When the extension's schema moves past v13, mobile follows in a release of this crate,
         until Phase 3.2 makes the core the one writer.
 
+      As built (V1): `vault_v13.rs` replaces `migrations.rs`. The container's `version` is 13, the
+      payload's `schemaVersion`. Reading accepts exactly the subset of v13 mobile writes: the six
+      collections it has no use for (`originGrants`, `importedSeeds`, `accountSecrets`,
+      `shadowAccountScopes` and both multisig key lists) must be empty, `mnemonic` must not be
+      null, and every derivation must be one of mobile's three ladders. A vault holding anything
+      else is refused, not half-read, so their validators are not ported until mobile holds
+      them. On what it accepts, the extension's rules (field grammar, canonical felts, the
+      account ↔ signing-key bijection, the active account) and mobile's stronger ones apply: every
+      record, `publicKeyY` and sealed `privateKey` must equal what the phrase derives. Signing
+      still derives each key per call, so the sealed keys are checked, never used. An earlier
+      build's vault (bare envelope or container 2 to 5) is refused only after its password is
+      proven, which resets the backoff; `delete_wallet` proves the password without reading the
+      payload, so such a vault can still be deleted in the app. Labels, groups and
+      `backupPending` are `public_store`'s `preferences.json`. Each mutation moves either the
+      accounts or the preferences, and writes only that file, so every write stays one atomic
+      file; a new wallet's preferences are written just before its vault, and a label or group
+      member naming an account the vault lacks is dropped on load. `recoveryPending` is no longer stored: it is `accounts.is_empty()`, which the old
+      validator already required it to equal. Internal `passphrase` parameters (`kms`, the scan)
+      stay and are passed `None`.
+
    Mobile-only platform glue with no extension counterpart (biometric slots, file storage, app
    UI state) stays in the app, or in `bramble-core` behind mobile's build, unless the extension
    gains it.
@@ -903,9 +923,10 @@ seals with fresh randomness are kept while the extension still opens them.
   hand-copying hashes as `tests/plan_support` does today. One Bramble commit covers every file,
   so F3 re-copies all of them; a re-copied fixture that fails here means the core is behind the
   extension, and the core is fixed, never the fixture.
-- **G4, a v13 vault** (Bramble), for the [vault switch](#vault-switch): the extension's own store
-  and schema code seal a v13 vault for the published phrase and a fixed account set (OZ, Argent,
-  Braavos, Ready), written as the payload and the sealed file.
+- **G4, a v13 vault** (Bramble #947, merged), for the [vault switch](#vault-switch): the
+  extension's own store and schema code seal a v13 vault for the published phrase and a fixed
+  account set (OZ, Argent, Braavos, Ready), written as the payload and the sealed file
+  (`vault-v13.json`, read by `tests/vault_v13.rs`).
 - **The wasm harness covers only what is exported.** `smoke.test.mjs` replays the KMS and Nostr
   vectors. The vault and send modules are not exported through UniFFI yet, so on wasm32 they are
   linted and never run. That is acceptable until 3.2 and 3.3 export them, and those steps extend

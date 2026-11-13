@@ -15,7 +15,7 @@ struct Coordination {
 /// Our 2-of-2 setup with a saved co-signer, and a stranger saved as an ordinary payee whose card
 /// carries a Nostr key.
 fn coordination() -> Coordination {
-    let (dir_a, ours) = wallet(PHRASE, None);
+    let (dir_a, ours) = wallet(PHRASE);
     let (dir_b, cosigner) = fresh_wallet();
     let (dir_c, stranger) = fresh_wallet();
     let config = ArgentMultisigConfig {
@@ -60,7 +60,7 @@ fn package(record_id: &str, guids: Vec<String>, threshold: u32) -> String {
 fn wrap_from(sender: &WalletCore, recipient: &WalletCore, content: &str) -> Value {
     let to = recipient.nostr_public_key().unwrap();
     let wrapped = sender
-        .with_phrase(|m, _| nostr::wrap(m, 0, &to, "bramble.multisig", content, NOW))
+        .with_phrase(|m| nostr::wrap(m, 0, &to, "bramble.multisig", content, NOW))
         .unwrap();
     serde_json::from_str(&wrapped).unwrap()
 }
@@ -177,7 +177,7 @@ fn the_held_list_stays_within_its_caps() {
 
 #[test]
 fn a_rejoin_replaces_current_config_with_the_fresh_resolved_authority() {
-    let (dir, core) = wallet(PHRASE, None);
+    let (dir, core) = wallet(PHRASE);
     core.add_account(NetworkId::Sepolia).unwrap();
     let guids: Vec<String> = [key(&core, 0), key(&core, 1)]
         .iter()

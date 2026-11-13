@@ -1,15 +1,14 @@
 //! Account management through the public core surface: signing by record (a shared key at one
 //! index signs every family there; the send plan decides which account may use it), the network
-//! switch, adding accounts, labels, groups, the count → records migration, and fail-closed
-//! handling of a tampered vault. The migration chain across every historical vault file is
-//! covered in `migration.rs`.
+//! switch, adding accounts, labels, groups, and fail-closed handling of a tampered vault. The
+//! extension's own v13 vault is `vault_v13.rs`.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
 mod common;
 
-use bramble_core::testing::{open_vault, seal_container_vault, seal_envelope_vault};
+use bramble_core::testing::{open_vault, seal_container_vault};
 use bramble_core::{account_classes, AccountFamily, CoreError, NetworkId};
-use common::{core, open, own, oz, pending, selection, PASSWORD, PHRASE};
+use common::{open, own, oz, pending, selection, PASSWORD};
 use serde_json::Value;
 
 fn class_of(label: &str) -> String {
@@ -216,7 +215,7 @@ fn regular_accounts_take_the_lowest_free_index_and_become_active() {
 }
 
 #[test]
-fn labels_and_groups_are_sealed_and_validated() {
+fn labels_and_groups_are_kept_and_validated() {
     let (dir, clock, core) = pending();
     let restored = core
         .restore_recovered_accounts(NetworkId::Sepolia, vec![oz(0), oz(1)])
@@ -258,11 +257,14 @@ fn labels_and_groups_are_sealed_and_validated() {
     assert_eq!(record.label.as_deref(), Some("Savings"));
     assert_eq!(record.display_name, "Savings");
     assert_eq!(record.group_id.as_deref(), Some("long-term"));
-    let on_disk = std::fs::read_to_string(dir.path().join("vault.json")).unwrap();
-    assert!(
-        !on_disk.contains("Savings"),
-        "labels are sealed, never plain"
-    );
+    // The extension keeps both in its preferences, not its vault; so does mobile.
+    let path = dir.path().to_string_lossy().to_string();
+    assert!(!open_vault(&path, PASSWORD).unwrap().contains("Savings"));
+    let preferences: Value = serde_json::from_str(
+        &std::fs::read_to_string(dir.path().join("preferences.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(preferences["labels"][&id], "Savings");
 
     reopened
         .set_account_label(id.clone(), "   ".into())
@@ -273,64 +275,87 @@ fn labels_and_groups_are_sealed_and_validated() {
     assert_eq!(record.group_id, None);
 }
 
-fn v1_payload(count: u32) -> String {
-    format!(
-        r#"{{"accountCount":{count},"mnemonic":"{PHRASE}","mnemonicPassphrase":null,"version":1}}"#
-    )
-}
-
 #[test]
-fn a_version_one_vault_migrates_to_records_on_every_network() {
-    let (dir, _clock, core) = core();
-    let path = dir.path().to_string_lossy().to_string();
-    seal_envelope_vault(&path, PASSWORD, &v1_payload(2)).unwrap();
-    core.unlock(PASSWORD.into()).unwrap();
-    for network in [NetworkId::Mainnet, NetworkId::Sepolia] {
-        let records = core.account_records(network).unwrap();
-        let indices: Vec<_> = records.iter().map(|r| r.account_index).collect();
-        assert_eq!(indices, [0, 1]);
-        assert!(records
-            .iter()
-            .all(|r| r.family == AccountFamily::OpenZeppelin));
-    }
-    assert_eq!(
-        core.active_account().unwrap().unwrap().network,
-        NetworkId::Mainnet
-    );
-    let payload: Value = serde_json::from_str(&open_vault(&path, PASSWORD).unwrap()).unwrap();
-    assert_eq!(payload["version"], 5, "the migration was written back");
-    assert_eq!(payload["accounts"].as_array().unwrap().len(), 4);
-
-    let (bad, _clock, core) = common::core();
-    let bad_path = bad.path().to_string_lossy().to_string();
-    seal_envelope_vault(&bad_path, PASSWORD, &v1_payload(0)).unwrap();
-    assert!(matches!(
-        core.unlock(PASSWORD.into()),
-        Err(CoreError::Storage { .. })
-    ));
-}
-
-#[test]
-fn a_tampered_or_malformed_records_vault_fails_closed() {
+fn preferences_drop_unknown_accounts_and_refuse_anything_else_invalid() {
     let (dir, clock, core) = pending();
-    core.restore_recovered_accounts(NetworkId::Sepolia, vec![oz(0)])
+    let id = core
+        .restore_recovered_accounts(NetworkId::Sepolia, vec![oz(0)])
+        .unwrap()[0]
+        .id
+        .clone();
+    core.lock();
+    let write = |preferences: Value| {
+        std::fs::write(dir.path().join("preferences.json"), preferences.to_string()).unwrap();
+        let fresh = open(dir.path(), &clock);
+        fresh.unlock(PASSWORD.into()).map(|()| fresh)
+    };
+    // The vault and the preferences are written one after the other: a name for an account the
+    // vault does not hold is dropped, not fatal.
+    let fresh = write(serde_json::json!({
+        "backupPending": false, "version": 1,
+        "labels": { "SN_SEPOLIA:0x1": "x" },
+        "groups": [{ "accountIds": ["SN_SEPOLIA:0x1"], "icon": "folder", "id": "a", "name": "A" }],
+    }))
+    .unwrap();
+    let record = &fresh.account_records(NetworkId::Sepolia).unwrap()[0];
+    assert_eq!(
+        (record.label.as_ref(), record.group_id.as_ref()),
+        (None, None)
+    );
+    assert_eq!(fresh.account_groups().unwrap()[0].account_ids.len(), 0);
+    for (preferences, why) in [
+        (
+            serde_json::json!({ "backupPending": false, "version": 1, "labels": {},
+                "groups": [
+                    { "accountIds": [id], "icon": "folder", "id": "a", "name": "A" },
+                    { "accountIds": [id], "icon": "star", "id": "b", "name": "B" }
+                ] }),
+            "one account in two groups",
+        ),
+        (
+            serde_json::json!({ "backupPending": false, "version": 1, "groups": [],
+                "labels": { id.clone(): " padded " } }),
+            "an untrimmed label",
+        ),
+        (
+            serde_json::json!({ "backupPending": false, "version": 2, "groups": [], "labels": {} }),
+            "another version",
+        ),
+        (
+            serde_json::json!({ "backupPending": false, "version": 1, "groups": [], "labels": {},
+                "extra": 1 }),
+            "an unknown field",
+        ),
+    ] {
+        assert!(
+            matches!(write(preferences), Err(CoreError::Storage { .. })),
+            "{why}"
+        );
+    }
+}
+
+#[test]
+fn a_tampered_or_malformed_vault_fails_closed() {
+    let (dir, clock, core) = pending();
+    let argent = class_of("argent 0.4.0");
+    let accounts = vec![oz(0), own(AccountFamily::Argent, 1, Some(&argent))];
+    core.restore_recovered_accounts(NetworkId::Sepolia, accounts)
         .unwrap();
     core.lock();
     let path = dir.path().to_string_lossy().to_string();
     let good: Value = serde_json::from_str(&open_vault(&path, PASSWORD).unwrap()).unwrap();
 
+    let unlock = |payload: &Value, version: u32| {
+        seal_container_vault(&path, PASSWORD, version, &payload.to_string()).unwrap();
+        open(dir.path(), &clock).unlock(PASSWORD.into())
+    };
+    // The round trip itself opens: the cases below each fail for their own reason.
+    unlock(&good, 13).unwrap();
     let reject = |mutate: &dyn Fn(&mut Value), why: &str| {
         let mut payload = good.clone();
         mutate(&mut payload);
-        seal_container_vault(&path, PASSWORD, 3, &payload.to_string()).unwrap();
-        // Each refusal counts as a failed attempt; start every case unthrottled.
-        let _ = std::fs::remove_file(dir.path().join("security.json"));
-        let fresh = open(dir.path(), &clock);
         assert!(
-            matches!(
-                fresh.unlock(PASSWORD.into()),
-                Err(CoreError::Storage { .. })
-            ),
+            matches!(unlock(&payload, 13), Err(CoreError::Storage { .. })),
             "{why}"
         );
     };
@@ -348,35 +373,78 @@ fn a_tampered_or_malformed_records_vault_fails_closed() {
         "salt on OZ",
     );
     reject(
-        &|p| p["accounts"][0]["family"] = "braavos".into(),
+        &|p| {
+            p["accounts"][1]
+                .as_object_mut()
+                .unwrap()
+                .remove("deploymentSalt");
+        },
+        "Argent without its salt",
+    );
+    reject(
+        &|p| p["accounts"][0]["accountContractType"] = "braavos".into(),
         "family swapped",
+    );
+    reject(
+        &|p| p["accounts"][0]["publicKeyY"] = other.into(),
+        "a y-coordinate that does not re-derive",
+    );
+    reject(
+        &|p| {
+            p["accounts"][0]
+                .as_object_mut()
+                .unwrap()
+                .remove("publicKeyY");
+        },
+        "starknet-bip44 without its y-coordinate",
+    );
+    reject(
+        &|p| p["accounts"][0]["derivation"] = serde_json::json!({"kind": "imported-raw-key"}),
+        "a derivation mobile does not hold",
     );
     reject(
         &|p| p["activeAccountId"] = "SN_SEPOLIA:0x1".into(),
         "unknown active account",
     );
+    reject(&|p| p["activeAccountId"] = Value::Null, "no active account");
+    reject(&|p| p["mnemonic"] = Value::Null, "no phrase");
     reject(
-        &|p| p["recoveryPending"] = true.into(),
-        "pending with accounts",
+        &|p| p["signingKeys"][0]["privateKey"] = "0x1".into(),
+        "a signing key the phrase does not derive",
     );
-    reject(
-        &|p| p["labels"] = serde_json::json!({ "SN_SEPOLIA:0x1": "x" }),
-        "label for nobody",
-    );
-    reject(&|p| p["extra"] = 1.into(), "unknown field");
-    let id = good["accounts"][0]["id"].clone();
     reject(
         &|p| {
-            p["groups"] = serde_json::json!([
-                { "accountIds": [id.clone()], "icon": "folder", "id": "a", "name": "A" },
-                { "accountIds": [id.clone()], "icon": "star", "id": "b", "name": "B" }
-            ])
+            let key = p["signingKeys"][0]["privateKey"]
+                .as_str()
+                .unwrap()
+                .to_uppercase();
+            p["signingKeys"][0]["privateKey"] = key.replace("0X", "0x").into();
         },
-        "one account in two groups",
+        "a non-canonical signing key",
     );
-    reject(&|p| p["version"] = 4.into(), "a newer payload");
     reject(
-        &|p| p["version"] = 2.into(),
-        "payload older than its container",
+        &|p| {
+            p["signingKeys"].as_array_mut().unwrap().pop();
+        },
+        "an account without its signing key",
     );
+    reject(
+        &|p| {
+            let spare = p["signingKeys"][0].clone();
+            p["signingKeys"].as_array_mut().unwrap().push(spare);
+        },
+        "a spare signing key",
+    );
+    reject(
+        &|p| {
+            let id = p["accounts"][0]["id"].clone();
+            p["originGrants"] =
+                serde_json::json!([{ "accountIds": [id], "origin": "https://example.com" }]);
+        },
+        "an origin grant",
+    );
+    reject(&|p| p["extra"] = 1.into(), "unknown field");
+    reject(&|p| p["schemaVersion"] = 12.into(), "another schema");
+    // A v13 payload in an earlier build's container is refused too.
+    assert!(matches!(unlock(&good, 5), Err(CoreError::Storage { .. })));
 }

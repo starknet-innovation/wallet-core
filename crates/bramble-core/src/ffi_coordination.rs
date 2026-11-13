@@ -148,7 +148,7 @@ impl WalletCore {
             .iter()
             .filter(|event| !plan.seen.contains(&event.id))
         {
-            let Some(opened) = self.with_phrase(|mnemonic, _| Ok(nostr::open(mnemonic, event)))?
+            let Some(opened) = self.with_phrase(|mnemonic| Ok(nostr::open(mnemonic, event)))?
             else {
                 continue;
             };

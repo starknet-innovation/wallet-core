@@ -47,7 +47,7 @@ pub use wallet_core::accounts::Ladder;
 #[uniffi::remote(Enum)]
 pub enum Ladder {
     /// This wallet's own ladder, `m/44'/9004'/index'/0/0`: the extension's `starknet-bip44` on
-    /// the hardened account field. Every record written before vault version 5 is on it.
+    /// the hardened account field. Every account this wallet creates is on it.
     Account,
     /// Braavos's ladder, `m/44'/9004'/0'/0/index`: `starknet-bip44` on the address field.
     Address,

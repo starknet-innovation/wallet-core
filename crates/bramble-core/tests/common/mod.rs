@@ -90,8 +90,7 @@ pub fn core() -> (tempfile::TempDir, Arc<FakeClock>, Arc<WalletCore>) {
 /// accounts yet, `recovery_pending` set.
 pub fn pending() -> (tempfile::TempDir, Arc<FakeClock>, Arc<WalletCore>) {
     let (dir, clock, core) = core();
-    core.import_wallet(PASSWORD.into(), PHRASE.into(), None)
-        .unwrap();
+    core.import_wallet(PASSWORD.into(), PHRASE.into()).unwrap();
     (dir, clock, core)
 }
 

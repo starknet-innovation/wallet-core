@@ -11,7 +11,7 @@
 //! - its catalogs (`catalogs`: networks, token registry, account classes, multisig constants,
 //!   embedded from `generated/`) and its portfolio and history choices (`PORTFOLIO_POLICY`,
 //!   `HISTORY_POLICY`), plain Rust until the swap;
-//! - later, the v12 vault schema and migrations (docs/PLAN.md).
+//! - the extension's v13 vault schema, which mobile writes (`vault_v13`, behind `mobile`).
 //!
 //! Functions keep the names and argument order the extension's `KmsPort` uses.
 

@@ -119,7 +119,7 @@ fn reads_private_balances_on_mainnet() {
         std::sync::Arc::new(privacy_support::StillClock),
     )
     .unwrap();
-    core.import_wallet("mainnet privacy password".into(), phrase, None)
+    core.import_wallet("mainnet privacy password".into(), phrase)
         .unwrap();
     let account = core
         .restore_recovered_accounts(
