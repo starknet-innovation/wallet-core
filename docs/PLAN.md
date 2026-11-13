@@ -25,6 +25,8 @@ Decisions, 2026-11-09:
   Krusty boundary, so a second copy in the lockfile would be a second, incompatible `Felt`. It moves
   to 1.x only in the same change as a deliberate Krusty bump, never on its own.
 - The extension's vault schema (v12) is the target. Mobile's own vault payload migrates into it.
+  (Revised 2026-11-13: the target is the extension's current schema, v13, and mobile switches to
+  it rather than migrating, since no mobile vault holds funds yet. See [Vault switch](#vault-switch).)
 - The extension consumes a published npm package at an exact pin with a digest check, the way it
   pins Krusty today. Extension PRs go to `main`; mobile adopts the crate on `feature/mobile-wallet`.
 - Host I/O is one key/value storage trait plus a clock, both host-provided (files on mobile,
@@ -37,84 +39,55 @@ Decisions, 2026-11-09:
 ## Status
 
 Every Phase 2 step has two halves: the mechanism lands here, then mobile deletes its copy and
-depends on this one. Both halves are done for 2.1, the vault and transactions, so
-mobile holds no copy of what this repo has ported. A step is done when both halves are.
-As of 2026-11-12 every port here is merged (#39–#50, with #51 and #52), and `0.3.0` carries them
-(the API broke since 0.2.2). In Bramble, G3 (#918) and G1 (#919) are merged and G2 (#920) is
-open; M5–M13 (#921–#929) pin port-branch `rev`s and move to `v0.3.0` before they merge. Left
-after that: the vault v5 → v12 migration.
+depends on this one. A step is done when both halves are.
+As of 2026-11-13 both halves of every step through 2.7 are done. Every port here is merged
+(#39–#50, with #51 and #52) and `0.3.0` carries them. In Bramble, G1–G3 (#918–#920) and
+M5–M13 (#921–#929) are merged into `feature/mobile-wallet`, whose `mobile/core` is now a shell
+that builds this crate's `bramble-core` at `tag = "v0.3.0"` with `features = ["mobile"]`. M7–M13
+merged into each other's stacked branches and reached `feature/mobile-wallet` through M6's merge.
+#54 (stack scrub after Krusty and Nostr secret calls) is merged after the tag and ships in the
+next release. M13 merged before the vault step that 2.7 placed ahead of it, so mobile still
+writes its own vault version 5. Left in Phase 2: the [vault switch](#vault-switch).
 
-| Step | Here | Mobile (`mc-wallet`, `feature/mobile-wallet`, at `01bd6517`) |
+| Step | Here | Mobile (`mc-wallet`, `feature/mobile-wallet`) |
 | --- | --- | --- |
 | 0 Scaffold, 1 Golden suite | done | n/a |
-| 2.1 KMS, Nostr, felt | done (#13, #20) | done (Bramble #907, #909), at `v0.1.0` |
-| 2.2 Vault | done (#19) | done (Bramble #911), at `v0.1.0`; the vault → v12 migration is placed in 2.7 (see 2.7), owner not named |
-| 2.2 Accounts | done (A1 #39, F3 #40, A2 #41) | G3 done (Bramble #918); M5 open (Bramble #921), pinning A2's branch tip by `rev` until it moves to `v0.3.0` |
-| 2.3 Transactions | done (#22, #25, #31) | done (Bramble #916), at `v0.2.1` |
-| 2.4a Shims | done (#43) | M6 open (Bramble #922) |
-| 2.4b Portfolio | done (#44) | M7 open (Bramble #923) |
-| 2.4c History and activity | done (#45) | M8 open (Bramble #924) |
-| 2.4d Privacy | done (#46) | M9 open (Bramble #925) |
-| 2.5a Multisig account | done (#47) | M10 open (Bramble #926) |
-| 2.5b Multisig coordination | done (#48) | M11 open (Bramble #927) |
-| 2.6 Catalogs | done (#49) | M12 open (Bramble #928) |
-| 2.7 Swap | done (#50), behind the `mobile` feature | M13 open (Bramble #929): `mobile/core` becomes a shell over this crate |
+| 2.1 KMS, Nostr, felt | done (#13, #20) | done (Bramble #907, #909) |
+| 2.2 Vault | done (#19) | done (Bramble #911); the payload switch to v13 is the [vault switch](#vault-switch) |
+| 2.2 Accounts | done (A1 #39, F3 #40, A2 #41) | done (G3 Bramble #918, M5 #921) |
+| 2.3 Transactions | done (#22, #25, #31) | done (Bramble #916) |
+| 2.4a Shims | done (#43) | done (M6, Bramble #922) |
+| 2.4b Portfolio | done (#44) | done (M7, Bramble #923) |
+| 2.4c History and activity | done (#45) | done (M8, Bramble #924) |
+| 2.4d Privacy | done (#46) | done (G1 Bramble #919, M9 #925) |
+| 2.5a Multisig account | done (#47) | done (M10, Bramble #926) |
+| 2.5b Multisig coordination | done (#48) | done (G2 Bramble #920, M11 #927) |
+| 2.6 Catalogs | done (#49) | done (M12, Bramble #928) |
+| 2.7 Swap | done (#50), behind the `mobile` feature | done (M13, Bramble #929), at `v0.3.0`: `mobile/core` is a shell over this crate |
+| Vault switch | not started | not started (G4, M14) |
 | 3 Extension | not started; `js/package.json` is private | n/a |
 
 `v0.1.0` is tagged at `35abc8b` (GitHub release only) and was what M2 and M3 pinned. `v0.2.0`
 renamed the package to `starknet-wallet-core` and carries #25, which removed
-`PlanHost::discard`. `v0.2.1` is what mobile pins now, for everything: it makes `send::plan_probe`'s selectors,
-`selector` and `braavos_signers` public, which mobile's `recovery_advisory.rs` uses. `v0.2.2`
-is the first crates.io publish (#38, #27) and adds, since `v0.2.1`, the vault's refusal of a DEK
-the file's slots do not wrap (#36) and vault transition tests from the Quint specs (#34, #35);
-mobile has not taken it yet (M5 takes whatever tag follows A2).
+`PlanHost::discard`. `v0.2.1` was what mobile pinned through M4: it makes `send::plan_probe`'s
+selectors, `selector` and `braavos_signers` public, which mobile's `recovery_advisory.rs` used.
+`v0.2.2` is the first crates.io publish (#38, #27) and adds, since `v0.2.1`, the vault's refusal
+of a DEK the file's slots do not wrap (#36) and vault transition tests from the Quint specs (#34,
+#35). Mobile went from `v0.2.1` to `v0.3.0` at M5; M5–M13 each merged pinned to that tag.
 
 ### Next PRs
 
-Adoption work (M*) and generators (G*) are PRs in Bramble (`starknet-innovation/mc-wallet`)
+Generators (G*) and adoption work (M*) are PRs in Bramble (`starknet-innovation/mc-wallet`)
 against `feature/mobile-wallet`, where `mobile/core` and the generators live (`main` has neither).
-Ports (A*) and fixture copies (F*) are PRs here.
+The rest are PRs here. Phase 2's PRs (M1–M13, G1–G3, A1, A2, F1–F3 and the ports) are all
+merged; each is described under its step in [Phases](#phases).
 
-| PR | Repo, base | Needs | What it is | Described in |
-| --- | --- | --- | --- | --- |
-| M1 Krusty 0.11 → 2.0.0 (merged, Bramble #907) | Bramble, `feature/mobile-wallet` | nothing | pins, version string, one conformance test, `rust-gift-wrap.json` regenerated | 2.1 step 1 |
-| M2 Take `wallet-core`: felt, Nostr, KMS (merged, Bramble #909) | same | M1, `v0.1.0` | adds the dependency; three modules become re-exports or glue; duplicate parity tests deleted | 2.1 step 3 |
-| M3 Vault (merged, Bramble #911) | same | M2 | `vault.rs`, `container.rs` and `ClockReading` from the core; `HostClock` and `files.rs` adapt | 2.2 |
-| M4 Send (merged, Bramble #916) | same | M2, `v0.2.1` | `rpc.rs` and the `send/` mechanism from the core; `TransferPlan` wraps `Plan` | 2.3 |
-| G1 Viewing public key vector (open, Bramble #919) | same, stacked on G3 | nothing | one field in the privacy generator | Golden tests |
-| G2 Multisig coordination generator (open, Bramble #920) | same, stacked on G1 | `main` merged in | three new fixtures, `nostr-coordination-parity-{rules,relays,paging}.json`, for the 2.5 rules | Golden tests |
-| F1, F2 Fixture copies (open, #42) | here, stacked on A2 | G1, G2 | files copied unchanged, sha256 rows and the Bramble commit line updated, the test that reads them | Golden tests |
-| G3 Recovery scan generator (open, Bramble #918) | Bramble, `feature/mobile-wallet` | nothing | `accounts-parity-scan.json` and `accounts-parity-scan-signing.json`: shapes, creatable and keep rules, scan target, signing verdicts, registered elsewhere | Golden tests |
-| F3 Catalog and scan copies (open, #40) | here | G3 | both `accounts-parity-scan*.json` and `generated/accounts.json` copied as fixtures; every other fixture re-copied at the same Bramble commit | 2.2, Accounts |
-| A1 Account addresses (done, #39) | here | nothing | `Ladder`, `AccountFamily`, `family_address` in `wallet-core`; tested over both families fixtures | 2.2, Accounts |
-| A2 Recovery scan (open, #41) | here | A1, F3 | `accounts::{scan, advisory}`, `rpc::Request`; tested over the scan fixture and mobile's canned-node cases | 2.2, Accounts |
-| M5 Accounts (open, Bramble #921) | Bramble, `feature/mobile-wallet`, stacked on G2 | A2 and its tag (a `rev` until then) | `kms_accounts.rs` and `recovery_advisory.rs` go; `recovery_scan.rs` becomes a wrapper | 2.2, Accounts |
-| 2.4a Shims (open, #43) | here, stacked on F1/F2 | nothing | `js/*` and `history::time` copied; `js_trim` and `short_label` move to `js::num` | 2.4 |
-| M6 Shims (open, Bramble #922) | Bramble, stacked on M5 | 2.4a | `js/` and `history/time.rs` deleted, re-exported from the core | 2.4 |
-| 2.4b Portfolio (open, #44) | here, stacked on 2.4a | 2.4a | `portfolio/*`, `catalog.rs`, account ids; three parity suites over `portfolio-parity.jsonl` | 2.4 |
-| M7 Portfolio (open, Bramble #923) | Bramble, stacked on M6 | 2.4b | `portfolio/` becomes FFI wrappers and copy over the core; `networks.rs` builds the core's catalog records | 2.4 |
-| 2.4c History and activity (open, #45) | here, stacked on 2.4b | 2.4b | `history/*`, `activity/*`, `Storage::rename`; `history_parity.rs`, `row_parity.rs` and the cases 2.3 and 2.4b left behind | 2.4 |
-| M8 History and activity (open, Bramble #924) | Bramble, stacked on M7 | 2.4c | `history/` and `activity/` become FFI wrappers, copy and the file lock over the core | 2.4 |
-| 2.4d Privacy (open, #46) | here, stacked on 2.4c | 2.4c, F1 | `privacy/*` with `PrivacyHost`; the privacy parity and plan suites | 2.4 |
-| M9 Privacy (open, Bramble #925) | Bramble, stacked on M8 | 2.4d | `privacy/` becomes the FFI object, the routing loader and the `PrivacyHost` over the session | 2.4 |
-| 2.5a Multisig account (open, #47) | here, stacked on 2.4d | 2.4d | `accounts::{multisig, multisig_records, multisig_read, multisig_declared}`, `js::felt::lenient_hex_felt`; `multisig_parity.rs` over `multisig.json` copied as a fixture | 2.5 |
-| M10 Multisig account (open, Bramble #926) | Bramble, stacked on M9 | 2.5a | `argent_multisig.rs`, `multisig_rpc.rs` and `class_declared.rs` become wrappers passing Bramble's class; `multisig_store.rs` keeps the file; mobile stops naming Krusty outside `kms.rs` | 2.5 |
-| 2.5b Multisig coordination (open, #48) | here, stacked on 2.5a | 2.5a, F2 | `nostr::{relay_url, relay, sync, sync_window}` in `wallet-core`; `coordination` (constants, relay policy, recipients, sender rule) in `bramble-core`; `nostr_coordination_parity.rs` over all three G2 fixtures | 2.5 |
-| M11 Multisig coordination (open, Bramble #927) | Bramble, stacked on M10 | 2.5b | `nostr_relay.rs` and the window and relay rules of `coordination.rs` over the core; mobile keeps its own relay constants until 2.7 | 2.5 |
-| 2.6 Catalogs (open, #49) | here, stacked on 2.5b | 2.5b | `bramble-core`'s `generated/` and `catalogs`; `PortfolioPolicy`, `HistoryPolicy` and `TokenRegistry::aliases` in `wallet-core`, Bramble's values in `bramble-core` | 2.6 |
-| M12 Catalogs (open, Bramble #928) | Bramble, stacked on M11 | 2.6 | mobile passes its policies and alias; `kms.rs` uses `wallet_core` types and the direct `krusty-kms` pins go | 2.6 |
-| 2.7 Swap, port (open, #50) | here, stacked on 2.6 | 2.6, M12 | every Bramble file of `mobile/core` into `bramble-core` behind `mobile`; mobile's tests and regression fixtures; `check.sh` covers the mobile surface | 2.7 |
-| M13 Swap (open, Bramble #929) | Bramble, stacked on M12 | the 2.7 port; the v5 → v12 step, if it is to land first | `mobile/core` becomes a shell depending on `bramble-core`; build scripts, regenerated bindings, app changes the bindings force, the `generated/` drift test | 2.7 |
-
-Every adoption PR for what is ported has merged, so by the Process rule the next port may start.
-2.2 Accounts goes first: it is the unfinished half of a step, it is smaller than any part of 2.4,
-and it has to land before 2.7 (see the Krusty constraint under Unassigned modules). A1 and G3 can
-start now and in parallel; A2 waits for F3. G1 and G2 can also start now (`main` was merged into
-the branch by Bramble #908); G2 is the long pole for 2.5. #908 also regenerated four fixtures
-(`extension-transactions-copy.json`, `extension-privacy-copy.json`, `extension-privacy-rules.json`,
-`portfolio-parity.jsonl`), so the copies here were behind Bramble; F3 re-copied every file at one
-Bramble commit (G3's, `860a90ec`), which brought those four up to date. Every test here passes
-over the re-copied files with no change to the core.
+| PR | Repo, base | Needs | What it is |
+| --- | --- | --- | --- |
+| G4 v13 vault generator | Bramble, `feature/mobile-wallet` | nothing | the extension's own store and schema code seal a v13 vault for the published phrase and a fixed account set; payload and sealed file written as fixtures |
+| V1 Vault switch | here | G4 | `bramble-core` writes the extension's v13 payload inside mobile's container; the v1 → v5 chain and its regression vaults go; G4's files copied as fixtures |
+| Release `v0.4.0` | here | V1, #55 | the format break, plus #54 |
+| M14 Take `v0.4.0` | Bramble, `feature/mobile-wallet` | `v0.4.0` | the pin moves; `importWallet` loses its unused `passphrase` argument at its call sites; both apps build; testers reset their wallets |
 
 ## Generic and Bramble
 
@@ -129,7 +102,7 @@ traits or config objects for wallets that do not exist yet.
 | OZ address derivation with a **required** salt | `KmsPort`'s optional salt (omitted = public key, Krusty's default); OZ accounts pass `0x0` from `account-contract.ts` |
 | OZ class hash at a caller-given manifest version | `CoreError`, `core_info()`, remote exports of `wallet-core`'s records |
 | Nostr key derivation, NIP-59 wrap/open, event grammar and resource bounds | parity fixtures and tests against the extension |
-| Later phases: vault container (envelope v3), storage and clock traits, sans-IO RPC, transaction hashing, transfer planning, portfolio/history/privacy logic, Nostr relay paging and gift-wrap batch checks | Later phases: v12 vault schema and migrations, UniFFI foreign traits adapting to `wallet-core`'s, catalogs, multisig coordination policy (identifier, relays, sync window, who counts as a co-signer), iOS/extension-only assets |
+| Later phases: vault container (envelope v3), storage and clock traits, sans-IO RPC, transaction hashing, transfer planning, portfolio/history/privacy logic, Nostr relay paging and gift-wrap batch checks | Later phases: the extension's vault schema (v13), UniFFI foreign traits adapting to `wallet-core`'s, catalogs, multisig coordination policy (identifier, relays, sync window, who counts as a co-signer), iOS/extension-only assets |
 
 The resource bounds (mnemonic, passphrase, Nostr event and data sizes) are Bramble's numbers, kept in
 `wallet-core` because they protect against oversized input rather than express product taste.
@@ -183,7 +156,7 @@ quint-specs/               Quint models: vault, send, the bramble-core FFI
 ```
 
 Features (on `bramble-core`): `raw-keys` (default) exports the functions that take or return a raw
-Stark private key, which the extension's v12 vault needs until Phase 3.2; `extension` (default,
+Stark private key, which the extension's vault needs until Phase 3.2; `extension` (default,
 implied by `raw-keys`) exports the extension's other KMS and Nostr functions, several of which take
 or return a recovery phrase; mobile builds `--no-default-features --features mobile`, so neither
 reaches its bindings. `mobile` adds the mobile wallet's surface (2.7), and
@@ -325,7 +298,7 @@ Each phase names the crate a module lands in; the table above decides anything n
    2. **Vault and accounts**: `container.rs` (envelope v3, byte-compatible) and the vault
       mechanics into `wallet-core`, with plain Rust `Storage` and `Clock` traits; mobile's
       `files.rs` implements `Storage`. The v12 schema and migrations are Bramble's and stay in
-      `mobile/core` until 2.7; the mobile vault migrates into v12 here.
+      `mobile/core` until 2.7; mobile's vault moves to the extension's schema after it (Vault switch).
       In `wallet-core`: `envelope.rs` (mobile's `vault.rs`), `container.rs`, and `host.rs`
       (`Storage`, `Clock`, mobile's `ClockReading`). The vault version is an argument (mobile's
       `VAULT_VERSION` stays Bramble's), and so is the passphrase rule: `SealingKey::create` no
@@ -639,7 +612,7 @@ Each phase names the crate a module lands in; the table above decides anything n
       and `public_store.rs` moved too, under `mobile`: `wallet.rs` uses them and two export through
       the same UniFFI module. Mobile's tests run with `--features mobile,testing`; its regression
       fixtures are in `crates/bramble-core/tests/regression/`. The vault chain still ends at v5;
-      the v5 → v12 step is added there before M13 merges (`crates/bramble-core/README.md`). Found
+      the plan put the v5 → v12 step before M13, but M13 merged first (see Vault switch). Found
       in review: one crate exporting both surfaces put the extension's phrase-handling exports
       (`generate_mnemonic` returns a phrase; five more take one) into mobile's bindings, so they
       moved behind a default `extension` feature mobile leaves off; and the FFI-surface test's scan
@@ -656,16 +629,46 @@ Each phase names the crate a module lands in; the table above decides anything n
       no Swift or Kotlin app code changed; both apps build and pass their unit tests on the
       regenerated bindings, which equal this crate's.
 
-      **The mobile vault → v12 migration** (proposed placement; it needs a named owner). Mobile
-      writes vault version 5 (`migrations.rs`: its own chain, v1 → v5, inside the DEK container);
-      the extension writes schema v12 inside a bare v3 envelope. The migration is a payload step,
-      v5 → v12, added to mobile's chain once both schemas live in `bramble-core`, so it lands
-      with 2.7, as the step's first PR, before the dependency swap. It is Bramble's (a schema),
-      not `wallet-core`'s. It has no oracle yet: a generator (G4) must first seal a v12 vault in
-      the extension for a fixed phrase and account set, so the test can migrate mobile's
-      `vault-v3-container.json` chain forward and compare payloads. Which container holds the
-      v12 payload is the separate Open question on the extension's container; this step does not
-      depend on its answer, because it changes the payload, not the container.
+      <a id="vault-switch"></a>**Vault switch** (decided 2026-11-13; replaces the v5 → v12
+      migration first placed here). M13 merged before it, so mobile still writes its own vault
+      version 5 (`migrations.rs`: a chain v1 → v5 inside the DEK container) while the extension
+      writes schema v13 (#826 added the multisig STRK20 viewing keys) inside a bare v3 envelope.
+      No mobile vault holds funds yet, so mobile switches format rather than migrating:
+      - `bramble-core` writes the extension's v13 payload, unchanged in shape and validated by a
+        port of its rules (`packages/platform/vault/src/schema/`), inside mobile's existing DEK
+        container. The container stays (its biometric slot is mobile's); which container the
+        extension uses is the separate Open question, since this changes only the payload.
+      - The v1 → v5 chain goes: most of `migrations.rs`, `migrations_tests.rs`,
+        `tests/migration.rs`, and the regression vaults `vault-*.json` and
+        `migration-v1-to-v5.golden.json`. A container whose payload is not v13 fails closed with
+        an error telling the user to reset the wallet; there is no converter.
+      - Mobile's records map onto the extension's. `id` (`<network>:<address>`), `address` and
+        `class_hash` keep their values; `network` → `networkId`; `public_key` → `publicKeyX`, plus
+        `publicKeyY` for `starknet-bip44` (`kms::StarkKeypair::public_key_y`); `family` →
+        `accountContractType`; `deployment_salt` → `deploymentSalt`, which v13 requires for
+        Argent and Braavos and forbids for OpenZeppelin. `ladder` and `account_index` →
+        `derivation`: `Account` is `starknet-bip44` at `{accountIndex: i, addressIndex: 0}`,
+        `Address` (Braavos's) at `{accountIndex: 0, addressIndex: i}`, `ArgentX` is
+        `argentx-bip44` at `{addressIndex: i}` (the extension's `recoveryLadderIndex` reads each
+        back as `i`). `originGrants`, `importedSeeds`, `accountSecrets`, `shadowAccountScopes` and
+        the multisig key lists are written empty.
+      - Every account's derived private key is sealed in `signingKeys`, as the extension does and
+        its validator requires. The keys stay inside Rust and never cross the FFI, so the mobile
+        build still exports no raw key; it is still a custody change and the PR says so.
+      - Mobile's BIP39 passphrase (`mnemonicPassphrase`) is dropped: v13 has no field for it, and
+        the extension's recovery refuses one. Both apps pass `nil` to `import_wallet`'s
+        `passphrase` today, so the argument goes, which changes the bindings (M14 updates the call
+        sites).
+      - Labels and groups leave the vault for `public_store.rs`, as the extension keeps them in
+        preferences. `backupPending` and `recoveryPending` are mobile's own (the extension has
+        neither) and move there too. None is secret.
+      - The oracle is G4: the extension's own store and schema code seal a v13 vault for the
+        published phrase and a fixed account set (OZ, Argent, Braavos, a Ready `argentx-bip44`
+        account). The test opens it, checks its payload passes the ported validators and
+        re-serialises to equal JSON, and checks that a vault mobile builds for the same phrase
+        and accounts holds an equal payload.
+      - When the extension's schema moves past v13, mobile follows in a release of this crate,
+        until Phase 3.2 makes the core the one writer.
 
    Mobile-only platform glue with no extension counterpart (biometric slots, file storage, app
    UI state) stays in the app, or in `bramble-core` behind mobile's build, unless the extension
@@ -723,7 +726,7 @@ Each phase names the crate a module lands in; the table above decides anything n
         today.
    2. **Vault**: `encrypted-store.ts` becomes a shim over the core, with a write-through mirror
       over `chrome.storage`. Keys stop leaving Rust and `raw-keys` leaves the extension build.
-      Migrations from schemas before v12 stay in TypeScript. See [Key exposure](#key-exposure).
+      Migrations from schemas before v13 stay in TypeScript. See [Key exposure](#key-exposure).
    3. **Transactions, then reads**: `@bramble/transactions` drives the `TransferPlan` step loop;
       portfolio, history and privacy follow. Bramble's `scripts/mobile-assets.ts` renderers
       invert so TypeScript reads catalogs from the npm package.
@@ -878,8 +881,9 @@ seals with fresh randomness are kept while the extension still opens them.
   hand-copying hashes as `tests/plan_support` does today. One Bramble commit covers every file,
   so F3 re-copies all of them; a re-copied fixture that fails here means the core is behind the
   extension, and the core is fixed, never the fixture.
-- **G4, a v12 vault** (Bramble), for the mobile vault → v12 migration in 2.7: the extension seals
-  a v12 vault for the published phrase and a fixed account set. Not needed before 2.7.
+- **G4, a v13 vault** (Bramble), for the [vault switch](#vault-switch): the extension's own store
+  and schema code seal a v13 vault for the published phrase and a fixed account set (OZ, Argent,
+  Braavos, Ready), written as the payload and the sealed file.
 - **The wasm harness covers only what is exported.** `smoke.test.mjs` replays the KMS and Nostr
   vectors. The vault and send modules are not exported through UniFFI yet, so on wasm32 they are
   linted and never run. That is acceptable until 3.2 and 3.3 export them, and those steps extend
@@ -992,8 +996,6 @@ Added 2026-11-09 after reviewing the first day's work. Items marked *proposed* a
 - The JS binding generator for the extension (ubrn `wasm2`, pre-production, or wasm-bindgen
   directly) is decided at Phase 3.1, not now; the Rust surface does not depend on it.
 - Whether the devnet OZ class hash moves into the core or stays a TypeScript constant.
-- Who owns the mobile vault → v12 migration. Where and when is proposed (2.7, its first PR, after
-  G4); the owner is not named.
 - When a second wallet wants `wallet-core`: publish it to crates.io, and whether it ships its own
   UniFFI feature or each wallet keeps exporting from its own crate (today's answer).
 - *Provisional, 2.5b*: the core accepts `ws:` relays on loopback, as the extension does (its
