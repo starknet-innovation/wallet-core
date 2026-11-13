@@ -742,17 +742,33 @@ Each phase names the crate a module lands in; the table above decides anything n
 
 ## Key exposure
 
-How far raw private keys travel outside Rust, today and after Phase 3.2.
+How far raw private keys, the mnemonic and the vault passphrase travel outside Rust, today and
+after Phase 3.2.
 
-**Today (Bramble `e6485a7a`).** Krusty's wasm is stateless: keys cross it as hex strings in both
-directions. The v12 vault stores each account's derived key (`signingKeys[].privateKey`) under
-AES-256-GCM. `signHash` (`vault/src/service/service.ts`) decrypts the whole vault into JavaScript
-objects on every signature, then passes the key string back to `kms.signStarkHash`. So every
-signature puts every account's key into the JS heap as immutable strings that cannot be zeroed
-and live until GC. What limits it: decrypted secrets are per-operation, not held across an unlock
-(the grant cache keeps only public account records); the passphrase-derived AES key is a
-non-extractable WebCrypto key dropped on lock; everything runs in the background service worker;
-`storage.session` is restricted to trusted contexts where the browser allows it.
+**Today (Bramble `main`, `a01b240c`, v0.10.10).** Krusty's wasm is stateless: keys cross it as
+hex strings in both directions. The v13 vault holds the mnemonic (recovery-phrase wallets), each
+account's derived key (`signingKeys[].privateKey`), optional account secrets and multisig STRK20
+viewing keys under AES-256-GCM.
+- **Every signature decrypts the whole vault.** `signHash` (`vault/src/service/service.ts`) reads
+  and decrypts the full vault into JavaScript objects, then passes one key string to
+  `kms.signStarkHash`. Each signature puts the mnemonic, every account's key and the other vault
+  secrets into the JS heap as immutable strings that cannot be zeroed; GC frees them later but never erases them.
+- **The passphrase is held for the whole unlock.** The background worker's unlock session
+  (`apps/extension/src/background/runtime/session.ts`) keeps the plaintext passphrase in memory on
+  a rolling inactivity window (30 minutes by default, 8 hours at most) and mirrors it to
+  `chrome.storage.session` under `bramble:session` (`runtime/unlock-session-boot.ts`), so an MV3
+  worker restart does not lock the wallet. Lock or expiry erases the mirror or overwrites it with
+  a revocation marker that a restarted worker refuses. The grant cache
+  (`vault/src/service/grant-cache.ts`) keeps the passphrase as its entry key beside public account
+  records only.
+- **PBKDF2 runs once per unlock.** `encrypted-store.ts` memoises the derived AES key (at most 8,
+  keyed by a passphrase fingerprint, salt and iterations) as a non-extractable WebCrypto key and
+  drops it on lock. Non-extractable stops export, not use, and the plaintext passphrase sits beside
+  it, so it protects little against code running in the worker.
+- What limits it: everything runs in the background service worker; `storage.session` is
+  in-memory, cleared when the browser exits, set to trusted contexts on Chromium
+  (`apps/extension/src/browser-storage.ts`) and unreachable from content scripts by default
+  elsewhere. Other extensions cannot reach the worker's memory or storage.
 
 **`raw-keys` reproduces this model**, no worse and no better. Adopting the core with it on keeps
 today's exposure; it is a bridge, not the target.
@@ -763,6 +779,8 @@ today's exposure; it is a bridge, not the target.
   values; only UniFFI object handles reach JavaScript.
 - Unavoidable JS exposure is limited to what the UI must touch: the passphrase on unlock, and a
   mnemonic typed on import or shown on backup. Each goes straight into the core and is dropped.
+  That holds only if the extension stops holding and mirroring the passphrase (see the restart
+  question below); keeping today's unlock session keeps the passphrase in JavaScript.
 - Then the extension builds `--no-default-features` like mobile, and `raw-keys` is deleted.
 - Not a hard boundary: wasm memory is readable by any script in the extension's context, so code
   execution there can still sign or read it. What this removes is accidental exposure (logs,
@@ -779,17 +797,21 @@ today's exposure; it is a bridge, not the target.
 
 Two things the target does not yet answer (both in Open questions, both to settle before 3.2 is
 designed, neither measured or tested yet):
-- **The passphrase key gets weaker in one respect.** Today PBKDF2 runs in WebCrypto and yields a
+- **The passphrase key loses non-extractability.** Today PBKDF2 runs in WebCrypto and yields a
   non-extractable key. In the core it runs as Rust compiled to wasm, and the derived key is bytes
-  in linear memory: zeroized on lock, but readable while unlocked. Its speed at 600,000
-  iterations in wasm is also unmeasured.
+  in linear memory: zeroized on lock, but readable while unlocked. This costs little while the
+  plaintext passphrase is held beside it, as it is today. PBKDF2 runs once per unlock (and once
+  per restored session), so its speed at 600,000 iterations in wasm matters there; it is
+  unmeasured.
 - **A session in wasm memory ends when the service worker does.** An MV3 worker is stopped when
-  idle, so "the passphrase crosses once, on unlock" needs a rule for a worker restart: unlock
-  again, or keep something in `storage.session`, which puts a secret back within reach of
-  JavaScript.
+  idle. Today a restart restores the unlock from the plaintext passphrase in `storage.session`.
+  3.2 picks one: keep that mirror (same as today, and the passphrase stays in JavaScript), or
+  require unlocking again after a restart (the passphrase crosses once, at the cost of more
+  unlocks).
 
 **Interim, extension only, independent of this repo**: decrypt only the signing account's key
-rather than the whole vault, narrowing each signature's exposure from every account to one.
+rather than the whole vault, narrowing each signature's exposure from the mnemonic and every
+account's key to one key.
 
 ## Golden tests
 
@@ -960,8 +982,9 @@ Added 2026-11-09 after reviewing the first day's work. Items marked *proposed* a
   `bramble:encrypted-store:<key>`, with a freshness check on its lineage in `chrome.storage` that
   the core has no notion of. Either the extension migrates to the container or the core opens
   bare envelopes, and one of them owns the freshness check.
-- What a `VaultSession` does when the MV3 service worker restarts (see Key exposure).
-- PBKDF2 in wasm: how long 600,000 iterations take, and whether losing WebCrypto's
+- What a `VaultSession` does when the MV3 service worker restarts: keep the extension's
+  plaintext passphrase mirror in `storage.session`, or unlock again (see Key exposure).
+- PBKDF2 in wasm: how long 600,000 iterations take at unlock, and whether losing WebCrypto's
   non-extractable key is accepted (see Key exposure). A throwaway export timed in
   `smoke.test.mjs` answers the first.
 - `container.rs` holds `bramble.mobile.*` format and scope strings in the generic crate. Make
@@ -990,9 +1013,6 @@ Added 2026-11-09 after reviewing the first day's work. Items marked *proposed* a
   against it is M13's.
 - `HostStorage` is synchronous and `chrome.storage` is not; the extension side needs a write-through
   mirror (the pattern `encrypted-store.ts` already uses).
-- How long the extension holds the vault passphrase in JavaScript. `signHash` takes it on every
-  call and the grant cache (`vault/src/service/grant-cache.ts`) keeps it until lock; where the
-  caller holds it was not traced. Under the 3.2 target it crosses once, on unlock.
 - The JS binding generator for the extension (ubrn `wasm2`, pre-production, or wasm-bindgen
   directly) is decided at Phase 3.1, not now; the Rust surface does not depend on it.
 - Whether the devnet OZ class hash moves into the core or stays a TypeScript constant.
