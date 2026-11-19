@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Offline subset of CI: clippy (all three profiles) and the Rust tests. The npm build, cargo-deny
+# Offline subset of CI: clippy (every profile) and the default-feature tests. The npm build, cargo-deny
 # (needs the advisory DB) and the wasm tests run in CI and in `tools/check.sh all`.
 #
 # Enable once per clone:  git config core.hooksPath .githooks
@@ -9,4 +9,6 @@ cd "$(git rev-parse --show-toplevel)"
 
 command -v cargo >/dev/null || { echo "pre-push: cargo not found, skipping"; exit 0; }
 
-exec bash tools/check.sh lint test
+# Not mobile's test suite: it adds ~4 minutes even warm, and a push whose hook outlasts the remote
+# connection dies with exit 141. CI runs it on every PR.
+exec bash tools/check.sh push

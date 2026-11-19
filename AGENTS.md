@@ -10,7 +10,7 @@ this file is the operational guide.
 - `bash tools/check.sh quick` before editing, to see any existing drift.
 - Read `docs/PLAN.md` and the affected crate's `Cargo.toml` and `src/lib.rs` before changing it.
 - Enable the hooks once per clone: `git config core.hooksPath .githooks` (pre-commit: fmt +
-  guardrails; pre-push: clippy + tests).
+  guardrails; pre-push: clippy + default-feature tests; CI adds mobile's suite).
 
 ## Commands
 
