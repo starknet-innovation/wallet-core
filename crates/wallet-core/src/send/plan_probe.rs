@@ -75,6 +75,10 @@ fn refused(code: Code, detail: Option<String>) -> Outcome {
 
 /// A selector constant as a felt. Panics on text that is not a felt: it is for the constants
 /// above and a wallet's own, never for input.
+#[expect(
+    clippy::expect_used,
+    reason = "only ever called with selector constants"
+)]
 pub fn selector(hex: &str) -> Felt {
     Felt::from_hex(hex).expect("selector constant is a felt")
 }

@@ -16,6 +16,8 @@
 //! Functions keep the names and argument order the extension's `KmsPort` uses.
 
 #![forbid(unsafe_code)]
+// A panic in a wallet is a crash: library code returns errors (unit tests may unwrap: clippy.toml).
+#![deny(clippy::unwrap_used, clippy::expect_used)]
 
 // The mobile build exports no raw keys. Cargo unifies features, so one dependent that forgets
 // `default-features = false` would silently add them; refuse that build instead. Only the test

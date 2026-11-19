@@ -10,6 +10,10 @@ pub(super) struct Compiler<'p> {
     pub(super) _pattern: &'p str,
 }
 
+#[expect(
+    clippy::expect_used,
+    reason = "patterns are literals in this crate; a malformed one fails like the asserts below"
+)]
 impl Compiler<'_> {
     fn peek(&self) -> Option<char> {
         self.chars.get(self.pos).copied()

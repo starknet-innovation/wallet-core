@@ -100,10 +100,14 @@ fn derive_id(groups: &[StoredGroup], name: &str) -> String {
     if !taken(&base) {
         return base;
     }
-    (2..)
-        .map(|suffix| format!("{base}-{suffix}"))
-        .find(|id| !taken(id))
-        .expect("an unused suffix exists")
+    let mut suffix = 2;
+    loop {
+        let id = format!("{base}-{suffix}");
+        if !taken(&id) {
+            return id;
+        }
+        suffix += 1;
+    }
 }
 
 fn checked_name_and_icon(name: &str, icon: &str) -> Result<String, CoreError> {

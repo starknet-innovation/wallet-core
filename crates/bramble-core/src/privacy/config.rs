@@ -114,6 +114,10 @@ pub fn parse(text: &str) -> Option<Routing> {
 }
 
 /// The embedded routing, validated once.
+#[expect(
+    clippy::expect_used,
+    reason = "bundled data that does not parse panics on first use, as the catalogs do"
+)]
 pub fn routing() -> &'static Routing {
     static ROUTING: OnceLock<Routing> = OnceLock::new();
     ROUTING.get_or_init(|| parse(ROUTING_JSON).expect("bundled privacy routing parses"))

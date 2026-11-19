@@ -8,8 +8,8 @@
 use starknet_types_core::felt::Felt;
 
 /// Stark curve order `n`; a signing scalar must lie in `[1, n)`.
-const STARK_CURVE_ORDER_HEX: &str =
-    "0x0800000000000010ffffffffffffffffb781126dcae7b2321e66a241adc64d2f";
+const STARK_CURVE_ORDER: Felt =
+    Felt::from_hex_unchecked("0x0800000000000010ffffffffffffffffb781126dcae7b2321e66a241adc64d2f");
 
 /// Parses a felt in the extension's lowercase-hex grammar, rejecting values at or above the prime.
 pub fn parse(value: &str) -> Option<Felt> {
@@ -46,8 +46,7 @@ pub fn canonical(felt: &Felt) -> String {
 
 /// Whether a felt is a usable Stark signing scalar, `1 <= k < n`.
 pub fn is_private_key(felt: &Felt) -> bool {
-    let order = Felt::from_hex(STARK_CURVE_ORDER_HEX).expect("curve order constant is a felt");
-    *felt != Felt::ZERO && *felt < order
+    *felt != Felt::ZERO && *felt < STARK_CURVE_ORDER
 }
 
 #[cfg(test)]
@@ -79,7 +78,7 @@ mod tests {
     fn private_key_range_is_the_curve_order() {
         assert!(!is_private_key(&Felt::ZERO));
         assert!(is_private_key(&Felt::ONE));
-        let order = Felt::from_hex(STARK_CURVE_ORDER_HEX).unwrap();
+        let order = STARK_CURVE_ORDER;
         assert!(!is_private_key(&order));
         assert!(is_private_key(&(order - Felt::ONE)));
     }
