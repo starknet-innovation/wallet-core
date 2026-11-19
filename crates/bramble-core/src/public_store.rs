@@ -61,18 +61,26 @@ pub fn write<T: Serialize>(dir: &Path, file: &str, value: &T) -> Result<(), Core
     crate::files::write_atomic(dir, file, &body).map_err(|_| failed())
 }
 
-/// Removes every metadata file; called when the wallet is deleted.
+/// Removes every metadata file but the preferences; called when the wallet is deleted, before
+/// the vault goes. The preferences hold the backup flag, so a delete that fails after this still
+/// leaves a wallet that owes its backup; they go after the vault (`remove`), and a new wallet
+/// overwrites any left behind.
 pub fn remove_all(dir: &Path) -> Result<(), CoreError> {
-    for file in [CONTACTS, MULTISIGS, COORDINATION, PREFERENCES] {
-        for name in [file.to_string(), format!("{file}.tmp")] {
-            match fs::remove_file(dir.join(&name)) {
-                Err(error) if error.kind() != ErrorKind::NotFound => {
-                    return Err(CoreError::Storage {
-                        reason: format!("{file} not removed"),
-                    })
-                }
-                _ => {}
+    [CONTACTS, MULTISIGS, COORDINATION]
+        .into_iter()
+        .try_for_each(|file| remove(dir, file))
+}
+
+/// Removes `file` and any interrupted write of it.
+pub fn remove(dir: &Path, file: &str) -> Result<(), CoreError> {
+    for name in [file.to_string(), format!("{file}.tmp")] {
+        match fs::remove_file(dir.join(&name)) {
+            Err(error) if error.kind() != ErrorKind::NotFound => {
+                return Err(CoreError::Storage {
+                    reason: format!("{file} not removed"),
+                })
             }
+            _ => {}
         }
     }
     Ok(())

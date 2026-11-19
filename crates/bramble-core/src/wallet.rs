@@ -128,7 +128,8 @@ impl WalletCore {
 
     /// One throttled, counted passphrase attempt: `open` proves the password against the vault
     /// on disk. A missing or unreadable vault is reported before the counter moves (no guess was
-    /// possible), and any failure but a wrong password resets it (the password was proven).
+    /// possible). Any failure but a wrong password resets it: no guess was refuted (the password
+    /// was proven, or the file was malformed past what a guess can test).
     fn attempt<O, T>(
         &self,
         password: &str,
@@ -191,30 +192,31 @@ impl WalletCore {
         }
     }
 
-    /// Writes what moved since `before`: the vault, re-sealed under its DEK (no KDF) with the
-    /// file's slots kept, and the preferences file. Every mutation moves one or the other, so
-    /// each write is one atomic file and a failed write leaves the disk as `before`. Checks every
-    /// structural invariant first, so a write can never store a payload `open` would refuse.
+    /// Writes what moved since `before`: the preferences file, and the vault, re-sealed under
+    /// its DEK (no KDF) with the file's slots kept. Every mutation today moves one or the other,
+    /// so each write is one atomic file and a failed write leaves the disk as `before`. Were both
+    /// to move, the preferences go first: their failure changes nothing on disk, and a vault
+    /// failure after them leaves names for accounts the vault lacks, which loading drops. Checks
+    /// every structural invariant first, so a write can never store a payload `open` would refuse.
     pub(crate) fn persist_payload(
         &self,
         session: &mut Session,
         before: &PublicState,
     ) -> Result<(), CoreError> {
         account_store::check_consistent(&session.payload)?;
-        if session.payload.preferences_changed(before) && !session.payload.vault_changed(before) {
-            return public_store::save_preferences(&self.data_dir, &session.payload);
+        if session.payload.preferences_changed(before) {
+            public_store::save_preferences(&self.data_dir, &session.payload)?;
         }
-        let payload = vault_v13::encode(&mut session.payload)?;
+        if !session.payload.vault_changed(before) {
+            return Ok(());
+        }
+        let payload = vault_v13::encode(&session.payload)?;
         let _file = self.lock_file();
         let base = match self.read_vault()? {
             StoredVault::Container(file) if file.password_slot == session.password_slot => *file,
             _ => return Err(storage("vault changed on disk")),
         };
-        self.write_vault(&base.with_payload(&session.dek, SCHEMA_VERSION, &payload)?)?;
-        if session.payload.preferences_changed(before) {
-            public_store::save_preferences(&self.data_dir, &session.payload)?;
-        }
-        Ok(())
+        self.write_vault(&base.with_payload(&session.dek, SCHEMA_VERSION, &payload)?)
     }
 
     /// The app-private directory the vault and the public metadata files live in.
@@ -238,9 +240,9 @@ impl WalletCore {
         first_account: Option<NetworkId>,
     ) -> Result<(), CoreError> {
         let epoch = self.lock_epoch.load(Ordering::SeqCst);
-        let mut payload = VaultPayload::new(mnemonic.to_string(), first_account)?;
+        let payload = VaultPayload::new(mnemonic.to_string(), first_account)?;
         account_store::check_consistent(&payload)?;
-        let sealed = vault_v13::encode(&mut payload)?;
+        let sealed = vault_v13::encode(&payload)?;
         // The shared core's `SealingKey::create` takes any passphrase, so the rule is held here,
         // on the one path that makes a vault, where no caller can skip it.
         vault::check_password(password)?;
@@ -431,8 +433,11 @@ impl WalletCore {
             let _file = self.lock_file();
             // Public metadata goes first: a failure here leaves the wallet intact and retryable,
             // never a deleted vault beside another wallet's trusted contacts and shared accounts.
+            // The preferences go after the vault, so a wallet left behind still owes its backup;
+            // left behind themselves, they belong to no wallet and the next one overwrites them.
             public_store::remove_all(&self.data_dir)?;
             fs::remove_file(self.vault_path()).map_err(|_| storage("remove vault"))?;
+            let _ = public_store::remove(&self.data_dir, public_store::PREFERENCES);
             crate::activity::remove(&self.data_dir);
             security::remove(&self.data_dir)
         })

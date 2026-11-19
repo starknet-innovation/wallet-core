@@ -7,10 +7,10 @@
 //! from the phrase and compares it with what was stored, so a tampered or corrupted record fails
 //! closed rather than redirecting Receive or Copy to another address.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 
 use starknet_types_core::felt::Felt;
-use wallet_core::{SecretFelt, StarkXOnlyKeypair};
+use wallet_core::StarkXOnlyKeypair;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::account_address::family_address;
@@ -72,15 +72,12 @@ impl StoredAccount {
     }
 }
 
-/// One account key derived this session: the signing key (zeroized on drop) and the public
-/// y-coordinate the v13 record carries (`None` for Ready's x-only scheme).
-pub(crate) struct HeldKey {
-    pub private_key: SecretFelt,
-    pub public_key: Felt,
-    pub public_key_y: Option<String>,
-}
+/// One account key as the vault needs it: the signing key (zeroized on drop), its public x, and
+/// the y-coordinate a `starknet-bip44` record carries (`None` for Ready's x-only scheme). Derived
+/// inside the call that needs it and dropped there; never held in the session.
+pub(crate) type DerivedKey = (StarkXOnlyKeypair, Option<String>);
 
-/// The unlocked wallet. Only the phrase and the held keys are secret; both are zeroized on drop.
+/// The unlocked wallet. Only the phrase is secret; it is zeroized on drop.
 #[derive(Zeroize, ZeroizeOnDrop)]
 pub(crate) struct VaultPayload {
     #[zeroize(skip)]
@@ -96,9 +93,6 @@ pub(crate) struct VaultPayload {
     #[zeroize(skip)]
     pub labels: BTreeMap<String, String>,
     pub mnemonic: String,
-    /// Keys by coordinate, derived on open or on first write; `SecretFelt` zeroizes itself.
-    #[zeroize(skip)]
-    keys: HashMap<(Ladder, u32), HeldKey>,
 }
 
 /// The non-secret state a mutation may change, captured so a failed write can be rolled back.
@@ -148,7 +142,6 @@ impl VaultPayload {
             groups: Vec::new(),
             labels: BTreeMap::new(),
             mnemonic,
-            keys: HashMap::new(),
         }
     }
 
@@ -159,40 +152,17 @@ impl VaultPayload {
     }
 
     pub(crate) fn public_key(&self, path: Ladder, index: u32) -> Result<Felt, CoreError> {
-        match self.keys.get(&(path, index)) {
-            Some(key) => Ok(key.public_key),
-            None => kms::public_key(&self.mnemonic, None, path, index),
-        }
+        kms::public_key(&self.mnemonic, None, path, index)
     }
 
-    /// Derives and holds the key of every record that has none yet.
-    pub(crate) fn derive_keys(&mut self) -> Result<(), CoreError> {
-        for record in &self.accounts {
-            let coordinate = (record.ladder, record.account_index);
-            if self.keys.contains_key(&coordinate) {
-                continue;
-            }
-            let (pair, public_key_y): (StarkXOnlyKeypair, _) =
-                wallet_core::account_keypair(&self.mnemonic, None, coordinate.0, coordinate.1)?;
-            let public_key =
-                felt::parse_non_zero(&pair.public_key_x).ok_or_else(|| CoreError::Kms {
-                    operation: "derive".into(),
-                })?;
-            let key = HeldKey {
-                private_key: pair.private_key,
-                public_key,
-                public_key_y,
-            };
-            self.keys.insert(coordinate, key);
-        }
-        Ok(())
-    }
-
-    /// The held key of `record`; call `derive_keys` first.
-    pub(crate) fn held_key(&self, record: &StoredAccount) -> Result<&HeldKey, CoreError> {
-        self.keys
-            .get(&(record.ladder, record.account_index))
-            .ok_or_else(invalid_payload)
+    /// Derives `record`'s key, for the caller to use and drop.
+    pub(crate) fn derived_key(&self, record: &StoredAccount) -> Result<DerivedKey, CoreError> {
+        Ok(wallet_core::account_keypair(
+            &self.mnemonic,
+            None,
+            record.ladder,
+            record.account_index,
+        )?)
     }
 
     /// Derives one record at `index` on `path`. Nothing here comes from the host except
@@ -268,6 +238,12 @@ pub(crate) fn record_at(
             reason: "account index out of range".into(),
         });
     }
+    // Index 0 on Braavos's address ladder is index 0 on this wallet's own (`m/44'/9004'/0'/0/0`,
+    // the same key); v13 has one spelling for both, so the record takes the one it reads back as.
+    let ladder = match (ladder, account_index) {
+        (Ladder::Address, 0) => Ladder::Account,
+        _ => ladder,
+    };
     let placed = family_address(family, class_hash, salt, public_key, network)?;
     let address = felt::canonical(&placed.address);
     Ok(StoredAccount {
@@ -370,12 +346,17 @@ fn is_consistent(payload: &VaultPayload) -> bool {
         && groups::is_valid(&payload.groups, &ids)
 }
 
-// Re-derives every record from the phrase, holding the keys; any difference is tampering or
-// corruption.
-fn rederives(payload: &mut VaultPayload) -> Result<bool, CoreError> {
-    payload.derive_keys()?;
+// Re-derives every record from the phrase, one key per record, each also shown to `sealed`;
+// any difference is tampering or corruption.
+fn rederives(
+    payload: &VaultPayload,
+    sealed: &mut dyn FnMut(&StoredAccount, &DerivedKey) -> bool,
+) -> Result<bool, CoreError> {
     for record in &payload.accounts {
-        let public_key = payload.held_key(record)?.public_key;
+        let key = payload.derived_key(record)?;
+        let Some(public_key) = felt::parse_non_zero(&key.0.public_key_x) else {
+            return Ok(false);
+        };
         let family = record.family();
         let class_hash = (family != AccountFamily::OpenZeppelin).then(|| record.class_felt());
         let expected = record_at(
@@ -387,16 +368,20 @@ fn rederives(payload: &mut VaultPayload) -> Result<bool, CoreError> {
             &public_key,
             record.network(),
         );
-        if expected.ok().as_ref() != Some(record) {
+        if expected.ok().as_ref() != Some(record) || !sealed(record, &key) {
             return Ok(false);
         }
     }
     Ok(true)
 }
 
-/// Checks a payload in full, re-deriving every record. Used on open.
-pub(crate) fn validate(payload: &mut VaultPayload) -> Result<(), CoreError> {
-    if !is_consistent(payload) || !rederives(payload)? {
+/// Checks a payload in full, re-deriving every record; `sealed` also checks what the vault
+/// sealed beside each record against its derived key. Used on open.
+pub(crate) fn validate(
+    payload: &VaultPayload,
+    mut sealed: impl FnMut(&StoredAccount, &DerivedKey) -> bool,
+) -> Result<(), CoreError> {
+    if !is_consistent(payload) || !rederives(payload, &mut sealed)? {
         return Err(invalid_payload());
     }
     Ok(())

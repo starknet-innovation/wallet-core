@@ -163,14 +163,17 @@ struct Vault {
     signing_keys: Vec<SigningKey>,
 }
 
-/// Serialises `payload` as a v13 vault, deriving any signing key not yet held. Run
+/// Room for one serialised account record and its signing key, with margin, so `encode`'s buffer
+/// never reallocates and leaves no copy of the phrase or a key behind.
+const RECORD_BYTES: usize = 1024;
+
+/// Serialises `payload` as a v13 vault, deriving each signing key for the call only. Run
 /// `account_store::check_consistent` first.
-pub(crate) fn encode(payload: &mut VaultPayload) -> Result<Zeroizing<Vec<u8>>, CoreError> {
-    payload.derive_keys()?;
+pub(crate) fn encode(payload: &VaultPayload) -> Result<Zeroizing<Vec<u8>>, CoreError> {
     let mut accounts = Vec::with_capacity(payload.accounts.len());
     let mut signing_keys = Vec::with_capacity(payload.accounts.len());
     for record in &payload.accounts {
-        let key = payload.held_key(record)?;
+        let (pair, public_key_y) = payload.derived_key(record)?;
         accounts.push(Account {
             account_contract_type: record.family.clone(),
             address: record.address.clone(),
@@ -180,11 +183,11 @@ pub(crate) fn encode(payload: &mut VaultPayload) -> Result<Zeroizing<Vec<u8>>, C
             id: record.id.clone(),
             network_id: record.network.clone(),
             public_key_x: record.public_key.clone(),
-            public_key_y: key.public_key_y.clone(),
+            public_key_y,
         });
         signing_keys.push(SigningKey {
             account_id: record.id.clone(),
-            private_key: felt::canonical(key.private_key.expose_secret()),
+            private_key: felt::canonical(pair.private_key.expose_secret()),
         });
     }
     let vault = Vault {
@@ -200,9 +203,10 @@ pub(crate) fn encode(payload: &mut VaultPayload) -> Result<Zeroizing<Vec<u8>>, C
         shadow_account_scopes: Unused,
         signing_keys,
     };
-    serde_json::to_vec(&vault)
-        .map(Zeroizing::new)
-        .map_err(|_| storage("serialise vault"))
+    let capacity = RECORD_BYTES * (vault.accounts.len() + 4);
+    let mut json = Zeroizing::new(Vec::with_capacity(capacity));
+    serde_json::to_writer(&mut *json, &vault).map_err(|_| storage("serialise vault"))?;
+    Ok(json)
 }
 
 /// Parses and validates a decrypted v13 payload in full. Labels, groups and the backup flag are
@@ -219,30 +223,31 @@ pub(crate) fn decode(plaintext: &[u8]) -> Result<VaultPayload, CoreError> {
         .map(stored)
         .collect::<Option<Vec<_>>>()
         .ok_or_else(invalid)?;
-    let mut payload = VaultPayload::opened(mnemonic, accounts, vault.active_account_id.take());
-    // Mobile's rules: grammar, references, and every record re-derived from the phrase.
-    account_store::validate(&mut payload)?;
+    let payload = VaultPayload::opened(mnemonic, accounts, vault.active_account_id.take());
     // The extension's bijection: one signing key per account, none spare. With the ids unique
-    // (checked above) and the counts equal, each account finding its key is enough.
+    // (`validate` checks them first) and the counts equal, each account finding its key is enough.
     if vault.signing_keys.len() != payload.accounts.len() {
         return Err(invalid());
     }
-    for (record, wire) in payload.accounts.iter().zip(&vault.accounts) {
-        let key = payload.held_key(record)?;
+    // Mobile's rules (grammar, references, every record re-derived from the phrase), and beside
+    // each record what the vault sealed: its key and y-coordinate must be the derived ones.
+    account_store::validate(&payload, |record, (pair, public_key_y)| {
         let mut sealed = vault
             .signing_keys
             .iter()
             .filter(|sealed| sealed.account_id == record.id);
         let (Some(sealed), None) = (sealed.next(), sealed.next()) else {
-            return Err(invalid());
+            return false;
         };
+        let wire_y = vault
+            .accounts
+            .iter()
+            .find(|account| account.id == record.id)
+            .map(|account| &account.public_key_y);
         // Equal to the derived canonical text, which also holds it canonical and in range.
-        if *sealed.private_key != *felt::canonical(key.private_key.expose_secret())
-            || wire.public_key_y != key.public_key_y
-        {
-            return Err(invalid());
-        }
-    }
+        let derived = Zeroizing::new(felt::canonical(pair.private_key.expose_secret()));
+        *sealed.private_key == *derived && wire_y == Some(public_key_y)
+    })?;
     Ok(payload)
 }
 

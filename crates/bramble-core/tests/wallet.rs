@@ -200,8 +200,12 @@ fn a_new_wallet_never_inherits_metadata_left_without_a_vault() {
     for file in ["contacts.json", "multisigs.json", "coordination.json"] {
         std::fs::write(dir.path().join(file), "{\"version\":1}").unwrap();
     }
+    let left = r#"{"backupPending":true,"groups":[],"labels":{},"version":1}"#;
+    std::fs::write(dir.path().join("preferences.json"), left).unwrap();
     core.import_wallet(PASSWORD.into(), PHRASE.into()).unwrap();
     for file in ["contacts.json", "multisigs.json", "coordination.json"] {
         assert!(!dir.path().join(file).exists(), "{file}");
     }
+    // The preferences are the new wallet's own: an import owes no backup.
+    assert!(!core.backup_pending().unwrap());
 }

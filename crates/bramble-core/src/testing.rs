@@ -125,8 +125,8 @@ pub fn open_vault(dir: &str, password: &str) -> Result<String, crate::CoreError>
 /// Reads a decrypted v13 payload as the core does on unlock (every rule, every record and key
 /// re-derived) and writes it back as the core would.
 pub fn v13_round_trip(plaintext: &str) -> Result<String, crate::CoreError> {
-    let mut payload = crate::vault_v13::decode(plaintext.as_bytes())?;
-    let json = crate::vault_v13::encode(&mut payload)?;
+    let payload = crate::vault_v13::decode(plaintext.as_bytes())?;
+    let json = crate::vault_v13::encode(&payload)?;
     Ok(String::from_utf8(json.to_vec()).expect("payload is UTF-8"))
 }
 
