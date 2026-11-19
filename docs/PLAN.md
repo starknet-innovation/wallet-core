@@ -45,11 +45,10 @@ As of 2026-11-19 both halves of every step through 2.7 are done. Every port here
 M5–M13 (#921–#929) are merged into `feature/mobile-wallet`, whose `mobile/core` is now a shell
 that builds this crate's `bramble-core` at `tag = "v0.3.0"` with `features = ["mobile"]`. M7–M13
 merged into each other's stacked branches and reached `feature/mobile-wallet` through M6's merge.
-Merged after the tag and shipping in `v0.4.0`: #54 (stack scrub after Krusty and Nostr secret
-calls), #55 (mobile tests without default features) and V1 (#58, the core half of the
-[vault switch](#vault-switch)). M13 merged before the vault step that 2.7 placed ahead of it, so
-mobile at `v0.3.0` still writes its own vault version 5 until M14. Left in Phase 2: the Krusty
-3.1.0 bump (K1), `v0.4.0` and M14.
+`0.4.0` adds #54 (stack scrub after Krusty and Nostr secret calls), #55 (mobile tests without
+default features), V1 (#58, the core half of the [vault switch](#vault-switch)) and K1 (#59,
+Krusty 3.1.0). M13 merged before the vault step that 2.7 placed ahead of it, so mobile at
+`v0.3.0` still writes its own vault version 5 until M14. Left in Phase 2: M14.
 
 | Step | Here | Mobile (`mc-wallet`, `feature/mobile-wallet`) |
 | --- | --- | --- |
@@ -76,6 +75,11 @@ selectors, `selector` and `braavos_signers` public, which mobile's `recovery_adv
 `v0.2.2` is the first crates.io publish (#38, #27) and adds, since `v0.2.1`, the vault's refusal
 of a DEK the file's slots do not wrap (#36) and vault transition tests from the Quint specs (#34,
 #35). Mobile went from `v0.2.1` to `v0.3.0` at M5; M5–M13 each merged pinned to that tag.
+`v0.3.0` is a GitHub release only: its crates.io run was cancelled before approval, so crates.io
+goes from `0.2.2` to `0.4.0`. `v0.4.0` breaks three things, none migrated because mobile has no
+users: the vault is the extension's v13 payload and older vaults are refused (#58),
+`importWallet` takes no BIP-39 passphrase (#58), and Ready (Argent X) legacy keys change for about
+0.4% of phrases (#59; 3,949 of 1,000,000 random phrases measured).
 
 ### Next PRs
 
@@ -86,8 +90,6 @@ merged; each is described under its step in [Phases](#phases).
 
 | PR | Repo, base | Needs | What it is |
 | --- | --- | --- | --- |
-| K1 Krusty 3.1.0 | here | — | `krusty-kms =3.1.0`, `krusty-kms-common =3.0.0`; `starknet-types-core` stays `=0.2.4`. Ready (Argent X) legacy keys now strip the Ethereum key's leading zero bytes as Argent X does, so ~1 phrase in 256 derives a different `ArgentX` ladder key than under 2.0.0. Mobile has no users and testers reset at M14, so nothing migrates. No API change; parity fixtures unchanged (none has a leading-zero key) |
-| Release `v0.4.0` | here | K1 | the vault format break (V1) and the Argent key change (K1), plus #54 and #55 |
 | M14 Take `v0.4.0` | Bramble, `feature/mobile-wallet` | `v0.4.0` | the pin moves; `importWallet` loses its unused `passphrase` argument at its call sites; both apps build; testers reset their wallets |
 | Extension Krusty 3 | Bramble, `main` | — | the extension still pins `@starknetfoundation/krusty-kms-wasm` `0.11.0`, which predates the fix (Krusty 3.0 changed the derivation; 2.0.0 and earlier kept the leading zero bytes), so its keys and mobile's part for affected phrases. Its users have funds, so it follows Krusty's [migration guide](https://github.com/starknet-innovation/krusty-kms/blob/v3.0.0/docs/migration-3.0.md): keep the old key for any existing account whose public key differs. Needed before Phase 3, where the extension takes this crate's Krusty |
 
