@@ -12,7 +12,7 @@ Usage: bash tools/check.sh <mode>...
 
   quick       fmt + guardrails (the pre-commit hook)
   rust        fmt + lint + test
-  all         quick + lint + test + deny + package + wasm (run before handing off)
+  all         quick + lint + test + deny + secrets + package + wasm (run before handing off)
 
   fmt         cargo fmt --check
   guardrails  pins in sync, actions SHA-pinned, no print macros in src, 500-line cap
@@ -21,6 +21,7 @@ Usage: bash tools/check.sh <mode>...
   test        cargo test: default features, then mobile's suite as it ships
               (--no-default-features --features mobile,testing)
   deny        cargo deny check
+  secrets     gitleaks over the whole git history (CI pins the version and hash)
   package     cargo package: both crates build from what crates.io would receive
   wasm        build the npm package through ubrn, then type-check and test it
 EOF
@@ -101,6 +102,7 @@ check_test() {
 }
 
 check_deny() { run cargo deny check; }
+check_secrets() { run gitleaks git --no-banner --redact --verbose .; }
 
 # Builds each crate from its .crate file, as crates.io would. bramble-core resolves wallet-core
 # through a local registry, so this works before wallet-core is published. Needs a clean tree.
@@ -131,12 +133,13 @@ for mode in "$@"; do
   case "$mode" in
     quick) check_fmt; check_guardrails ;;
     rust) check_fmt; check_lint; check_test ;;
-    all) check_fmt; check_guardrails; check_lint; check_test; check_deny; check_package; check_wasm ;;
+    all) check_fmt; check_guardrails; check_lint; check_test; check_deny; check_secrets; check_package; check_wasm ;;
     fmt) check_fmt ;;
     guardrails) check_guardrails ;;
     lint) check_lint ;;
     test) check_test ;;
     deny) check_deny ;;
+    secrets) check_secrets ;;
     package) check_package ;;
     wasm) check_wasm ;;
     help | -h | --help) usage ;;

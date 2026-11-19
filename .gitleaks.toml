@@ -1,0 +1,11 @@
+# gitleaks' defaults, plus one narrow exception. The fixtures are copied unchanged from Bramble
+# (tests/fixtures/README.md): their keys derive from the published parity phrase and their
+# "token"/"tokenAddress" fields are public contract addresses, which the broad generic-api-key
+# rule flags (176 findings at adoption). Every specific rule still scans the fixtures.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Bramble parity fixtures: public test keys and token addresses"
+targetRules = ["generic-api-key"]
+paths = ['''^crates/bramble-core/tests/fixtures/''']
