@@ -35,10 +35,10 @@ mod scrub;
 pub mod send;
 
 pub use kms::{
-    account_key, account_public_key, derive_argent_legacy_keypair, derive_oz_account_address,
-    derive_starknet_keypair, derive_strk20_viewing_key, generate_mnemonic, oz_account_class_hash,
-    sign_stark_hash, stark_public_key, validate_mnemonic, NetworkId, StarkKeypair, StarkSignature,
-    StarkXOnlyKeypair,
+    account_key, account_keypair, account_public_key, derive_argent_legacy_keypair,
+    derive_oz_account_address, derive_starknet_keypair, derive_strk20_viewing_key,
+    generate_mnemonic, oz_account_class_hash, sign_stark_hash, stark_public_key, validate_mnemonic,
+    NetworkId, StarkKeypair, StarkSignature, StarkXOnlyKeypair,
 };
 pub use krusty_kms_common::SecretFelt;
 pub use nostr::{

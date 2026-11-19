@@ -86,7 +86,7 @@ fn lifecycle_gates_every_key_operation() {
 #[test]
 fn the_vault_on_disk_never_contains_the_phrase() {
     let (dir, core) = core();
-    core.import_wallet(PASSWORD.into(), PHRASE.to_uppercase(), None)
+    core.import_wallet(PASSWORD.into(), PHRASE.to_uppercase())
         .unwrap();
     let on_disk = std::fs::read_to_string(dir.path().join("vault.json")).unwrap();
     // Consecutive phrase words, in any case, however they are joined. A single short word ("tip")
@@ -110,8 +110,7 @@ fn the_vault_on_disk_never_contains_the_phrase() {
 #[test]
 fn added_accounts_persist_and_are_bounded_to_known_indexes() {
     let (dir, core) = core();
-    core.import_wallet(PASSWORD.into(), PHRASE.into(), None)
-        .unwrap();
+    core.import_wallet(PASSWORD.into(), PHRASE.into()).unwrap();
     assert!(core.recovery_pending().unwrap());
     assert!(core.accounts(NetworkId::Sepolia).unwrap().is_empty());
     assert!(
@@ -151,11 +150,10 @@ fn refuses_weak_input_and_double_creation() {
     ));
     let invalid = PHRASE.replace("like", "habit");
     assert!(matches!(
-        core.import_wallet(PASSWORD.into(), invalid, None),
+        core.import_wallet(PASSWORD.into(), invalid),
         Err(CoreError::InvalidInput { .. })
     ));
-    core.import_wallet(PASSWORD.into(), PHRASE.into(), None)
-        .unwrap();
+    core.import_wallet(PASSWORD.into(), PHRASE.into()).unwrap();
     assert!(matches!(
         core.create_wallet(PASSWORD.into(), 12),
         Err(CoreError::WalletExists)
@@ -178,41 +176,22 @@ fn a_passphrase_under_the_minimum_is_refused_on_create_and_on_import() {
         core.create_wallet_on_network(short.clone(), 12, NetworkId::Sepolia)
             .map(|_| ()),
     );
-    refused(core.import_wallet(short.clone(), PHRASE.into(), None));
+    refused(core.import_wallet(short.clone(), PHRASE.into()));
     let path = dir.path().to_str().unwrap();
     refused(seal_envelope_vault(path, &short, "{}"));
     refused(seal_container_vault(path, &short, 2, "{}"));
-    core.import_wallet("p".repeat(MIN_PASSWORD_LENGTH), PHRASE.into(), None)
+    core.import_wallet("p".repeat(MIN_PASSWORD_LENGTH), PHRASE.into())
         .unwrap();
 }
 
 #[test]
 fn delete_requires_the_password() {
     let (_dir, core) = core();
-    core.import_wallet(PASSWORD.into(), PHRASE.into(), None)
-        .unwrap();
+    core.import_wallet(PASSWORD.into(), PHRASE.into()).unwrap();
     assert!(core.delete_wallet("wrong password".into()).is_err());
     assert_eq!(core.status(), WalletStatus::Unlocked);
     core.delete_wallet(PASSWORD.into()).unwrap();
     assert_eq!(core.status(), WalletStatus::NoWallet);
-}
-
-#[test]
-fn bip39_passphrase_changes_every_account() {
-    let (_a, plain) = core();
-    let (_b, protected) = core();
-    plain
-        .import_wallet(PASSWORD.into(), PHRASE.into(), None)
-        .unwrap();
-    protected
-        .import_wallet(PASSWORD.into(), PHRASE.into(), Some("extra words".into()))
-        .unwrap();
-    restore_first(&plain, NetworkId::Sepolia);
-    restore_first(&protected, NetworkId::Sepolia);
-    assert_ne!(
-        plain.accounts(NetworkId::Sepolia).unwrap(),
-        protected.accounts(NetworkId::Sepolia).unwrap()
-    );
 }
 
 #[test]
@@ -221,9 +200,12 @@ fn a_new_wallet_never_inherits_metadata_left_without_a_vault() {
     for file in ["contacts.json", "multisigs.json", "coordination.json"] {
         std::fs::write(dir.path().join(file), "{\"version\":1}").unwrap();
     }
-    core.import_wallet(PASSWORD.into(), PHRASE.into(), None)
-        .unwrap();
+    let left = r#"{"backupPending":true,"groups":[],"labels":{},"version":1}"#;
+    std::fs::write(dir.path().join("preferences.json"), left).unwrap();
+    core.import_wallet(PASSWORD.into(), PHRASE.into()).unwrap();
     for file in ["contacts.json", "multisigs.json", "coordination.json"] {
         assert!(!dir.path().join(file).exists(), "{file}");
     }
+    // The preferences are the new wallet's own: an import owes no backup.
+    assert!(!core.backup_pending().unwrap());
 }

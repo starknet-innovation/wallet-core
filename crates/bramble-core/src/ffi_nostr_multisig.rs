@@ -103,7 +103,7 @@ fn not_found() -> CoreError {
 
 impl WalletCore {
     pub(crate) fn require_unlocked(&self) -> Result<(), CoreError> {
-        self.with_phrase(|_, _| Ok(()))
+        self.with_phrase(|_| Ok(()))
     }
 
     /// `(record id, public key)` of every account record on `network` that may co-sign a
@@ -194,7 +194,7 @@ impl WalletCore {
 impl WalletCore {
     /// The wallet's coordination public key (no BIP-39 passphrase, as the extension).
     pub fn nostr_public_key(&self) -> Result<String, CoreError> {
-        self.with_phrase(|mnemonic, _| nostr::public_key(mnemonic))
+        self.with_phrase(nostr::public_key)
     }
 
     /// Saved contacts on `network`.

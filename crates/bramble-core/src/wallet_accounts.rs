@@ -105,7 +105,7 @@ pub(crate) fn signing_record<'a>(
     payload: &'a VaultPayload,
     account_id: &str,
 ) -> Result<&'a StoredAccount, SignRefusal> {
-    if payload.recovery_pending {
+    if payload.recovery_pending() {
         return Err(SignRefusal::Unknown);
     }
     payload.record(account_id).ok_or(SignRefusal::Unknown)
@@ -121,7 +121,7 @@ pub(crate) fn sign_for(
 ) -> Result<kms::Signature, CoreError> {
     let signature = kms::sign_hash(
         &payload.mnemonic,
-        payload.mnemonic_passphrase.as_deref(),
+        None,
         record.ladder(),
         record.account_index,
         message_hash,
@@ -162,7 +162,7 @@ impl WalletCore {
     ) -> Result<T, CoreError> {
         let before = session.payload.snapshot();
         let outcome = change(&mut session.payload)
-            .and_then(|value| self.persist_payload(session).map(|()| value));
+            .and_then(|value| self.persist_payload(session, &before).map(|()| value));
         if outcome.is_err() {
             session.payload.restore(before);
         }
@@ -175,7 +175,7 @@ impl WalletCore {
     /// Whether an imported wallet still waits for discovery. The host routes to "Find your
     /// accounts" while this is true; there is no way into the wallet with zero accounts.
     pub fn recovery_pending(&self) -> Result<bool, CoreError> {
-        self.with_session(false, |session| Ok(session.payload.recovery_pending))
+        self.with_session(false, |session| Ok(session.payload.recovery_pending()))
     }
 
     /// The accounts on `network`, in the order they were added.
@@ -283,7 +283,7 @@ impl WalletCore {
     /// "Regular account": OpenZeppelin at the lowest unused index on `network`, made active.
     pub fn add_regular_account(&self, network: NetworkId) -> Result<AccountRecord, CoreError> {
         self.with_session(true, |session| {
-            if session.payload.recovery_pending {
+            if session.payload.recovery_pending() {
                 return Err(invalid("finish finding your accounts first"));
             }
             let index = next_account_index(&session.payload, network)?;
@@ -414,7 +414,7 @@ impl WalletCore {
         manual_index: Option<u32>,
     ) -> Result<RecoveryScanStep, CoreError> {
         self.with_session(true, |session| {
-            if !session.payload.recovery_pending {
+            if !session.payload.recovery_pending() {
                 return Err(invalid("no account recovery is pending"));
             }
             recovery_scan::next(&mut session.scan, &session.payload, network, manual_index)
@@ -449,14 +449,13 @@ impl WalletCore {
         selections: Vec<RecoverySelection>,
     ) -> Result<Vec<AccountRecord>, CoreError> {
         self.with_session(true, |session| {
-            if !session.payload.recovery_pending {
+            if !session.payload.recovery_pending() {
                 return Err(invalid("no account recovery is pending"));
             }
             let records = derive_selections(&session.payload, network, &selections)?;
             self.commit(session, |payload| {
                 payload.active_account_id = records.first().map(|record| record.id.clone());
                 payload.accounts = records;
-                payload.recovery_pending = false;
                 Ok(())
             })?;
             session.scan = None;

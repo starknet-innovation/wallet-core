@@ -1,5 +1,6 @@
-//! The backup-pending flag (vault version 4): the create flow writes the vault before the user
-//! has confirmed their backup, so the vault records that the Confirm backup step is still owed.
+//! The backup-pending flag: the create flow writes the vault before the user has confirmed their
+//! backup, so the wallet's preferences (`public_store`) record that the Confirm backup step is
+//! still owed.
 //! It is set when a wallet is created (`VaultPayload::new`), survives lock and restart, and is
 //! cleared only by `confirm_backup`. It is not secret: it says nothing about the phrase, and the
 //! words themselves are only ever revealed through the password-checked
@@ -15,9 +16,7 @@ impl WalletCore {
     /// instead of into the wallet. Passive: never renews the idle window. `Locked` / `NoWallet`
     /// without a session.
     pub fn backup_pending(&self) -> Result<bool, CoreError> {
-        self.with_session(false, |session| {
-            Ok(session.payload.backup_pending == Some(true))
-        })
+        self.with_session(false, |session| Ok(session.payload.backup_pending))
     }
 
     /// Records that the Confirm backup step succeeded: clears the flag and re-seals the vault.
@@ -25,11 +24,11 @@ impl WalletCore {
     /// on disk, so the step is offered again. Renews the idle window.
     pub fn confirm_backup(&self) -> Result<(), CoreError> {
         self.with_session(true, |session| {
-            if session.payload.backup_pending != Some(true) {
+            if !session.payload.backup_pending {
                 return Ok(());
             }
             self.commit(session, |payload| {
-                payload.backup_pending = Some(false);
+                payload.backup_pending = false;
                 Ok(())
             })
         })

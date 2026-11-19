@@ -239,15 +239,36 @@ pub fn account_key(
     ladder: Ladder,
     index: u32,
 ) -> Result<SecretFelt, Error> {
+    Ok(account_keypair(mnemonic, passphrase, ladder, index)?
+        .0
+        .private_key)
+}
+
+/// `account_key` with its public key: the x-coordinate, and the y-coordinate on the two
+/// `starknet-bip44` ladders (Ready's scheme is x-only, so `None` there), as the extension's
+/// vault records carry them.
+pub fn account_keypair(
+    mnemonic: &str,
+    passphrase: Option<&str>,
+    ladder: Ladder,
+    index: u32,
+) -> Result<(StarkXOnlyKeypair, Option<String>), Error> {
     // Krusty's argument order is (address index, account index).
+    let bip44 = |pair: StarkKeypair| {
+        let x_only = StarkXOnlyKeypair {
+            private_key: pair.private_key,
+            public_key_x: pair.public_key_x,
+        };
+        (x_only, Some(pair.public_key_y))
+    };
     scrubbed(|| {
         Ok(match ladder {
-            Ladder::Account => derive_starknet_keypair(mnemonic, 0, index, passphrase)?.private_key,
-            Ladder::Address => derive_starknet_keypair(mnemonic, index, 0, passphrase)?.private_key,
+            Ladder::Account => bip44(derive_starknet_keypair(mnemonic, 0, index, passphrase)?),
+            Ladder::Address => bip44(derive_starknet_keypair(mnemonic, index, 0, passphrase)?),
             Ladder::ArgentX if passphrase.is_some() => {
                 return Err(Error::invalid("Ready accounts take no passphrase"))
             }
-            Ladder::ArgentX => derive_argent_legacy_keypair(mnemonic, index)?.private_key,
+            Ladder::ArgentX => (derive_argent_legacy_keypair(mnemonic, index)?, None),
         })
     })
 }

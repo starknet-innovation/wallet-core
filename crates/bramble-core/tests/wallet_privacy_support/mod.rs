@@ -65,8 +65,7 @@ pub fn core() -> (tempfile::TempDir, Arc<WalletCore>) {
 /// (active) and projected onto Sepolia.
 pub fn wallet() -> (tempfile::TempDir, Arc<WalletCore>) {
     let (dir, core) = core();
-    core.import_wallet(PASSWORD.into(), PHRASE.into(), None)
-        .unwrap();
+    core.import_wallet(PASSWORD.into(), PHRASE.into()).unwrap();
     core.restore_recovered_accounts(
         NetworkId::Mainnet,
         vec![RecoverySelection {

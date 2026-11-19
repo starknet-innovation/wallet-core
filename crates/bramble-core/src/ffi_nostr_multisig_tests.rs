@@ -30,15 +30,10 @@ fn new_core(dir: &tempfile::TempDir) -> Arc<WalletCore> {
 }
 
 /// An imported wallet with OpenZeppelin account 0 restored on Sepolia.
-fn wallet(phrase: &str, passphrase: Option<&str>) -> (tempfile::TempDir, Arc<WalletCore>) {
+fn wallet(phrase: &str) -> (tempfile::TempDir, Arc<WalletCore>) {
     let dir = tempfile::tempdir().unwrap();
     let core = new_core(&dir);
-    core.import_wallet(
-        PASSWORD.into(),
-        phrase.into(),
-        passphrase.map(str::to_string),
-    )
-    .unwrap();
+    core.import_wallet(PASSWORD.into(), phrase.into()).unwrap();
     core.restore_recovered_accounts(
         NetworkId::Sepolia,
         vec![crate::RecoverySelection {
@@ -107,20 +102,9 @@ fn stored_record(dir: &tempfile::TempDir) -> Value {
 }
 
 #[test]
-fn nostr_key_ignores_the_bip39_passphrase_and_needs_a_session() {
-    let (_plain_dir, plain) = wallet(PHRASE, None);
-    let (_pass_dir, with_passphrase) = wallet(PHRASE, Some("extra words"));
-    let coordination_key = plain.nostr_public_key().unwrap();
-    assert_eq!(coordination_key.len(), 64);
-    assert_eq!(
-        with_passphrase.nostr_public_key().unwrap(),
-        coordination_key
-    );
-    assert_ne!(
-        key(&plain, 0),
-        key(&with_passphrase, 0),
-        "Stark keys do use the passphrase"
-    );
+fn nostr_key_needs_a_session() {
+    let (_plain_dir, plain) = wallet(PHRASE);
+    assert_eq!(plain.nostr_public_key().unwrap().len(), 64);
     plain.lock();
     assert!(matches!(plain.nostr_public_key(), Err(CoreError::Locked)));
     assert!(matches!(
@@ -131,7 +115,7 @@ fn nostr_key_ignores_the_bip39_passphrase_and_needs_a_session() {
 
 #[test]
 fn a_join_stores_current_config_only_when_every_guid_resolves() {
-    let (dir, core) = wallet(PHRASE, None);
+    let (dir, core) = wallet(PHRASE);
     core.add_account(NetworkId::Sepolia).unwrap();
     let keys = [key(&core, 0), key(&core, 1)];
     let mut guids: Vec<String> = keys
@@ -161,7 +145,7 @@ fn a_join_stores_current_config_only_when_every_guid_resolves() {
     assert_eq!(record["classHash"], json!(argent_multisig::class_hash()));
 
     // One GUID nobody here knows: no currentConfig, authority kept in `observed` only.
-    let (other_dir, other) = wallet(PHRASE, None);
+    let (other_dir, other) = wallet(PHRASE);
     let unknown = argent_multisig::signer_guid_hex("0x777").unwrap();
     let partial = other
         .add_multisig(available_read("0x456", 1, &[guids[0].clone(), unknown]))
@@ -187,7 +171,7 @@ fn a_join_stores_current_config_only_when_every_guid_resolves() {
 
 #[test]
 fn setups_require_a_local_deployment_signer_and_rederive() {
-    let (_dir, core) = wallet(PHRASE, None);
+    let (_dir, core) = wallet(PHRASE);
     let config = ArgentMultisigConfig {
         threshold: 1,
         signer_public_keys: vec![key(&core, 0), "0x456".into()],

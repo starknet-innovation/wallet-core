@@ -14,7 +14,7 @@ use zeroize::Zeroizing;
 
 use crate::container::{self, StoredVault};
 use crate::files::storage;
-use crate::migrations::{open_container, Opened, VAULT_VERSION};
+use crate::vault_v13::{open_container, Opened};
 use crate::wallet::{expire, WalletCore};
 use crate::CoreError;
 
@@ -84,32 +84,14 @@ impl WalletCore {
             let mut session = self.lock_session();
             expire(&mut session, &self.now());
             let _file = self.lock_file();
+            // The file on disk, freshly read under the file lock.
             let (mut base, dek) = match self.read_vault()? {
-                // The file on disk, freshly read under the file lock; an older-version file is
-                // replaced by the current-version one this attempt built from it (no session
-                // write can have happened since, as every payload write is current-version).
                 StoredVault::Container(file)
                     if file.password_slot == opened.container.password_slot =>
                 {
-                    if file.version < VAULT_VERSION {
-                        (opened.container, opened.dek)
-                    } else {
-                        (*file, opened.dek)
-                    }
+                    (*file, opened.dek)
                 }
-                StoredVault::Envelope(_) => {
-                    match session.as_ref().and_then(|s| s.pending.clone()) {
-                        Some(pending) => {
-                            let dek = session
-                                .as_ref()
-                                .map(|s| s.dek.clone())
-                                .unwrap_or(opened.dek);
-                            (pending, dek)
-                        }
-                        None => (opened.container, opened.dek),
-                    }
-                }
-                StoredVault::Container(_) => return Err(storage("vault changed on disk")),
+                _ => return Err(storage("vault changed on disk")),
             };
             base.biometric_slot = Some(base.seal_biometric(&dek, &secret, domain)?);
             self.write_vault(&base)?;
@@ -117,7 +99,6 @@ impl WalletCore {
             if let Some(live) = session.as_mut() {
                 live.password_slot = base.password_slot.clone();
                 live.dek = dek;
-                live.pending = None;
                 live.last_activity = self.now();
             }
             Ok(())
@@ -148,10 +129,7 @@ impl WalletCore {
             }
             other => other?,
         };
-        // A version-2 container opened this way is migrated with the DEK alone (no KDF needed).
-        let opened = open_container(*file, dek)?;
-        let pending = self.commit_migration(&opened);
-        self.install(epoch, opened, pending)
+        self.install(epoch, open_container(*file, dek)?)
     }
 
     /// Compares the host's biometric domain with the slot, each time the app becomes active. A

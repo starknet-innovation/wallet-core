@@ -21,11 +21,10 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use zeroize::Zeroizing;
 
 use crate::account_catalog::AccountFamily;
-use crate::account_store::{self, VaultPayload};
+use crate::account_store::{self, PublicState, VaultPayload};
 use crate::clock::{ClockReading, HostClock};
 use crate::container::{self, Dek, Randomness, StoredVault, VaultFile};
 use crate::files::{storage, Directory};
-use crate::migrations::{open_stored, Opened, VAULT_VERSION};
 use crate::networks::NetworkId;
 pub use crate::records::{
     AccountInfo, RecoveryPhrase, SecurityStatus, StarkSignature, WalletStatus,
@@ -33,7 +32,8 @@ pub use crate::records::{
 use crate::recovery_scan::ScanState;
 use crate::security;
 use crate::vault::{self, Envelope, SealingKey};
-use crate::{kms, CoreError};
+use crate::vault_v13::{self, open_stored, Opened, SCHEMA_VERSION};
+use crate::{kms, public_store, CoreError};
 
 pub(crate) const VAULT_FILE: &str = "vault.json";
 /// The extension's rolling unlock window (`DEFAULT_TTL_MS`, `core/generated/policy.json`).
@@ -44,8 +44,6 @@ pub(crate) struct Session {
     pub dek: Dek,
     /// The passphrase slot the DEK came from; a payload write refuses a file with another one.
     pub password_slot: Envelope,
-    /// A migrated container that could not be written yet; the next payload write commits it.
-    pub pending: Option<VaultFile>,
     pub last_activity: ClockReading,
     /// The discovery scan, never persisted; dropped with the session on lock.
     pub scan: Option<ScanState>,
@@ -105,7 +103,7 @@ impl WalletCore {
     }
 
     pub(crate) fn read_vault(&self) -> Result<StoredVault, CoreError> {
-        container::read(&Directory(&self.data_dir), VAULT_FILE, VAULT_VERSION)?
+        container::read(&Directory(&self.data_dir), VAULT_FILE, SCHEMA_VERSION)?
             .ok_or(CoreError::NoWallet)
     }
 
@@ -118,31 +116,43 @@ impl WalletCore {
         )?)
     }
 
-    /// One throttled, counted passphrase attempt, with `then` run under the same attempt mutex.
-    /// A missing or unreadable vault is reported before the counter moves (no guess was possible).
+    /// One throttled, counted passphrase attempt that opens the vault, with `then` run under the
+    /// same attempt mutex.
     pub(crate) fn passphrase_attempt<T>(
         &self,
         password: &str,
         then: impl FnOnce(Opened) -> Result<T, CoreError>,
+    ) -> Result<T, CoreError> {
+        self.attempt(password, open_stored, then)
+    }
+
+    /// One throttled, counted passphrase attempt: `open` proves the password against the vault
+    /// on disk. A missing or unreadable vault is reported before the counter moves (no guess was
+    /// possible). Any failure but a wrong password resets it: no guess was refuted (the password
+    /// was proven, or the file was malformed past what a guess can test).
+    fn attempt<O, T>(
+        &self,
+        password: &str,
+        open: impl FnOnce(StoredVault, &str) -> Result<O, CoreError>,
+        then: impl FnOnce(O) -> Result<T, CoreError>,
     ) -> Result<T, CoreError> {
         let _attempt = guard(&self.attempts);
         let now = self.now();
         let state = security::check(&self.data_dir, &now)?;
         let stored = self.read_vault()?;
         security::begin_attempt(&self.data_dir, &state, &now)?;
-        let opened = open_stored(stored, password)?;
-        // A reset that cannot be written leaves the owner throttled longer, never less.
-        let _ = security::reset(&self.data_dir, &self.now());
-        then(opened)
+        let opened = open(stored, password);
+        if !matches!(opened, Err(CoreError::WrongPassword)) {
+            // A reset that cannot be written leaves the owner throttled longer, never less.
+            let _ = security::reset(&self.data_dir, &self.now());
+        }
+        then(opened?)
     }
 
-    /// Installs a session unless `lock()` ran since `epoch` was read (lock always wins).
-    pub(crate) fn install(
-        &self,
-        epoch: u64,
-        opened: Opened,
-        pending: Option<VaultFile>,
-    ) -> Result<(), CoreError> {
+    /// Installs a session unless `lock()` ran since `epoch` was read (lock always wins), with the
+    /// wallet's preferences loaded beside the vault.
+    pub(crate) fn install(&self, epoch: u64, mut opened: Opened) -> Result<(), CoreError> {
+        public_store::load_preferences(&self.data_dir, &mut opened.payload)?;
         let mut session = self.lock_session();
         if self.lock_epoch.load(Ordering::SeqCst) != epoch {
             return Err(CoreError::Locked);
@@ -151,7 +161,6 @@ impl WalletCore {
             payload: opened.payload,
             dek: opened.dek,
             password_slot: opened.container.password_slot.clone(),
-            pending,
             last_activity: self.now(),
             scan: None,
         });
@@ -183,26 +192,31 @@ impl WalletCore {
         }
     }
 
-    /// Re-seals the session payload under its DEK (no KDF), keeping the file's slots. Checks
+    /// Writes what moved since `before`: the preferences file, and the vault, re-sealed under
+    /// its DEK (no KDF) with the file's slots kept. Every mutation today moves one or the other,
+    /// so each write is one atomic file and a failed write leaves the disk as `before`. Were both
+    /// to move, the preferences go first: their failure changes nothing on disk, and a vault
+    /// failure after them leaves names for accounts the vault lacks, which loading drops. Checks
     /// every structural invariant first, so a write can never store a payload `open` would refuse.
-    pub(crate) fn persist_payload(&self, session: &mut Session) -> Result<(), CoreError> {
+    pub(crate) fn persist_payload(
+        &self,
+        session: &mut Session,
+        before: &PublicState,
+    ) -> Result<(), CoreError> {
         account_store::check_consistent(&session.payload)?;
+        if session.payload.preferences_changed(before) {
+            public_store::save_preferences(&self.data_dir, &session.payload)?;
+        }
+        if !session.payload.vault_changed(before) {
+            return Ok(());
+        }
+        let payload = vault_v13::encode(&session.payload)?;
         let _file = self.lock_file();
         let base = match self.read_vault()? {
             StoredVault::Container(file) if file.password_slot == session.password_slot => *file,
-            StoredVault::Envelope(_) => session
-                .pending
-                .clone()
-                .ok_or_else(|| storage("vault changed on disk"))?,
-            StoredVault::Container(_) => return Err(storage("vault changed on disk")),
+            _ => return Err(storage("vault changed on disk")),
         };
-        self.write_vault(&base.with_payload(
-            &session.dek,
-            VAULT_VERSION,
-            &session.payload.to_json()?,
-        )?)?;
-        session.pending = None;
-        Ok(())
+        self.write_vault(&base.with_payload(&session.dek, SCHEMA_VERSION, &payload)?)
     }
 
     /// The app-private directory the vault and the public metadata files live in.
@@ -210,81 +224,51 @@ impl WalletCore {
         &self.data_dir
     }
 
-    /// Runs `f` with the unlocked phrase and its BIP-39 passphrase under the session lock,
-    /// without renewing the idle window. For modules that derive non-account keys (Nostr);
-    /// nothing escapes `f`.
+    /// Runs `f` with the unlocked phrase under the session lock, without renewing the idle
+    /// window. For modules that derive non-account keys (Nostr); nothing escapes `f`.
     pub(crate) fn with_phrase<T>(
         &self,
-        f: impl FnOnce(&str, Option<&str>) -> Result<T, CoreError>,
+        f: impl FnOnce(&str) -> Result<T, CoreError>,
     ) -> Result<T, CoreError> {
-        self.with_session(false, |session| {
-            f(
-                &session.payload.mnemonic,
-                session.payload.mnemonic_passphrase.as_deref(),
-            )
-        })
-    }
-
-    /// After a migrating open: writes the current-version file if the file it was built from is
-    /// still what is on disk. Returns the file to keep pending when that write did not happen;
-    /// the next payload write commits it. Call with no file lock held.
-    pub(crate) fn commit_migration(&self, opened: &Opened) -> Option<VaultFile> {
-        if !opened.migrated {
-            return None;
-        }
-        let _file = self.lock_file();
-        let unchanged = match self.read_vault() {
-            Ok(StoredVault::Envelope(_)) => true,
-            Ok(StoredVault::Container(file)) => {
-                file.password_slot == opened.container.password_slot && file.version < VAULT_VERSION
-            }
-            Err(_) => false,
-        };
-        let written = unchanged && self.write_vault(&opened.container).is_ok();
-        (!written).then(|| opened.container.clone())
+        self.with_session(false, |session| f(&session.payload.mnemonic))
     }
 
     fn create_vault(
         &self,
         password: &str,
         mnemonic: Zeroizing<String>,
-        passphrase: Option<String>,
         first_account: Option<NetworkId>,
     ) -> Result<(), CoreError> {
         let epoch = self.lock_epoch.load(Ordering::SeqCst);
-        let payload = VaultPayload::new(mnemonic.to_string(), passphrase, first_account)?;
+        let payload = VaultPayload::new(mnemonic.to_string(), first_account)?;
         account_store::check_consistent(&payload)?;
+        let sealed = vault_v13::encode(&payload)?;
         // The shared core's `SealingKey::create` takes any passphrase, so the rule is held here,
         // on the one path that makes a vault, where no caller can skip it.
         vault::check_password(password)?;
         let key = SealingKey::create(password)?;
         let dek = container::new_dek()?;
-        let file = container::seal_new(
-            &key,
-            &dek,
-            VAULT_VERSION,
-            &payload.to_json()?,
-            &Randomness::draw()?,
-        )?;
+        let file = container::seal_new(&key, &dek, SCHEMA_VERSION, &sealed, &Randomness::draw()?)?;
         {
             let _file = self.lock_file();
             if self.vault_path().exists() {
                 return Err(CoreError::WalletExists);
             }
+            // Metadata without a vault belongs to no wallet (an interrupted delete); a new wallet
+            // must never inherit its contacts, shared accounts, relay choice or labels. Its own
+            // preferences go before the vault, so a vault never exists without its backup flag.
+            public_store::remove_all(&self.data_dir)?;
+            public_store::save_preferences(&self.data_dir, &payload)?;
             self.write_vault(&file)?;
         }
         // A new wallet starts with a clean counter; a leftover one belonged to a deleted vault.
         security::remove(&self.data_dir)?;
-        // Metadata without a vault belongs to no wallet (an interrupted delete); a new wallet
-        // must never inherit its contacts, shared accounts, or relay choice.
-        crate::public_store::remove_all(&self.data_dir)?;
         let opened = Opened {
             payload,
             dek,
             container: file,
-            migrated: false,
         };
-        self.install(epoch, opened, None)
+        self.install(epoch, opened)
     }
 }
 
@@ -332,7 +316,7 @@ impl WalletCore {
         vault::check_password(&password)?;
         let mnemonic = kms::generate_mnemonic(word_count)?;
         let words = mnemonic.split(' ').map(str::to_string).collect();
-        self.create_vault(&password, mnemonic, None, Some(network))?;
+        self.create_vault(&password, mnemonic, Some(network))?;
         Ok(RecoveryPhrase { words })
     }
 
@@ -345,15 +329,11 @@ impl WalletCore {
         self.create_wallet_on_network(password, word_count, NetworkId::Mainnet)
     }
 
-    /// Imports an existing phrase (and optional BIP-39 passphrase) and leaves the wallet unlocked
-    /// with no accounts yet: `recovery_pending` is set until discovery restores the user's
-    /// selection (`restore_recovered_accounts`).
-    pub fn import_wallet(
-        &self,
-        password: String,
-        phrase: String,
-        passphrase: Option<String>,
-    ) -> Result<(), CoreError> {
+    /// Imports an existing phrase and leaves the wallet unlocked with no accounts yet:
+    /// `recovery_pending` holds until discovery restores the user's selection
+    /// (`restore_recovered_accounts`). There is no BIP-39 passphrase: the extension's vault has no
+    /// field for one and its recovery refuses one.
+    pub fn import_wallet(&self, password: String, phrase: String) -> Result<(), CoreError> {
         let password = Zeroizing::new(password);
         vault::check_password(&password)?;
         let mnemonic = kms::normalise_phrase(&Zeroizing::new(phrase));
@@ -362,25 +342,16 @@ impl WalletCore {
                 reason: "invalid recovery phrase".into(),
             });
         }
-        self.create_vault(
-            &password,
-            mnemonic,
-            passphrase.filter(|p| !p.is_empty()),
-            None,
-        )
+        self.create_vault(&password, mnemonic, None)
     }
 
-    /// Decrypts the vault into memory: throttled and counted. An older vault is migrated along the
-    /// one chain in `migrations.rs` and written back (a failed write keeps the old file and
-    /// retries on the next payload write).
+    /// Decrypts the vault into memory: throttled and counted. A vault an earlier test build wrote
+    /// is refused (`vault_v13`); the user deletes the wallet and imports the phrase again.
     pub fn unlock(&self, password: String) -> Result<(), CoreError> {
         let password = Zeroizing::new(password);
         let epoch = self.lock_epoch.load(Ordering::SeqCst);
-        let (opened, pending) = self.passphrase_attempt(&password, |opened| {
-            let pending = self.commit_migration(&opened);
-            Ok((opened, pending))
-        })?;
-        self.install(epoch, opened, pending)
+        let opened = self.passphrase_attempt(&password, Ok)?;
+        self.install(epoch, opened)
     }
 
     /// Wipes the session; the phrase and the vault key are zeroized as they drop.
@@ -449,19 +420,24 @@ impl WalletCore {
     }
 
     /// Deletes the vault and its backoff state after re-checking the password (throttled and
-    /// counted). Irreversible without the phrase.
+    /// counted). Irreversible without the phrase. Proves the password without reading the
+    /// payload, so a vault an earlier test build wrote can still be deleted.
     pub fn delete_wallet(&self, password: String) -> Result<(), CoreError> {
         let password = Zeroizing::new(password);
-        self.passphrase_attempt(&password, |opened| {
-            drop(opened);
+        let prove =
+            |stored: StoredVault, password: &str| vault_v13::prove_password(&stored, password);
+        self.attempt(&password, prove, |()| {
             let mut session = self.lock_session();
             self.lock_epoch.fetch_add(1, Ordering::SeqCst);
             *session = None;
             let _file = self.lock_file();
             // Public metadata goes first: a failure here leaves the wallet intact and retryable,
             // never a deleted vault beside another wallet's trusted contacts and shared accounts.
-            crate::public_store::remove_all(&self.data_dir)?;
+            // The preferences go after the vault, so a wallet left behind still owes its backup;
+            // left behind themselves, they belong to no wallet and the next one overwrites them.
+            public_store::remove_all(&self.data_dir)?;
             fs::remove_file(self.vault_path()).map_err(|_| storage("remove vault"))?;
+            let _ = public_store::remove(&self.data_dir, public_store::PREFERENCES);
             crate::activity::remove(&self.data_dir);
             security::remove(&self.data_dir)
         })

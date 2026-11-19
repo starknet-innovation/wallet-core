@@ -81,7 +81,7 @@ fn discovery_lists_every_d1_sepolia_fixture() {
         };
         let dir = tempfile::tempdir().unwrap();
         let core = common::open(dir.path(), &common::FakeClock::new());
-        core.import_wallet("sepolia dataset password".into(), phrase, None)
+        core.import_wallet("sepolia dataset password".into(), phrase)
             .unwrap_or_else(|error| panic!("{var} did not import: {error:?}"));
         let found: Vec<String> = scan(&core, NetworkId::Sepolia, &url)
             .iter()

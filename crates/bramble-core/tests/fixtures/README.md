@@ -8,9 +8,9 @@ network, privacy-routing and token tables into `mobile/core/generated/`. Syncing
 unchanged, all at one Bramble commit. `tests/fixtures.rs` checks this table against the directory:
 every file must be listed, and its sha256 must match.
 
-All files: Bramble commit `7293d1881905d5bdee0b8157c13f6f4b054fd59c` (`mobile/g2-multisig-coordination-generator`,
-2026-11-11: the G3, G1 and G2 generators stacked on `feature/mobile-wallet` at `01bd6517`; not
-merged yet, so the commit line moves to the merged commit at the next copy), privacy SDK `vendor/starknet-privacy` at
+All files: Bramble commit `008f29687e2226b0d0edead43612ca1722d3f955` (`feature/mobile-wallet`,
+2026-11-13: G4's merge, #947, which added `vault-v13.json`; every other file is byte-identical to
+its copy from the G1–G3 stack at `7293d188`), privacy SDK `vendor/starknet-privacy` at
 `b40bf109` (Bramble's pin). Re-running `mobile:parity` and `mobile:assets` there leaves no diff.
 Generators are under `scripts/` in Bramble; each fixture's is reached from
 `generate-mobile-parity-vectors.ts`.
@@ -49,6 +49,7 @@ Generators are under `scripts/` in Bramble; each fixture's is reached from
 | `extension-transactions-status.json` | `generate-mobile-transaction-vectors.ts` | `8e36ccc8e9a9752b5d2d704a43fbcb4325cf5a1b6d1bbfc01042a6f6277db671` |
 | `extension-transactions-verification.json` | `generate-mobile-transaction-vectors.ts` | `44253f028a3caaf4ea896b6c09afec5c3b512cce729ccabe43e4422f712385be` |
 | `extension-transactions-wire.json` | `generate-mobile-transaction-vectors.ts` | `a4e8085ad6b5e14f05c66f291b8198a167cae729e639a812c7af908d412d8e3d` |
+| `vault-v13.json` | `generate-mobile-parity-vectors.ts` (`mobile-parity-vault.ts`) | `d4f0cf2a62d209cd05286a6d81b372bdaf1d356ba273b41e3e8ed2437912977f` |
 
 Read today: `extension-parity.json` (`parity.rs`, `vault_parity.rs`),
 `accounts-parity-families-sepolia.json` and `nostr-multisig-parity.json` (`parity.rs`;
@@ -68,14 +69,15 @@ read) with `networks.json` and
 `extension-privacy-rules.json` with `privacy.json` as Bramble's privacy routing and `networks.json`
 (`privacy_parity.rs`, `privacy_gates_parity.rs`, `privacy_plan.rs`), and all three
 `nostr-coordination-parity-*.json` with `multisig.json`'s coordination, relay and Nostr values and
-`nostr-multisig-parity.json`'s `relayUrls` (`nostr_coordination_parity.rs`). `extension-privacy-copy.json` is the source of
+`nostr-multisig-parity.json`'s `relayUrls` (`nostr_coordination_parity.rs`), and `vault-v13.json`
+(`vault_v13.rs`). `extension-privacy-copy.json` is the source of
 Bramble's generated Swift and Kotlin privacy copy; no Rust function returns those sentences, so
 no test here reads it. The rest sit
 here unused until their Phase 2 step moves the matching mobile parity test in (see `docs/PLAN.md`,
 Phase 1).
 
-Not here, because they are not extension output: `vault-*.json` and `migration-v1-to-v5.golden.json`
-(earlier mobile cores), `ui-coordination.json` (iOS UI suite) and `rust-gift-wrap.json` (Rust
+Not here, because they are not extension output: `vault-v3-container.json` (an earlier mobile
+core), `ui-coordination.json` (iOS UI suite) and `rust-gift-wrap.json` (Rust
 writes it, the extension opens it). They move with their modules as ordinary regression fixtures.
 
 `tests/conformance/mobile-*.test.ts` in Bramble fails when a committed fixture drifts from the

@@ -38,7 +38,6 @@ mod history;
 pub(crate) use wallet_core::js;
 mod kms;
 pub use kms::Ladder;
-mod migrations;
 mod multisig_rpc;
 mod multisig_store;
 mod nostr;
@@ -57,6 +56,7 @@ mod security;
 mod send;
 mod ui;
 mod vault;
+mod vault_v13;
 mod wallet;
 mod wallet_accounts;
 

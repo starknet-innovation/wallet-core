@@ -27,7 +27,7 @@ fn text(value: &Value) -> String {
 /// `mnemonic` imported with OpenZeppelin accounts 0 and 1 restored on Sepolia.
 fn wallet(mnemonic: &str) -> (tempfile::TempDir, std::sync::Arc<WalletCore>) {
     let (dir, _clock, core) = common::core();
-    core.import_wallet(common::PASSWORD.into(), mnemonic.into(), None)
+    core.import_wallet(common::PASSWORD.into(), mnemonic.into())
         .unwrap();
     core.restore_recovered_accounts(NetworkId::Sepolia, vec![common::oz(0), common::oz(1)])
         .unwrap();

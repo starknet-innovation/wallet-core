@@ -19,7 +19,7 @@ fn imported() -> (tempfile::TempDir, std::sync::Arc<WalletCore>) {
         std::env::var("BRAMBLE_MOBILE_MAINNET_MNEMONIC").expect("BRAMBLE_MOBILE_MAINNET_MNEMONIC");
     let dir = tempfile::tempdir().unwrap();
     let core = common::open(dir.path(), &common::FakeClock::new());
-    core.import_wallet("mainnet check password".into(), phrase, None)
+    core.import_wallet("mainnet check password".into(), phrase)
         .unwrap();
     (dir, core)
 }
