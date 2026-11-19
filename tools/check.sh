@@ -11,6 +11,7 @@ usage() {
 Usage: bash tools/check.sh <mode>...
 
   quick       fmt + guardrails (the pre-commit hook)
+  push        lint + default-feature tests (the pre-push hook; CI also runs mobile's suite)
   rust        fmt + lint + test
   all         quick + lint + test + deny + secrets + package + wasm (run before handing off)
 
@@ -132,6 +133,7 @@ check_wasm() {
 for mode in "$@"; do
   case "$mode" in
     quick) check_fmt; check_guardrails ;;
+    push) check_lint; run cargo test --locked --no-fail-fast ;;
     rust) check_fmt; check_lint; check_test ;;
     all) check_fmt; check_guardrails; check_lint; check_test; check_deny; check_secrets; check_package; check_wasm ;;
     fmt) check_fmt ;;
