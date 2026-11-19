@@ -431,7 +431,8 @@ mod tests {
 
     /// Ready re-seeds with the Ethereum key as a number, so a key starting `0x00` loses that
     /// byte (Krusty 3.0; 2.0 kept it and derived another key for ~1 phrase in 256). Throwaway
-    /// phrases and Argent X's keys, from Krusty's `argent_double_derivation_strips_leading_zero`.
+    /// phrases from Krusty's `argent_double_derivation_strips_leading_zero_eth_key_bytes`; the
+    /// keys were rechecked against Argent X's derivation (ethers 5, `grindKey`).
     #[test]
     fn argent_legacy_strips_leading_zero_eth_key_bytes() {
         let cases = [
