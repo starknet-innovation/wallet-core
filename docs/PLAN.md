@@ -19,9 +19,9 @@ Decisions, 2026-11-09:
 - UniFFI for every binding, including JavaScript through `uniffi-bindgen-react-native`'s `wasm2`
   flavour. That tool is pre-production; the Rust surface does not depend on it, so the JS layer can
   move to wasm-bindgen directly (or whatever UniFFI's own JS backend becomes) without touching Rust.
-- Krusty KMS is compiled in (`krusty-kms =2.0.0`). The extension drops
+- Krusty KMS is compiled in (`krusty-kms =3.1.0`). The extension drops
   `@starknetfoundation/krusty-kms-wasm`; one Krusty, one pin, checked by `core_info()`.
-- `starknet-types-core` stays at `=0.2.4`, the version Krusty 2.0.0 builds on. `Felt` crosses the
+- `starknet-types-core` stays at `=0.2.4`, the version Krusty 3.1.0 builds on. `Felt` crosses the
   Krusty boundary, so a second copy in the lockfile would be a second, incompatible `Felt`. It moves
   to 1.x only in the same change as a deliberate Krusty bump, never on its own.
 - The extension's vault schema (v12) is the target. Mobile's own vault payload migrates into it.
@@ -40,15 +40,16 @@ Decisions, 2026-11-09:
 
 Every Phase 2 step has two halves: the mechanism lands here, then mobile deletes its copy and
 depends on this one. A step is done when both halves are.
-As of 2026-11-13 both halves of every step through 2.7 are done. Every port here is merged
+As of 2026-11-19 both halves of every step through 2.7 are done. Every port here is merged
 (#39–#50, with #51 and #52) and `0.3.0` carries them. In Bramble, G1–G3 (#918–#920) and
 M5–M13 (#921–#929) are merged into `feature/mobile-wallet`, whose `mobile/core` is now a shell
 that builds this crate's `bramble-core` at `tag = "v0.3.0"` with `features = ["mobile"]`. M7–M13
 merged into each other's stacked branches and reached `feature/mobile-wallet` through M6's merge.
-#54 (stack scrub after Krusty and Nostr secret calls) is merged after the tag and ships in the
-next release. M13 merged before the vault step that 2.7 placed ahead of it, so mobile at
-`v0.3.0` still writes its own vault version 5. Left in Phase 2: the [vault switch](#vault-switch),
-whose generator G4 merged in Bramble (#947, `008f2968`) and whose core half is V1 (open).
+Merged after the tag and shipping in `v0.4.0`: #54 (stack scrub after Krusty and Nostr secret
+calls), #55 (mobile tests without default features) and V1 (#58, the core half of the
+[vault switch](#vault-switch)). M13 merged before the vault step that 2.7 placed ahead of it, so
+mobile at `v0.3.0` still writes its own vault version 5 until M14. Left in Phase 2: the Krusty
+3.1.0 bump (K1), `v0.4.0` and M14.
 
 | Step | Here | Mobile (`mc-wallet`, `feature/mobile-wallet`) |
 | --- | --- | --- |
@@ -65,7 +66,7 @@ whose generator G4 merged in Bramble (#947, `008f2968`) and whose core half is V
 | 2.5b Multisig coordination | done (#48) | done (G2 Bramble #920, M11 #927) |
 | 2.6 Catalogs | done (#49) | done (M12, Bramble #928) |
 | 2.7 Swap | done (#50), behind the `mobile` feature | done (M13, Bramble #929), at `v0.3.0`: `mobile/core` is a shell over this crate |
-| Vault switch | V1 open | G4 done (Bramble #947); M14 not started |
+| Vault switch | done (V1 #58) | G4 done (Bramble #947); M14 not started |
 | 3 Extension | not started; `js/package.json` is private | n/a |
 
 `v0.1.0` is tagged at `35abc8b` (GitHub release only) and was what M2 and M3 pinned. `v0.2.0`
@@ -85,9 +86,10 @@ merged; each is described under its step in [Phases](#phases).
 
 | PR | Repo, base | Needs | What it is |
 | --- | --- | --- | --- |
-| V1 Vault switch | here | G4 (merged, #947) | `bramble-core` writes the extension's v13 payload inside mobile's container; the v1 → v5 chain and its regression vaults go; G4's files copied as fixtures |
-| Release `v0.4.0` | here | V1, #55 | the format break, plus #54 |
+| K1 Krusty 3.1.0 | here | — | `krusty-kms =3.1.0`, `krusty-kms-common =3.0.0`; `starknet-types-core` stays `=0.2.4`. Ready (Argent X) legacy keys now strip the Ethereum key's leading zero bytes as Argent X does, so ~1 phrase in 256 derives a different `ArgentX` ladder key than under 2.0.0. Mobile has no users and testers reset at M14, so nothing migrates. No API change; parity fixtures unchanged (none has a leading-zero key) |
+| Release `v0.4.0` | here | K1 | the vault format break (V1) and the Argent key change (K1), plus #54 and #55 |
 | M14 Take `v0.4.0` | Bramble, `feature/mobile-wallet` | `v0.4.0` | the pin moves; `importWallet` loses its unused `passphrase` argument at its call sites; both apps build; testers reset their wallets |
+| Extension Krusty 3 | Bramble, `main` | — | the extension still pins `@starknetfoundation/krusty-kms-wasm` `0.11.0`, which predates the fix (Krusty 3.0 changed the derivation; 2.0.0 and earlier kept the leading zero bytes), so its keys and mobile's part for affected phrases. Its users have funds, so it follows Krusty's [migration guide](https://github.com/starknet-innovation/krusty-kms/blob/v3.0.0/docs/migration-3.0.md): keep the old key for any existing account whose public key differs. Needed before Phase 3, where the extension takes this crate's Krusty |
 
 ## Generic and Bramble
 

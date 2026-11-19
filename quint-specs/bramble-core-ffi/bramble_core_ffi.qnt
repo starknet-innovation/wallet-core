@@ -20,7 +20,7 @@ module bramble_core_ffi {
   // [0, 250, 500, 900, 1500, 2500, 4000, 5000, 7500, 10000, 10000, 10000] (lib.rs:34-54) are
   // only read by wallet-core's send::plan through SEND_POLICY; the `send` component models them.
   // core_info (lib.rs:159-164) returns the compile-time versions "0.2.1" and KRUSTY_VERSION
-  // "2.0.0" and touches nothing else.
+  // "3.1.0" and touches nothing else.
 
   // ---------------------------------------------------------------------------------------
   // wallet-core's bounds (kms.rs:19-23, nostr.rs:16-20)

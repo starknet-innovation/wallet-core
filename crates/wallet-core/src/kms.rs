@@ -429,6 +429,32 @@ mod tests {
         assert!(derive_argent_legacy_keypair(PHRASE, 1 << 31).is_err());
     }
 
+    /// Ready re-seeds with the Ethereum key as a number, so a key starting `0x00` loses that
+    /// byte (Krusty 3.0; 2.0 kept it and derived another key for ~1 phrase in 256). Throwaway
+    /// phrases from Krusty's `argent_double_derivation_strips_leading_zero_eth_key_bytes`; the
+    /// keys were rechecked against Argent X's derivation (ethers 5, `grindKey`).
+    #[test]
+    fn argent_legacy_strips_leading_zero_eth_key_bytes() {
+        let cases = [
+            (
+                "verify burst quarter genuine artefact arrow spot keep ecology confirm sorry sauce",
+                "0x78fb8e59a8c26d6f4204bcedd6e8427fdf8be8e3081d2d09ac01526c718326b",
+            ),
+            (
+                "quote denial risk amused glory have finish mean review night any excite",
+                "0x3b8042748e0251dedec3001966d42b5427e764f540d8168d22bb1780955b5d1",
+            ),
+        ];
+        for (case, (phrase, expected)) in cases.into_iter().enumerate() {
+            let expected = Felt::from_hex(expected).unwrap();
+            // Boolean asserts: never print a key on failure.
+            let pair = derive_argent_legacy_keypair(phrase, 0).unwrap();
+            assert!(*pair.private_key.expose_secret() == expected, "case {case}");
+            let ladder = account_key(phrase, None, Ladder::ArgentX, 0).unwrap();
+            assert!(*ladder.expose_secret() == expected, "case {case}");
+        }
+    }
+
     #[test]
     fn ladders_step_different_fields_from_one_root() {
         let key = |ladder, index| account_public_key(PHRASE, None, ladder, index).unwrap();
