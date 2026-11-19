@@ -29,6 +29,8 @@ cargo test -p bramble-core <name>   # narrow loop while iterating
 - The toolchain is pinned in `rust-toolchain.toml` and repeated as `RUST_TOOLCHAIN` in each
   workflow; change them together (also checked).
 - `deny` needs network for the advisory DB. Offline, run the rest and say so.
+- `secrets` needs `gitleaks` (CI pins the version and sha256 in `ci.yml`). A finding in a fixture
+  of published test keys goes in `.gitleaksignore` by fingerprint, never by path.
 
 ## Layout
 
