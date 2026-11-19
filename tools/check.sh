@@ -102,7 +102,7 @@ check_test() {
 }
 
 check_deny() { run cargo deny check; }
-check_secrets() { run gitleaks git --no-banner --redact .; }
+check_secrets() { run gitleaks git --no-banner --redact --verbose .; }
 
 # Builds each crate from its .crate file, as crates.io would. bramble-core resolves wallet-core
 # through a local registry, so this works before wallet-core is published. Needs a clean tree.
