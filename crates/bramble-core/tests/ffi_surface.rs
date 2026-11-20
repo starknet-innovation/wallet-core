@@ -38,6 +38,8 @@ struct Exported {
     /// A method of an exported `with_foreign` trait: the apps implement it and the core calls it,
     /// so what the core hands over is the arguments, not the return value.
     foreign: bool,
+    /// Gated on `raw-keys` or `extension`, which mobile's build leaves out.
+    extension_only: bool,
 }
 
 impl Exported {
@@ -114,10 +116,23 @@ fn exported_signatures(source: &str) -> Vec<Exported> {
             panic!("an export attribute ends the file");
         };
         let before = signatures.len();
+        let extension_only = lines[..head]
+            .iter()
+            .rev()
+            .take_while(|line| {
+                let line = line.trim_start();
+                line.starts_with("#[") || line.starts_with("//")
+            })
+            .any(|line| {
+                let line = line.trim_start();
+                line.starts_with("#[cfg(feature = \"raw-keys\")]")
+                    || line.starts_with("#[cfg(feature = \"extension\")]")
+            });
         if let Some(declaration) = declared_fn(lines[head]) {
             signatures.push(Exported {
                 signature: signature(declaration, &lines[head..]),
                 foreign: false,
+                extension_only,
             });
         } else if lines[head].starts_with("impl") || lines[head].starts_with("pub trait") {
             let foreign = lines[head].starts_with("pub trait");
@@ -134,6 +149,7 @@ fn exported_signatures(source: &str) -> Vec<Exported> {
                     signatures.push(Exported {
                         signature: signature(declaration, &lines[i..]),
                         foreign,
+                        extension_only,
                     });
                 }
             }
@@ -204,4 +220,42 @@ fn nothing_exported_signs_or_plans_by_account_index() {
         signers >= 5,
         "found only {signers} signing or planning functions"
     );
+}
+
+/// AGENTS.md: mobile's build takes a raw private key in exactly one export, `import_private_key`,
+/// which seals it and returns only the public record, and returns one from none. The extension's
+/// key exports (`raw-keys`, `extension`) are not compiled into it, and its key records live only
+/// in `lib.rs` behind `raw-keys`. A tripwire on the names a key goes by, beside the
+/// `compile_error!` that refuses `mobile` with `raw-keys`.
+#[test]
+fn a_private_key_enters_mobile_only_through_its_import_and_never_leaves() {
+    let mut takers = Vec::new();
+    for (file, source) in sources() {
+        if file != "lib.rs" {
+            assert!(
+                !source.contains("pub private_key"),
+                "{file}: a record outside the raw-keys exports carries a private key"
+            );
+        }
+        for exported in exported_signatures(&source)
+            .iter()
+            .filter(|e| !e.extension_only)
+        {
+            let signature = &exported.signature;
+            assert!(
+                !exported.outgoing().contains("private_key")
+                    && !exported.outgoing().contains("SecretFelt"),
+                "{file}: `{signature}` hands a key out"
+            );
+            if signature.contains("private_key") || signature.contains("SecretFelt") {
+                takers.push(format!("{file}: {}", exported.name()));
+            }
+        }
+    }
+    assert_eq!(takers, ["key_import.rs: import_private_key"]);
+    let import = exported_signatures(include_str!("../src/key_import.rs"));
+    assert_eq!(import.len(), 1);
+    assert!(import[0]
+        .outgoing()
+        .contains("Result<AccountRecord, CoreError>"));
 }
