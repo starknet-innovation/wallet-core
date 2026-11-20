@@ -82,9 +82,10 @@ block's `throughProvider` records the extension's starknet.js path, which no tes
 `extension-privacy-copy.json` is the source of
 Bramble's generated Swift and Kotlin privacy copy; no Rust function returns those sentences, so
 no test here reads it. `extension-multisig-transactions.json` is read by
-`multisig_deploy_parity.rs` (`deploy`) and `multisig_proposal_parity.rs` (`proposal`); its
-`-signers` and `-refusals` parts wait for the rest of
-[P1](../../../../docs/PLAN.md#mobile-parity). The rest sit
+`multisig_deploy_parity.rs` (`deploy`), `multisig_proposal_parity.rs` (`proposal`) and
+`multisig_signers_parity.rs` (the proposal's summary); `multisig_signers_parity.rs` also reads
+all of `-signers.json` and the `calls` part of `-refusals.json`, whose other parts wait for the
+rest of [P1](../../../../docs/PLAN.md#mobile-parity). The rest sit
 here unused until their Phase 2 step moves the matching mobile parity test in (see `docs/PLAN.md`,
 Phase 1).
 

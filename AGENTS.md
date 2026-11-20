@@ -103,6 +103,10 @@ Grep first; extend in place rather than adding a sibling.
   signature array), `send::multisig_invoke_plan` (`ProposePlan`, `SubmitPlan`) and
   `send::multisig_intent` (the signing intent, package, merge, validator). Selectors of
   arbitrary entrypoints and signature verification reach them only through `StarkPrimitives`.
+- Signer changes are `accounts::multisig_change` (change, self-call, parser, next config,
+  review); a multisig batch's safety rule and review are `send::multisig_review`; the
+  extension's call summaries (`decodeCall`) and recipient positions are `send::call_decode`, over
+  the pinned AVNU route layout in `send::avnu_route`.
 - The send state machine is `send::plan::Plan`; a wallet's session, keys and activity log reach
   it only through `PlanHost`, and its numbers through `Policy` (Bramble's: `SEND_POLICY`).
 - Network and token records (`NetworkInfo`, `TokenInfo`, `TokenRegistry`, borrowed together as

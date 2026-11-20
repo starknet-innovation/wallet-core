@@ -66,7 +66,7 @@ Krusty 3.1.0). M13 merged before the vault step that 2.7 placed ahead of it, so 
 | 2.6 Catalogs | done (#49) | done (M12, Bramble #928) |
 | 2.7 Swap | done (#50), behind the `mobile` feature | done (M13, Bramble #929), at `v0.3.0`: `mobile/core` is a shell over this crate |
 | Vault switch | done (V1 #58) | G4 done (Bramble #947); M14 not started |
-| [Mobile parity](#mobile-parity) | P6 done (#65), P2 done (#68); P1 in progress (P1a: deploy, propose, co-sign, submit) | not started |
+| [Mobile parity](#mobile-parity) | P6 done (#65), P2 done (#68); P1 in progress (P1a: deploy, propose, co-sign, submit; P1b: change signers, call review) | not started |
 | 3 Extension | not started; `js/package.json` is private | n/a |
 
 `v0.1.0` is tagged at `35abc8b` (GitHub release only) and was what M2 and M3 pinned. `v0.2.0`
@@ -118,6 +118,15 @@ Needed now:
   in through `multisig_invoke::StarkPrimitives`; nothing implements it outside the tests until
   Krusty exports them, which the mobile export waits on. Left to the wallet: the class-declared
   read before a deployment, endpoint failover, and the extension's operation bookkeeping.
+  P1b (change signers, and the review of any call batch) is in `accounts::multisig_change`
+  (the change, its self-call, the strict parser and the next configuration) and
+  `send::multisig_review` (`requireSafeArgentMultisigCalls`, `reviewArgentMultisigCalls`), whose
+  ordinary-call line is the extension's `decodeCall` in `send::call_decode` and
+  `send::avnu_route`; the wallet's tokens, watched collections, trusted addresses and summary
+  length are arguments, and refusals are typed with the extension's sentences. Only the ERC-20
+  transfer line and the signer-change paths have golden fixtures: the other call-summary
+  decoders and the poisoned-recipient refusal have unit tests only, and need a Bramble
+  generator.
   Neither app can deploy, propose, sign, submit or change signers today; Android's missing
   create stepper, participant picker and shared-account home are screens, Bramble's.
 - **P2 Activity fee and value when sent.** `ActivityEntry` gains the fee (from the receipt) and
