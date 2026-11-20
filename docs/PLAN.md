@@ -66,6 +66,7 @@ Krusty 3.1.0). M13 merged before the vault step that 2.7 placed ahead of it, so 
 | 2.6 Catalogs | done (#49) | done (M12, Bramble #928) |
 | 2.7 Swap | done (#50), behind the `mobile` feature | done (M13, Bramble #929), at `v0.3.0`: `mobile/core` is a shell over this crate |
 | Vault switch | done (V1 #58) | G4 done (Bramble #947); M14 not started |
+| [Mobile parity](#mobile-parity) | not started | not started |
 | 3 Extension | not started; `js/package.json` is private | n/a |
 
 `v0.1.0` is tagged at `35abc8b` (GitHub release only) and was what M2 and M3 pinned. `v0.2.0`
@@ -92,6 +93,53 @@ merged; each is described under its step in [Phases](#phases).
 | --- | --- | --- | --- |
 | M14 Take `v0.4.0` | Bramble, `feature/mobile-wallet` | `v0.4.0` | the pin moves; `importWallet` loses its unused `passphrase` argument at its call sites; both apps build; testers reset their wallets |
 | Extension Krusty 3 | Bramble, `main` | — | the extension still pins `@starknetfoundation/krusty-kms-wasm` `0.11.0`, which predates the fix (Krusty 3.0 changed the derivation; 2.0.0 and earlier kept the leading zero bytes), so its keys and mobile's part for affected phrases. Its users have funds, so it follows Krusty's [migration guide](https://github.com/starknet-innovation/krusty-kms/blob/v3.0.0/docs/migration-3.0.md): keep the old key for any existing account whose public key differs. Needed before Phase 3, where the extension takes this crate's Krusty |
+| G5 Multisig transaction fixtures | Bramble, `feature/mobile-wallet` | — | a generator running the extension's own propose, sign, submit, deploy and change-signers paths, for [P1](#mobile-parity) |
+| P6 Hidden accounts check | — | — | find where the extension keeps the hidden flag, which decides where [P6](#mobile-parity) lands |
+
+### Mobile parity
+
+From Bramble #990 (2026-11-20), a read-through comparison of the extension (`main` at
+`a01b240c`) and the mobile apps (`feature/mobile-wallet` at `008f2968`). Most of its gaps are
+mobile screens and stay in Bramble. These are the ones that need this repo. Each lands like a
+Phase 2 step: golden fixtures from an extension generator first, the mechanism in `wallet-core`,
+Bramble's choices in `bramble-core`, then a mobile PR that takes the tag.
+
+Needed now:
+
+- **P1 Multisig transactions.** Deploy, propose (calls, nonce, transaction hash), collect
+  co-signer signatures, check the threshold, build the execute transaction, and change signers.
+  It builds on `accounts::multisig*`, 2.5b's coordination and `send/sign.rs`. Needs G5. Neither
+  app can deploy, propose, sign, submit or change signers today; Android's missing create
+  stepper, participant picker and shared-account home are screens, Bramble's.
+- **P2 Activity fee and value when sent.** `ActivityEntry` gains the fee (from the receipt) and
+  the value when sent. It already has `network` and `token_address`, which mobile can show
+  without a release. The oracle is the extension's `activity-detail.ts`. `PriceBook` has no
+  historical price, so the value is either a historical read or recorded at submit time for this
+  wallet's own sends; follow whichever the extension does.
+
+Only if the feature is wanted (a product decision first):
+
+- **P3 Private-key import.** An inbound-only export that seals the key into the vault and never
+  returns it. That amends the hard rule that the mobile build exports no raw keys, so the rule
+  in `AGENTS.md` changes in the same PR. V1's reader requires the collection the extension seals
+  imported keys into to be empty, so it lifts that for this one collection.
+- **P4 Custom RPC.** A stored custom network in `bramble-core`, passed in through `Catalogs`;
+  `wallet-core` already takes the wallet's `NetworkInfo`. Mainnet and Sepolia stay the fixed
+  defaults.
+- **P5 Stark names.** A sans-IO body and reply judge for name → address and address → name,
+  beside `rpc.rs`; the naming contracts are Bramble's catalog data.
+
+Check first:
+
+- **P6 Hidden accounts.** If the extension keeps the flag in preferences, it goes in
+  `public_store.rs` (Bramble's, under `mobile`). If it is in the v13 vault, V1's reader must
+  accept it.
+
+Covered already: the vault format (V1, in `v0.4.0`; mobile takes it at M14, after which a
+backup moves between mobile and the extension) and swap (2.7; mobile lacks only screens). #990's
+STRK20 submission, gasless, Ledger, dapp connect, anti-phishing, allowances and staking stay in
+Phase 4. Its other gaps (Android token management, activity filter and CSV export, QR camera,
+analytics) need nothing from this repo.
 
 ## Generic and Bramble
 
