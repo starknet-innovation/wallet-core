@@ -1,6 +1,7 @@
 //! The shared signing intent around a frozen multisig transaction, mirroring the extension's
 //! `packages/features/multisig/src/repository-schema.ts` (`ArgentMultisigSigningIntent`,
-//! `argentMultisigIntentId`, `isArgentMultisigSigningIntent`) and the background's
+//! `argentMultisigIntentId`, `isArgentMultisigSigningIntent`,
+//! `canReplaceArgentMultisigSigningIntent`) and the background's
 //! `multisig-inputs.ts` (`argentMultisigIntentPackage`, `mergeImportedArgentMultisigIntent`) and
 //! `multisig-ops.ts` (`configSnapshot`). Field order is the extension's, so an intent and its
 //! package serialise to the bytes a co-signer's extension writes.
@@ -219,6 +220,39 @@ impl SigningIntent {
             && self.scope_matches_prepared()
             && self.signatures_valid(primitives)
             && self.authority_fits_state()
+    }
+
+    /// `canReplaceArgentMultisigSigningIntent`: whether `next` may overwrite this stored intent.
+    /// Both must be valid, every reviewed and hash-bound field unchanged, no signature dropped,
+    /// and the state move one the lifecycle allows (`validStateTransition`).
+    pub fn can_replace(
+        &self,
+        next: &SigningIntent,
+        class: &ArgentMultisigClass,
+        max_summary_length: usize,
+        primitives: &dyn StarkPrimitives,
+    ) -> bool {
+        use IntentState::{Accepted, Collecting, Ready, Rejected, Stale, Submitted};
+        let allowed: &[IntentState] = match self.state {
+            Accepted => &[Accepted],
+            Collecting => &[Collecting, Ready, Stale],
+            Ready => &[Accepted, Ready, Rejected, Stale, Submitted],
+            Rejected => &[Rejected],
+            Stale => &[Stale, Submitted],
+            Submitted => &[Accepted, Rejected, Submitted],
+        };
+        self.is_valid(class, max_summary_length, primitives)
+            && next.is_valid(class, max_summary_length, primitives)
+            && self.account_id == next.account_id
+            && self.id == next.id
+            && self.summary == next.summary
+            && self.config_snapshot == next.config_snapshot
+            && self.prepared == next.prepared
+            && self
+                .signatures
+                .iter()
+                .all(|signature| next.signatures.contains(signature))
+            && allowed.contains(&next.state)
     }
 
     /// `accountScopeMatchesPrepared`.
