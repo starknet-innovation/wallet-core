@@ -40,7 +40,7 @@ Decisions, 2026-11-09:
 
 Every Phase 2 step has two halves: the mechanism lands here, then mobile deletes its copy and
 depends on this one. A step is done when both halves are.
-As of 2026-11-19 both halves of every step through 2.7 are done. Every port here is merged
+Phase 2 is done: as of 2026-11-20 both halves of every step are merged. Every port here is merged
 (#39–#50, with #51 and #52) and `0.3.0` carries them. In Bramble, G1–G3 (#918–#920) and
 M5–M13 (#921–#929) are merged into `feature/mobile-wallet`, whose `mobile/core` is now a shell
 that builds this crate's `bramble-core` at `tag = "v0.3.0"` with `features = ["mobile"]`. M7–M13
@@ -48,7 +48,8 @@ merged into each other's stacked branches and reached `feature/mobile-wallet` th
 `0.4.0` adds #54 (stack scrub after Krusty and Nostr secret calls), #55 (mobile tests without
 default features), V1 (#58, the core half of the [vault switch](#vault-switch)) and K1 (#59,
 Krusty 3.1.0). M13 merged before the vault step that 2.7 placed ahead of it, so mobile at
-`v0.3.0` still writes its own vault version 5 until M14. Left in Phase 2: M14.
+`v0.3.0` still wrote its own vault version 5; M14 (Bramble #980) moved it to `v0.4.0` and the
+v13 payload.
 
 | Step | Here | Mobile (`mc-wallet`, `feature/mobile-wallet`) |
 | --- | --- | --- |
@@ -65,7 +66,7 @@ Krusty 3.1.0). M13 merged before the vault step that 2.7 placed ahead of it, so 
 | 2.5b Multisig coordination | done (#48) | done (G2 Bramble #920, M11 #927) |
 | 2.6 Catalogs | done (#49) | done (M12, Bramble #928) |
 | 2.7 Swap | done (#50), behind the `mobile` feature | done (M13, Bramble #929), at `v0.3.0`: `mobile/core` is a shell over this crate |
-| Vault switch | done (V1 #58) | G4 done (Bramble #947); M14 open (Bramble #980) |
+| Vault switch | done (V1 #58) | G4 done (Bramble #947); M14 done (Bramble #980): mobile pins `v0.4.0` |
 | [Mobile parity](#mobile-parity) | P6 done (#65), P2 done (#68); P1's mechanism done (P1a #70, P1b #71, P1c #72), not exported until Krusty exports a selector and signature verification; P3–P5 not started | not started |
 | 3 Extension | not started; `js/package.json` is private | n/a |
 
@@ -86,12 +87,11 @@ users: the vault is the extension's v13 payload and older vaults are refused (#5
 
 Generators (G*) and adoption work (M*) are PRs in Bramble (`starknet-innovation/mc-wallet`)
 against `feature/mobile-wallet`, where `mobile/core` and the generators live (`main` has neither).
-The rest are PRs here. Phase 2's PRs (M1–M13, G1–G3, A1, A2, F1–F3 and the ports) are all
-merged; each is described under its step in [Phases](#phases).
+The rest are PRs here. Phase 2's PRs (M1–M14, G1–G4, A1, A2, F1–F3, V1, K1 and the ports) are
+all merged; each is described under its step in [Phases](#phases).
 
 | PR | Repo, base | Needs | What it is |
 | --- | --- | --- | --- |
-| M14 Take `v0.4.0` | Bramble, `feature/mobile-wallet` | `v0.4.0` | the pin moves; `importWallet` loses its unused `passphrase` argument at its call sites; both apps build; testers reset their wallets |
 | Extension Krusty 3 | Bramble, `main` | — | the extension still pins `@starknetfoundation/krusty-kms-wasm` `0.11.0`, which predates the fix (Krusty 3.0 changed the derivation; 2.0.0 and earlier kept the leading zero bytes), so its keys and mobile's part for affected phrases. Its users have funds, so it follows Krusty's [migration guide](https://github.com/starknet-innovation/krusty-kms/blob/v3.0.0/docs/migration-3.0.md): keep the old key for any existing account whose public key differs. Needed before Phase 3, where the extension takes this crate's Krusty |
 
 ### Mobile parity
@@ -191,7 +191,7 @@ Checked:
   counterpart for. So it lands in `public_store.rs`, and V1's reader is unchanged (G4's
   `vault-v13.json` carries no flag). Mobile has none yet.
 
-Covered already: the vault format (V1, in `v0.4.0`; mobile takes it at M14, after which a
+Covered already: the vault format (V1, in `v0.4.0`; mobile took it at M14, so a
 backup moves between mobile and the extension) and swap (2.7; mobile lacks only screens). #990's
 STRK20 submission, gasless, Ledger, dapp connect, anti-phishing, allowances and staking stay in
 Phase 4. Its other gaps (Android token management, activity filter and CSV export, QR camera,
