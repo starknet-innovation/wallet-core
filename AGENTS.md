@@ -66,8 +66,11 @@ cargo test -p bramble-core <name>   # narrow loop while iterating
   commit line) in the fixtures README.
 - **`wallet-core` takes no product policy.** If a rule is Bramble's choice, it lives in
   `bramble-core`.
-- `#![forbid(unsafe_code)]` stays on both crates. Fix a lint rather than allow it; the one
-  accepted `allow` is `too_many_arguments` on flat UniFFI exports.
+- `#![forbid(unsafe_code)]` stays on both crates, and so does the deny on `unwrap`/`expect`:
+  library code returns errors, it does not panic. Fix a lint rather than allow it; the one
+  accepted `allow` is `too_many_arguments` on flat UniFFI exports. A panic on input the crate
+  itself controls (a literal, a bundled catalog, a record validated on open) may take
+  `#[expect(clippy::expect_used, reason = "...")]` naming why it cannot fail; never on input.
 - Source files stay under 500 lines (checked); split by behaviour as you approach it.
 
 ## Reuse before writing

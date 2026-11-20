@@ -148,7 +148,9 @@ pub fn account_avatar(address: &str) -> AccountAvatar {
     let mut state = address_value(address);
     // Mixed-radix reads, in `accountBirdTraits` order.
     let mut pick = |range: u8| -> u8 {
-        let divisor = NonZeroFelt::try_from(Felt::from(range)).expect("ranges are non-zero");
+        let Ok(divisor) = NonZeroFelt::try_from(Felt::from(range)) else {
+            return 0; // the ranges are non-zero constants
+        };
         let (quotient, remainder) = state.div_rem(&divisor);
         state = quotient;
         remainder.to_bytes_be()[31]

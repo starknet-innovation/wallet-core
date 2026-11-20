@@ -5,6 +5,10 @@
 //! (`multisig`). `starknet_wallet_core` takes each as an argument. A bundled file that does not
 //! parse or validate panics on first use, loudly, as mobile's loaders do. Plain Rust for now; the
 //! UniFFI exports arrive with the swap (docs/PLAN.md, 2.7).
+#![expect(
+    clippy::expect_used,
+    reason = "a bundled catalog that does not parse panics on first use, by design (above)"
+)]
 
 pub mod account_address;
 pub mod accounts;

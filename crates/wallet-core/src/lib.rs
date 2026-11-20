@@ -16,6 +16,8 @@
 //! can reach a log through an error message.
 
 #![forbid(unsafe_code)]
+// A panic in a wallet is a crash: library code returns errors (unit tests may unwrap: clippy.toml).
+#![deny(clippy::unwrap_used, clippy::expect_used)]
 
 pub mod accounts;
 pub mod activity;

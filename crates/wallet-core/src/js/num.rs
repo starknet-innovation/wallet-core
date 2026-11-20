@@ -122,6 +122,7 @@ fn is_decimal_literal(body: &str) -> bool {
 
 /// Shortest round-trip decimal digits of a finite positive value and its exponent `n`, so the
 /// value is `0.d1d2…dk × 10^n` (ECMAScript `Number::toString` notation).
+#[expect(clippy::expect_used, reason = "parses Rust's own `{:e}` output")]
 fn shortest(value: f64) -> (Vec<u8>, i32) {
     let text = format!("{value:e}");
     let (mantissa, exponent) = text.split_once('e').expect("{:e} has an exponent");

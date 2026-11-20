@@ -311,8 +311,7 @@ impl Regex {
             if matcher.exhausted() {
                 return Err(Exhausted);
             }
-            if found {
-                let end = end.expect("a match records its end");
+            if let Some(end) = end.filter(|_| found) {
                 caps[0] = Some((start, end));
                 return Ok(Some(Match {
                     start,

@@ -105,10 +105,11 @@ impl Plan {
             Settled::Refused(code) => return self.fail(code, None),
         };
         let account = &self.account;
-        let Some(deployment) = account.deployment.as_ref() else {
+        let Some(deployment) = account.deployment.clone() else {
             return self.fail(Code::AccountNotDeployable, None);
         };
-        let hash = match sign::deploy_hash(account.network, &account.address, deployment, &bounds) {
+        let hash = match sign::deploy_hash(account.network, &account.address, &deployment, &bounds)
+        {
             Ok(hash) => hash,
             Err(refusal) => return self.fail(refusal_code(refusal), None),
         };
@@ -127,16 +128,16 @@ impl Plan {
             Expect::DeployWrite,
             RpcPurpose::AddDeployAccount,
             true,
-            |s, id| {
-                let zero = Felt::ZERO;
-                let unsigned = s
-                    .deploy_tx(&zero, &signature)
-                    .expect("a signed deployment has its parameters");
+            |_, id| {
                 rpc_bodies::add_deploy(
                     id,
                     &DeployTx {
+                        class_hash: &deployment.class_hash,
+                        salt: &deployment.salt,
+                        constructor_calldata: &deployment.constructor_calldata,
+                        nonce: &Felt::ZERO,
                         bounds: Some(&bounds),
-                        ..unsigned
+                        signature: &signature,
                     },
                 )
             },

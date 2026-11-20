@@ -1,4 +1,8 @@
 //! Test-only hooks for the integration suite; not part of the FFI surface.
+#![expect(
+    clippy::expect_used,
+    reason = "test-only hooks, like the tests that call them"
+)]
 
 pub use crate::avatar::account_avatar;
 pub use crate::privacy::testing as privacy;

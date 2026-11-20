@@ -48,6 +48,10 @@ pub(crate) struct StoredAccount {
     pub public_key: String,
 }
 
+#[expect(
+    clippy::expect_used,
+    reason = "opening the store refuses any record these would fail on"
+)]
 impl StoredAccount {
     pub(crate) fn family(&self) -> AccountFamily {
         AccountFamily::from_wire(&self.family).expect("validated on open")

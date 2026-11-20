@@ -259,10 +259,11 @@ impl Plan {
         let (Some(bounds), Kind::Transfer(transfer)) = (self.work.invoke_bounds, &self.kind) else {
             return self.fail(Code::ReviewedFeeRequired, None);
         };
+        let calldata = transfer.calldata.clone();
         let hash = match sign::invoke_hash(
             self.account.network,
             &self.account.address,
-            &transfer.calldata,
+            &calldata,
             &nonce,
             &bounds,
         ) {
@@ -276,14 +277,14 @@ impl Plan {
         self.work.invoke_hash = Some(hash);
         self.persist_pending(host, &hash, true);
         self.rpc(Expect::InvokeWrite, RpcPurpose::AddInvoke, true, |s, id| {
-            let unsigned = s
-                .invoke_tx(&nonce, &signature)
-                .expect("transfer plan has an invoke");
             rpc_bodies::add_invoke(
                 id,
                 &InvokeTx {
+                    sender: &s.account.address,
+                    calldata: &calldata,
+                    nonce: &nonce,
                     bounds: Some(&bounds),
-                    ..unsigned
+                    signature: &signature,
                 },
             )
         })

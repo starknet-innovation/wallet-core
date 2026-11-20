@@ -155,11 +155,11 @@ pub fn constructor_calldata(
     Ok(calldata)
 }
 
-fn calldata_felt(value: &str) -> Felt {
+fn calldata_felt(value: &str) -> Option<Felt> {
     if value.starts_with("0x") {
-        felt::parse(value).expect("calldata keys are canonical felts")
+        felt::parse(value)
     } else {
-        Felt::from(value.parse::<u64>().expect("calldata counts are decimal"))
+        value.parse::<u64>().ok().map(Felt::from)
     }
 }
 
@@ -172,7 +172,11 @@ pub fn predict(
     let salt = felt::parse(salt).ok_or_else(|| Error::invalid("invalid deployment salt"))?;
     let (normalized, guids) = normalize(config, class)?;
     let calldata = constructor_calldata(&normalized, class)?;
-    let felts: Vec<Felt> = calldata.iter().map(|value| calldata_felt(value)).collect();
+    let felts = calldata
+        .iter()
+        .map(|value| calldata_felt(value))
+        .collect::<Option<Vec<Felt>>>()
+        .ok_or_else(|| Error::invalid("invalid multisig calldata"))?;
     // Krusty already reduces the address below 2**251 - 256, as starknet.js does.
     let address = krusty_kms::calculate_contract_address(&salt, &class.hash, &felts, &Felt::ZERO)
         .map_err(|_| Error::kms("multisig address"))?;

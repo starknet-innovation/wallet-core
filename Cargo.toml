@@ -13,6 +13,8 @@ repository = "https://github.com/starknet-innovation/wallet-core"
 homepage = "https://github.com/starknet-innovation/wallet-core"
 
 [profile.release]
+# Wrapping arithmetic on an amount is a wrong number; with panic = "abort" it fails closed instead.
+overflow-checks = true
 lto = true
 codegen-units = 1
 panic = "abort"
