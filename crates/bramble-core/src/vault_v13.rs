@@ -200,7 +200,8 @@ pub(crate) fn encode(payload: &VaultPayload) -> Result<Zeroizing<Vec<u8>>, CoreE
         });
         signing_keys.push(SigningKey {
             account_id: record.id.clone(),
-            private_key: felt::canonical(pair.private_key.expose_secret()),
+            // Moved out of the wiped buffer, not copied; the field is zeroized with the vault.
+            private_key: std::mem::take(&mut *pair.private_key.expose_secret_hex()),
         });
     }
     let vault = Vault {
@@ -277,8 +278,7 @@ pub(crate) fn decode(plaintext: &[u8]) -> Result<VaultPayload, CoreError> {
         // Equal to the derived canonical text, which also holds it canonical and in range. An
         // imported key was read from this very text above.
         let key_matches = record.key == KeySource::Imported || {
-            let derived = Zeroizing::new(felt::canonical(pair.private_key.expose_secret()));
-            *sealed.private_key == *derived
+            *sealed.private_key == *pair.private_key.expose_secret_hex()
         };
         key_matches && wire_y == Some(public_key_y)
     })?;

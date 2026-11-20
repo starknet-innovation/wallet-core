@@ -5,12 +5,12 @@
 //! through this module, never through their own parsers, so the two wallets cannot disagree
 //! about which strings name the same value.
 
-use krusty_kms_common::SecretFelt;
 use starknet_types_core::felt::Felt;
 use zeroize::Zeroizing;
 
 use crate::js::num::js_trim;
 use crate::scrub::scrubbed;
+use crate::SecretFelt;
 
 /// Stark curve order `n`; a signing scalar must lie in `[1, n)`.
 const STARK_CURVE_ORDER: Felt =
