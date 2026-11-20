@@ -3,7 +3,7 @@
 //! `argentMultisigIntentId`, `isArgentMultisigSigningIntent`,
 //! `canReplaceArgentMultisigSigningIntent`) and the background's
 //! `multisig-inputs.ts` (`argentMultisigIntentPackage`, `readImportIntentInput`,
-//! `mergeImportedArgentMultisigIntent`) and
+//! `locallyDerivedImportedIntent`, `mergeImportedArgentMultisigIntent`) and
 //! `multisig-ops.ts` (`configSnapshot`). Field order is the extension's, so an intent and its
 //! package serialise to the bytes a co-signer's extension writes.
 //!
@@ -132,7 +132,7 @@ struct Arrived {
 impl IntentPackage {
     /// `readImportIntentInput`'s package checks: only `intent`, `kind` and `version`, exactly
     /// this kind and version 1, and an intent [`SigningIntent::is_valid`] accepts. `None`
-    /// otherwise.
+    /// otherwise. The caller then derives it locally ([`SigningIntent::locally_derived_imported`]).
     pub fn parse(
         text: &str,
         class: &ArgentMultisigClass,
@@ -208,11 +208,34 @@ impl SigningIntent {
         }
     }
 
+    /// `locallyDerivedImportedIntent`: an imported intent with the remote's lifecycle claims
+    /// discarded (its broadcast hash, stale outcome and stale reason) and the state derived only
+    /// from its already-validated signature count: ready at the threshold, else collecting.
+    pub fn locally_derived_imported(&self) -> SigningIntent {
+        let ready = self.signatures.len() == self.config_snapshot.threshold as usize;
+        SigningIntent {
+            broadcast_transaction_hash: None,
+            stale_outcome: None,
+            stale_reason: None,
+            state: if ready {
+                IntentState::Ready
+            } else {
+                IntentState::Collecting
+            },
+            ..self.clone()
+        }
+    }
+
     /// `mergeImportedArgentMultisigIntent`: a re-import of the same frozen hash. A terminal or
     /// stale local intent is kept as it is; an open one gains the incoming signers it lacks, in
-    /// GUID order, and keeps its own summary. Both must already have passed [`is_valid`].
+    /// GUID order, and keeps its own summary. As the extension's `importIntent` does, the caller
+    /// first reads `incoming` with [`IntentPackage::parse`] and passes it through
+    /// [`locally_derived_imported`] (this keeps the incoming lifecycle fields as given), and
+    /// stores the result only if it [`is_valid`] and the stored intent [`can_replace`] it.
     ///
+    /// [`locally_derived_imported`]: SigningIntent::locally_derived_imported
     /// [`is_valid`]: SigningIntent::is_valid
+    /// [`can_replace`]: SigningIntent::can_replace
     pub fn merge_imported(&self, incoming: &SigningIntent) -> SigningIntent {
         if !matches!(self.state, IntentState::Collecting | IntentState::Ready) {
             return self.clone();
