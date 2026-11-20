@@ -6,7 +6,9 @@
 use serde_json::Value;
 use starknet_types_core::felt::Felt;
 
+use super::fees::{FeeUnit, TransactionFee};
 use crate::felt;
+use crate::js::felt::{canonical_felt, is_stark_field_element};
 use crate::kms::NetworkId;
 /// Longest reply the core parses: the one bound `rpc.rs` owns.
 use crate::rpc::MAX_RESPONSE_BYTES;
@@ -305,6 +307,23 @@ pub fn status(answer: Option<Answer>) -> Observation {
         }
         None => Observation::Unknown,
     }
+}
+
+/// `readReceiptFee`: the receipt's `actual_fee`, in RPC 0.7+'s `{ amount, unit }` shape only. A
+/// bare felt carries no unit and is dropped rather than guessed; so is an amount that is not a
+/// field element once canonical, or a unit other than `FRI` or `WEI`.
+pub fn receipt_fee(answer: Option<&Answer>) -> Option<TransactionFee> {
+    let Some(Answer::Result(Value::Object(receipt))) = answer else {
+        return None;
+    };
+    let fee = receipt.get("actual_fee")?.as_object()?;
+    let unit = match fee.get("unit")?.as_str()? {
+        "FRI" => FeeUnit::Fri,
+        "WEI" => FeeUnit::Wei,
+        _ => return None,
+    };
+    let amount = canonical_felt(fee.get("amount")?.as_str()?)?;
+    is_stark_field_element(&amount).then_some(TransactionFee { amount, unit })
 }
 
 /// Whether a `starknet_getTransactionReceipt` reply carries a receipt.

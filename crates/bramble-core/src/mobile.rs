@@ -118,7 +118,10 @@ pub use wallet::{AccountInfo, RecoveryPhrase, SecurityStatus, WalletCore, Wallet
 pub use wallet_accounts::AccountRecord;
 
 // Portfolio and activity (mobile/docs/portfolio-activity.md).
-pub use history::activity::{ActivityEntry, FailureNotice, TransferDirection};
+pub use history::activity::{
+    activity_fee_text, activity_value_text, ActivityEntry, ActivityOrigin, FailureNotice,
+    SubmittedPrice, TransactionFee, TransferDirection,
+};
 pub use history::activity_book::{ActivityBook, ActivityView};
 pub use history::appearance::{
     activity_empty_copy, activity_groups, activity_unavailable_notice, ActivityCounterparty,

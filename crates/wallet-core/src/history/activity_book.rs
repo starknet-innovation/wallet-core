@@ -19,7 +19,7 @@ const HISTORY_FRESH_MS: f64 = 5.0 * 60_000.0;
 const HISTORY_RETRY_MS: f64 = 60_000.0;
 
 /// One account's feed on one network.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ActivityView {
     pub entries: Vec<ActivityEntry>,
     pub history_unavailable: bool,

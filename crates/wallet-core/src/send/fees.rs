@@ -17,6 +17,15 @@ pub enum FeeUnit {
     Wei,
 }
 
+/// The fee a transaction's receipt reports it paid (`TransactionFee`, the activity row's
+/// `feePaid`): `amount` a canonical hex felt, in `unit` (`FRI` for STRK-paid transactions, `WEI`
+/// for ETH-paid legacy ones).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TransactionFee {
+    pub amount: String,
+    pub unit: FeeUnit,
+}
+
 /// A fee as the spend its resource bounds authorise, with its display text.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FeeAmount {

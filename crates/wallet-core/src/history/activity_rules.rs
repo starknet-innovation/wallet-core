@@ -1,9 +1,69 @@
 //! The extension's per-field activity rules split from `activity.rs`: the token-address and
-//! direction grammars (`isRecordedTokenAddress`, `activityToken`) and the planted-row cleanup of
-//! stored rows (`withoutPlantedRows`, audit #163).
+//! direction grammars (`isRecordedTokenAddress`, `activityToken`), the fee and price shapes
+//! (`isTransactionFee`, `isSubmittedPrice`), and the planted-row cleanup of stored rows
+//! (`withoutPlantedRows`, audit #163).
 
-use super::activity::{ActivityEntry, ActivityKind, TransferDirection};
-use crate::js::felt::{canonical_felt, is_non_zero_felt};
+use serde_json::{json, Map, Value};
+
+use super::activity::{
+    ActivityEntry, ActivityKind, ActivityOrigin, FeeUnit, SubmittedPrice, TransactionFee,
+    TransferDirection,
+};
+use crate::js::felt::{canonical_felt, is_non_zero_felt, is_stark_field_element};
+use crate::portfolio::model::DisplayCurrency;
+
+/// `MAX_ACTIVITY_TIMESTAMP_MS`: the last instant an ECMAScript `Date` can hold.
+pub const MAX_ACTIVITY_TIMESTAMP_MS: u64 = 8_640_000_000_000_000;
+
+fn only_keys<'a>(value: &'a Value, keys: &[&str]) -> Option<&'a Map<String, Value>> {
+    value
+        .as_object()
+        .filter(|map| map.keys().all(|key| keys.contains(&key.as_str())))
+}
+
+/// `isTransactionFee`: exactly `{amount, unit}`, `unit` `FRI` or `WEI`, `amount` a canonical felt.
+pub fn transaction_fee(value: &Value) -> Option<TransactionFee> {
+    let map = only_keys(value, &["amount", "unit"])?;
+    let unit = match map.get("unit")?.as_str()? {
+        "FRI" => FeeUnit::Fri,
+        "WEI" => FeeUnit::Wei,
+        _ => return None,
+    };
+    let amount = map.get("amount")?.as_str()?;
+    (is_stark_field_element(amount) && canonical_felt(amount).as_deref() == Some(amount)).then(
+        || TransactionFee {
+            amount: amount.into(),
+            unit,
+        },
+    )
+}
+
+/// `isSubmittedPrice`: exactly `{currency, pricedAt, unitPrice}`, a display currency, a safe
+/// integer time no later than `MAX_ACTIVITY_TIMESTAMP_MS`, and a finite positive price.
+pub fn submitted_price(value: &Value) -> Option<SubmittedPrice> {
+    let map = only_keys(value, &["currency", "pricedAt", "unitPrice"])?;
+    let currency = DisplayCurrency::from_code(map.get("currency")?.as_str()?)?;
+    let at = map.get("pricedAt")?.as_f64()?;
+    let unit_price = map.get("unitPrice")?.as_f64()?;
+    (at.fract() == 0.0
+        && (0.0..=MAX_ACTIVITY_TIMESTAMP_MS as f64).contains(&at)
+        && unit_price.is_finite()
+        && unit_price > 0.0)
+        .then_some(SubmittedPrice {
+            currency,
+            priced_at: at as u64,
+            unit_price,
+        })
+}
+
+/// A submitted price in the stored spelling.
+pub fn price_json(price: &SubmittedPrice) -> Value {
+    json!({
+        "currency": price.currency.code(),
+        "pricedAt": price.priced_at,
+        "unitPrice": price.unit_price,
+    })
+}
 
 /// `isRecordedTokenAddress`: absent, or one canonical non-zero field element beside a symbol.
 pub fn is_recorded_token_address(address: Option<&str>, token: Option<&str>) -> bool {
@@ -38,14 +98,13 @@ pub const UNTRACKED_TOKEN_SYMBOL: &str = "TOKEN";
 /// `withoutPlantedRows` (audit #163): the planted-row rule applied to rows stored before it
 /// existed, which reach the merge as local rows and would otherwise be kept. A zero-amount
 /// transfer and an outgoing untracked-token transfer are dropped; an incoming untracked-token
-/// transfer loses its counterparty. The extension spares `origin: "wallet"` rows; mobile records
-/// no origin, but its own sends are of a bundled token and never zero, so the rule cannot reach
-/// them.
+/// transfer loses its counterparty. A row this wallet recorded (`origin: "wallet"`) is spared.
 pub fn without_planted_rows(entries: Vec<ActivityEntry>) -> Vec<ActivityEntry> {
     entries
         .into_iter()
         .filter_map(|mut entry| {
-            if entry.kind != ActivityKind::Transfer {
+            if entry.kind != ActivityKind::Transfer || entry.origin == Some(ActivityOrigin::Wallet)
+            {
                 return Some(entry);
             }
             if entry.amount.as_deref().is_some_and(is_zero_amount_label) {
@@ -92,6 +151,9 @@ mod tests {
             counterparty: Some("0x5".into()),
             direction: None,
             failure_notice: None,
+            fee_paid: None,
+            origin: None,
+            submitted_price: None,
             finalized_on_l1: None,
             hash: "0xabc".into(),
             kind: ActivityKind::Transfer,

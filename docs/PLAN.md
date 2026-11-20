@@ -66,7 +66,7 @@ Krusty 3.1.0). M13 merged before the vault step that 2.7 placed ahead of it, so 
 | 2.6 Catalogs | done (#49) | done (M12, Bramble #928) |
 | 2.7 Swap | done (#50), behind the `mobile` feature | done (M13, Bramble #929), at `v0.3.0`: `mobile/core` is a shell over this crate |
 | Vault switch | done (V1 #58) | G4 done (Bramble #947); M14 not started |
-| [Mobile parity](#mobile-parity) | P6 in review; the rest not started | not started |
+| [Mobile parity](#mobile-parity) | P6 done (#65); P2 in review (G6 Bramble, not yet pushed) | not started |
 | 3 Extension | not started; `js/package.json` is private | n/a |
 
 `v0.1.0` is tagged at `35abc8b` (GitHub release only) and was what M2 and M3 pinned. `v0.2.0`
@@ -116,6 +116,18 @@ Needed now:
   without a release. The oracle is the extension's `activity-detail.ts`. `PriceBook` has no
   historical price, so the value is either a historical read or recorded at submit time for this
   wallet's own sends; follow whichever the extension does.
+  In review: G6 (`extension-activity-detail.jsonl`, `scripts/mobile-parity-activity/`) and the
+  core half. The extension records the price at submit time (`activity-valuation.ts`: a fresh
+  cached price, only for a public send this wallet made) and reads the fee from the receipt
+  during reconciliation, only for its own rows (`origin: "wallet"`). So `ActivityEntry` gains
+  `fee_paid`, `submitted_price` and `origin`; the plan reads a settled record's receipt in the
+  same pass as its status (`PlanHost::wants_fee`, `record_fee`); `TransferPlan::price_with`
+  prices the record from a `PriceBook`; `activity::detail` holds the rules and the row text.
+  Found on the way: through starknet.js 10 the extension's `readReceiptFee` refuses every
+  receipt (a `ReceiptTx` is not a plain object), so its rows never store a fee; the core follows
+  `readReceiptFee` over the node's JSON, and the fixture's `throughProvider` shows the gap until
+  Bramble fixes it. Sponsored (`feePayer`) and gasless (`userFee`) rows and the slow-pass fee
+  backfill are left out: mobile has none of them.
 
 Only if the feature is wanted (a product decision first):
 
