@@ -66,7 +66,7 @@ Krusty 3.1.0). M13 merged before the vault step that 2.7 placed ahead of it, so 
 | 2.6 Catalogs | done (#49) | done (M12, Bramble #928) |
 | 2.7 Swap | done (#50), behind the `mobile` feature | done (M13, Bramble #929), at `v0.3.0`: `mobile/core` is a shell over this crate |
 | Vault switch | done (V1 #58) | G4 done (Bramble #947); M14 not started |
-| [Mobile parity](#mobile-parity) | not started | not started |
+| [Mobile parity](#mobile-parity) | P6 in review; the rest not started | not started |
 | 3 Extension | not started; `js/package.json` is private | n/a |
 
 `v0.1.0` is tagged at `35abc8b` (GitHub release only) and was what M2 and M3 pinned. `v0.2.0`
@@ -94,7 +94,7 @@ merged; each is described under its step in [Phases](#phases).
 | M14 Take `v0.4.0` | Bramble, `feature/mobile-wallet` | `v0.4.0` | the pin moves; `importWallet` loses its unused `passphrase` argument at its call sites; both apps build; testers reset their wallets |
 | Extension Krusty 3 | Bramble, `main` | — | the extension still pins `@starknetfoundation/krusty-kms-wasm` `0.11.0`, which predates the fix (Krusty 3.0 changed the derivation; 2.0.0 and earlier kept the leading zero bytes), so its keys and mobile's part for affected phrases. Its users have funds, so it follows Krusty's [migration guide](https://github.com/starknet-innovation/krusty-kms/blob/v3.0.0/docs/migration-3.0.md): keep the old key for any existing account whose public key differs. Needed before Phase 3, where the extension takes this crate's Krusty |
 | G5 Multisig transaction fixtures | Bramble, `feature/mobile-wallet` | — | a generator running the extension's own propose, sign, submit, deploy and change-signers paths, for [P1](#mobile-parity) |
-| P6 Hidden accounts check | — | — | find where the extension keeps the hidden flag, which decides where [P6](#mobile-parity) lands |
+| P6 Hidden accounts | here, `main` | — | [P6](#mobile-parity): `set_account_hidden` and `AccountRecord.hidden`, the flag in `preferences.json` |
 
 ### Mobile parity
 
@@ -129,11 +129,19 @@ Only if the feature is wanted (a product decision first):
 - **P5 Stark names.** A sans-IO body and reply judge for name → address and address → name,
   beside `rpc.rs`; the naming contracts are Bramble's catalog data.
 
-Check first:
+Checked:
 
-- **P6 Hidden accounts.** If the extension keeps the flag in preferences, it goes in
-  `public_store.rs` (Bramble's, under `mobile`). If it is in the v13 vault, V1's reader must
-  accept it.
+- **P6 Hidden accounts.** The extension (`main` at `a01b240c`) keeps them in its preferences,
+  not the vault: `hiddenAccountIds`, unique canonical account ids, default `[]`
+  (`packages/features/settings/src/preferences-accounts.ts`, `isHiddenAccountIds` in
+  `packages/foundation/wallet-model/src/preferences/preferences.ts`). Its background
+  (`apps/extension/src/background/accounts/account-visibility-ops.ts`) refuses hiding an unknown
+  account or the last one a network still shows, and moves off the active account before
+  recording the hide; reveal takes any id. Selection prefers a visible account
+  (`accountForNetwork`, `runtime/runtime-state.ts`); a hidden one can still be selected. A
+  preferences restore leaves the list alone, which mobile, with no preferences restore, has no
+  counterpart for. So it lands in `public_store.rs`, and V1's reader is unchanged (G4's
+  `vault-v13.json` carries no flag). Mobile has none yet.
 
 Covered already: the vault format (V1, in `v0.4.0`; mobile takes it at M14, after which a
 backup moves between mobile and the extension) and swap (2.7; mobile lacks only screens). #990's
