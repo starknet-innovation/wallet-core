@@ -138,7 +138,11 @@ Needed now:
   import, and the mobile export must enforce it: replace the remote summary with its own call
   review (refusing when the review refuses), and refuse unless the chain's authority equals the
   intent's snapshot and its nonce the prepared one. Two refusals deliberately differ: a non-member deployer is
-  refused before any read, and a write answered with another hash is `HashMismatch`.
+  refused before any read, and a write answered with another hash is `HashMismatch`. The merge
+  and submit deliberately differ too, closing gaps the extension has: `merge_imported` refuses
+  another intent and stops at the threshold (the extension merges past it into an invalid
+  intent), and `SubmitPlan` takes the `SigningIntent` and verifies it rather than trusting loose
+  signatures.
   Neither app can deploy, propose, sign, submit or change signers today; Android's missing
   create stepper, participant picker and shared-account home are screens, Bramble's.
 - **P2 Activity fee and value when sent.** `ActivityEntry` gains the fee (from the receipt) and
