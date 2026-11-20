@@ -59,7 +59,8 @@ pub struct SyncJudge {
 
 /// Starts the transport's `sync(recipientPublicKey, since, relayUrls, seenEventIds)`: the
 /// recipient must be canonical and `since` a non-negative safe integer ("Invalid Nostr sync
-/// request"), then the relay selection is checked.
+/// request"), then the relay selection is checked. A zero `max_sync_pages` is refused the same
+/// way (see [`RelayLimits::max_sync_pages`]).
 pub fn sync_nostr_gift_wraps(
     recipient_public_key: &str,
     since: i64,
@@ -68,7 +69,7 @@ pub fn sync_nostr_gift_wraps(
     limits: RelayLimits,
 ) -> Result<SyncJudge, RelayError> {
     let safe_since = u64::try_from(since).is_ok_and(|since| since <= MAX_SAFE_INTEGER);
-    if !is_public_key(recipient_public_key) || !safe_since {
+    if !is_public_key(recipient_public_key) || !safe_since || limits.max_sync_pages == 0 {
         return Err(RelayError::InvalidSyncRequest);
     }
     valid_relay_urls(&relay_urls, limits.max_relays)?;

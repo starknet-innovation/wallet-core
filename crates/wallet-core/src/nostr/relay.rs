@@ -37,7 +37,8 @@ pub struct RelayLimits {
     /// The most relays one publish or sync may select.
     pub max_relays: usize,
     /// `MAX_SYNC_PAGES`: pages read from one relay per sync while its answers come back full.
-    /// The first page is always read.
+    /// The first page is always read. Zero is refused as `InvalidSyncRequest`, where the
+    /// extension would read nothing; a sync that can read no page is a misconfiguration.
     pub max_sync_pages: usize,
 }
 

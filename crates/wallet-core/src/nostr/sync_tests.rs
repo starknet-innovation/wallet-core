@@ -69,6 +69,18 @@ fn syncs_only_matching_gift_wraps_from_each_relay() {
     assert_eq!(bad.err(), Some(RelayError::InvalidSyncRequest));
 }
 
+// Not in the extension, which reads nothing under a zero page cap: refused outright here.
+#[test]
+fn a_zero_page_cap_is_refused() {
+    let limits = RelayLimits {
+        max_sync_pages: 0,
+        ..LIMITS
+    };
+    let relays = vec![DEFAULTS[0].into()];
+    let zero = sync_nostr_gift_wraps(RECIPIENT, 1, relays, HashSet::new(), limits);
+    assert_eq!(zero.err(), Some(RelayError::InvalidSyncRequest));
+}
+
 // "preserves same-id relay candidates until Krusty authenticates them"
 #[test]
 fn preserves_same_id_candidates_across_relays() {
