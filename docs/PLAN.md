@@ -95,17 +95,18 @@ against `feature/mobile-wallet`, where `mobile/core` and the generators live (`m
 The rest are PRs here. Phase 2's PRs (M1–M14, G1–G4, A1, A2, F1–F3, V1, K1 and the ports) are
 all merged; each is described under its step in [Phases](#phases).
 
-In order. The first four finish [Mobile parity](#mobile-parity); the rest are [Parity](#parity),
-where each step is described.
+In order. The first five finish [Mobile parity](#mobile-parity); the rest are [Parity](#parity),
+where each step is described. P1's export waits on Krusty, so it does not hold the tag or the
+steps after it.
 
 | PR | Repo, base | Needs | What it is |
 | --- | --- | --- | --- |
 | #77–#81 | here | — | open, checks green: mobile relay paging (#77), P4 custom RPC (#78), P1 import checks (#79), P3 private-key import (#80), the PBKDF2 timing (#81, plan only). #78 and #80 both edit `account_store.rs`, #77 and #78 `nostr_relay.rs`, so each rebases after the one before it |
 | P5 Stark names | here | — | now wanted, as every extension feature is |
-| P1 export | here | krusty-kms#257 (open) | the Krusty bump that exports a selector and signature verification, an implementation of `StarkPrimitives` over it, then P1's FFI surface |
-| `0.5.0`, then M15 | here; Bramble, `feature/mobile-wallet` | the three rows above | the tag, and mobile taking it: the relay loops #77 changes, and the screens for P1–P6 |
+| `0.5.0`, then M15 | here; Bramble, `feature/mobile-wallet` | the two rows above | the tag, and mobile taking it: the relay loops #77 changes, and the screens for P2–P6 |
 | G7 | Bramble, `feature/mobile-wallet` | — | the generators P1, P3 and P4 landed without: an imported-key vault, the RPC override rules, the multisig import cases and the call summaries beyond an ERC-20 transfer |
-| P7 Vault: all of v13, then v14 | here | a generator | first of the new steps; P13–P16 store into collections V1 refuses |
+| P1 export | here, then Bramble | krusty-kms#257 (open) | whenever Krusty ships it: the bump that exports a selector and signature verification, an implementation of `StarkPrimitives` over it, P1's FFI surface, and its screens in the tag after |
+| P7 Vault: all of v13, then v14 | here | a generator | first of the new steps; P14–P16 store into collections V1 refuses |
 | P8 Call batches | here | a generator | the plan signs only a transfer or a deployment today; P10–P12 and P15 submit calls |
 | P9–P16 | here, each with its generator and its mobile PR | P7, P8 | activity export, swap, allowances, staking, gasless, STRK20 submission, dapp connect, Ledger |
 | Extension Krusty 3 | Bramble, `main` | — | the extension still pins `@starknetfoundation/krusty-kms-wasm` `0.11.0`, which predates the fix (Krusty 3.0 changed the derivation; 2.0.0 and earlier kept the leading zero bytes), so its keys and mobile's part for affected phrases. Its users have funds, so it follows Krusty's [migration guide](https://github.com/starknet-innovation/krusty-kms/blob/v3.0.0/docs/migration-3.0.md): keep the old key for any existing account whose public key differs. Needed before Phase 3, where the extension takes this crate's Krusty |
@@ -232,16 +233,20 @@ Foundations, which the features need:
 
 - **P7 Vault: all of v13, then v14.** V1 reads only what mobile writes and refuses a vault
   holding anything else, so a backup from an extension with a dapp grant, a Ledger account, a
-  shadow account or a multisig viewing key does not open on mobile, and P13–P16 have nowhere to
+  shadow account or a multisig viewing key does not open on mobile, and P14–P16 have nowhere to
   store. Port the rest of the extension's validators (`packages/platform/vault/src/schema/`,
   1,106 lines), so the reader accepts every v13 vault the extension accepts and writes back
-  unchanged what it does not use. Then follow v0.10.11's schema 14 (#990 says that step changes
-  only the number; check it). Oracle: G4 extended to a vault with every collection filled.
+  unchanged what it does not use. Then follow v0.10.11's schema 14. #990 says that step changes
+  only the number; it does not: on `release/v0.10.11` it adds account provenance
+  (`schema-provenance.ts`, with a migration). Oracle: G4 extended to a vault with every
+  collection filled, then the same at 14.
 - **P8 Call batches.** `send::Kind` is a transfer, a deployment or a refresh; a single-signer
   account cannot submit arbitrary calls. Swap, staking, a revoke and a dapp's invoke all do. Add
   an invoke kind to `send::plan::Plan` whose review is the one multisig already has
-  (`send::multisig_review`, `send::call_decode`). Oracle: the extension's invoke path
-  (`packages/platform/starknet/src/transactions`, `packages/features/transactions/src/routing`).
+  (`send::multisig_review`, `send::call_decode`). The oracle is the extension's submission
+  (`packages/platform/starknet/src/rpc/rpc-submit.ts`) and its call checks
+  (`packages/features/transactions/src/routing/verify*.ts`); neither has been read for this
+  plan, so the step starts by reading them.
 
 Features, smallest and least dependent first:
 
@@ -255,12 +260,15 @@ Features, smallest and least dependent first:
   `transactions/src/allowances/` (1,916). The revoke needs P8.
 - **P12 Staking.** Positions, the validator directory, calls and their review:
   `transactions/src/staking/` (1,062) and `background/staking/` (1,150). Needs P8.
-- **P13 Gasless and sponsored transactions.** `transactions/src/gasless/` (1,818): the typed
-  data, the fee ceiling, the paymaster's bodies and replies. Krusty 3.1.0 has typed-data hashing
-  (`typed_data.rs`); whether it covers what `gasless-typed-data.ts` signs is unchecked, and the
-  core adds none of its own. Adds the sponsored and gasless activity rows P2 left out.
+- **P13 Gasless and sponsored transactions.** `transactions/src/gasless/` (1,818) and
+  `routing/{outside-execution-*,paymaster-http}.ts`: a SNIP-9 v2 outside execution the gateway
+  builds and the wallet checks before signing (its calls, the fee transfer, the ceiling, the
+  window), and the paymaster's bodies and replies. The extension checks the hash with
+  starknet.js; Krusty 3.1.0 hashes SNIP-12 messages (`compute_typed_data_message_hash`), and
+  whether the two agree on this message is for the fixture to show. The core adds no hashing of
+  its own. Adds the sponsored and gasless activity rows P2 left out.
 - **P14 STRK20 submission.** Activate, shield, unshield and private send; then shadow accounts
-  and multisig STRK20. The largest step: `packages/features/privacy/` (9,590) and
+  and multisig STRK20. The largest step: `packages/features/privacy/` (9,279) and
   `background/privacy/` (5,872), over the read plan 2.4d ported. Blocked on one question (Open
   questions): the extension proves through a vendored JavaScript SDK
   (`scripts/vendor-privacy-sdk.ts`), and nothing here can make that proof yet.
@@ -271,8 +279,8 @@ Features, smallest and least dependent first:
   platform: mobile has no injected provider, and #990 leaves WalletConnect open.
 - **P16 Ledger.** The device protocol and session as sans-IO APDU exchanges:
   `packages/platform/ledger-protocol/` (1,096) and `background/ledger/` (847). The transport is
-  the app's (the extension's is `ledger-browser`: Web Bluetooth, WebUSB, WebHID). Last: the
-  extension offers it to trusted testers only, and its tests need a device.
+  the app's (the extension's is `ledger-browser`: Web Bluetooth, WebUSB, WebHID). Last: #990
+  has the extension offering it to trusted testers only, and its tests need a device.
 
 Bramble's alone, with nothing needed here: Android's token management, its multisig stepper,
 participant picker and shared-account home, the analytics consent and diagnostics screens, and
@@ -281,10 +289,13 @@ the screens for what the core already has (hidden accounts, the activity facts).
 Not parity:
 
 - NFTs are parked in the extension, and no client scans a QR code.
-- Devnet, and the custom chains a dapp once added (`wallet-model/src/networks/custom-network.ts`;
-  nothing adds one now). P4's RPC override is the extension's whole custom-RPC feature.
-- Mobile's deliberate differences stay: no `ws:` relay on loopback, and the wallet saved before
-  the backup check.
+- Devnet (`SN_DEVNET`, a developer's local node), and the custom chains a dapp once added
+  (`wallet-model/src/networks/custom-network.ts`; nothing adds one now). P4's RPC override is the
+  extension's whole custom-RPC feature.
+- Mobile's stricter relay rule (no `ws:` on loopback) is deliberate and stays. Its backup order
+  (the wallet is saved before the backup check, where the extension checks first) is a
+  difference #990 lists and nobody has decided; it is Bramble's to settle, and needs nothing
+  here.
 - Two of #990's smaller differences are decided with P1's export: whether a Braavos key can be a
   multisig co-signer on mobile, and the class check before a multisig is created
   (`accounts::multisig_declared` already reads it).
