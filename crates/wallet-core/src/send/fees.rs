@@ -143,11 +143,48 @@ fn with_margin(value: u128, percent: u32) -> Result<u128, FeeRefusal> {
         .ok_or(FeeRefusal::BoundsOutOfRange)
 }
 
-fn bound(entry: &Value, consumed: &str, price: &str, percent: u32) -> Result<Bound, FeeRefusal> {
+fn bound(
+    entry: &Value,
+    consumed: &str,
+    price: &str,
+    margin: LaneMargin,
+) -> Result<Bound, FeeRefusal> {
     Ok(Bound {
-        max_amount: with_margin(quantity(entry.get(consumed))?, percent)?,
-        max_price_per_unit: with_margin(quantity(entry.get(price))?, percent)?,
+        max_amount: with_margin(quantity(entry.get(consumed))?, margin.amount_percent)?,
+        max_price_per_unit: with_margin(quantity(entry.get(price))?, margin.price_percent)?,
     })
+}
+
+/// One resource lane's margins, amount and price apart (a starknet.js `ResourceBoundsOverhead`
+/// entry).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LaneMargin {
+    pub amount_percent: u32,
+    pub price_percent: u32,
+}
+
+/// starknet.js `ResourceBoundsOverhead`: a margin per lane. A wallet that freezes bounds for
+/// longer than one send (an Argent multisig proposal) widens the price lanes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Overhead {
+    pub l1_gas: LaneMargin,
+    pub l2_gas: LaneMargin,
+    pub l1_data_gas: LaneMargin,
+}
+
+impl Overhead {
+    /// The same `percent` on every amount and price (starknet.js's default shape).
+    pub const fn uniform(percent: u32) -> Self {
+        let lane = LaneMargin {
+            amount_percent: percent,
+            price_percent: percent,
+        };
+        Self {
+            l1_gas: lane,
+            l2_gas: lane,
+            l1_data_gas: lane,
+        }
+    }
 }
 
 /// `nodeFeeEstimate`'s unit rule: absent (or not a string) reads as FRI; FRI and WEI are
@@ -162,20 +199,33 @@ fn unit(entry: &Value) -> Result<FeeUnit, FeeRefusal> {
 /// Signed bounds and authorised spend from one RPC 0.10 `FEE_ESTIMATE` entry, with
 /// `margin_percent` added to every amount and price.
 pub fn quote(entry: &Value, margin_percent: u32) -> Result<(Bounds, FeeQuote), FeeRefusal> {
+    quote_with(entry, &Overhead::uniform(margin_percent))
+}
+
+/// [`quote`] with a margin per lane.
+pub fn quote_with(entry: &Value, overhead: &Overhead) -> Result<(Bounds, FeeQuote), FeeRefusal> {
     let unit = unit(entry)?;
-    let bound = |consumed, price| bound(entry, consumed, price, margin_percent);
     let bounds = Bounds {
-        l1_gas: bound("l1_gas_consumed", "l1_gas_price")?,
-        l2_gas: bound("l2_gas_consumed", "l2_gas_price")?,
-        l1_data_gas: bound("l1_data_gas_consumed", "l1_data_gas_price")?,
+        l1_gas: bound(entry, "l1_gas_consumed", "l1_gas_price", overhead.l1_gas)?,
+        l2_gas: bound(entry, "l2_gas_consumed", "l2_gas_price", overhead.l2_gas)?,
+        l1_data_gas: bound(
+            entry,
+            "l1_data_gas_consumed",
+            "l1_data_gas_price",
+            overhead.l1_data_gas,
+        )?,
     };
-    let spend = [bounds.l1_gas, bounds.l2_gas, bounds.l1_data_gas]
+    let spend = max_spend(&bounds).ok_or(FeeRefusal::BoundsOutOfRange)?;
+    Ok((bounds, FeeQuote { spend, unit }))
+}
+
+/// `feeBoundsMaxSpend`: Σ amount × price over the three lanes.
+pub fn max_spend(bounds: &Bounds) -> Option<U256> {
+    [bounds.l1_gas, bounds.l2_gas, bounds.l1_data_gas]
         .iter()
         .try_fold(U256::ZERO, |total, b| {
             total.checked_add(U256::product(b.max_amount, b.max_price_per_unit))
         })
-        .ok_or(FeeRefusal::BoundsOutOfRange)?;
-    Ok((bounds, FeeQuote { spend, unit }))
 }
 
 /// Krusty's bounds, refusing an amount above u64 rather than letting it truncate.
