@@ -11,6 +11,8 @@
 //! Parity with the extension is pinned by `extension-transactions-*.json`, in `bramble-core`'s
 //! `tests/transactions_{rules,wire,plan}_parity.rs`.
 
+pub mod avnu_route;
+pub mod call_decode;
 pub mod calls;
 pub mod fees;
 pub mod judge;
@@ -18,6 +20,7 @@ pub mod multisig_deploy;
 pub mod multisig_intent;
 pub mod multisig_invoke;
 pub mod multisig_invoke_plan;
+pub mod multisig_review;
 pub mod plan;
 mod plan_deploy;
 pub mod plan_probe;
