@@ -24,11 +24,14 @@ use crate::accounts::multisig_read::MultisigAuthorityRead;
 use crate::accounts::multisig_records::{authority, PublicConfig, Record};
 use crate::felt;
 use crate::js::felt::same_felt;
+use crate::kms::NetworkId;
 
 /// Why an import was refused. `Display` is the extension's sentence.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ImportError {
-    /// The intent's account is not the record passed in (`contextForIntent`).
+    /// The intent's account is not the record passed in (`contextForIntent`), by id or by the
+    /// frozen transaction's sender and chain (the latter two the extension's record lookup
+    /// guarantees).
     UnknownAccount,
     /// The authority read targets another address, network or class than the record's. No
     /// extension counterpart: its read is built from the record, so cannot miss it.
@@ -106,7 +109,16 @@ pub fn import_intent(
 ) -> Result<SigningIntent, ImportError> {
     let (record, class) = (wallet.record, wallet.class);
     let mut incoming = package.intent.locally_derived_imported();
-    if record.id != incoming.account_id {
+    // The record is the frozen transaction's account, not only by id: the review below and the
+    // authority read both use its address and network, which `is_valid` never compares.
+    let prepared = &incoming.prepared;
+    let on_chain = NetworkId::from_catalog_id(&record.network_id).is_some_and(|network| {
+        same_felt(&felt::canonical(&network.chain_id()), &prepared.chain_id)
+    });
+    if record.id != incoming.account_id
+        || !same_felt(&record.address, &prepared.sender_address)
+        || !on_chain
+    {
         return Err(ImportError::UnknownAccount);
     }
     if !same_felt(&read.address(), &record.address)
