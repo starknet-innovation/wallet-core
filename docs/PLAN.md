@@ -927,13 +927,13 @@ today's exposure; it is a bridge, not the target.
   native stack outside linear memory; and a memory read while unlocked or during an unlock.
 
 Two things the target does not yet answer (both in Open questions, both to settle before 3.2 is
-designed, neither measured or tested yet):
+designed; only the first is measured):
 - **The passphrase key loses non-extractability.** Today PBKDF2 runs in WebCrypto and yields a
   non-extractable key. In the core it runs as Rust compiled to wasm, and the derived key is bytes
   in linear memory: zeroized on lock, but readable while unlocked. This costs little while the
   plaintext passphrase is held beside it, as it is today. PBKDF2 runs once per unlock (and once
-  per restored session), so its speed at 600,000 iterations in wasm matters there; it is
-  unmeasured.
+  per restored session), so its speed at 600,000 iterations in wasm matters there: about 155 ms,
+  3.6 times WebCrypto's (Open questions).
 - **A session in wasm memory ends when the service worker does.** An MV3 worker is stopped when
   idle. Today a restart restores the unlock from the plaintext passphrase in `storage.session`.
   3.2 picks one: keep that mirror (same as today, and the passphrase stays in JavaScript), or
@@ -1115,9 +1115,17 @@ Added 2026-11-09 after reviewing the first day's work. Items marked *proposed* a
   bare envelopes, and one of them owns the freshness check.
 - What a `VaultSession` does when the MV3 service worker restarts: keep the extension's
   plaintext passphrase mirror in `storage.session`, or unlock again (see Key exposure).
-- PBKDF2 in wasm: how long 600,000 iterations take at unlock, and whether losing WebCrypto's
-  non-extractable key is accepted (see Key exposure). A throwaway export timed in
-  `smoke.test.mjs` answers the first.
+- PBKDF2 in wasm: whether its unlock cost and losing WebCrypto's non-extractable key are
+  accepted (see Key exposure). Measured 2026-11-20 (Apple M5, macOS 27.2, Node 24.18, rustc
+  1.97.1): `envelope::open` at `KDF_ITERATIONS` (600,000) takes 155 ms median in the release
+  wasm (n = 30, 152–171; a fresh process's first call 155–160), against 43 ms (42–48) for
+  WebCrypto `deriveKey` and 28 ms for native release Rust: 3.6 times WebCrypto, per round.
+  Method: a throwaway export (not kept) ran `envelope::open` on an envelope WebCrypto sealed, in
+  the `npm run build` wasm, interleaved with `deriveKey` on the same password and 16-byte salt,
+  first round discarded; native Rust derived the same key bytes. Under load the medians swung to
+  250–1,000 ms. Not measured: Chrome's service worker, slower laptops and phones (assumed to
+  keep the ratio), wasm `simd128` (off; `sha2` has a backend for it). The wasm call also blocks
+  the worker for its length, where WebCrypto runs off-thread.
 - Where the generators write after 2.7. *Provisional*: they keep writing Bramble's
   `mobile/core/tests/fixtures/`, which M13 keeps (the conformance tests read it there), and this
   repo copies from it as before.
