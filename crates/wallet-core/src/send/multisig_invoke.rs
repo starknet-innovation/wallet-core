@@ -132,15 +132,6 @@ pub(crate) fn input_felt(value: &str) -> Option<Felt> {
     felt::parse(&canonical_felt(value)?)
 }
 
-/// A felt already in canonical spelling.
-pub(crate) fn canonical(value: &str) -> Option<Felt> {
-    felt::parse(value).filter(|parsed| felt::canonical(parsed) == value)
-}
-
-pub(crate) fn canonical_non_zero(value: &str) -> Option<Felt> {
-    canonical(value).filter(|parsed| *parsed != Felt::ZERO)
-}
-
 fn is_entrypoint(name: &str) -> bool {
     let bytes = name.as_bytes();
     (1..=64).contains(&bytes.len())
@@ -190,8 +181,11 @@ pub fn is_calls(calls: &[MultisigCall]) -> bool {
     (1..=MAX_CALLS).contains(&calls.len())
         && calls.iter().all(|call| {
             call.calldata.len() <= MAX_CALL_CALLDATA_FELTS
-                && call.calldata.iter().all(|entry| canonical(entry).is_some())
-                && canonical_non_zero(&call.contract_address).is_some()
+                && call
+                    .calldata
+                    .iter()
+                    .all(|entry| felt::parse_canonical(entry).is_some())
+                && felt::parse_canonical_non_zero(&call.contract_address).is_some()
                 && is_entrypoint(&call.entrypoint)
         })
         && calls.iter().map(|call| call.calldata.len()).sum::<usize>() <= MAX_TOTAL_CALLDATA_FELTS
@@ -240,7 +234,7 @@ impl PreparedBounds {
     /// 2^128 (`isPreparedResourceBound`).
     pub fn to_bounds(&self) -> Option<Bounds> {
         let number = |value: &str, bits: u32| {
-            canonical(value)?;
+            felt::parse_canonical(value)?;
             let parsed = u128::from_str_radix(&value[2..], 16).ok()?;
             (bits == 128 || parsed >> bits == 0).then_some(parsed)
         };
@@ -320,12 +314,12 @@ impl PreparedInvoke {
         let calldata = self
             .calldata
             .iter()
-            .map(|entry| canonical(entry))
+            .map(|entry| felt::parse_canonical(entry))
             .collect::<Option<Vec<_>>>()?;
-        let network = network_of(&canonical(&self.chain_id)?)?;
-        let nonce = canonical(&self.nonce)?;
-        let sender = canonical_non_zero(&self.sender_address)?;
-        let hash = canonical_non_zero(&self.transaction_hash)?;
+        let network = network_of(&felt::parse_canonical(&self.chain_id)?)?;
+        let nonce = felt::parse_canonical(&self.nonce)?;
+        let sender = felt::parse_canonical_non_zero(&self.sender_address)?;
+        let hash = felt::parse_canonical_non_zero(&self.transaction_hash)?;
         let bounds = self.resource_bounds.to_bounds()?;
         let compiled = execute_calldata(&self.calls, primitives)?;
         let recomputed = invoke_hash(network, &sender, &calldata, &nonce, &bounds).ok()?;

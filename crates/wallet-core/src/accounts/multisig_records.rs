@@ -75,14 +75,6 @@ pub struct Authority {
     pub signer_guids: Vec<String>,
 }
 
-fn is_canonical_felt(value: &str) -> bool {
-    felt::parse(value).is_some_and(|f| felt::canonical(&f) == value)
-}
-
-fn is_canonical_non_zero(value: &str) -> bool {
-    felt::parse_non_zero(value).is_some_and(|f| felt::canonical(&f) == value)
-}
-
 /// `isArgentMultisigCurrentConfig`: normalising must leave the keys exactly as stored.
 fn normalized_guids(
     keys: &[String],
@@ -105,7 +97,7 @@ pub fn is_record(record: &Record, class: &ArgentMultisigClass, max_name_length: 
         .as_deref()
         .is_none_or(|name| (1..=max_name_length).contains(&utf16_length(name)));
     let deployment_ok = record.deployment.as_ref().is_none_or(|deployment| {
-        is_canonical_felt(&deployment.salt)
+        felt::parse_canonical(&deployment.salt).is_some()
             && normalized_guids(&deployment.signer_public_keys, deployment.threshold, class)
                 .is_some()
             && multisig::predict(
@@ -119,7 +111,7 @@ pub fn is_record(record: &Record, class: &ArgentMultisigClass, max_name_length: 
             .is_ok_and(|prediction| prediction.address == record.address)
     });
     record.account_contract_type == "argent-multisig"
-        && is_canonical_non_zero(&record.address)
+        && felt::parse_canonical_non_zero(&record.address).is_some()
         && record.class_hash == class.class_hash()
         && NetworkId::from_catalog_id(&record.network_id).is_some()
         && record.id == format!("{}:{}", record.network_id, record.address)
@@ -136,7 +128,8 @@ pub fn is_authority(signer_guids: &[String], threshold: u32, class: &ArgentMulti
     let parsed: Option<Vec<Felt>> = signer_guids
         .iter()
         .map(|guid| {
-            is_canonical_non_zero(guid)
+            felt::parse_canonical_non_zero(guid)
+                .is_some()
                 .then(|| felt::parse(guid))
                 .flatten()
         })
@@ -171,7 +164,7 @@ pub fn authority(record: &Record, class: &ArgentMultisigClass) -> Option<Authori
 
 /// Builds a record's id and checks the address is canonical and non-zero.
 pub fn record_id(network: NetworkId, address: &str) -> Result<String, Error> {
-    if !is_canonical_non_zero(address) {
+    if felt::parse_canonical_non_zero(address).is_none() {
         return Err(Error::invalid("invalid multisig address"));
     }
     Ok(format!("{}:{address}", network.catalog_id()))
