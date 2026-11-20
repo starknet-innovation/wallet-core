@@ -2,6 +2,8 @@
 //! `isCompatibleAccountDeployed` makes them:
 //!
 //! - OpenZeppelin: `starknet_getClassHashAt` at `latest`; any class means deployed.
+//! - Argent multisig (its deployment only): the class at `latest`, which must be exactly the
+//!   pinned class; any other is refused.
 //! - Ready (Argent): the latest accepted block (`starknet_blockHashAndNumber`), then the class
 //!   at that block. A deployed account must run a class whose authorization this wallet
 //!   produces (`requireAuthorizableArgentClass`: Argent 0.4.0's signer array), and, at the same
@@ -204,6 +206,10 @@ impl Plan {
                 Err(true) => self.probed(probe, Outcome::NodeError),
                 Err(false) => self.probed(probe, Outcome::Unreadable),
             },
+            Expect::Class(probe) if self.account.is_multisig() => {
+                let outcome = self.multisig_class(probe, judge::class_value(answer));
+                self.probed(probe, outcome)
+            }
             Expect::Class(probe) if !self.account.is_argent() && !self.account.is_braavos() => {
                 let outcome = match judge::class_hash(answer) {
                     ClassHashAnswer::Deployed => Outcome::Deployed,
@@ -236,8 +242,10 @@ impl Plan {
                             Err(outcome) => self.probed(probe, outcome),
                         }
                     }
-                    // OpenZeppelin reads its class at `latest` and took the arm above.
-                    Authorization::StarkPair => self.fail(Code::NodeError, None),
+                    // OpenZeppelin and a multisig read their class at `latest`, in the arms above.
+                    Authorization::StarkPair | Authorization::ArgentMultisig { .. } => {
+                        self.fail(Code::NodeError, None)
+                    }
                 },
                 ClassValue::Undeployed => self.probed(probe, Outcome::Undeployed),
                 ClassValue::NodeError => self.probed(probe, Outcome::NodeError),
@@ -316,6 +324,24 @@ impl Plan {
                 Err(node) => self.probed(probe, Self::read_failed(node)),
             },
             _ => self.fail(Code::NodeError, None),
+        }
+    }
+
+    /// A multisig's `isCompatibleAccountDeployed`: deployed only when running exactly its pinned
+    /// class, refused on any other. The standalone review only needs to know it has nothing to
+    /// deploy (the extension's `getDeploymentStatus` before its estimate).
+    fn multisig_class(&self, probe: Probe, class: ClassValue) -> Outcome {
+        let Authorization::ArgentMultisig { class_hash, .. } = self.account.authorization else {
+            return Outcome::Unreadable;
+        };
+        match class {
+            ClassValue::Class(class) if class == class_hash || probe == Probe::Review => {
+                Outcome::Deployed
+            }
+            ClassValue::Class(_) => refused(Code::AccountClassUnrecognised, None),
+            ClassValue::Undeployed => Outcome::Undeployed,
+            ClassValue::NodeError => Outcome::NodeError,
+            ClassValue::Unreadable => Outcome::Unreadable,
         }
     }
 

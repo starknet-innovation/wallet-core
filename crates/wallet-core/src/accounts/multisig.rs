@@ -155,7 +155,8 @@ pub fn constructor_calldata(
     Ok(calldata)
 }
 
-fn calldata_felt(value: &str) -> Option<Felt> {
+/// One constructor calldata value (`constructor_calldata`'s decimal counts or a felt) as a felt.
+pub(crate) fn calldata_felt(value: &str) -> Option<Felt> {
     if value.starts_with("0x") {
         felt::parse(value)
     } else {
