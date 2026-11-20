@@ -7,8 +7,8 @@
 //! The core places any non-zero class it is given, so every class reaches it through
 //! `resolve_class`: that is what refuses an Argent or Braavos class the catalog does not list.
 
-use starknet_types_core::felt::Felt;
 use wallet_core::accounts;
+use wallet_core::Felt;
 
 #[cfg(test)]
 use crate::account_catalog::catalog;

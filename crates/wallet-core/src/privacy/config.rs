@@ -41,13 +41,33 @@ pub const MAX_SERVICE_URL_BYTES: usize = 2048;
 /// only, printable ASCII, no trailing slash, and no query, fragment, credentials or backslash.
 /// A wallet's loader checks this when it reads its routing; the plan checks it again before it
 /// will build a body, so no routing it is handed can send the key over plaintext.
+///
+/// The host must be present and spelled as the extension's URL parser serializes it: lowercase,
+/// no IPv6 literal (refused here, stricter than the extension), and a port, if any, in decimal
+/// without leading zeros, in range, and not the default 443.
 pub fn is_service_url(url: &str) -> bool {
     url.len() <= MAX_SERVICE_URL_BYTES
         && url.strip_prefix("https://").is_some_and(|rest| {
-            !rest.is_empty()
-                && !url.ends_with('/')
+            !url.ends_with('/')
                 && url.bytes().all(|b| b.is_ascii_graphic())
                 && !url.contains(['?', '#', '@', '\\'])
+                && is_canonical_authority(rest.split('/').next().unwrap_or_default())
+        })
+}
+
+fn is_canonical_authority(authority: &str) -> bool {
+    let (host, port) = match authority.split_once(':') {
+        Some((host, port)) => (host, Some(port)),
+        None => (authority, None),
+    };
+    !host.is_empty()
+        && !host
+            .bytes()
+            .any(|b| b.is_ascii_uppercase() || b == b'[' || b == b']')
+        && port.is_none_or(|port| {
+            port.bytes().all(|b| b.is_ascii_digit())
+                && (port == "0" || !port.starts_with('0'))
+                && port.parse::<u16>().is_ok_and(|port| port != 443)
         })
 }
 
@@ -109,9 +129,26 @@ mod tests {
     #[test]
     fn the_key_is_only_posted_to_an_https_service_url() {
         assert!(is_service_url("https://d.example/discovery"));
+        assert!(is_service_url("https://d.example:8443/discovery"));
+        assert!(is_service_url("https://d.example"));
         for refused in [
             "http://d.example/discovery",
             "https://",
+            // No host (the extension's parser reads `https:///x` as host `x`, which is not
+            // this spelling, and `https://:8443/x` as no URL at all).
+            "https:///x",
+            "https://:8443/x",
+            // A port the parser would drop or respell, or refuse.
+            "https://d.example:443/x",
+            "https://d.example:/x",
+            "https://d.example:08443/x",
+            "https://d.example:65536/x",
+            "https://d.example:84a3/x",
+            "https://d.example:1:2/x",
+            // A host the parser would lowercase, and IPv6 literals (refused outright).
+            "https://D.example/x",
+            "https://[::1]/x",
+            "https://user:pw@d.example/x",
             "https://d.example/",
             "https://d.example/?x=1",
             "https://user@d.example",

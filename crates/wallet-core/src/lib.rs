@@ -49,6 +49,8 @@ pub use nostr::{
 };
 /// The field element the transaction API takes: Krusty's, so a caller never holds a second one.
 pub use starknet_types_core::felt::Felt;
+/// A non-zero [`Felt`], the divisor `Felt`'s division and remainder take.
+pub use starknet_types_core::felt::NonZeroFelt;
 pub use zeroize::Zeroizing;
 
 /// The Krusty KMS release compiled into this crate. `krusty_version_matches_the_lockfile` keeps

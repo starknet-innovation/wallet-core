@@ -7,7 +7,7 @@
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use starknet_types_core::felt::Felt;
+use wallet_core::Felt;
 
 use wallet_core::accounts::constructor_calldata;
 use wallet_core::send::calls;

@@ -5,8 +5,8 @@
 
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use starknet_types_core::felt::Felt;
 use wallet_core::accounts::multisig_read;
+use wallet_core::Felt;
 
 use crate::networks::NetworkId;
 use crate::rpc_request::RpcRequest;

@@ -8,7 +8,7 @@
 //! bird is cheap to grind, so every surface that confirms a recipient keeps showing the address.
 
 use crate::felt;
-use starknet_types_core::felt::{Felt, NonZeroFelt};
+use wallet_core::{Felt, NonZeroFelt};
 
 const GROUND_TONES: u8 = 4;
 const BODY_TONES: u8 = 5;
