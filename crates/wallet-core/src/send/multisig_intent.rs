@@ -228,10 +228,22 @@ impl SigningIntent {
 
     /// `mergeImportedArgentMultisigIntent`: a re-import of the same frozen hash. A terminal or
     /// stale local intent is kept as it is; an open one gains the incoming signers it lacks, in
-    /// GUID order, and keeps its own summary. As the extension's `importIntent` does, the caller
-    /// first reads `incoming` with [`IntentPackage::parse`] and passes it through
+    /// GUID order, and keeps its own summary.
+    ///
+    /// This is one step of the extension's `importIntent`, not the whole of it. The caller reads
+    /// `incoming` with [`IntentPackage::parse`] (a text it has bounded) and passes it through
     /// [`locally_derived_imported`] (this keeps the incoming lifecycle fields as given), and
-    /// stores the result only if it [`is_valid`] and the stored intent [`can_replace`] it.
+    /// stores the result only if it [`is_valid`] and the stored intent [`can_replace`] it, which
+    /// is also what refuses the same id over a different transaction. Before storing, the caller
+    /// must also do what nothing here does for it:
+    ///
+    /// - replace `summary` with its own `multisig_review::review_calls` of `prepared.calls`, and
+    ///   refuse the import when that review refuses. A remote summary is a claim, not bound by
+    ///   the hash; with no local intent to merge into it would otherwise be shown as given.
+    /// - read the account's authority from the chain and refuse unless it equals
+    ///   `config_snapshot`, which the hash does not bind either.
+    /// - read the account's nonce and refuse unless it equals `prepared.nonce`.
+    /// - check the account is one the wallet watches, and that the session is still current.
     ///
     /// [`locally_derived_imported`]: SigningIntent::locally_derived_imported
     /// [`is_valid`]: SigningIntent::is_valid

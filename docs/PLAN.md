@@ -133,8 +133,11 @@ Needed now:
   ported, now `SigningIntent::can_replace`. A review of the import path then found one: an
   explicit `null` in an intent's or record's optional key read as absent and passed the validator,
   and now fails to parse; the package envelope is checked (`IntentPackage::parse`) and a remote's
-  lifecycle claims are dropped before the merge (`SigningIntent::locally_derived_imported`), as
-  the extension's `importIntent` does. Two refusals deliberately differ: a non-member deployer is
+  lifecycle claims are dropped before the merge (`SigningIntent::locally_derived_imported`).
+  The rest of the extension's `importIntent` is still the wallet's to do before it stores an
+  import, and the mobile export must enforce it: replace the remote summary with its own call
+  review (refusing when the review refuses), and refuse unless the chain's authority equals the
+  intent's snapshot and its nonce the prepared one. Two refusals deliberately differ: a non-member deployer is
   refused before any read, and a write answered with another hash is `HashMismatch`.
   Neither app can deploy, propose, sign, submit or change signers today; Android's missing
   create stepper, participant picker and shared-account home are screens, Bramble's.
