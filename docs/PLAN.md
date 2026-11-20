@@ -65,8 +65,8 @@ Krusty 3.1.0). M13 merged before the vault step that 2.7 placed ahead of it, so 
 | 2.5b Multisig coordination | done (#48) | done (G2 Bramble #920, M11 #927) |
 | 2.6 Catalogs | done (#49) | done (M12, Bramble #928) |
 | 2.7 Swap | done (#50), behind the `mobile` feature | done (M13, Bramble #929), at `v0.3.0`: `mobile/core` is a shell over this crate |
-| Vault switch | done (V1 #58) | G4 done (Bramble #947); M14 not started |
-| [Mobile parity](#mobile-parity) | P6 done (#65), P2 done (#68); P1 in progress (P1a: deploy, propose, co-sign, submit; P1b: change signers, call review; P1c: refusals) | not started |
+| Vault switch | done (V1 #58) | G4 done (Bramble #947); M14 open (Bramble #980) |
+| [Mobile parity](#mobile-parity) | P6 done (#65), P2 done (#68); P1's mechanism done (P1a #70, P1b #71, P1c #72), not exported until Krusty exports a selector and signature verification; P3–P5 not started | not started |
 | 3 Extension | not started; `js/package.json` is private | n/a |
 
 `v0.1.0` is tagged at `35abc8b` (GitHub release only) and was what M2 and M3 pinned. `v0.2.0`
@@ -142,7 +142,9 @@ Needed now:
   and submit deliberately differ too, closing gaps the extension has: `merge_imported` refuses
   another intent and stops at the threshold (the extension merges past it into an invalid
   intent), and `SubmitPlan` takes the `SigningIntent` and verifies it rather than trusting loose
-  signatures.
+  signatures. So does the deployment review, which refuses an address running another class
+  (`AccountClassUnrecognised`) where the extension reports it as already deployed; and
+  `ProposePlan` applies `require_safe_calls` itself rather than relying on the host's review.
   Neither app can deploy, propose, sign, submit or change signers today; Android's missing
   create stepper, participant picker and shared-account home are screens, Bramble's.
 - **P2 Activity fee and value when sent.** `ActivityEntry` gains the fee (from the receipt) and

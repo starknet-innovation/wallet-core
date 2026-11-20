@@ -13,12 +13,13 @@
 use starknet_types_core::felt::Felt;
 
 use super::fees::{quote_with, FeeRefusal, Overhead};
-use super::judge::{self, Answer, EstimateAnswer, WriteAnswer};
+use super::judge::{self, Answer, ChainAnswer, EstimateAnswer, WriteAnswer};
 use super::multisig_intent::{IntentState, SigningIntent};
 use super::multisig_invoke::{
     execute_calldata, input_felt, normalize_calls, query_signature, signature_felts, MultisigCall,
     MultisigInvokeError, PreparedInvoke, StarkPrimitives, MAX_EXECUTE_CALLDATA_FELTS,
 };
+use super::multisig_review::require_safe_calls;
 use super::rpc_bodies::{self, InvokeTx};
 use super::types::{RpcPurpose, SendError, StepReply};
 use crate::accounts::multisig::{ArgentMultisigClass, ArgentMultisigConfig};
@@ -130,10 +131,17 @@ fn felt_result(answer: Option<Answer>) -> Result<Felt, MultisigFailure> {
     }
 }
 
+/// `judge::chain` in the multisig grammar; a determinate JSON-RPC error is `NodeError`, as for
+/// the nonce read.
 fn chain_matches(answer: Option<Answer>, network: NetworkId) -> Result<(), MultisigFailure> {
-    (felt_result(answer)? == network.chain_id())
-        .then_some(())
-        .ok_or(MultisigFailure::WrongChain)
+    if matches!(answer, Some(Answer::Error { .. })) {
+        return Err(MultisigFailure::NodeError);
+    }
+    match judge::chain_spelled(answer, network, input_felt) {
+        ChainAnswer::Match => Ok(()),
+        ChainAnswer::Mismatch => Err(MultisigFailure::WrongChain),
+        ChainAnswer::Unreadable => Err(MultisigFailure::PreparationUnavailable),
+    }
 }
 
 /// `isArgentMultisigFeeExpiredMessage`, over the judged error text (already lower-cased).
@@ -160,8 +168,11 @@ pub struct ProposePlan {
 }
 
 impl ProposePlan {
-    /// Checks the account is `class` on a known network, normalises `config` and `calls`, and
-    /// compiles the execute calldata before anything is read. `overhead` is the wallet's fee
+    /// Checks the account is `class` on a known network, normalises `config` and `calls`, holds
+    /// the calls to `multisig_review::require_safe_calls` (no self-call in a batch, no upgrade
+    /// callback, a self-call only as a valid config change), and compiles the execute calldata
+    /// before anything is read. The wallet's own `review_calls` says why; this only refuses, so a
+    /// host that skips the review cannot freeze an unsafe batch. `overhead` is the wallet's fee
     /// margin for a transaction that may wait days for co-signers (Bramble's is
     /// `MULTISIG_FEE_OVERHEAD`).
     pub fn new(
@@ -181,6 +192,8 @@ impl ProposePlan {
             .ok_or(MultisigInvokeError::InvalidAddress)?;
         let query_signature = query_signature(config, class)?;
         let calls = normalize_calls(calls)?;
+        require_safe_calls(&record.address, &calls, class)
+            .map_err(|_| MultisigInvokeError::UnsafeCalls)?;
         let calldata =
             execute_calldata(&calls, primitives).ok_or(MultisigInvokeError::InvalidCalls)?;
         if calldata.len() > MAX_EXECUTE_CALLDATA_FELTS {

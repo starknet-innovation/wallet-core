@@ -68,8 +68,18 @@ pub enum ChainAnswer {
 }
 
 pub fn chain(answer: Option<Answer>, network: NetworkId) -> ChainAnswer {
+    chain_spelled(answer, network, felt::parse)
+}
+
+/// [`chain`] with the caller's felt grammar: the multisig flows read the id as
+/// `canonicalArgentMultisigFelt` does (any spelling `BigInt` takes).
+pub(crate) fn chain_spelled(
+    answer: Option<Answer>,
+    network: NetworkId,
+    parse: fn(&str) -> Option<Felt>,
+) -> ChainAnswer {
     match answer {
-        Some(Answer::Result(Value::String(text))) => match felt::parse(&text) {
+        Some(Answer::Result(Value::String(text))) => match parse(&text) {
             Some(chain) if chain == network.chain_id() => ChainAnswer::Match,
             Some(_) => ChainAnswer::Mismatch,
             None => ChainAnswer::Unreadable,

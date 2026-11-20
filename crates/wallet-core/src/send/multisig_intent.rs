@@ -13,9 +13,7 @@
 use serde::{Deserialize, Serialize};
 use starknet_types_core::felt::Felt;
 
-use super::multisig_invoke::{
-    canonical_non_zero, is_calls, MultisigSignature, PreparedInvoke, StarkPrimitives,
-};
+use super::multisig_invoke::{is_calls, MultisigSignature, PreparedInvoke, StarkPrimitives};
 use crate::accounts::multisig::{signer_guid, ArgentMultisigClass};
 use crate::accounts::multisig_records::{is_authority, not_null};
 use crate::felt;
@@ -168,7 +166,7 @@ pub fn intent_id(account_id: &str, transaction_hash: &str) -> Option<String> {
 }
 
 fn guid_of(public_key: &str) -> Option<Felt> {
-    signer_guid(&canonical_non_zero(public_key)?).ok()
+    signer_guid(&felt::parse_canonical_non_zero(public_key)?).ok()
 }
 
 impl SigningIntent {
@@ -304,7 +302,7 @@ impl SigningIntent {
         let snapshot = &self.config_snapshot;
         let summary_ok = (1..=max_summary_length).contains(&utf16_length(&self.summary))
             && js_trim(&self.summary) == self.summary;
-        (self.stale_outcome.is_none() || self.state == IntentState::Stale)
+        self.lifecycle_valid()
             && canonical_account_id(&self.account_id).as_deref() == Some(self.account_id.as_str())
             && snapshot.class_hash == class.class_hash()
             && is_authority(&snapshot.signer_guids, snapshot.threshold, class)
@@ -314,12 +312,23 @@ impl SigningIntent {
                 == Some(&self.id)
             && self.scope_matches_prepared()
             && self.signatures_valid(primitives)
+    }
+
+    /// The parts of [`is_valid`](SigningIntent::is_valid) that are about state, not the hash:
+    /// a stale outcome only on a stale intent, and a count and broadcast hash that fit the state.
+    fn lifecycle_valid(&self) -> bool {
+        (self.stale_outcome.is_none() || self.state == IntentState::Stale)
             && self.authority_fits_state()
     }
 
     /// `canReplaceArgentMultisigSigningIntent`: whether `next` may overwrite this stored intent.
     /// Both must be valid, every reviewed and hash-bound field unchanged, no signature dropped,
     /// and the state move one the lifecycle allows (`validStateTransition`).
+    ///
+    /// Only `next` is validated in full. With every bound field equal to a valid `next`'s and
+    /// its signatures an ordered subsequence of `next`'s (already verified, in strict GUID
+    /// order), this intent is valid exactly when its lifecycle is, so the hash and signatures
+    /// are not checked twice.
     pub fn can_replace(
         &self,
         next: &SigningIntent,
@@ -336,18 +345,19 @@ impl SigningIntent {
             Stale => &[Stale, Submitted],
             Submitted => &[Accepted, Rejected, Submitted],
         };
-        self.is_valid(class, max_summary_length, primitives)
-            && next.is_valid(class, max_summary_length, primitives)
-            && self.account_id == next.account_id
+        let mut later = next.signatures.iter();
+        self.account_id == next.account_id
             && self.id == next.id
             && self.summary == next.summary
             && self.config_snapshot == next.config_snapshot
             && self.prepared == next.prepared
+            && allowed.contains(&next.state)
+            && self.lifecycle_valid()
             && self
                 .signatures
                 .iter()
-                .all(|signature| next.signatures.contains(signature))
-            && allowed.contains(&next.state)
+                .all(|signature| later.any(|held| held == signature))
+            && next.is_valid(class, max_summary_length, primitives)
     }
 
     /// `accountScopeMatchesPrepared`.
@@ -377,9 +387,9 @@ impl SigningIntent {
         let mut prior = Felt::ZERO;
         for signature in &self.signatures {
             let (Some(key), Some(r), Some(s)) = (
-                canonical_non_zero(&signature.public_key),
-                canonical_non_zero(&signature.r),
-                canonical_non_zero(&signature.s),
+                felt::parse_canonical_non_zero(&signature.public_key),
+                felt::parse_canonical_non_zero(&signature.r),
+                felt::parse_canonical_non_zero(&signature.s),
             ) else {
                 return false;
             };
@@ -409,7 +419,7 @@ impl SigningIntent {
             _ => {
                 count == threshold
                     && broadcast.is_some_and(|hash| {
-                        canonical_non_zero(hash).is_some()
+                        felt::parse_canonical_non_zero(hash).is_some()
                             && same_felt(hash, &self.prepared.transaction_hash)
                     })
             }

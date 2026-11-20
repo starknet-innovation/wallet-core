@@ -44,6 +44,17 @@ pub fn canonical(felt: &Felt) -> String {
     format!("{felt:#x}")
 }
 
+/// Parses a felt already in its [`canonical`] spelling (no leading zeros), as stored records and
+/// signed intents must be.
+pub fn parse_canonical(value: &str) -> Option<Felt> {
+    parse(value).filter(|felt| canonical(felt) == value)
+}
+
+/// [`parse_canonical`], refusing zero.
+pub fn parse_canonical_non_zero(value: &str) -> Option<Felt> {
+    parse_canonical(value).filter(|felt| *felt != Felt::ZERO)
+}
+
 /// Whether a felt is a usable Stark signing scalar, `1 <= k < n`.
 pub fn is_private_key(felt: &Felt) -> bool {
     *felt != Felt::ZERO && *felt < STARK_CURVE_ORDER
@@ -64,6 +75,16 @@ mod tests {
             assert_eq!(parse(bad), None, "{bad:?}");
         }
         assert_eq!(parse(&format!("0x{}", "0".repeat(65))), None);
+    }
+
+    #[test]
+    fn canonical_parsing_refuses_leading_zeros() {
+        assert_eq!(parse_canonical("0xff"), Some(Felt::from(255u8)));
+        assert_eq!(parse_canonical("0x00ff"), None);
+        assert_eq!(parse_canonical("0x0"), Some(Felt::ZERO));
+        assert_eq!(parse_canonical("0x00"), None);
+        assert_eq!(parse_canonical_non_zero("0x0"), None);
+        assert_eq!(parse_canonical_non_zero("0x1"), Some(Felt::ONE));
     }
 
     #[test]

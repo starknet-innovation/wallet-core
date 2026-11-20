@@ -238,6 +238,52 @@ fn a_lock_or_a_wrong_chain_stops_submit_before_the_write() {
         chain(&mut plan, "0x534e5f4d41494e", true),
         MultisigStep::Failed(MultisigFailure::WrongChain)
     );
+    // The multisig grammar (`canonicalArgentMultisigFelt`) reads any `BigInt` spelling, so an
+    // upper-case id is the same chain (and reaches the lock check); a non-number is unreadable.
+    let mut plan = submit_plan(&intent);
+    assert_eq!(
+        chain(&mut plan, "0x534E5F5345504F4C4941", false),
+        MultisigStep::Failed(MultisigFailure::Locked)
+    );
+    let mut plan = submit_plan(&intent);
+    assert_eq!(
+        chain(&mut plan, "sepolia", true),
+        MultisigStep::Failed(MultisigFailure::PreparationUnavailable)
+    );
+}
+
+#[test]
+fn a_proposal_refuses_an_unsafe_batch_without_a_review() {
+    let network = sepolia();
+    let record = record(&network);
+    let calls: Vec<MultisigCall> =
+        serde_json::from_value(network["proposal"]["calls"].clone()).unwrap();
+    let self_call = |entrypoint: &str| MultisigCall {
+        calldata: Vec::new(),
+        contract_address: record.address.clone(),
+        entrypoint: entrypoint.into(),
+    };
+    let refusal = |calls: &[MultisigCall]| {
+        let config = current_config(&record);
+        let primitives = TestPrimitives::new();
+        ProposePlan::new(
+            &record,
+            calls,
+            &config,
+            &class(),
+            MULTISIG_FEE_OVERHEAD,
+            &primitives,
+        )
+        .err()
+    };
+    let mut batch = calls.clone();
+    batch.push(self_call("change_threshold"));
+    assert_eq!(refusal(&batch), Some(MultisigInvokeError::UnsafeCalls));
+    assert_eq!(
+        refusal(&[self_call("perform_upgrade")]),
+        Some(MultisigInvokeError::UnsafeCalls)
+    );
+    assert_eq!(refusal(&calls), None);
 }
 
 #[test]

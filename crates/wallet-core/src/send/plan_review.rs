@@ -135,9 +135,14 @@ impl Plan {
                     rpc_bodies::nonce(id, &address)
                 })
             }
-            // Braavos names the reason (`requireCompatibleBraavosSigner`). Ready keeps a
+            // Braavos names the reason (`requireCompatibleBraavosSigner`), and so does a multisig
+            // running another class (the extension shows it as already deployed). Ready keeps a
             // fee-failed review: its wire fixture stops on that screen, not on a thrown code.
-            Outcome::Refused(failure) if self.account.is_braavos() => self.refuse(failure),
+            Outcome::Refused(failure)
+                if self.account.is_braavos() || self.account.is_multisig() =>
+            {
+                self.refuse(failure)
+            }
             Outcome::Refused(_) => {
                 self.work.deployed = Some(true);
                 self.review()
