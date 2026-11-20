@@ -223,24 +223,95 @@ fn proposals_the_extension_refuses_are_refused() {
     }
 }
 
+/// The JSON paths where `left` and `right` differ (an array entry only one side has is its index).
+fn diff(left: &Value, right: &Value, at: String, out: &mut Vec<String>) {
+    match (left, right) {
+        (Value::Object(l), Value::Object(r)) => {
+            for key in l.keys().chain(r.keys().filter(|k| !l.contains_key(*k))) {
+                let (a, b) = (
+                    l.get(key).unwrap_or(&Value::Null),
+                    r.get(key).unwrap_or(&Value::Null),
+                );
+                diff(a, b, format!("{at}/{key}"), out);
+            }
+        }
+        (Value::Array(l), Value::Array(r)) => {
+            for index in 0..l.len().max(r.len()) {
+                match (l.get(index), r.get(index)) {
+                    (Some(a), Some(b)) => diff(a, b, format!("{at}/{index}"), out),
+                    _ => out.push(format!("{at}/{index}")),
+                }
+            }
+        }
+        _ if left != right => out.push(at),
+        _ => {}
+    }
+}
+
 #[test]
 fn stored_intents_get_the_extensions_verdict() {
     let fixture = refusals();
     let primitives = TestPrimitives::new();
     let class = class();
-    for case in section(&fixture, "intents", 12) {
+    let cases = section(&fixture, "intents", 12);
+    let raw = |name: &str| {
+        let case = cases.iter().find(|c| c["name"] == name).unwrap();
+        decode(&case["intent"])
+    };
+    // Each refused intent is a valid one (the ready intent, or `collectingOne` for the cases the
+    // generator built from it; both asserted valid in this loop) with one change: where it differs from that base is exactly
+    // what the case names, so that change alone is what is refused.
+    let (ready, collecting) = (raw("ready"), raw("collectingOne"));
+    for case in cases {
         let name = case["name"].as_str().unwrap();
         let intent: SigningIntent = serde_json::from_str(case["intent"].as_str().unwrap())
             .unwrap_or_else(|error| panic!("{name}: {error}"));
-        assert_eq!(
-            intent.is_valid(&class, summary_length(), &primitives),
-            case["valid"].as_bool().unwrap(),
-            "{name}"
-        );
+        let valid = intent.is_valid(&class, summary_length(), &primitives);
+        assert_eq!(valid, case["valid"].as_bool().unwrap(), "{name}");
+        let (base, changed): (&Value, &[&str]) = match name {
+            "ready" | "collectingOne" => continue,
+            "duplicateSigner" => (
+                &ready,
+                &[
+                    "/signatures/1/publicKey",
+                    "/signatures/1/r",
+                    "/signatures/1/s",
+                ],
+            ),
+            "nonMemberSignature" => (
+                &collecting,
+                &[
+                    "/signatures/0/publicKey",
+                    "/signatures/0/r",
+                    "/signatures/0/s",
+                ],
+            ),
+            "outOfGuidOrder" => (
+                &ready,
+                &[
+                    "/signatures/0/publicKey",
+                    "/signatures/0/r",
+                    "/signatures/0/s",
+                    "/signatures/1/publicKey",
+                    "/signatures/1/r",
+                    "/signatures/1/s",
+                ],
+            ),
+            "overThreshold" => (&ready, &["/signatures/2"]),
+            "readyBelowThreshold" => (&ready, &["/signatures/1"]),
+            "collectingAtThreshold" => (&ready, &["/state"]),
+            // Same claimed key, other (r, s): only verification can refuse it.
+            "signatureOverOtherHash" => (&collecting, &["/signatures/0/r", "/signatures/0/s"]),
+            "tamperedNonce" => (&ready, &["/prepared/nonce"]),
+            "wrongId" => (&ready, &["/id"]),
+            "submittedWithoutHash" => (&ready, &["/state"]),
+            other => panic!("unknown intent case {other}"),
+        };
+        let mut paths = Vec::new();
+        diff(base, &decode(&case["intent"]), String::new(), &mut paths);
+        assert_eq!(paths, changed, "{name}");
     }
-    // `signatureOverOtherHash` is refused by verification: the test stand-in re-signs the ready
-    // hash with the claimed member's key and finds other (r, s). `nonMemberSignature` is refused
-    // by membership, before verification, as in the extension.
+    // `nonMemberSignature` is refused by membership before verification, as in the extension.
 }
 
 #[test]
@@ -329,6 +400,18 @@ fn reimports_merge_as_the_extension_merges() {
         assert_eq!(keys, expected, "{name}");
         assert_eq!(serde_json::to_value(merged.state).unwrap(), case["state"]);
         assert_eq!(merged.summary, case["summary"].as_str().unwrap(), "{name}");
+        assert!(
+            merged.is_valid(&class(), summary_length(), &TestPrimitives::new()),
+            "{name}"
+        );
+        assert_eq!(merged.stale_outcome, None, "{name}");
+        assert_eq!(merged.stale_reason, None, "{name}");
+        // Only the kept terminal intent carries its broadcast hash.
+        assert_eq!(
+            merged.broadcast_transaction_hash.is_some(),
+            name == "terminalStateWins",
+            "{name}"
+        );
     }
 }
 

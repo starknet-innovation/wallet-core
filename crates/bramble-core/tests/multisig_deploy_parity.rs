@@ -37,6 +37,13 @@ fn fixture() -> Value {
     serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
 }
 
+/// The fixture's networks: Sepolia and Mainnet.
+fn networks(fixture: &Value) -> &[Value] {
+    let networks = fixture["networks"].as_array().unwrap();
+    assert_eq!(networks.len(), 2);
+    networks
+}
+
 fn strings(value: &Value) -> Vec<String> {
     value
         .as_array()
@@ -156,7 +163,7 @@ fn plan_for(net: &Value, member: &Member) -> Plan {
 #[test]
 fn the_signers_are_the_fixture_phrases_openzeppelin_accounts() {
     let fixture = fixture();
-    for net in fixture["networks"].as_array().unwrap() {
+    for net in networks(&fixture) {
         for signer in net["signers"].as_array().unwrap() {
             let member = Member::new(&fixture, signer["accountIndex"].as_u64().unwrap() as u32);
             let key = felt::canonical(&member.public_key());
@@ -173,7 +180,7 @@ fn the_signers_are_the_fixture_phrases_openzeppelin_accounts() {
 fn the_deployment_matches_the_extension() {
     let fixture = fixture();
     let class = argent_multisig_class();
-    for net in fixture["networks"].as_array().unwrap() {
+    for net in networks(&fixture) {
         let deploy = &net["deploy"];
         let input = &deploy["input"];
         let prediction = predict(&config(input), input["salt"].as_str().unwrap(), class).unwrap();
@@ -218,7 +225,7 @@ fn the_deployment_matches_the_extension() {
 #[test]
 fn the_deployment_plan_matches_the_extension_wire() {
     let fixture = fixture();
-    for net in fixture["networks"].as_array().unwrap() {
+    for net in networks(&fixture) {
         let deploy = &net["deploy"];
         let member = deployer(net, &fixture);
         let mut plan = plan_for(net, &member);
