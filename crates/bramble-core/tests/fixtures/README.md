@@ -13,7 +13,7 @@ All files: Bramble commit `008f29687e2226b0d0edead43612ca1722d3f955` (`feature/m
 its copy from the G1–G3 stack at `7293d188`), privacy SDK `vendor/starknet-privacy` at
 `b40bf109` (Bramble's pin). Re-running `mobile:parity` and `mobile:assets` there leaves no diff.
 One exception: `extension-activity-detail.jsonl` is from Bramble commit
-`59c48ce29a7223e941c2d151b0b595bce62442e7` (`mobile/g6-activity-detail-fixtures`, 2026-11-20, G6,
+`59c48ce29a7223e941c2d151b0b595bce62442e7` (`mobile/g6-activity-detail-fixtures`, 2026-11-20, G6, #999,
 not yet merged; the line moves to its merge commit once it lands), which changes no other file.
 Generators are under `scripts/` in Bramble; each fixture's is reached from
 `generate-mobile-parity-vectors.ts`.
