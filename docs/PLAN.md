@@ -1149,8 +1149,13 @@ Added 2026-11-09 after reviewing the first day's work. Items marked *proposed* a
   fixture says so); mobile keeps refusing every `ws:` relay as a platform rule (App Transport
   Security and `usesCleartextTraffic=false` block cleartext), on top of the core's grammar
   (M11, Bramble #927). Revisit if a mobile build ever needs a local relay.
-- *Provisional, 2.5b*: mobile reads one page per relay (the core at a page cap of 1) until 2.7,
-  because paging needs a third `RelayStep` variant across the FFI and the bindings may not
-  change before then. Three paging cases stay listed as mobile's differences until 2.7.
+- Mobile's coordination sync pages as the extension's does: `bramble-core` exports
+  `RelayStep::NextPage { close_frame, request }` and runs the judge at `RELAY_LIMITS`
+  (`MAX_SYNC_PAGES`, 4) instead of a page cap of 1, and the three paging cases mobile skipped are
+  asserted through mobile's judge. Bramble owes the adoption, in the same PR as the bump, since
+  the new case breaks no build: `RelayTransport.swift` and `CoordinationTransport.kt` check only
+  for `Finish`, so they would ignore a `NextPage`, time out, and lose the relay's first page. On
+  `NextPage` each sends `close_frame` then `request` on the same socket, restarts the request
+  timeout (the extension's is per page), and keeps reading.
 - Which modules count as mobile-only glue, and whether they live in the app or in `bramble-core`
   behind mobile's build (Phase 2).
