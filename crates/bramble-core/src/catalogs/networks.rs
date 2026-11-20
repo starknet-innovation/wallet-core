@@ -33,7 +33,9 @@ pub struct TokenInfo {
 }
 
 /// Public network metadata. RPC endpoints are tried in order; the host verifies
-/// `starknet_chainId` against `chain_id` before trusting any response.
+/// `starknet_chainId` against `chain_id` before trusting any response. The first endpoint may be
+/// the person's override and carry an API key: never log a record, and redact failure text with
+/// `redact_endpoints`.
 #[cfg(feature = "mobile")]
 #[uniffi::remote(Record)]
 pub struct NetworkInfo {
@@ -214,6 +216,7 @@ mod tests {
             assert_eq!(custom.rpc_urls[1..], info(network).rpc_urls[..]);
             assert_eq!(custom.chain_id, info(network).chain_id);
             assert_eq!(custom.tokens, info(network).tokens);
+            assert!(!format!("{custom:?}").contains("rpc.example"));
         }
     }
 

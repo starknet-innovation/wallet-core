@@ -9,12 +9,13 @@
 //! and again before submit, against Krusty's chain id rather than anything the catalog or an
 //! endpoint says, and `NetworkInfo` asks the host to verify the chain before trusting any reply.
 //!
-//! An endpoint can carry an API key in its path or query, so no error here names it.
+//! An endpoint can carry an API key in its path or query, so no error here names it, and the
+//! host redacts its own failure text with `redact_endpoints` (the extension's `redactEndpoints`).
 
 use std::sync::Arc;
 
 use wallet_core::js::num::js_trim;
-use wallet_core::nostr::relay_url::is_custom_rpc_url;
+use wallet_core::nostr::relay_url::{self, is_custom_rpc_url};
 
 use crate::networks::{self, NetworkId, NetworkInfo};
 use crate::portfolio::tokens::TokenPreferences;
@@ -27,6 +28,15 @@ use crate::CoreError;
 /// Security and `usesCleartextTraffic=false` block cleartext, loopback included.
 pub(crate) fn is_rpc_url(value: &str) -> bool {
     value.starts_with("https://") && is_custom_rpc_url(value)
+}
+
+/// The extension's `redactEndpoints`: every scheme-qualified URL in `text` becomes `[endpoint]`,
+/// the rest kept. An override may carry an API key, and URLSession and OkHttp errors (and a
+/// node's error data) name the URL, so the host passes any transport or RPC failure text through
+/// this before showing, logging or reporting it.
+#[uniffi::export]
+pub fn redact_endpoints(text: String) -> String {
+    relay_url::redact_endpoints(&text)
 }
 
 /// `setRpcOverride`'s input rule: trimmed as JavaScript trims; empty clears (`Ok(None)`); else a
@@ -57,7 +67,8 @@ fn rpc_override_input(raw: &str) -> Result<Option<String>, CoreError> {
 impl WalletCore {
     /// The bundled networks, each with its RPC override (if any) tried before the bundled
     /// endpoints. The host takes its endpoints from here rather than `supported_networks`.
-    /// Passive: never renews the idle window.
+    /// An override may carry an API key: never log these records, and redact transport errors
+    /// (`redact_endpoints`). Passive: never renews the idle window.
     pub fn networks(&self) -> Result<Vec<NetworkInfo>, CoreError> {
         self.with_session(false, |session| {
             let overrides = &session.payload.rpc_overrides;
