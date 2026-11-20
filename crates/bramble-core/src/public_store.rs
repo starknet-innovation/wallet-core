@@ -3,9 +3,10 @@
 //! inherit the data directory's protection (iOS complete file protection and backup exclusion;
 //! Android `noBackupFilesDir`).
 //!
-//! Every file is `{"version":1, …}`, written with the vault's temp-file, `sync_all`, rename
-//! sequence, so an interrupted write never leaves a truncated file. Reading fails closed: an
-//! unreadable or invalid file is an error that names the file, never silently reset to empty.
+//! Every file is `{"version":1, …}`, written with the vault's temp-file, `sync_all`, rename,
+//! directory-sync sequence, so an interrupted write never leaves a truncated file and a completed
+//! one has reached the disk. Reading fails closed: an unreadable or invalid file is an error that
+//! names the file, never silently reset to empty.
 
 use std::collections::BTreeMap;
 use std::fs;
