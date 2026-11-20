@@ -214,6 +214,9 @@ traits or config objects for wallets that do not exist yet.
 
 The resource bounds (mnemonic, passphrase, Nostr event and data sizes) are Bramble's numbers, kept in
 `wallet-core` because they protect against oversized input rather than express product taste.
+So are `container.rs`'s `bramble.mobile.*` format and scope strings: they are bytes on disk, bound
+into every sealed slot, and changing them orphans every mobile vault. A second wallet wanting its
+own would make them arguments then.
 
 `bramble-core` keeps the crate, lib and UniFFI module names mobile already uses (`bramble_core`,
 `BrambleCore`, `org.bramble.core`), so the last mobile step (2.7) swaps the dependency without
@@ -1094,9 +1097,8 @@ Added 2026-11-09 after reviewing the first day's work. Items marked *proposed* a
   each npm publish. `AGENTS.md` says mobile pins a tag; change both together if agreed.
 - **Dependabot does not propose what the hard rules forbid.** Add ignores for
   `starknet-types-core` (follows Krusty), `uniffi*` (follows ubrn and `uniffi-runtime-wasm`) and
-  `wasm-bindgen` (must equal the CLI), and close #10, #11 and #12. Done (#24) except
-  `wasm-bindgen`, which `.github/dependabot.yml` does not ignore; version updates are off, so
-  only a security update could propose it.
+  `wasm-bindgen` (must equal the CLI), and close #10, #11 and #12. Done (#24; `wasm-bindgen`
+  added later).
 - **#16 (crate READMEs, crates.io) is split.** The READMEs and a LICENSE file (both crates
   declare MIT and the repo has none) go in now. Publishing waits on the crates.io question
   below. Its rename to `starknet-wallet-core` is the part with a deadline: M2 writes the package
@@ -1116,10 +1118,6 @@ Added 2026-11-09 after reviewing the first day's work. Items marked *proposed* a
 - PBKDF2 in wasm: how long 600,000 iterations take at unlock, and whether losing WebCrypto's
   non-extractable key is accepted (see Key exposure). A throwaway export timed in
   `smoke.test.mjs` answers the first.
-- `container.rs` holds `bramble.mobile.*` format and scope strings in the generic crate. Make
-  them arguments, as the rule says, or record them as an exception like the resource bounds:
-  they are bytes on disk, not taste, and changing them orphans every mobile vault. Leaning
-  exception.
 - Where the generators write after 2.7. *Provisional*: they keep writing Bramble's
   `mobile/core/tests/fixtures/`, which M13 keeps (the conformance tests read it there), and this
   repo copies from it as before.
