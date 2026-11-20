@@ -23,6 +23,7 @@ use crate::envelope::{
 use crate::host::Storage;
 use crate::Error;
 
+/// Bramble's on-disk strings, kept here as a recorded exception (docs/PLAN.md, Generic and Bramble).
 pub const FORMAT: &str = "bramble.mobile.vault";
 /// The oldest container version (vault-security's layout); older vaults are bare envelopes.
 pub const FIRST_CONTAINER_VERSION: u32 = 2;
