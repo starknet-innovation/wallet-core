@@ -73,9 +73,9 @@ impl WalletCore {
 
     /// `explorerFallbackAllowed`: whether `network`'s history may fall back to the third-party
     /// explorer. The stored choice in `preferences`, else only while the wallet holds no RPC
-    /// override for `network`: a person who set their own endpoint chose that no third party sees
-    /// their addresses. `false` while locked or with no wallet, so a failed lookup never
-    /// discloses. Passive.
+    /// override for `network` (nor dropped a refused one, `public_store::load_preferences`): a
+    /// person who set their own endpoint chose that no third party sees their addresses. `false`
+    /// while locked or with no wallet, so a failed lookup never discloses. Passive.
     pub fn explorer_fallback_allowed(
         &self,
         network: NetworkId,
@@ -83,7 +83,11 @@ impl WalletCore {
     ) -> bool {
         let id = network.catalog_id();
         self.with_session(false, |session| {
-            Ok(session.payload.rpc_overrides.contains_key(id))
+            let payload = &session.payload;
+            Ok(
+                payload.rpc_overrides.contains_key(id)
+                    || payload.explorer_fallback_off.contains(id),
+            )
         })
         .is_ok_and(|custom| preferences.explorer_fallback_allowed(network, custom))
     }

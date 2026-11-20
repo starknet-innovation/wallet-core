@@ -8,7 +8,7 @@
 //! from the phrase and compares it with what was stored, so a tampered or corrupted record fails
 //! closed rather than redirecting Receive or Copy to another address.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use wallet_core::Felt;
 use wallet_core::StarkXOnlyKeypair;
@@ -105,6 +105,10 @@ pub(crate) struct VaultPayload {
     /// preference). May carry an API key: never logged or put in an error.
     #[zeroize(skip)]
     pub rpc_overrides: BTreeMap<String, String>,
+    /// Catalog ids whose refused override was dropped on load (`public_store::load_preferences`):
+    /// their explorer fallback stays off by default. Set only on load.
+    #[zeroize(skip)]
+    pub explorer_fallback_off: BTreeSet<String>,
 }
 
 /// The non-secret state a mutation may change, captured so a failed write can be rolled back.
@@ -158,6 +162,7 @@ impl VaultPayload {
             labels: BTreeMap::new(),
             mnemonic,
             rpc_overrides: BTreeMap::new(),
+            explorer_fallback_off: BTreeSet::new(),
         }
     }
 
@@ -380,6 +385,10 @@ fn is_consistent(payload: &VaultPayload) -> bool {
         && payload.rpc_overrides.iter().all(|(network, url)| {
             NetworkId::from_catalog_id(network).is_some() && rpc_override::is_rpc_url(url)
         })
+        && payload
+            .explorer_fallback_off
+            .iter()
+            .all(|network| NetworkId::from_catalog_id(network).is_some())
 }
 
 // Re-derives every record from the phrase, one key per record, each also shown to `sealed`;

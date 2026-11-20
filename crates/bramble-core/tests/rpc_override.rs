@@ -22,6 +22,8 @@ fn with_nothing_stored_the_bundled_networks_are_unchanged() {
     assert_eq!(core.rpc_override(NetworkId::Mainnet).unwrap(), None);
     assert_eq!(core.rpc_override(NetworkId::Sepolia).unwrap(), None);
     assert_eq!(preferences(dir.path())["rpcOverrides"], json!({}));
+    // Absent until a drop needs it, so an older build still reads the file.
+    assert!(preferences(dir.path()).get("explorerFallbackOff").is_none());
 }
 
 #[test]
@@ -147,19 +149,65 @@ fn the_explorer_fallback_follows_the_stored_override() {
     assert!(!core.explorer_fallback_allowed(NetworkId::Sepolia, unset));
 }
 
+// A stored override the rule now refuses is dropped rather than locking the person out (the
+// extension's `normalizeStoredServiceUrl`), and that network's explorer fallback stays off, as
+// the extension pins it, across a write and a restart.
+#[test]
+fn a_refused_stored_override_is_dropped_with_the_fallback_kept_off() {
+    for refused in ["http://127.0.0.1:5050/rpc", "https://RPC.example/apiKEY"] {
+        let (dir, clock, core) = imported();
+        core.set_rpc_override(NetworkId::Sepolia, CUSTOM.into())
+            .unwrap();
+        core.lock();
+        let mut stored = preferences(dir.path());
+        stored["rpcOverrides"]["SN_MAIN"] = json!(refused);
+        std::fs::write(dir.path().join("preferences.json"), stored.to_string()).unwrap();
+
+        let reopened = open(dir.path(), &clock);
+        reopened.unlock(PASSWORD.into()).unwrap();
+        assert_eq!(reopened.rpc_override(NetworkId::Mainnet).unwrap(), None);
+        assert_eq!(
+            reopened
+                .rpc_override(NetworkId::Sepolia)
+                .unwrap()
+                .as_deref(),
+            Some(CUSTOM)
+        );
+        let mainnet = networks::info(NetworkId::Mainnet);
+        assert!(reopened.networks().unwrap().contains(mainnet));
+        let unset = TokenPreferences::new(None);
+        assert!(!reopened.explorer_fallback_allowed(NetworkId::Mainnet, unset.clone()));
+
+        // The next write persists both the drop and the pin.
+        reopened
+            .set_rpc_override(NetworkId::Sepolia, " ".into())
+            .unwrap();
+        let written = preferences(dir.path());
+        assert_eq!(written["rpcOverrides"], json!({}), "{refused}");
+        assert_eq!(written["explorerFallbackOff"], json!(["SN_MAIN"]));
+        reopened.lock();
+        let again = open(dir.path(), &clock);
+        again.unlock(PASSWORD.into()).unwrap();
+        assert!(!again.explorer_fallback_allowed(NetworkId::Mainnet, unset.clone()));
+        assert!(again.explorer_fallback_allowed(NetworkId::Sepolia, unset));
+    }
+}
+
 #[test]
 fn an_invalid_stored_override_fails_closed() {
-    for overrides in [
-        json!({ "SN_MAIN": "http://127.0.0.1:5050/rpc" }),
-        json!({ "SN_MAIN": "https://RPC.example" }),
-        json!({ "SN_DEVNET": "https://rpc.example" }),
-        json!({ "SN_MAIN": 1 }),
+    for (field, value) in [
+        (
+            "rpcOverrides",
+            json!({ "SN_DEVNET": "https://rpc.example" }),
+        ),
+        ("rpcOverrides", json!({ "SN_MAIN": 1 })),
+        ("explorerFallbackOff", json!(["SN_DEVNET"])),
     ] {
         let (dir, clock, core) = imported();
         core.lock();
         let path = dir.path().join("preferences.json");
         let mut stored = preferences(dir.path());
-        stored["rpcOverrides"] = overrides.clone();
+        stored[field] = value.clone();
         std::fs::write(&path, stored.to_string()).unwrap();
         let reopened = open(dir.path(), &clock);
         assert!(
@@ -167,7 +215,7 @@ fn an_invalid_stored_override_fails_closed() {
                 reopened.unlock(PASSWORD.into()),
                 Err(CoreError::Storage { .. })
             ),
-            "{overrides}"
+            "{value}"
         );
     }
 }
