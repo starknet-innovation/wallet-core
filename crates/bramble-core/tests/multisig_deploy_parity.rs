@@ -22,7 +22,9 @@ use starknet_wallet_core::accounts::multisig::{predict, signer_guid_hex, ArgentM
 use starknet_wallet_core::accounts::Ladder;
 use starknet_wallet_core::kms::account_key;
 use starknet_wallet_core::send::judge::{Observation, TxStatus};
-use starknet_wallet_core::send::multisig_deploy::{deployment, deployment_plan};
+use starknet_wallet_core::send::multisig_deploy::{
+    deployment, deployment_plan, MultisigDeployRefusal,
+};
 use starknet_wallet_core::send::plan::{PendingKind, PendingRecord, Plan, PlanHost, SignRefusal};
 use starknet_wallet_core::send::types::{SendFailureCode, SendStep, StepReply};
 use starknet_wallet_core::{felt, sign_stark_hash, Felt, SecretFelt, StarkSignature};
@@ -258,8 +260,8 @@ fn the_deployment_plan_matches_the_extension_wire() {
     }
 }
 
-/// The review, then the submit's chain proof and class read answered with `class`.
-fn submit_with_class(class: &str) -> SendStep {
+/// The Sepolia review, then the submit answered from `submit`; nothing is signed or recorded.
+fn submit_with(submit: &[Value]) -> SendStep {
     let fixture = fixture();
     let net = &fixture["networks"][0];
     let member = deployer(net, &fixture);
@@ -267,12 +269,61 @@ fn submit_with_class(class: &str) -> SendStep {
     let step = plan.advance(&member, StepReply::Start).unwrap();
     drive(&mut plan, &member, step, &decoded(&net["deploy"]["review"]));
     let step = plan.advance(&member, StepReply::Confirm).unwrap();
-    let mut submit = decoded(&net["deploy"]["submit"]);
-    submit.truncate(2);
-    submit[1]["reply"] = json!({ "result": class });
-    let step = drive(&mut plan, &member, step, &submit);
+    let step = drive(&mut plan, &member, step, submit);
     assert!(member.signed.borrow().is_empty() && member.records.borrow().is_empty());
     step
+}
+
+/// The review, then the submit's chain proof and class read answered with `class`.
+fn submit_with_class(class: &str) -> SendStep {
+    let fixture = fixture();
+    let mut submit = decoded(&fixture["networks"][0]["deploy"]["submit"]);
+    submit.truncate(2);
+    submit[1]["reply"] = json!({ "result": class });
+    submit_with(&submit)
+}
+
+/// `extension-multisig-transactions-refusals.json`'s `deploySubmit`: the extension's
+/// `submitAccountDeployment` refusals for the same Sepolia multisig, each mapped to the plan's.
+#[test]
+fn deployments_the_extension_refuses_are_refused() {
+    let path = format!(
+        "{}/tests/fixtures/extension-multisig-transactions-refusals.json",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let refusals: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    let fixture = fixture();
+    let cases = refusals["deploySubmit"].as_array().unwrap();
+    assert_eq!(cases.len(), 2);
+    for case in cases {
+        let name = case["name"].as_str().unwrap();
+        match (name, case["refusal"]["message"].as_str().unwrap()) {
+            ("alreadyDeployed", "Account is already deployed") => assert_eq!(
+                failure(submit_with(&decoded(&case["wire"]))),
+                SendFailureCode::AlreadyDeployed
+            ),
+            // The extension estimates first (the four reads in `wire`) and refuses when the
+            // outsider's signature is serialised; the plan refuses before it reads anything.
+            ("nonMemberDeployer", "Argent multisig signature is not from a configured signer") => {
+                let index = case["signerAccountIndex"].as_u64().unwrap() as u32;
+                let outsider = Member::new(&fixture, index);
+                let input = &fixture["networks"][0]["deploy"]["input"];
+                let refused = deployment_plan(
+                    network(&fixture["networks"][0]),
+                    &config(input),
+                    input["salt"].as_str().unwrap(),
+                    argent_multisig_class(),
+                    &outsider.public_key(),
+                    SEND_POLICY,
+                );
+                assert_eq!(
+                    refused.err(),
+                    Some(MultisigDeployRefusal::DeployerNotMember)
+                );
+            }
+            other => panic!("unmapped extension refusal {other:?}"),
+        }
+    }
 }
 
 fn failure(step: SendStep) -> SendFailureCode {
