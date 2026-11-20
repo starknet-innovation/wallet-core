@@ -13,9 +13,7 @@
 use serde::{Deserialize, Serialize};
 use starknet_types_core::felt::Felt;
 
-use super::multisig_invoke::{
-    canonical_non_zero, is_calls, MultisigSignature, PreparedInvoke, StarkPrimitives,
-};
+use super::multisig_invoke::{is_calls, MultisigSignature, PreparedInvoke, StarkPrimitives};
 use crate::accounts::multisig::{signer_guid, ArgentMultisigClass};
 use crate::accounts::multisig_records::{is_authority, not_null};
 use crate::felt;
@@ -168,7 +166,7 @@ pub fn intent_id(account_id: &str, transaction_hash: &str) -> Option<String> {
 }
 
 fn guid_of(public_key: &str) -> Option<Felt> {
-    signer_guid(&canonical_non_zero(public_key)?).ok()
+    signer_guid(&felt::parse_canonical_non_zero(public_key)?).ok()
 }
 
 impl SigningIntent {
@@ -377,9 +375,9 @@ impl SigningIntent {
         let mut prior = Felt::ZERO;
         for signature in &self.signatures {
             let (Some(key), Some(r), Some(s)) = (
-                canonical_non_zero(&signature.public_key),
-                canonical_non_zero(&signature.r),
-                canonical_non_zero(&signature.s),
+                felt::parse_canonical_non_zero(&signature.public_key),
+                felt::parse_canonical_non_zero(&signature.r),
+                felt::parse_canonical_non_zero(&signature.s),
             ) else {
                 return false;
             };
@@ -409,7 +407,7 @@ impl SigningIntent {
             _ => {
                 count == threshold
                     && broadcast.is_some_and(|hash| {
-                        canonical_non_zero(hash).is_some()
+                        felt::parse_canonical_non_zero(hash).is_some()
                             && same_felt(hash, &self.prepared.transaction_hash)
                     })
             }
