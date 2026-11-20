@@ -191,3 +191,31 @@ fn a_merge_refuses_another_intent() {
         assert_eq!(local(&ready).merge_imported(&incoming), None);
     }
 }
+
+#[test]
+fn a_stored_intent_the_validator_refuses_is_never_replaced() {
+    // can_replace validates only `next` in full; these stored intents differ from a valid one
+    // only where the shortcut still looks: signature order and the lifecycle.
+    let ready = ready();
+    let primitives = TestPrimitives::new();
+    let replaces = |current: &SigningIntent| {
+        current.can_replace(&ready, &class(), summary_length(), &primitives)
+    };
+    assert!(replaces(&local(&ready)));
+    let mut reversed = ready.clone();
+    reversed.signatures.reverse();
+    let mut doubled = local(&ready);
+    doubled.signatures.push(doubled.signatures[0].clone());
+    let broadcast = SigningIntent {
+        broadcast_transaction_hash: Some(ready.prepared.transaction_hash.clone()),
+        ..local(&ready)
+    };
+    let full_but_collecting = SigningIntent {
+        state: IntentState::Collecting,
+        ..ready.clone()
+    };
+    for current in [reversed, doubled, broadcast, full_but_collecting] {
+        assert!(!current.is_valid(&class(), summary_length(), &primitives));
+        assert!(!replaces(&current), "{current:?}");
+    }
+}
