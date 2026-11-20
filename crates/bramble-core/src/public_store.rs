@@ -1,6 +1,6 @@
 //! Public, non-secret wallet metadata files kept beside `vault.json`: contacts, shared accounts,
-//! coordination checkpoints, and the wallet's preferences (labels, groups, the backup flag). They
-//! inherit the data directory's protection (iOS complete file protection and backup exclusion;
+//! coordination checkpoints, and the wallet's preferences (labels, groups, hidden accounts, the
+//! backup flag). They inherit the data directory's protection (iOS complete file protection and backup exclusion;
 //! Android `noBackupFilesDir`).
 //!
 //! Every file is `{"version":1, …}`, written with the vault's temp-file, `sync_all`, rename
@@ -25,8 +25,8 @@ pub const CONTACTS: &str = "contacts.json";
 pub const MULTISIGS: &str = "multisigs.json";
 /// Relay choice, sync checkpoints, and held packages.
 pub const COORDINATION: &str = "coordination.json";
-/// Account labels, groups and the backup flag: the extension keeps the first two in its
-/// preferences rather than the vault, and the flag is mobile's own.
+/// Account labels, groups, hidden accounts and the backup flag: the extension keeps the first
+/// three in its preferences rather than the vault, and the flag is mobile's own.
 pub const PREFERENCES: &str = "preferences.json";
 /// Largest metadata file the core will read.
 const MAX_FILE_BYTES: u64 = 1024 * 1024;
@@ -91,6 +91,9 @@ pub fn remove(dir: &Path, file: &str) -> Result<(), CoreError> {
 struct Preferences {
     backup_pending: bool,
     groups: Vec<StoredGroup>,
+    /// Absent from files written before hiding existed.
+    #[serde(default)]
+    hidden_account_ids: Vec<String>,
     labels: BTreeMap<String, String>,
     version: u32,
 }
@@ -100,6 +103,7 @@ pub(crate) fn save_preferences(dir: &Path, payload: &VaultPayload) -> Result<(),
     let preferences = Preferences {
         backup_pending: payload.backup_pending,
         groups: payload.groups.clone(),
+        hidden_account_ids: payload.hidden_account_ids.clone(),
         labels: payload.labels.clone(),
         version: 1,
     };
@@ -107,8 +111,9 @@ pub(crate) fn save_preferences(dir: &Path, payload: &VaultPayload) -> Result<(),
 }
 
 /// Loads the preferences into an opened `payload`; none on disk means none set. The vault and
-/// this file are written one after the other, so a label or group member naming an account the
-/// vault does not hold is dropped; anything else invalid fails closed.
+/// this file are written one after the other, so a label, group member or hidden id naming an
+/// account the vault does not hold is dropped; anything else invalid (a repeated hidden id
+/// included, as the extension's `isHiddenAccountIds`) fails closed.
 pub(crate) fn load_preferences(dir: &Path, payload: &mut VaultPayload) -> Result<(), CoreError> {
     let Some(preferences) = read::<Preferences>(dir, PREFERENCES)? else {
         return Ok(());
@@ -126,7 +131,10 @@ pub(crate) fn load_preferences(dir: &Path, payload: &mut VaultPayload) -> Result
     for group in &mut groups {
         group.account_ids.retain(held);
     }
+    let mut hidden = preferences.hidden_account_ids;
+    hidden.retain(held);
     payload.backup_pending = preferences.backup_pending;
+    payload.hidden_account_ids = hidden;
     payload.labels = labels;
     payload.groups = groups;
     account_store::check_consistent(payload).map_err(|_| unreadable(PREFERENCES))
