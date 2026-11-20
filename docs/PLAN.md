@@ -171,14 +171,29 @@ Only if the feature is wanted (a product decision first):
   returns it. That amends the hard rule that the mobile build exports no raw keys, so the rule
   in `AGENTS.md` changes in the same PR. V1's reader requires the collection the extension seals
   imported keys into to be empty, so it lifts that for this one collection.
-- **P4 Custom RPC.** A stored custom network in `bramble-core`, passed in through `Catalogs`;
-  `wallet-core` already takes the wallet's `NetworkInfo`. Mainnet and Sepolia stay the fixed
-  defaults.
 - **P5 Stark names.** A sans-IO body and reply judge for name → address and address → name,
   beside `rpc.rs`; the naming contracts are Bramble's catalog data.
 
 Checked:
 
+- **P4 Custom RPC.** Wanted (product owner, 2026-11-20). The extension (`main` at `a01b240c`) keeps
+  one override per network in its preferences, not the vault: `rpcOverrides`, network id to URL
+  (`isRpcOverrides`, `wallet-model/preferences/preferences.ts`), set and cleared by `setRpcOverride`
+  (`settings/src/preferences.ts`: trimmed, empty clears, else `isCustomRpcUrl`, which is
+  `isServiceUrl` in `core/service-url.ts`). It defines no network: `networkRpcUrls`
+  (`runtime/runtime-state.ts`) tries the override before the bundled endpoints, which stay as
+  transport failover. It probes no chain id on save; writes probe every endpoint before signing
+  (`withRpcWrite`). With an override and no stored choice, `explorerFallbackAllowed` is off; a
+  preferences restore never applies `rpcOverrides`. So the URL grammar is the relay one over
+  `https`/`http` (`nostr::relay_url::is_custom_rpc_url`), and `bramble-core` stores `rpcOverrides`
+  in `public_store`'s preferences (`rpc_override.rs`), narrowed to `https` as relays are to `wss`,
+  and fails closed on a stored value the rule refuses. `WalletCore::networks` hands the host the
+  bundled records with the override first (`networks::with_rpc_override`); chain ids, tokens and
+  explorers never change, and the send plan's chain probes still check Krusty's chain id.
+  `explorer_fallback_allowed` now takes whether the network has an override. Deliberately different:
+  no `http` on loopback (cleartext is blocked on both platforms), and a typed URL the parser would
+  respell (case, a default port, dot segments) is refused rather than rewritten, since the core has
+  no URL parser. The rules have unit tests only and need a Bramble generator. Mobile has none yet.
 - **P6 Hidden accounts.** The extension (`main` at `a01b240c`) keeps them in its preferences,
   not the vault: `hiddenAccountIds`, unique canonical account ids, default `[]`
   (`packages/features/settings/src/preferences-accounts.ts`, `isHiddenAccountIds` in

@@ -111,7 +111,9 @@ Grep first; extend in place rather than adding a sibling.
   it only through `PlanHost`, and its numbers through `Policy` (Bramble's: `SEND_POLICY`).
 - Network and token records (`NetworkInfo`, `TokenInfo`, `TokenRegistry`, borrowed together as
   `Catalogs`) live in `crates/wallet-core/src/catalog.rs`; the core bundles none, the wallet
-  passes its own in. A network's catalog spelling (`SN_MAIN`) is `NetworkId::catalog_id`.
+  passes its own in. A network's catalog spelling (`SN_MAIN`) is `NetworkId::catalog_id`. A
+  network with the person's RPC override first is `bramble-core`'s
+  `networks::with_rpc_override`; the stored override is `rpc_override.rs`.
 - Bramble's catalogs live in `crates/bramble-core/src/catalogs/`, embedded from
   `crates/bramble-core/generated/`: `networks` (`all`, `info`, `registry`, `catalogs()`, and
   `LEGITIMATE_ALIASES`), `accounts` (the class table, family names, `send_authorization`,
@@ -140,7 +142,8 @@ Grep first; extend in place rather than adding a sibling.
   (`privacy::json`, stricter than `js::json`), routing and limits records (`config.rs`), and the
   gates (`gates.rs`, `home.rs`). `DeploymentState` is `send::types`.
 - Nostr relay work lives beside the keys in `crates/wallet-core/src/nostr/`: the relay-URL
-  grammar (`relay_url::is_nostr_relay_url`), relay selection, frame parsing, gift-wrap batches and
+  grammar (`relay_url::is_nostr_relay_url`, which a custom RPC URL shares as
+  `is_custom_rpc_url`), relay selection, frame parsing, gift-wrap batches and
   publishing (`relay.rs`: `valid_relay_urls`, `parsed_gift_wraps`, `PublishJudge`,
   `publish_many_nostr_gift_wraps`), the paged sync (`sync::SyncJudge`) and the sync window
   (`sync_window.rs`). Bramble's numbers for them (`RELAY_LIMITS`, `SYNC_LOOKBACKS`) and its
