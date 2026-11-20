@@ -86,6 +86,8 @@ fn relay_urls_are_secure_and_trimmed() {
         matches!(normalize_relay_url("ws://localhost:7000"), Err(CoreError::InvalidInput { reason }) if reason.contains("wss"))
     );
     assert!(normalize_relay_url("WSS://relay.example").is_err());
+    // A multi-byte character across the scheme's fifth byte is refused, not a panic.
+    assert!(normalize_relay_url("aaaa\u{e9}://relay.example").is_err());
 }
 
 // `normalizeStoredWebSocketServiceUrl`: an earlier build's spelling reads back as the same
