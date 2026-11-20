@@ -26,7 +26,9 @@ through UniFFI as one library for the browser extension (wasm32, npm
   functions that take or return a raw Stark private key. The `extension` feature (default, implied
   by `raw-keys`) exports the extension's other KMS and Nostr functions, several of which take or
   return a recovery phrase. Mobile builds `--no-default-features` and gets neither: its phrase
-  stays inside `WalletCore`.
+  stays inside `WalletCore`. The one inbound exception is `WalletCore::import_private_key` (P3),
+  which takes a pasted key, seals it into the vault and returns only the account's public record;
+  no mobile export returns a key (`tests/ffi_surface.rs` checks both directions).
 - **The mobile wallet, behind `mobile`.** iOS and Android build
   `--no-default-features --features mobile`: the `WalletCore` object (vault, accounts, send,
   portfolio, history, privacy, multisig coordination), its records and free functions, and the

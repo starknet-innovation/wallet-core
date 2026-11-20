@@ -67,7 +67,7 @@ v13 payload.
 | 2.6 Catalogs | done (#49) | done (M12, Bramble #928) |
 | 2.7 Swap | done (#50), behind the `mobile` feature | done (M13, Bramble #929), at `v0.3.0`: `mobile/core` is a shell over this crate |
 | Vault switch | done (V1 #58) | G4 done (Bramble #947); M14 done (Bramble #980): mobile pins `v0.4.0` |
-| [Mobile parity](#mobile-parity) | P6 done (#65), P2 done (#68); P1's mechanism done (P1a #70, P1b #71, P1c #72), not exported until Krusty exports a selector and signature verification; P3–P5 not started | not started |
+| [Mobile parity](#mobile-parity) | P6 done (#65), P2 done (#68); P1's mechanism done (P1a #70, P1b #71, P1c #72), not exported until Krusty exports a selector and signature verification; P3 done (#80), not shippable until Bramble's imported-key v13 fixture lands; P4–P5 not started | not started |
 | 3 Extension | not started; `js/package.json` is private | n/a |
 
 `v0.1.0` is tagged at `35abc8b` (GitHub release only) and was what M2 and M3 pinned. `v0.2.0`
@@ -167,7 +167,7 @@ Needed now:
 
 Only if the feature is wanted (a product decision first):
 
-- **P3 Private-key import.** An inbound-only export that seals the key into the vault and never
+- **P3 Private-key import.** Wanted: the product decision behind #80. An inbound-only export that seals the key into the vault and never
   returns it. That amends the hard rule that the mobile build exports no raw keys, so the rule
   in `AGENTS.md` changes in the same PR. V1's reader requires the collection the extension seals
   imported keys into to be empty, so it lifts that for this one collection.
@@ -192,7 +192,9 @@ Only if the feature is wanted (a product decision first):
   record's parity has unit tests only: G4 holds no imported key, and a fixture is never written
   by hand. Before a mobile release ships the import, Bramble needs a generator that seals, with
   the extension's own store, a v13 vault holding one imported OpenZeppelin key (an imported Argent
-  one too, ideally) beside G4's accounts, for a test that opens it and writes it back unchanged.
+  one too, ideally) beside G4's accounts, for a test that opens it and writes it back unchanged. It must run at a v13 Bramble commit:
+  some Bramble branches move the vault to schema 14 (`accountProvenance`), which mobile's reader
+  (v13 only, unknown fields refused) does not open.
 - **P4 Custom RPC.** A stored custom network in `bramble-core`, passed in through `Catalogs`;
   `wallet-core` already takes the wallet's `NetworkInfo`. Mainnet and Sepolia stay the fixed
   defaults.
@@ -786,8 +788,10 @@ Each phase names the crate a module lands in; the table above decides anything n
         back as `i`). `originGrants`, `importedSeeds`, `accountSecrets`, `shadowAccountScopes` and
         the multisig key lists are written empty.
       - Every account's derived private key is sealed in `signingKeys`, as the extension does and
-        its validator requires. The keys stay inside Rust and never cross the FFI, so the mobile
-        build still exports no raw key; it is still a custody change and the PR says so.
+        its validator requires. The keys stay inside Rust and never cross the FFI outward, so the
+        mobile build still returns no raw key; it is still a custody change and the PR says so.
+        Since P3 one key crosses inward: `import_private_key` takes a pasted key and seals it
+        (see AGENTS.md).
       - Mobile's BIP39 passphrase (`mnemonicPassphrase`) is dropped: v13 has no field for it, and
         the extension's recovery refuses one. Both apps pass `nil` to `import_wallet`'s
         `passphrase` today, so the argument goes, which changes the bindings (M14 updates the call
@@ -815,7 +819,10 @@ Each phase names the crate a module lands in; the table above decides anything n
       felts, the account ↔ signing-key bijection, the active account) and mobile's stronger ones
       apply: every record, `publicKeyY` and sealed `privateKey` must equal what the phrase
       derives. Signing
-      still derives each key per call, so the sealed keys are checked, never used. An earlier
+      still derives each phrase account's key per call, so its sealed key is checked, never used.
+      An imported key (P3) has no phrase to derive from, so the session holds it in memory
+      (`VaultPayload::imported_keys`, zeroized on lock) for the whole unlock, where before P3 the
+      session held only the phrase. An earlier
       build's vault (bare envelope or container 2 to 5) is refused only after its password is
       proven, which resets the backoff; `delete_wallet` proves the password without reading the
       payload, so such a vault can still be deleted in the app. Labels, groups and
