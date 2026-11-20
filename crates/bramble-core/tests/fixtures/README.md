@@ -8,13 +8,12 @@ network, privacy-routing and token tables into `mobile/core/generated/`. Syncing
 unchanged, all at one Bramble commit. `tests/fixtures.rs` checks this table against the directory:
 every file must be listed, and its sha256 must match.
 
-All files: Bramble commit `008f29687e2226b0d0edead43612ca1722d3f955` (`feature/mobile-wallet`,
-2026-11-13: G4's merge, #947, which added `vault-v13.json`; every other file is byte-identical to
-its copy from the G1–G3 stack at `7293d188`), privacy SDK `vendor/starknet-privacy` at
-`b40bf109` (Bramble's pin). Re-running `mobile:parity` and `mobile:assets` there leaves no diff.
-One exception: `extension-activity-detail.jsonl` is from Bramble commit
-`8b7290365857f5eb441b055dc0f057a5bef95148` (2026-11-20: G6's merge, #999, byte-identical to its
-head `59c48ce2`), which changes no other file.
+All files: Bramble commit `c43b1a3d3d81410788effc74a413c8aba5e777ea` (`feature/mobile-wallet`,
+2026-11-20: G5's merge, #998, which added the three `extension-multisig-transactions*.json`, each
+byte-identical to its head `7d4cd801`). Every other file is byte-identical to its earlier copy:
+`extension-activity-detail.jsonl` from G6's merge (#999, `8b729036`), the rest from G4's merge
+(#947, `008f2968`), where re-running `mobile:parity` and `mobile:assets` left no diff; privacy SDK
+`vendor/starknet-privacy` at `b40bf109` (Bramble's pin).
 Generators are under `scripts/` in Bramble; each fixture's is reached from
 `generate-mobile-parity-vectors.ts`.
 
@@ -53,6 +52,9 @@ Generators are under `scripts/` in Bramble; each fixture's is reached from
 | `extension-transactions-verification.json` | `generate-mobile-transaction-vectors.ts` | `44253f028a3caaf4ea896b6c09afec5c3b512cce729ccabe43e4422f712385be` |
 | `extension-transactions-wire.json` | `generate-mobile-transaction-vectors.ts` | `a4e8085ad6b5e14f05c66f291b8198a167cae729e639a812c7af908d412d8e3d` |
 | `extension-activity-detail.jsonl` | `mobile-parity-activity/` | `bcbf5b06b4eeab27bfe9b30961985397386cb2159a917667a40dc8cd768d227f` |
+| `extension-multisig-transactions.json` | `generate-mobile-parity-vectors.ts` (`mobile-multisig-transactions.ts`) | `32d850be66c25149257f61e343dbcaa6bc404209b6c7371475926cb745b17f8c` |
+| `extension-multisig-transactions-refusals.json` | `generate-mobile-parity-vectors.ts` (`mobile-multisig-refusals.ts`) | `99bb711e77ac5af4e518cab4d727555d958544d24074965d6de80797c24d08f8` |
+| `extension-multisig-transactions-signers.json` | `generate-mobile-parity-vectors.ts` (`mobile-multisig-transactions.ts`) | `78ad15af9b68692724cdb1e84118591870f545db892eeaf40ff1e92fe2d9a5b3` |
 | `vault-v13.json` | `generate-mobile-parity-vectors.ts` (`mobile-parity-vault.ts`) | `d4f0cf2a62d209cd05286a6d81b372bdaf1d356ba273b41e3e8ed2437912977f` |
 
 Read today: `extension-parity.json` (`parity.rs`, `vault_parity.rs`),
@@ -78,7 +80,8 @@ read) with `networks.json` and
 block's `throughProvider` records the extension's starknet.js path, which no test reads).
 `extension-privacy-copy.json` is the source of
 Bramble's generated Swift and Kotlin privacy copy; no Rust function returns those sentences, so
-no test here reads it. The rest sit
+no test here reads it. The three `extension-multisig-transactions*.json` wait for
+[P1](../../../../docs/PLAN.md#mobile-parity). The rest sit
 here unused until their Phase 2 step moves the matching mobile parity test in (see `docs/PLAN.md`,
 Phase 1).
 
