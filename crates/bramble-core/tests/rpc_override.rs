@@ -5,7 +5,7 @@
 mod common;
 
 use bramble_core::catalogs::networks;
-use bramble_core::{supported_networks, CoreError, NetworkId};
+use bramble_core::{supported_networks, CoreError, NetworkId, TokenPreferences};
 use common::{core, imported, open, PASSWORD};
 use serde_json::{json, Value};
 
@@ -123,6 +123,28 @@ fn overrides_need_an_unlocked_wallet() {
         core.rpc_override(NetworkId::Mainnet),
         Err(CoreError::Locked)
     ));
+}
+
+// `explorerFallbackAllowed`: with no stored choice, off on a network with an override; the core
+// reads the override itself, so a host cannot pass the wrong answer.
+#[test]
+fn the_explorer_fallback_follows_the_stored_override() {
+    let (_dir, _clock, core) = imported();
+    let unset = TokenPreferences::new(None);
+    assert!(core.explorer_fallback_allowed(NetworkId::Mainnet, unset.clone()));
+    core.set_rpc_override(NetworkId::Mainnet, CUSTOM.into())
+        .unwrap();
+    assert!(!core.explorer_fallback_allowed(NetworkId::Mainnet, unset.clone()));
+    assert!(core.explorer_fallback_allowed(NetworkId::Sepolia, unset.clone()));
+    let chosen = TokenPreferences::new(Some(
+        json!({ "schema": "bramble.mobile.portfolio.v1", "tokens": [], "hiddenTokens": [],
+                "displayCurrency": "usd", "explorerFallback": { "SN_MAIN": true } })
+        .to_string(),
+    ));
+    assert!(core.explorer_fallback_allowed(NetworkId::Mainnet, chosen.clone()));
+    core.lock();
+    assert!(!core.explorer_fallback_allowed(NetworkId::Mainnet, chosen));
+    assert!(!core.explorer_fallback_allowed(NetworkId::Sepolia, unset));
 }
 
 #[test]

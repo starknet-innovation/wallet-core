@@ -11,10 +11,13 @@
 //!
 //! An endpoint can carry an API key in its path or query, so no error here names it.
 
+use std::sync::Arc;
+
 use wallet_core::js::num::js_trim;
 use wallet_core::nostr::relay_url::is_custom_rpc_url;
 
 use crate::networks::{self, NetworkId, NetworkInfo};
+use crate::portfolio::tokens::TokenPreferences;
 use crate::wallet::WalletCore;
 use crate::CoreError;
 
@@ -66,6 +69,23 @@ impl WalletCore {
                 })
                 .collect())
         })
+    }
+
+    /// `explorerFallbackAllowed`: whether `network`'s history may fall back to the third-party
+    /// explorer. The stored choice in `preferences`, else only while the wallet holds no RPC
+    /// override for `network`: a person who set their own endpoint chose that no third party sees
+    /// their addresses. `false` while locked or with no wallet, so a failed lookup never
+    /// discloses. Passive.
+    pub fn explorer_fallback_allowed(
+        &self,
+        network: NetworkId,
+        preferences: Arc<TokenPreferences>,
+    ) -> bool {
+        let id = network.catalog_id();
+        self.with_session(false, |session| {
+            Ok(session.payload.rpc_overrides.contains_key(id))
+        })
+        .is_ok_and(|custom| preferences.explorer_fallback_allowed(network, custom))
     }
 
     /// `network`'s RPC override, for the settings screen; `None` when it uses the defaults.

@@ -51,6 +51,13 @@ impl TokenPreferences {
     fn prefs(&self) -> MutexGuard<'_, port::TokenPreferences<'static>> {
         self.prefs.lock().unwrap_or_else(PoisonError::into_inner)
     }
+
+    /// `explorerFallbackAllowed` given whether `network` has an RPC override. Not exported: the
+    /// wallet holds the override, so the host asks the wallet (`rpc_override.rs`).
+    pub(crate) fn explorer_fallback_allowed(&self, network: NetworkId, rpc_override: bool) -> bool {
+        self.prefs()
+            .explorer_fallback_allowed(network, rpc_override)
+    }
 }
 
 #[uniffi::export]
@@ -104,13 +111,6 @@ impl TokenPreferences {
     /// Registry tokens not yet tracked on the network (`handleDetectTokens`' candidates).
     pub fn discovery_candidates(&self, network: NetworkId) -> Vec<TokenConfig> {
         self.prefs().discovery_candidates(network)
-    }
-
-    /// `explorerFallbackAllowed`: the stored choice, else allowed only while `network` has no RPC
-    /// override: pass whether the wallet holds one for `network` (its `rpc_override` getter).
-    pub fn explorer_fallback_allowed(&self, network: NetworkId, rpc_override: bool) -> bool {
-        self.prefs()
-            .explorer_fallback_allowed(network, rpc_override)
     }
 
     /// Whether the stored file came from a newer app and must not be overwritten.
