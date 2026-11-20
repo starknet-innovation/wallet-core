@@ -7,9 +7,9 @@
 //! and is merged into (`mergeImportedArgentMultisigIntent`), and the result is one the store
 //! would accept (`upsertIntentIn` in `packages/features/multisig/src/repository.ts`).
 //!
-//! Sans-IO: the host reads the authority and nonce and passes them in. Nothing here signs or
-//! holds a key. Left to the wallet: that the session is still current, that the record is on the
-//! active network, and whether its intent store has room (`intentPlacement`).
+//! Sans-IO: the host drives the authority read and reads the nonce, and passes both in. Nothing
+//! here signs or holds a key. Left to the wallet: that the session is still current, that the
+//! record is on the active network, and whether its intent store has room (`intentPlacement`).
 
 use std::fmt;
 
@@ -20,6 +20,7 @@ use super::multisig_intent::{ConfigSnapshot, IntentPackage, SigningIntent};
 use super::multisig_invoke::StarkPrimitives;
 use super::multisig_review::{review_calls, CallReviewError};
 use crate::accounts::multisig::ArgentMultisigClass;
+use crate::accounts::multisig_read::MultisigAuthorityRead;
 use crate::accounts::multisig_records::{authority, PublicConfig, Record};
 use crate::felt;
 use crate::js::felt::same_felt;
@@ -29,6 +30,12 @@ use crate::js::felt::same_felt;
 pub enum ImportError {
     /// The intent's account is not the record passed in (`contextForIntent`).
     UnknownAccount,
+    /// The authority read targets another address, network or class than the record's. No
+    /// extension counterpart: its read is built from the record, so cannot miss it.
+    ReadForAnotherAccount,
+    /// The authority read did not end `Available`. The extension shows whatever its read threw;
+    /// this is its fixed fallback sentence (`currentArgentIntentContext`'s catch).
+    AuthorityUnavailable,
     /// The chain's authority is not the intent's snapshot (`sameConfig`).
     ConfigChanged,
     /// The chain's nonce is not the prepared one (`NONCE_NOT_CURRENT`).
@@ -47,6 +54,8 @@ impl ImportError {
     pub fn message(self) -> &'static str {
         match self {
             Self::UnknownAccount => "Argent multisig not found",
+            Self::ReadForAnotherAccount => "Argent multisig authority read is for another account",
+            Self::AuthorityUnavailable => "Argent multisig config unavailable",
             Self::ConfigChanged => "Argent multisig intent is stale after a configuration change",
             Self::NonceNotCurrent => "Argent multisig intent nonce is no longer current",
             Self::Review(error) => error.message(),
@@ -78,10 +87,11 @@ pub struct ImportContext<'a> {
     pub primitives: &'a dyn StarkPrimitives,
 }
 
-/// `importIntent` from a parsed package to the intent to store. `threshold` and `signer_guids`
-/// are the record's `MultisigAuthorityRead::authority` (status `Available`; any other status is
-/// the wallet's refusal), and `nonce` its `starknet_getNonce` (`judge::nonce`), both read just
-/// before this call.
+/// `importIntent` from a parsed package to the intent to store. `read` is the record's
+/// authority read, driven to its end just before this call: it must target the record's address
+/// and network and `class`, and be `Available`. Since the read refuses an address running any
+/// other class, the snapshot's class hash is then the one on chain. `nonce` is the record's
+/// `starknet_getNonce` (`judge::nonce`); a bare felt, since no read binds it to an address here.
 ///
 /// The remote's lifecycle claims are dropped (`locally_derived_imported`), its summary is
 /// replaced by this wallet's review of the frozen calls, and a stored intent is merged into
@@ -90,8 +100,7 @@ pub struct ImportContext<'a> {
 /// extension's store gives after its looser merge.
 pub fn import_intent(
     package: &IntentPackage,
-    threshold: u32,
-    signer_guids: &[Felt],
+    read: &MultisigAuthorityRead,
     nonce: &Felt,
     wallet: &ImportContext<'_>,
 ) -> Result<SigningIntent, ImportError> {
@@ -100,7 +109,14 @@ pub fn import_intent(
     if record.id != incoming.account_id {
         return Err(ImportError::UnknownAccount);
     }
-    if ConfigSnapshot::new(class, threshold, signer_guids) != incoming.config_snapshot {
+    if !same_felt(&read.address(), &record.address)
+        || read.network().catalog_id() != record.network_id
+        || read.class_hash() != class.hash()
+    {
+        return Err(ImportError::ReadForAnotherAccount);
+    }
+    let (threshold, signer_guids) = read.authority().ok_or(ImportError::AuthorityUnavailable)?;
+    if ConfigSnapshot::new(class, threshold, &signer_guids) != incoming.config_snapshot {
         return Err(ImportError::ConfigChanged);
     }
     if !same_felt(&felt::canonical(nonce), &incoming.prepared.nonce) {

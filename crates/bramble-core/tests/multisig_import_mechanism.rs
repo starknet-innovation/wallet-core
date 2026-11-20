@@ -10,8 +10,11 @@
 mod multisig_support;
 
 use multisig_support::*;
-use serde_json::Value;
+use serde_json::{json, Value};
 use starknet_wallet_core::accounts::multisig::signer_guid;
+use starknet_wallet_core::accounts::multisig_read::{
+    MultisigAuthorityRead, MultisigAuthorityStatus,
+};
 use starknet_wallet_core::accounts::multisig_records::Record;
 use starknet_wallet_core::send::call_decode::Known;
 use starknet_wallet_core::send::multisig_import::{import_intent, ImportContext, ImportError};
@@ -20,7 +23,7 @@ use starknet_wallet_core::send::multisig_intent::{
 };
 use starknet_wallet_core::send::multisig_invoke::{MultisigSignature, PreparedInvoke};
 use starknet_wallet_core::send::multisig_review::CallReviewError;
-use starknet_wallet_core::{felt, sign_stark_hash, Felt};
+use starknet_wallet_core::{felt, sign_stark_hash, Felt, NetworkId};
 
 fn refusals() -> Value {
     let path = format!(
@@ -230,6 +233,27 @@ fn account() -> Record {
     serde_json::from_value(refusals()["account"].clone()).unwrap()
 }
 
+fn respond(read: &mut MultisigAuthorityRead, result: Value) {
+    let request = read.next_request().unwrap();
+    let body = json!({"jsonrpc": "2.0", "id": request.id, "result": result}).to_string();
+    read.accept_response(request.id, &body).unwrap();
+}
+
+/// An authority read of `address` on Sepolia driven to `Available` with `threshold` and
+/// `guids`, as `multisig_parity.rs` drives one (the node returns the GUIDs in any order).
+fn read_of(address: &str, threshold: u32, guids: &[Felt]) -> MultisigAuthorityRead {
+    let mut read = MultisigAuthorityRead::new(NetworkId::Sepolia, address, &class()).unwrap();
+    respond(&mut read, json!("0x534e5f5345504f4c4941"));
+    respond(&mut read, json!({"block_hash": "0x1", "block_number": 1}));
+    respond(&mut read, json!(class().class_hash()));
+    respond(&mut read, json!([format!("0x{threshold:x}")]));
+    let mut reply = vec![json!(format!("0x{:x}", guids.len()))];
+    reply.extend(guids.iter().rev().map(|guid| json!(felt::canonical(guid))));
+    respond(&mut read, Value::Array(reply));
+    assert_eq!(read.status(), Some(MultisigAuthorityStatus::Available));
+    read
+}
+
 /// What the chain holds for `intent`'s account: its snapshot's authority and its nonce.
 fn chain(intent: &SigningIntent) -> (u32, Vec<Felt>, Felt) {
     let snapshot = &intent.config_snapshot;
@@ -249,6 +273,18 @@ fn import_with(
     stored: Option<&SigningIntent>,
     (threshold, guids, nonce): (u32, Vec<Felt>, Felt),
 ) -> Result<SigningIntent, ImportError> {
+    let read = read_of(&account().address, threshold, &guids);
+    import_stored(package, record, stored, &read, &nonce)
+}
+
+/// `import_intent` over a read the caller drove.
+fn import_stored(
+    package: &IntentPackage,
+    record: &Record,
+    stored: Option<&SigningIntent>,
+    read: &MultisigAuthorityRead,
+    nonce: &Felt,
+) -> Result<SigningIntent, ImportError> {
     let known = Known {
         tokens: &[],
         nft_contracts: &[],
@@ -262,7 +298,7 @@ fn import_with(
         summary_length: summary_length(),
         primitives: &TestPrimitives::new(),
     };
-    import_intent(package, threshold, &guids, &nonce, &wallet)
+    import_intent(package, read, nonce, &wallet)
 }
 
 /// The ready intent as a co-signer sends it, with a summary that lies about the calls.
@@ -414,5 +450,40 @@ fn an_import_the_store_would_refuse_is_refused() {
     assert_eq!(
         import_with(&reversed, &account(), None, chain(&ready)),
         Err(ImportError::Invalid)
+    );
+}
+
+#[test]
+fn an_import_needs_an_available_read_of_its_own_account() {
+    let ready = ready();
+    let package = lying(&ready);
+    let (threshold, guids, nonce) = chain(&ready);
+
+    // The node never answered: the read ended `NetworkUnavailable`.
+    let mut lost =
+        MultisigAuthorityRead::new(NetworkId::Sepolia, &account().address, &class()).unwrap();
+    let request = lost.next_request().unwrap();
+    lost.transport_failed(request.id);
+    assert_eq!(
+        lost.status(),
+        Some(MultisigAuthorityStatus::NetworkUnavailable)
+    );
+    assert_eq!(
+        import_stored(&package, &account(), None, &lost, &nonce),
+        Err(ImportError::AuthorityUnavailable)
+    );
+
+    // An available read of another address, even one reporting the same authority.
+    let elsewhere = read_of("0x456", threshold, &guids);
+    assert_eq!(
+        import_stored(&package, &account(), None, &elsewhere, &nonce),
+        Err(ImportError::ReadForAnotherAccount)
+    );
+    // The same address read on another network (refused before its status is looked at).
+    let mainnet =
+        MultisigAuthorityRead::new(NetworkId::Mainnet, &account().address, &class()).unwrap();
+    assert_eq!(
+        import_stored(&package, &account(), None, &mainnet, &nonce),
+        Err(ImportError::ReadForAnotherAccount)
     );
 }
