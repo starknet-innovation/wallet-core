@@ -1,8 +1,11 @@
 //! Importing a co-signer's intent package as the extension's `importIntent` does:
 //! `readImportIntentInput` (`IntentPackage::parse`), `locallyDerivedImportedIntent`
-//! (`SigningIntent::locally_derived_imported`), then the merge, validator and replacement rule.
-//! Built from `extension-multisig-transactions-refusals.json`'s ready intent; the extension
-//! recorded no import cases, so these hold the Rust to the TypeScript rules directly.
+//! (`SigningIntent::locally_derived_imported`), then the merge, validator and replacement rule,
+//! and the whole of it through `multisig_import::import_intent` (the chain's authority and nonce,
+//! the wallet's own review in place of the remote summary). Built from
+//! `extension-multisig-transactions-refusals.json`'s ready intent and the `-signers.json`
+//! prepared signer change; the extension recorded no import cases, so these hold the Rust to the
+//! TypeScript rules directly.
 
 mod multisig_support;
 
@@ -10,11 +13,14 @@ use multisig_support::*;
 use serde_json::Value;
 use starknet_wallet_core::accounts::multisig::signer_guid;
 use starknet_wallet_core::accounts::multisig_records::Record;
+use starknet_wallet_core::send::call_decode::Known;
+use starknet_wallet_core::send::multisig_import::{import_intent, ImportContext, ImportError};
 use starknet_wallet_core::send::multisig_intent::{
     IntentPackage, IntentState, SigningIntent, StaleReason,
 };
-use starknet_wallet_core::send::multisig_invoke::MultisigSignature;
-use starknet_wallet_core::{felt, sign_stark_hash};
+use starknet_wallet_core::send::multisig_invoke::{MultisigSignature, PreparedInvoke};
+use starknet_wallet_core::send::multisig_review::CallReviewError;
+use starknet_wallet_core::{felt, sign_stark_hash, Felt};
 
 fn refusals() -> Value {
     let path = format!(
@@ -218,4 +224,195 @@ fn a_stored_intent_the_validator_refuses_is_never_replaced() {
         assert!(!current.is_valid(&class(), summary_length(), &primitives));
         assert!(!replaces(&current), "{current:?}");
     }
+}
+
+fn account() -> Record {
+    serde_json::from_value(refusals()["account"].clone()).unwrap()
+}
+
+/// What the chain holds for `intent`'s account: its snapshot's authority and its nonce.
+fn chain(intent: &SigningIntent) -> (u32, Vec<Felt>, Felt) {
+    let snapshot = &intent.config_snapshot;
+    let guids = snapshot
+        .signer_guids
+        .iter()
+        .map(|guid| felt::parse(guid).unwrap())
+        .collect();
+    let nonce = felt::parse(&intent.prepared.nonce).unwrap();
+    (snapshot.threshold, guids, nonce)
+}
+
+/// `import_intent` with a fresh wallet's review arguments: no known tokens, nothing trusted.
+fn import_with(
+    package: &IntentPackage,
+    record: &Record,
+    stored: Option<&SigningIntent>,
+    (threshold, guids, nonce): (u32, Vec<Felt>, Felt),
+) -> Result<SigningIntent, ImportError> {
+    let known = Known {
+        tokens: &[],
+        nft_contracts: &[],
+    };
+    let wallet = ImportContext {
+        record,
+        stored,
+        class: &class(),
+        known: &known,
+        trusted: &[],
+        summary_length: summary_length(),
+        primitives: &TestPrimitives::new(),
+    };
+    import_intent(package, threshold, &guids, &nonce, &wallet)
+}
+
+/// The ready intent as a co-signer sends it, with a summary that lies about the calls.
+fn lying(ready: &SigningIntent) -> IntentPackage {
+    let lie = SigningIntent {
+        summary: "Receive 1000 STRK".into(),
+        ..ready.clone()
+    };
+    parse(&sent(&lie)).unwrap()
+}
+
+#[test]
+fn an_import_is_stored_with_the_wallets_own_summary() {
+    let ready = ready();
+    let submitted = SigningIntent {
+        broadcast_transaction_hash: Some(ready.prepared.transaction_hash.clone()),
+        state: IntentState::Submitted,
+        summary: "Receive 1000 STRK".into(),
+        ..ready.clone()
+    };
+    let package = parse(&submitted.package().to_json()).unwrap();
+    let stored = import_with(&package, &account(), None, chain(&ready)).unwrap();
+    assert_eq!(
+        stored, ready,
+        "lifecycle derived locally, summary the wallet's review"
+    );
+    assert_eq!(stored.summary, "Send 1 units to 0x456…x456");
+
+    // Into a stored intent: merged, and the stored summary kept.
+    let local = local(&ready);
+    let merged = import_with(&lying(&ready), &account(), Some(&local), chain(&ready)).unwrap();
+    assert_eq!(merged, ready);
+}
+
+#[test]
+fn a_signer_change_is_reviewed_against_the_records_keys() {
+    let signers: Value = serde_json::from_str(
+        &std::fs::read_to_string(format!(
+            "{}/tests/fixtures/extension-multisig-transactions-signers.json",
+            env!("CARGO_MANIFEST_DIR")
+        ))
+        .unwrap(),
+    )
+    .unwrap();
+    let case = &signers["cases"][0];
+    let prepared: PreparedInvoke =
+        serde_json::from_str(case["prepared"].as_str().unwrap()).unwrap();
+    let ready = ready();
+    let proposal = SigningIntent::proposed(
+        &ready.account_id,
+        ready.config_snapshot.clone(),
+        prepared,
+        "Pay nobody",
+    )
+    .unwrap();
+    let package = parse(&sent(&proposal)).unwrap();
+    let stored = import_with(&package, &account(), None, chain(&proposal)).unwrap();
+    assert_eq!(stored.summary, case["review"]["summary"].as_str().unwrap());
+    assert_eq!(stored.state, IntentState::Collecting);
+
+    // A record without the keys behind the chain's GUIDs cannot review a signer change.
+    let keyless = Record {
+        current_config: None,
+        deployment: None,
+        ..account()
+    };
+    assert_eq!(
+        import_with(&package, &keyless, None, chain(&proposal)),
+        Err(ImportError::Review(CallReviewError::MissingCurrentConfig))
+    );
+    let mut moved = account();
+    moved.current_config.as_mut().unwrap().threshold = 3;
+    assert_eq!(
+        import_with(&package, &moved, None, chain(&proposal)),
+        Err(ImportError::Review(CallReviewError::MissingCurrentConfig)),
+        "keys that no longer match the chain are not used"
+    );
+}
+
+#[test]
+fn an_import_the_chain_has_moved_past_is_refused() {
+    let ready = ready();
+    let package = lying(&ready);
+    let other = Record {
+        id: format!("{}0", account().id),
+        ..account()
+    };
+    assert_eq!(
+        import_with(&package, &other, None, chain(&ready)),
+        Err(ImportError::UnknownAccount)
+    );
+    let (threshold, guids, nonce) = chain(&ready);
+    for (threshold, guids) in [
+        (threshold + 1, guids.clone()),
+        (threshold, guids[1..].to_vec()),
+    ] {
+        assert_eq!(
+            import_with(&package, &account(), None, (threshold, guids, nonce)),
+            Err(ImportError::ConfigChanged)
+        );
+    }
+    for moved in [nonce + Felt::ONE, nonce - Felt::ONE] {
+        assert_eq!(
+            import_with(
+                &package,
+                &account(),
+                None,
+                (threshold, guids.clone(), moved)
+            ),
+            Err(ImportError::NonceNotCurrent)
+        );
+    }
+    assert_eq!(
+        ImportError::NonceNotCurrent.to_string(),
+        "Argent multisig intent nonce is no longer current"
+    );
+}
+
+#[test]
+fn an_import_the_store_would_refuse_is_refused() {
+    let ready = ready();
+    let package = lying(&ready);
+    let mut other_transaction = local(&ready);
+    other_transaction.prepared.nonce = "0x6".into();
+    assert_eq!(
+        import_with(
+            &package,
+            &account(),
+            Some(&other_transaction),
+            chain(&ready)
+        ),
+        Err(ImportError::ConflictingId)
+    );
+    let mut other_snapshot = local(&ready);
+    other_snapshot.config_snapshot.threshold = 3;
+    let broadcast = SigningIntent {
+        broadcast_transaction_hash: Some(ready.prepared.transaction_hash.clone()),
+        ..local(&ready)
+    };
+    for stored in [other_snapshot, broadcast] {
+        assert_eq!(
+            import_with(&package, &account(), Some(&stored), chain(&ready)),
+            Err(ImportError::Conflict)
+        );
+    }
+    // A package built without `parse` is still validated before it is stored.
+    let mut reversed = ready.package();
+    reversed.intent.signatures.reverse();
+    assert_eq!(
+        import_with(&reversed, &account(), None, chain(&ready)),
+        Err(ImportError::Invalid)
+    );
 }

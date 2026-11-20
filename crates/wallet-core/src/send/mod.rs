@@ -17,6 +17,7 @@ pub mod calls;
 pub mod fees;
 pub mod judge;
 pub mod multisig_deploy;
+pub mod multisig_import;
 pub mod multisig_intent;
 pub mod multisig_invoke;
 pub mod multisig_invoke_plan;
