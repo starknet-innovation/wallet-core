@@ -13,7 +13,7 @@
 use starknet_types_core::felt::Felt;
 
 use super::fees::{quote_with, FeeRefusal, Overhead};
-use super::judge::{self, Answer, EstimateAnswer, WriteAnswer};
+use super::judge::{self, Answer, ChainAnswer, EstimateAnswer, WriteAnswer};
 use super::multisig_intent::{IntentState, SigningIntent};
 use super::multisig_invoke::{
     execute_calldata, input_felt, normalize_calls, query_signature, signature_felts, MultisigCall,
@@ -131,9 +131,16 @@ fn felt_result(answer: Option<Answer>) -> Result<Felt, MultisigFailure> {
 }
 
 fn chain_matches(answer: Option<Answer>, network: NetworkId) -> Result<(), MultisigFailure> {
-    (felt_result(answer)? == network.chain_id())
-        .then_some(())
-        .ok_or(MultisigFailure::WrongChain)
+/// `judge::chain` in the multisig grammar; a determinate JSON-RPC error is `NodeError`, as for
+/// the nonce read.
+    if matches!(answer, Some(Answer::Error { .. })) {
+        return Err(MultisigFailure::NodeError);
+    }
+    match judge::chain_spelled(answer, network, input_felt) {
+        ChainAnswer::Match => Ok(()),
+        ChainAnswer::Mismatch => Err(MultisigFailure::WrongChain),
+        ChainAnswer::Unreadable => Err(MultisigFailure::PreparationUnavailable),
+    }
 }
 
 /// `isArgentMultisigFeeExpiredMessage`, over the judged error text (already lower-cased).

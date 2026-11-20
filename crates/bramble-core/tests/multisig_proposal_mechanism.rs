@@ -238,6 +238,18 @@ fn a_lock_or_a_wrong_chain_stops_submit_before_the_write() {
         chain(&mut plan, "0x534e5f4d41494e", true),
         MultisigStep::Failed(MultisigFailure::WrongChain)
     );
+    // The multisig grammar (`canonicalArgentMultisigFelt`) reads any `BigInt` spelling, so an
+    // upper-case id is the same chain (and reaches the lock check); a non-number is unreadable.
+    let mut plan = submit_plan(&intent);
+    assert_eq!(
+        chain(&mut plan, "0x534E5F5345504F4C4941", false),
+        MultisigStep::Failed(MultisigFailure::Locked)
+    );
+    let mut plan = submit_plan(&intent);
+    assert_eq!(
+        chain(&mut plan, "sepolia", true),
+        MultisigStep::Failed(MultisigFailure::PreparationUnavailable)
+    );
 }
 
 #[test]
