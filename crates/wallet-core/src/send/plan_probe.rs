@@ -207,7 +207,7 @@ impl Plan {
                 Err(false) => self.probed(probe, Outcome::Unreadable),
             },
             Expect::Class(probe) if self.account.is_multisig() => {
-                let outcome = self.multisig_class(probe, judge::class_value(answer));
+                let outcome = self.multisig_class(judge::class_value(answer));
                 self.probed(probe, outcome)
             }
             Expect::Class(probe) if !self.account.is_argent() && !self.account.is_braavos() => {
@@ -328,16 +328,15 @@ impl Plan {
     }
 
     /// A multisig's `isCompatibleAccountDeployed`: deployed only when running exactly its pinned
-    /// class, refused on any other. The standalone review only needs to know it has nothing to
-    /// deploy (the extension's `getDeploymentStatus` before its estimate).
-    fn multisig_class(&self, probe: Probe, class: ClassValue) -> Outcome {
+    /// class, refused on any other. The review refuses too, where the extension's
+    /// `getDeploymentStatus` reports any class as already deployed: an account this wallet cannot
+    /// drive is named as that, not as nothing to deploy.
+    fn multisig_class(&self, class: ClassValue) -> Outcome {
         let Authorization::ArgentMultisig { class_hash, .. } = self.account.authorization else {
             return Outcome::Unreadable;
         };
         match class {
-            ClassValue::Class(class) if class == class_hash || probe == Probe::Review => {
-                Outcome::Deployed
-            }
+            ClassValue::Class(class) if class == class_hash => Outcome::Deployed,
             ClassValue::Class(_) => refused(Code::AccountClassUnrecognised, None),
             ClassValue::Undeployed => Outcome::Undeployed,
             ClassValue::NodeError => Outcome::NodeError,
