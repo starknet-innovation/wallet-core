@@ -21,7 +21,7 @@ use super::types::{
 use crate::catalog::TokenInfo;
 use crate::send::judge::{answer, chain, ChainAnswer};
 use crate::send::u256::U256;
-use crate::{felt, SecretFelt};
+use crate::{felt, Felt, SecretFelt};
 
 /// The extension's `readRequestedTokens`, then the `balancesFrom` length cap.
 ///
@@ -35,13 +35,18 @@ pub fn requested_token_keys(tokens: &[TokenInfo], limits: &Limits) -> Option<BTr
     }
     let mut keys = BTreeSet::new();
     for token in tokens {
-        let address = felt::parse_non_zero(&token.address)?;
-        let key = super::json::js_bigint(&super::json::Ordered::Str(felt::canonical(&address)))?;
+        let key = token_key(&felt::parse_non_zero(&token.address)?)?;
         if !keys.insert(key) {
             return None;
         }
     }
     Some(keys)
+}
+
+/// The numeric key a token's totals are read under: its canonical address as a JavaScript
+/// `BigInt`.
+fn token_key(address: &Felt) -> Option<U256> {
+    super::json::js_bigint(&super::json::Ordered::Str(felt::canonical(address)))
 }
 
 pub(crate) fn purpose(read: Read) -> PrivacyPurpose {
@@ -228,8 +233,7 @@ impl PrivacyReadPlan {
         let mut balances = Vec::with_capacity(self.tokens.len());
         for token in &self.tokens {
             let address = felt::parse_non_zero(&token.address)?;
-            let key = super::json::js_bigint(&super::json::Ordered::Str(felt::canonical(&address)));
-            let total = key
+            let total = token_key(&address)
                 .map(|k| self.discovery.totals.total(&k))
                 .unwrap_or_default();
             let balance = total.to_decimal();
