@@ -317,11 +317,7 @@ pub fn receipt_fee(answer: Option<&Answer>) -> Option<TransactionFee> {
         return None;
     };
     let fee = receipt.get("actual_fee")?.as_object()?;
-    let unit = match fee.get("unit")?.as_str()? {
-        "FRI" => FeeUnit::Fri,
-        "WEI" => FeeUnit::Wei,
-        _ => return None,
-    };
+    let unit = FeeUnit::from_code(fee.get("unit")?.as_str()?)?;
     let amount = canonical_felt(fee.get("amount")?.as_str()?)?;
     is_stark_field_element(&amount).then_some(TransactionFee { amount, unit })
 }

@@ -8,8 +8,8 @@ use std::collections::HashSet;
 use serde_json::{json, Map, Value};
 
 use super::activity_rules::{
-    activity_token_address, direction_text, is_recorded_token_address, parse_direction, price_json,
-    submitted_price, transaction_fee,
+    activity_token_address, direction_text, fee_json, is_recorded_token_address, parse_direction,
+    price_json, submitted_price, transaction_fee,
 };
 use super::explorer::is_account_id_for_network;
 use crate::activity::store::{kind_text, parse_kind, parse_status, status_text};
@@ -137,15 +137,7 @@ pub fn entry_to_json(entry: &ActivityEntry) -> Value {
         );
     }
     if let Some(fee) = &entry.fee_paid {
-        let unit = if fee.unit == FeeUnit::Fri {
-            "FRI"
-        } else {
-            "WEI"
-        };
-        map.insert(
-            "feePaid".into(),
-            json!({"amount": fee.amount, "unit": unit}),
-        );
+        map.insert("feePaid".into(), fee_json(fee));
     }
     if let Some(v) = entry.finalized_on_l1 {
         map.insert("finalizedOnL1".into(), json!(v));

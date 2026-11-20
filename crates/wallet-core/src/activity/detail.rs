@@ -8,6 +8,7 @@
 use super::store::{status_text, ActivityLog, Entry};
 use crate::felt;
 use crate::history::activity::{ActivityEntry, FeeUnit, SubmittedPrice, TransactionFee};
+use crate::history::activity_rules::fee_json;
 use crate::history::activity_rules::MAX_ACTIVITY_TIMESTAMP_MS;
 use crate::js::big::parse_bigint;
 use crate::js::num::{js_trim, string_to_number};
@@ -49,17 +50,12 @@ impl ActivityLog<'_> {
         let Some(entries) = log.scopes.get_mut(account_id) else {
             return false;
         };
-        let unit = if fee.unit == FeeUnit::Fri {
-            "FRI"
-        } else {
-            "WEI"
-        };
         let mut changed = false;
         for entry in entries
             .iter_mut()
             .filter(|e| felt::parse(&e.hash).as_ref() == Some(hash) && wants_fee(e))
         {
-            entry.fee_paid = Some(serde_json::json!({"amount": fee.amount, "unit": unit}));
+            entry.fee_paid = Some(fee_json(fee));
             changed = true;
         }
         changed && self.save_log(&log)

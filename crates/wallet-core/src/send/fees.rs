@@ -17,6 +17,25 @@ pub enum FeeUnit {
     Wei,
 }
 
+impl FeeUnit {
+    /// The RPC and stored spelling, `FRI` or `WEI`.
+    pub fn code(self) -> &'static str {
+        match self {
+            FeeUnit::Fri => "FRI",
+            FeeUnit::Wei => "WEI",
+        }
+    }
+
+    /// Reads `FRI` or `WEI`; any other spelling is none.
+    pub fn from_code(code: &str) -> Option<FeeUnit> {
+        match code {
+            "FRI" => Some(FeeUnit::Fri),
+            "WEI" => Some(FeeUnit::Wei),
+            _ => None,
+        }
+    }
+}
+
 /// The fee a transaction's receipt reports it paid (`TransactionFee`, the activity row's
 /// `feePaid`): `amount` a canonical hex felt, in `unit` (`FRI` for STRK-paid transactions, `WEI`
 /// for ETH-paid legacy ones).
@@ -135,9 +154,8 @@ fn bound(entry: &Value, consumed: &str, price: &str, percent: u32) -> Result<Bou
 /// accepted; anything else is refused.
 fn unit(entry: &Value) -> Result<FeeUnit, FeeRefusal> {
     match entry.get("unit").and_then(Value::as_str) {
-        None | Some("FRI") => Ok(FeeUnit::Fri),
-        Some("WEI") => Ok(FeeUnit::Wei),
-        Some(_) => Err(FeeRefusal::UnrecognisedUnit),
+        None => Ok(FeeUnit::Fri),
+        Some(code) => FeeUnit::from_code(code).ok_or(FeeRefusal::UnrecognisedUnit),
     }
 }
 

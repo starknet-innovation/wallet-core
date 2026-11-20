@@ -24,11 +24,7 @@ fn only_keys<'a>(value: &'a Value, keys: &[&str]) -> Option<&'a Map<String, Valu
 /// `isTransactionFee`: exactly `{amount, unit}`, `unit` `FRI` or `WEI`, `amount` a canonical felt.
 pub fn transaction_fee(value: &Value) -> Option<TransactionFee> {
     let map = only_keys(value, &["amount", "unit"])?;
-    let unit = match map.get("unit")?.as_str()? {
-        "FRI" => FeeUnit::Fri,
-        "WEI" => FeeUnit::Wei,
-        _ => return None,
-    };
+    let unit = FeeUnit::from_code(map.get("unit")?.as_str()?)?;
     let amount = map.get("amount")?.as_str()?;
     (is_stark_field_element(amount) && canonical_felt(amount).as_deref() == Some(amount)).then(
         || TransactionFee {
@@ -54,6 +50,11 @@ pub fn submitted_price(value: &Value) -> Option<SubmittedPrice> {
             priced_at: at as u64,
             unit_price,
         })
+}
+
+/// A receipt's fee in the stored spelling (`feePaid`).
+pub fn fee_json(fee: &TransactionFee) -> Value {
+    json!({"amount": fee.amount, "unit": fee.unit.code()})
 }
 
 /// A submitted price in the stored spelling.
