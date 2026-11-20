@@ -134,10 +134,14 @@ Needed now:
   explicit `null` in an intent's or record's optional key read as absent and passed the validator,
   and now fails to parse; the package envelope is checked (`IntentPackage::parse`) and a remote's
   lifecycle claims are dropped before the merge (`SigningIntent::locally_derived_imported`).
-  The rest of the extension's `importIntent` is still the wallet's to do before it stores an
-  import, and the mobile export must enforce it: replace the remote summary with its own call
-  review (refusing when the review refuses), and refuse unless the chain's authority equals the
-  intent's snapshot and its nonce the prepared one. Two refusals deliberately differ: a non-member deployer is
+  The rest of the extension's `importIntent` is `send::multisig_import::import_intent`: given
+  the authority and nonce the host read, it refuses unless they equal the intent's snapshot and
+  prepared nonce, replaces the remote summary with the wallet's own call review (refusing when
+  the review refuses), refuses a stored intent under the id that froze another transaction,
+  merges, and returns only what the validator and replacement rule accept. These rules have
+  mechanism tests only (G5 recorded no import case) and need a Bramble generator. Still the
+  wallet's: the session check, the active network and the store's capacity; the mobile export
+  must route every import through `import_intent`. Two refusals deliberately differ: a non-member deployer is
   refused before any read, and a write answered with another hash is `HashMismatch`. The merge
   and submit deliberately differ too, closing gaps the extension has: `merge_imported` refuses
   another intent and stops at the threshold (the extension merges past it into an invalid
