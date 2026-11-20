@@ -211,7 +211,6 @@ dependencies = [
  "serde_json",
  "sha2 0.11.1",
  "sha3 0.12.0",
- "starknet-types-core",
  "starknet-wallet-core",
  "tempfile",
  "thiserror",

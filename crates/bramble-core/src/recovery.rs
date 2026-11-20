@@ -9,9 +9,9 @@
 
 use std::collections::{HashMap, HashSet};
 
-use starknet_types_core::felt::Felt;
 use wallet_core::accounts::advisory::Restriction;
 use wallet_core::accounts::scan::{Found, SaltRule, ScanShape};
+use wallet_core::Felt;
 
 use crate::account_address::{argent_shape, resolve_class};
 use crate::account_catalog::{catalog, class_entry, deployment_classes, AccountFamily};

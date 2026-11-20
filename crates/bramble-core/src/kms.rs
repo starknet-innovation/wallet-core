@@ -8,7 +8,7 @@
 //! Private keys are derived per call, held in the zeroizing `SecretFelt` (Krusty's, re-exported
 //! by `wallet_core`), and never returned to a caller outside this crate.
 
-use starknet_types_core::felt::Felt;
+use wallet_core::Felt;
 use wallet_core::SecretFelt;
 use zeroize::Zeroizing;
 

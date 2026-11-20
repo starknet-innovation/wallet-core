@@ -9,7 +9,7 @@
 
 use std::collections::{BTreeMap, HashSet};
 
-use starknet_types_core::felt::Felt;
+use wallet_core::Felt;
 use wallet_core::StarkXOnlyKeypair;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
