@@ -89,10 +89,10 @@ fn valid(intent: &SigningIntent) -> bool {
 
 fn submit_plan(intent: &SigningIntent) -> SubmitPlan {
     SubmitPlan::new(
-        &intent.prepared,
-        &intent.signatures,
+        intent,
         &current_config(&record(&sepolia())),
         &class(),
+        summary_length(),
         &TestPrimitives::new(),
     )
     .unwrap()
@@ -245,9 +245,30 @@ fn submit_refuses_a_tampered_transaction_or_an_incomplete_signature() {
     let intent = ready_intent();
     let config = current_config(&record(&sepolia()));
     let primitives = TestPrimitives::new();
-    let refusal = |prepared: &PreparedInvoke, signatures: &[MultisigSignature]| {
-        SubmitPlan::new(prepared, signatures, &config, &class(), &primitives).err()
+    let submit = |candidate: &SigningIntent| {
+        SubmitPlan::new(candidate, &config, &class(), summary_length(), &primitives).err()
     };
+    let refusal = |prepared: &PreparedInvoke, signatures: &[MultisigSignature]| {
+        submit(&SigningIntent {
+            prepared: prepared.clone(),
+            signatures: signatures.to_vec(),
+            ..intent.clone()
+        })
+    };
+    assert_eq!(submit(&intent), None);
+    // A member's key with another member's `r`: well-formed, but not a signature over the hash.
+    let mut forged = intent.clone();
+    forged.signatures[0].r = forged.signatures[1].r.clone();
+    assert_eq!(submit(&forged), Some(MultisigInvokeError::InvalidIntent));
+    // The extension submits only a ready, stale or submitted intent.
+    let collecting = SigningIntent {
+        state: IntentState::Collecting,
+        ..intent.clone()
+    };
+    assert_eq!(
+        submit(&collecting),
+        Some(MultisigInvokeError::InvalidIntent)
+    );
     let mut tampered = intent.prepared.clone();
     tampered.nonce = "0x6".into();
     assert_eq!(

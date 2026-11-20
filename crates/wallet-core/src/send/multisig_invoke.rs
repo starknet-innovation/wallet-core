@@ -58,6 +58,8 @@ pub enum MultisigInvokeError {
     NotASigner,
     #[error("Argent multisig signatures must use distinct signers")]
     DuplicateSigner,
+    #[error("Argent multisig signing intent is not ready to submit")]
+    InvalidIntent,
 }
 
 /// `PreparedArgentMultisigCall`: one canonical Cairo 1 call.

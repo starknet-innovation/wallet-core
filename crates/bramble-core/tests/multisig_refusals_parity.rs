@@ -18,7 +18,6 @@ use starknet_wallet_core::send::multisig_deploy::{deployment_plan, MultisigDeplo
 use starknet_wallet_core::send::multisig_intent::{IntentState, SigningIntent};
 use starknet_wallet_core::send::multisig_invoke::{
     serialize_signature, MultisigCall, MultisigInvokeError as Invoke, MultisigSignature,
-    PreparedInvoke,
 };
 use starknet_wallet_core::send::multisig_invoke_plan::{
     MultisigFailure as Failure, MultisigStep, ProposePlan, SubmitPlan,
@@ -450,11 +449,10 @@ fn submissions_the_extension_refuses_are_refused() {
     let write_params = decode(&cases[2]["wire"][1])["params"].clone();
     for case in cases {
         let name = case["name"].as_str().unwrap();
-        let mut prepared: PreparedInvoke = intent.prepared.clone();
-        let mut signatures = intent.signatures.clone();
+        let mut candidate = intent.clone();
         match name {
-            "belowThreshold" => signatures.truncate(1),
-            "tamperedPrepared" => prepared.nonce = "0x6".into(),
+            "belowThreshold" => candidate.signatures.truncate(1),
+            "tamperedPrepared" => candidate.prepared.nonce = "0x6".into(),
             _ => {}
         }
         let wire: Vec<Value> = case["wire"]
@@ -463,7 +461,8 @@ fn submissions_the_extension_refuses_are_refused() {
             .iter()
             .map(decode)
             .collect();
-        let got = match SubmitPlan::new(&prepared, &signatures, &config, &class, &primitives) {
+        let got = match SubmitPlan::new(&candidate, &config, &class, summary_length(), &primitives)
+        {
             Err(error) => {
                 assert!(wire.is_empty(), "{name}");
                 Rust::Invoke(error)
