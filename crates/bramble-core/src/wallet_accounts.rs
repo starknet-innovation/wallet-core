@@ -9,11 +9,18 @@
 //!
 //! Signing: every signature the core makes for an account passes `signing_record`, which refuses
 //! a vault still waiting for discovery and an unknown id; what a record may sign is decided on
-//! chain by the send plan.
+//! chain by the send plan. The key is the record's (`VaultPayload::signing_key`): derived from
+//! the phrase, or an imported account's sealed one (`key_import.rs`).
+
+use std::collections::HashSet;
+
+use wallet_core::SecretFelt;
 
 use crate::account_catalog::{authorization_shape, type_label, AccountFamily};
 use crate::account_names::{display_name, normalise_label, short_label};
-use crate::account_store::{next_account_index, StoredAccount, VaultPayload, MAX_ACCOUNT_RECORDS};
+use crate::account_store::{
+    next_account_index, KeySource, StoredAccount, VaultPayload, MAX_ACCOUNT_RECORDS,
+};
 use crate::account_visibility::first_visible;
 use crate::groups::{self, AccountGroup};
 use crate::kms::{self, Ladder};
@@ -50,6 +57,9 @@ pub struct AccountRecord {
     pub active: bool,
     /// Left out of the host's lists (`set_account_hidden`); still signs and can be selected.
     pub hidden: bool,
+    /// Imported from a raw private key (`import_private_key`): its key is not the phrase's, so
+    /// the phrase does not recover it, and `account_index` means nothing (it is 0).
+    pub imported: bool,
 }
 
 fn invalid(reason: &str) -> CoreError {
@@ -62,7 +72,7 @@ fn unknown_account() -> CoreError {
     invalid("unknown account")
 }
 
-fn render(payload: &VaultPayload, record: &StoredAccount) -> AccountRecord {
+pub(crate) fn render(payload: &VaultPayload, record: &StoredAccount) -> AccountRecord {
     let label = payload.labels.get(&record.id).cloned();
     let class_hash = record.class_felt();
     AccountRecord {
@@ -82,6 +92,7 @@ fn render(payload: &VaultPayload, record: &StoredAccount) -> AccountRecord {
         group_id: groups::group_of(&payload.groups, &record.id).map(|group| group.id.clone()),
         active: payload.active_account_id.as_deref() == Some(record.id.as_str()),
         hidden: payload.hidden_account_ids.contains(&record.id),
+        imported: record.key == KeySource::Imported,
     }
 }
 
@@ -115,21 +126,16 @@ pub(crate) fn signing_record<'a>(
     payload.record(account_id).ok_or(SignRefusal::Unknown)
 }
 
-/// Signs `message_hash` with the key at the record's index on its ladder and checks the signer is the record's
-/// public key, so a record that no longer matches its phrase can never sign. The key is derived,
-/// used, and wiped inside this call.
+/// Signs `message_hash` with the record's key (at its index on its ladder, or the imported key
+/// its vault sealed) and checks the signer is the record's public key, so a record that no longer
+/// matches its key can never sign. The key is resolved, used, and wiped inside this call.
 pub(crate) fn sign_for(
     payload: &VaultPayload,
     record: &StoredAccount,
     message_hash: &str,
 ) -> Result<kms::Signature, CoreError> {
-    let signature = kms::sign_hash(
-        &payload.mnemonic,
-        None,
-        record.ladder(),
-        record.account_index,
-        message_hash,
-    )?;
+    let (pair, _) = payload.signing_key(record)?;
+    let signature = kms::sign_hash(&pair.private_key, message_hash)?;
     if signature.public_key != record.public_key {
         return Err(CoreError::Kms {
             operation: "sign".into(),
@@ -145,12 +151,20 @@ fn require_record<'a>(
     payload.record(account_id).ok_or_else(unknown_account)
 }
 
-fn push_active(payload: &mut VaultPayload, record: StoredAccount) -> Result<(), CoreError> {
+/// Adds `record` as the active account, with `key` sealed under it when it is imported.
+pub(crate) fn push_active(
+    payload: &mut VaultPayload,
+    record: StoredAccount,
+    key: Option<Box<SecretFelt>>,
+) -> Result<(), CoreError> {
     if payload.record(&record.id).is_some() {
         return Err(invalid("account already exists"));
     }
     if payload.accounts.len() >= MAX_ACCOUNT_RECORDS {
         return Err(invalid("account limit reached"));
+    }
+    if let Some(key) = key {
+        payload.imported_keys.insert(record.id.clone(), key);
     }
     payload.active_account_id = Some(record.id.clone());
     payload.accounts.push(record);
@@ -232,8 +246,9 @@ impl WalletCore {
 
     /// The network switch (`accountForNetwork` + `ensureNetworkAccount`): keeps the active account
     /// if it is on `network`; else selects the first account there, a visible one before a hidden
-    /// one; else projects the active account (same family, index, class for non-OZ, salt) onto
-    /// `network`, derived here, and stores it. None only for a vault with no accounts yet.
+    /// one; else projects the active account (same key, family, class for non-OZ, salt) onto
+    /// `network`, derived here, and stores it; an imported key is sealed again under the new
+    /// record, as the extension copies its signing key. None only for a vault with no accounts.
     pub fn ensure_network_account(
         &self,
         network: NetworkId,
@@ -261,21 +276,11 @@ impl WalletCore {
                     })?
                 }
                 None => {
-                    let family = source.family();
-                    let class_hash =
-                        (family != AccountFamily::OpenZeppelin).then(|| source.class_felt());
-                    // The same key on the other network: the source's own path, never a
-                    // different ladder's key at the same index.
-                    let projected = payload.derive(
-                        family,
-                        source.ladder(),
-                        source.account_index,
-                        class_hash.as_ref(),
-                        source.salt_felt().as_ref(),
-                        network,
-                    )?;
+                    // The same key on the other network: the source's own path (never a
+                    // different ladder's key at the same index) or its imported key.
+                    let (projected, key) = payload.project(&source, network)?;
                     let id = projected.id.clone();
-                    self.commit(session, |payload| push_active(payload, projected))?;
+                    self.commit(session, |payload| push_active(payload, projected, key))?;
                     id
                 }
             };
@@ -292,17 +297,27 @@ impl WalletCore {
             if session.payload.recovery_pending() {
                 return Err(invalid("finish finding your accounts first"));
             }
-            let index = next_account_index(&session.payload, network)?;
-            let record = session.payload.derive(
-                AccountFamily::OpenZeppelin,
-                Ladder::Account,
-                index,
-                None,
-                None,
-                network,
-            )?;
+            // An index whose account is already here as an imported key is skipped, not
+            // refused (the extension's `deriveNextFreeAccount`, Sherlock 226); each skip is a
+            // distinct stored account, so the walk ends.
+            let mut taken = HashSet::new();
+            let record = loop {
+                let index = next_account_index(&session.payload, network, &taken)?;
+                let record = session.payload.derive(
+                    AccountFamily::OpenZeppelin,
+                    Ladder::Account,
+                    index,
+                    None,
+                    None,
+                    network,
+                )?;
+                if session.payload.record(&record.id).is_none() {
+                    break record;
+                }
+                taken.insert(index);
+            };
             let id = record.id.clone();
-            self.commit(session, |payload| push_active(payload, record))?;
+            self.commit(session, |payload| push_active(payload, record, None))?;
             let payload = &session.payload;
             Ok(render(payload, require_record(payload, &id)?))
         })

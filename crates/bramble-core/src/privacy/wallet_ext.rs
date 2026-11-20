@@ -16,8 +16,9 @@ use crate::wallet_accounts::signing_record;
 use crate::{felt, kms, CoreError};
 
 impl WalletCore {
-    /// Derives the scoped STRK20 viewing key of the record `account_id`, only while the session
-    /// generation (`lock_epoch`) is still `generation` and the record still passes the signing gate
+    /// Derives the scoped STRK20 viewing key of the record `account_id` from its key (derived from
+    /// the phrase or imported, `VaultPayload::signing_key`), only while the session generation
+    /// (`lock_epoch`) is still `generation` and the record still passes the signing gate
     /// (a known record in a vault not waiting for discovery, any family, as the extension's
     /// `deriveVaultStrk20ViewingKey`). Checked under the session mutex held for the whole derivation, so a lock cannot
     /// interleave; passive (never renews). `Err(CoreError::Locked)` otherwise. Never exported: it
@@ -36,14 +37,8 @@ impl WalletCore {
             }
             let payload = &session.payload;
             let record = signing_record(payload, account_id).map_err(|_| CoreError::Locked)?;
-            kms::scoped_viewing_key(
-                &payload.mnemonic,
-                None,
-                record.ladder(),
-                record.account_index,
-                chain_id,
-                pool_address,
-            )
+            let (pair, _) = payload.signing_key(record)?;
+            kms::scoped_viewing_key(&pair.private_key, chain_id, pool_address)
         })
     }
 }
