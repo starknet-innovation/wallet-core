@@ -357,8 +357,8 @@ fn a_multisig_running_another_class_is_refused() {
     );
 }
 
-#[test]
-fn the_review_of_a_deployed_multisig_cannot_be_confirmed() {
+/// Reviews the deployment with the address already running `class`.
+fn review_deployed_as(class: &str) -> (Plan, SendStep) {
     let fixture = fixture();
     let net = &fixture["networks"][0];
     let member = deployer(net, &fixture);
@@ -366,11 +366,24 @@ fn the_review_of_a_deployed_multisig_cannot_be_confirmed() {
     let step = plan.advance(&member, StepReply::Start).unwrap();
     let mut review = decoded(&net["deploy"]["review"]);
     review.retain(|e| e["method"] != "starknet_getNonce" && e["method"] != "starknet_estimateFee");
-    review[0]["reply"] = json!({ "result": "0x1234" });
+    review[0]["reply"] = json!({ "result": class });
     let step = drive(&mut plan, &member, step, &review);
+    (plan, step)
+}
+
+#[test]
+fn the_review_of_a_deployed_multisig_cannot_be_confirmed() {
+    let (plan, step) = review_deployed_as(argent_multisig_class().class_hash());
     assert_eq!(step, SendStep::Review);
     let review = plan.current_review().unwrap();
     assert!(review.already_deployed && !review.can_confirm);
+}
+
+#[test]
+fn the_review_names_a_multisig_running_another_class() {
+    // The extension's review reports any class as already deployed; this one refuses it.
+    let (_, step) = review_deployed_as("0x1234");
+    assert_eq!(failure(step), SendFailureCode::AccountClassUnrecognised);
 }
 
 #[test]
