@@ -2,7 +2,8 @@
 //! `packages/features/multisig/src/repository-schema.ts` (`ArgentMultisigSigningIntent`,
 //! `argentMultisigIntentId`, `isArgentMultisigSigningIntent`,
 //! `canReplaceArgentMultisigSigningIntent`) and the background's
-//! `multisig-inputs.ts` (`argentMultisigIntentPackage`, `mergeImportedArgentMultisigIntent`) and
+//! `multisig-inputs.ts` (`argentMultisigIntentPackage`, `readImportIntentInput`,
+//! `mergeImportedArgentMultisigIntent`) and
 //! `multisig-ops.ts` (`configSnapshot`). Field order is the extension's, so an intent and its
 //! package serialise to the bytes a co-signer's extension writes.
 //!
@@ -110,16 +111,47 @@ pub struct SigningIntent {
 pub const INTENT_PACKAGE_KIND: &str = "bramble.argent-multisig-intent";
 pub const INTENT_PACKAGE_VERSION: u32 = 1;
 
-/// `ArgentMultisigIntentPackage`: what co-signers exchange.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+/// `ArgentMultisigIntentPackage`: what co-signers exchange. Read one only through
+/// [`IntentPackage::parse`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct IntentPackage {
     pub intent: SigningIntent,
     pub kind: String,
     pub version: u32,
 }
 
+/// The package as it arrives, before its envelope is checked.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Arrived {
+    intent: SigningIntent,
+    kind: String,
+    version: u32,
+}
+
 impl IntentPackage {
+    /// `readImportIntentInput`'s package checks: only `intent`, `kind` and `version`, exactly
+    /// this kind and version 1, and an intent [`SigningIntent::is_valid`] accepts. `None`
+    /// otherwise.
+    pub fn parse(
+        text: &str,
+        class: &ArgentMultisigClass,
+        max_summary_length: usize,
+        primitives: &dyn StarkPrimitives,
+    ) -> Option<Self> {
+        let arrived: Arrived = serde_json::from_str(text).ok()?;
+        (arrived.kind == INTENT_PACKAGE_KIND
+            && arrived.version == INTENT_PACKAGE_VERSION
+            && arrived
+                .intent
+                .is_valid(class, max_summary_length, primitives))
+        .then_some(Self {
+            intent: arrived.intent,
+            kind: arrived.kind,
+            version: arrived.version,
+        })
+    }
+
     /// Compact JSON, as `JSON.stringify` writes it.
     pub fn to_json(&self) -> String {
         // Plain strings, numbers and arrays: serialising this cannot fail.
