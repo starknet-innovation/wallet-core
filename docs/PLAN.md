@@ -171,6 +171,28 @@ Only if the feature is wanted (a product decision first):
   returns it. That amends the hard rule that the mobile build exports no raw keys, so the rule
   in `AGENTS.md` changes in the same PR. V1's reader requires the collection the extension seals
   imported keys into to be empty, so it lifts that for this one collection.
+  As built: `WalletCore::import_private_key(network, private_key)` (`key_import.rs`) is the
+  extension's `wallet.importAccount` for an OpenZeppelin account: the text is read as
+  `normalizeFeltInput` then `isStarkPrivateKey` read it (`felt::parse_private_key_input`), Krusty
+  gives the public key, the account sits at Bramble's OZ class with no salt, an id the wallet
+  holds is refused, and the account becomes active with its key sealed. The extension does not
+  keep the key in one of the six unused collections, as assumed above: it seals it in
+  `signingKeys`, under an account whose derivation is `imported-raw-key` (no `publicKeyY`), which
+  V1 refused by its kind. So the reader accepts that kind, every unused collection stays
+  required empty, and mobile's stronger rule for such a record is that its public key and address
+  are what its sealed key derives. The session holds imported keys
+  (`VaultPayload::imported_keys`); sends, signatures, the privacy viewing key and the network
+  projection all take an account's key from `VaultPayload::signing_key`, and adding an account
+  skips an index already held as an imported key (the extension's Sherlock 226). Deliberately
+  not done: Argent import (releases picked after discovery, or a pasted address re-proved on
+  chain), a deployment salt, a wallet made from a key alone (`createKeyVault`), revealing the key
+  (the extension's reveal shows it; mobile returns no key), and removal, which the extension has
+  for no single account either (hiding works). A vault holding an address-picked import, whose
+  address is not what its key derives, is refused like any record that does not re-derive. The
+  record's parity has unit tests only: G4 holds no imported key, and a fixture is never written
+  by hand. Before a mobile release ships the import, Bramble needs a generator that seals, with
+  the extension's own store, a v13 vault holding one imported OpenZeppelin key (an imported Argent
+  one too, ideally) beside G4's accounts, for a test that opens it and writes it back unchanged.
 - **P4 Custom RPC.** A stored custom network in `bramble-core`, passed in through `Catalogs`;
   `wallet-core` already takes the wallet's `NetworkInfo`. Mainnet and Sepolia stay the fixed
   defaults.
@@ -785,11 +807,14 @@ Each phase names the crate a module lands in; the table above decides anything n
       payload's `schemaVersion`. Reading accepts exactly the subset of v13 mobile writes: the six
       collections it has no use for (`originGrants`, `importedSeeds`, `accountSecrets`,
       `shadowAccountScopes` and both multisig key lists) must be empty, `mnemonic` must not be
-      null, and every derivation must be one of mobile's three ladders. A vault holding anything
-      else is refused, not half-read, so their validators are not ported until mobile holds
-      them. On what it accepts, the extension's rules (field grammar, canonical felts, the
-      account ↔ signing-key bijection, the active account) and mobile's stronger ones apply: every
-      record, `publicKeyY` and sealed `privateKey` must equal what the phrase derives. Signing
+      null, and every derivation must be one of mobile's three ladders or, since P3,
+      `imported-raw-key`, whose sealed key is checked against the record's public key and
+      address and is the one that signs (the rest of this paragraph is about phrase accounts). A
+      vault holding anything else is refused, not half-read, so their validators are not ported
+      until mobile holds them. On what it accepts, the extension's rules (field grammar, canonical
+      felts, the account ↔ signing-key bijection, the active account) and mobile's stronger ones
+      apply: every record, `publicKeyY` and sealed `privateKey` must equal what the phrase
+      derives. Signing
       still derives each key per call, so the sealed keys are checked, never used. An earlier
       build's vault (bare envelope or container 2 to 5) is refused only after its password is
       proven, which resets the backoff; `delete_wallet` proves the password without reading the
