@@ -85,7 +85,8 @@ no test here reads it. `extension-multisig-transactions.json` is read by
 `multisig_deploy_parity.rs` (`deploy`), `multisig_proposal_parity.rs` (`proposal`) and
 `multisig_signers_parity.rs` (the proposal's summary). `multisig_signers_parity.rs` also reads
 all of `-signers.json` and the `calls` part of `-refusals.json`; `multisig_deploy_parity.rs` its
-`deploySubmit` part and `multisig_refusals_parity.rs` every other part. See
+`deploySubmit` part and `multisig_refusals_parity.rs` every other part
+(`multisig_import_mechanism.rs` builds on its `readyIntent` and `account`). See
 [P1](../../../../docs/PLAN.md#mobile-parity). The rest sit
 here unused until their Phase 2 step moves the matching mobile parity test in (see `docs/PLAN.md`,
 Phase 1).

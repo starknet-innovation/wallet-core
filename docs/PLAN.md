@@ -129,8 +129,12 @@ Needed now:
   generator.
   P1c replays G5's refusals (`-refusals.json`, all but call review) against those modules: every
   input the extension refuses is refused, each with the typed variant that carries its sentence.
-  No accept was found; the one gap was `canReplaceArgentMultisigSigningIntent`, never ported, now
-  `SigningIntent::can_replace`. Two refusals deliberately differ: a non-member deployer is
+  The replays found no wrong accept; the gap was `canReplaceArgentMultisigSigningIntent`, never
+  ported, now `SigningIntent::can_replace`. A review of the import path then found one: an
+  explicit `null` in an intent's or record's optional key read as absent and passed the validator,
+  and now fails to parse; the package envelope is checked (`IntentPackage::parse`) and a remote's
+  lifecycle claims are dropped before the merge (`SigningIntent::locally_derived_imported`), as
+  the extension's `importIntent` does. Two refusals deliberately differ: a non-member deployer is
   refused before any read, and a write answered with another hash is `HashMismatch`.
   Neither app can deploy, propose, sign, submit or change signers today; Android's missing
   create stepper, participant picker and shared-account home are screens, Bramble's.
