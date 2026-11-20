@@ -5,7 +5,12 @@
 //! through this module, never through their own parsers, so the two wallets cannot disagree
 //! about which strings name the same value.
 
+use krusty_kms_common::SecretFelt;
 use starknet_types_core::felt::Felt;
+use zeroize::Zeroizing;
+
+use crate::js::num::js_trim;
+use crate::scrub::scrubbed;
 
 /// Stark curve order `n`; a signing scalar must lie in `[1, n)`.
 const STARK_CURVE_ORDER: Felt =
@@ -60,6 +65,47 @@ pub fn is_private_key(felt: &Felt) -> bool {
     *felt != Felt::ZERO && *felt < STARK_CURVE_ORDER
 }
 
+/// Hex digits (either case) of a usable signing scalar, decoded straight into a zeroizing buffer
+/// so no text copy of the key is made. `None` for anything else.
+fn private_key_digits(digits: &str) -> Option<SecretFelt> {
+    scrubbed(|| {
+        let significant = digits.trim_start_matches('0');
+        if digits.is_empty() || significant.len() > 64 {
+            return None;
+        }
+        let mut bytes = Zeroizing::new([0u8; 32]);
+        for (at, digit) in significant.bytes().rev().enumerate() {
+            let nibble = u8::try_from(char::from(digit).to_digit(16)?).ok()?;
+            bytes[31 - at / 2] |= nibble << (4 * (at % 2));
+        }
+        let key = SecretFelt::new(Felt::from_bytes_be(&bytes));
+        // `from_bytes_be` reduces modulo the prime: a value that does not round-trip was at or
+        // above it, and reduced would name another scalar than the one given.
+        let same = *Zeroizing::new(key.expose_secret().to_bytes_be()) == *bytes;
+        (same && is_private_key(key.expose_secret())).then_some(key)
+    })
+}
+
+/// A pasted private key, read as the extension's raw-key import reads one
+/// (`readRawKeyAccountFields`, `apps/extension/src/background/accounts/import-inputs.ts`):
+/// `normalizeFeltInput` (JavaScript `trim`, then after a lowercase `0x` hex digits in either case
+/// and any number of leading zeros), then `isStarkPrivateKey` (`1 <= k < n`). A bare decimal,
+/// `0X`, or any other base is refused, never reinterpreted.
+pub fn parse_private_key_input(text: &str) -> Option<SecretFelt> {
+    private_key_digits(js_trim(text).strip_prefix("0x")?)
+}
+
+/// A private key the vault sealed (`isSigningKeyRef`): the canonical spelling only, a usable
+/// scalar.
+pub fn parse_sealed_private_key(text: &str) -> Option<SecretFelt> {
+    let digits = text.strip_prefix("0x")?;
+    let canonical = !digits.starts_with('0')
+        && digits
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
+    canonical.then(|| private_key_digits(digits)).flatten()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -102,5 +148,59 @@ mod tests {
         let order = STARK_CURVE_ORDER;
         assert!(!is_private_key(&order));
         assert!(is_private_key(&(order - Felt::ONE)));
+    }
+
+    // Boolean asserts throughout: a failure must not print a key.
+    #[test]
+    fn a_pasted_key_follows_the_extensions_import_grammar() {
+        let read = |text: &str| parse_private_key_input(text).map(|key| *key.expose_secret());
+        let abc = Some(Felt::from(0xabcu32));
+        for accepted in ["0xabc", " 0xABC\n", "\u{feff}0xAbC\t", "0x0000abc"] {
+            assert!(read(accepted) == abc, "{accepted:?}");
+        }
+        let padded = format!("0x{}1", "0".repeat(100));
+        assert!(read(&padded) == Some(Felt::ONE));
+        let order_less_one = "0x800000000000010ffffffffffffffffb781126dcae7b2321e66a241adc64d2e";
+        assert!(read(order_less_one) == Some(STARK_CURVE_ORDER - Felt::ONE));
+        let order = "0x800000000000010ffffffffffffffffb781126dcae7b2321e66a241adc64d2f";
+        let prime = "0x800000000000011000000000000000000000000000000000000000000000001";
+        // One above the prime reduces to 1, a usable key: refused, not reinterpreted.
+        let prime_plus_one = "0x800000000000011000000000000000000000000000000000000000000000002";
+        let too_long = format!("0x1{}", "0".repeat(64));
+        for refused in [
+            "",
+            "0x",
+            "0x0",
+            "0x000",
+            "abc",
+            "0XABC",
+            "1",
+            "0b1",
+            "0o1",
+            "-0x1",
+            "+0x1",
+            "0x-1",
+            "0x 1",
+            "0xg",
+            "0x1_0",
+            "0xé",
+            order,
+            prime,
+            prime_plus_one,
+            &too_long,
+        ] {
+            assert!(read(refused).is_none(), "{refused:?}");
+        }
+    }
+
+    #[test]
+    fn a_sealed_key_is_canonical() {
+        let read = |text: &str| parse_sealed_private_key(text).map(|key| *key.expose_secret());
+        assert!(read("0xabc") == Some(Felt::from(0xabcu32)));
+        for refused in ["0x0abc", "0xABC", " 0xabc", "0xabc ", "abc", "0x0", "0x"] {
+            assert!(read(refused).is_none(), "{refused:?}");
+        }
+        let order = "0x800000000000010ffffffffffffffffb781126dcae7b2321e66a241adc64d2f";
+        assert!(read(order).is_none());
     }
 }
