@@ -253,6 +253,40 @@ fn a_lock_or_a_wrong_chain_stops_submit_before_the_write() {
 }
 
 #[test]
+fn a_proposal_refuses_an_unsafe_batch_without_a_review() {
+    let network = sepolia();
+    let record = record(&network);
+    let calls: Vec<MultisigCall> =
+        serde_json::from_value(network["proposal"]["calls"].clone()).unwrap();
+    let self_call = |entrypoint: &str| MultisigCall {
+        calldata: Vec::new(),
+        contract_address: record.address.clone(),
+        entrypoint: entrypoint.into(),
+    };
+    let refusal = |calls: &[MultisigCall]| {
+        let config = current_config(&record);
+        let primitives = TestPrimitives::new();
+        ProposePlan::new(
+            &record,
+            calls,
+            &config,
+            &class(),
+            MULTISIG_FEE_OVERHEAD,
+            &primitives,
+        )
+        .err()
+    };
+    let mut batch = calls.clone();
+    batch.push(self_call("change_threshold"));
+    assert_eq!(refusal(&batch), Some(MultisigInvokeError::UnsafeCalls));
+    assert_eq!(
+        refusal(&[self_call("perform_upgrade")]),
+        Some(MultisigInvokeError::UnsafeCalls)
+    );
+    assert_eq!(refusal(&calls), None);
+}
+
+#[test]
 fn submit_refuses_a_tampered_transaction_or_an_incomplete_signature() {
     let intent = ready_intent();
     let config = current_config(&record(&sepolia()));

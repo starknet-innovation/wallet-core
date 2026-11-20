@@ -60,6 +60,9 @@ pub enum MultisigInvokeError {
     DuplicateSigner,
     #[error("Argent multisig signing intent is not ready to submit")]
     InvalidIntent,
+    /// `require_safe_calls` refused; `review_calls` names the reason.
+    #[error("unsafe Argent multisig calls")]
+    UnsafeCalls,
 }
 
 /// `PreparedArgentMultisigCall`: one canonical Cairo 1 call.
