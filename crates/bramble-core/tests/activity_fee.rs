@@ -60,3 +60,27 @@ fn a_settled_send_records_its_receipt_fee_once() {
         }
     ));
 }
+
+/// An undeployed account's send reads the deployment's receipt before the invoke; that receipt
+/// records the deploy row's fee, with no extra read.
+#[test]
+fn a_deployment_records_its_receipt_fee() {
+    let (_dir, core) = wallet();
+    let mut node = sepolia(false);
+    let plan = reviewed(&core, &mut node, ACCOUNT_1);
+    assert!(plan.current_review().unwrap().requires_deployment);
+    let step = plan.advance(StepReply::Confirm).unwrap();
+    let broadcast = run_until(&plan, &core, &mut node, step, never);
+    assert!(matches!(broadcast, SendStep::Broadcast { .. }));
+    let account = oz_id(&core, bramble_core::NetworkId::Sepolia, 0);
+    let deploy = core
+        .activity(account)
+        .unwrap()
+        .into_iter()
+        .find(|record| record.summary == "Deploy account contract")
+        .unwrap();
+    assert_eq!(
+        bramble_core::activity_fee_text(deploy).as_deref(),
+        Some("0.01 STRK")
+    );
+}
