@@ -20,6 +20,7 @@ use catalogs::{accounts as account_catalog, multisig as multisig_constants, netw
 mod account_address;
 mod account_names;
 mod account_store;
+mod account_visibility;
 mod activity;
 mod argent_multisig;
 mod avatar;

@@ -14,6 +14,7 @@
 use crate::account_catalog::{authorization_shape, type_label, AccountFamily};
 use crate::account_names::{display_name, normalise_label, short_label};
 use crate::account_store::{next_account_index, StoredAccount, VaultPayload, MAX_ACCOUNT_RECORDS};
+use crate::account_visibility::first_visible;
 use crate::groups::{self, AccountGroup};
 use crate::kms::{self, Ladder};
 use crate::networks::NetworkId;
@@ -47,6 +48,8 @@ pub struct AccountRecord {
     pub authorization_shape: String,
     pub group_id: Option<String>,
     pub active: bool,
+    /// Left out of the host's lists (`set_account_hidden`); still signs and can be selected.
+    pub hidden: bool,
 }
 
 fn invalid(reason: &str) -> CoreError {
@@ -78,6 +81,7 @@ fn render(payload: &VaultPayload, record: &StoredAccount) -> AccountRecord {
         authorization_shape: authorization_shape(record.family(), &class_hash),
         group_id: groups::group_of(&payload.groups, &record.id).map(|group| group.id.clone()),
         active: payload.active_account_id.as_deref() == Some(record.id.as_str()),
+        hidden: payload.hidden_account_ids.contains(&record.id),
     }
 }
 
@@ -227,9 +231,9 @@ impl WalletCore {
     }
 
     /// The network switch (`accountForNetwork` + `ensureNetworkAccount`): keeps the active account
-    /// if it is on `network`; else selects the first account there; else projects the active
-    /// account (same family, index, class for non-OZ, salt) onto `network`, derived here, and
-    /// stores it. None only for a vault with no accounts yet.
+    /// if it is on `network`; else selects the first account there, a visible one before a hidden
+    /// one; else projects the active account (same family, index, class for non-OZ, salt) onto
+    /// `network`, derived here, and stores it. None only for a vault with no accounts yet.
     pub fn ensure_network_account(
         &self,
         network: NetworkId,
@@ -246,7 +250,9 @@ impl WalletCore {
             if source.network() == network && active.is_some() {
                 return Ok(Some(render(payload, &source)));
             }
-            let target = match payload.accounts.iter().find(|r| r.network() == network) {
+            let first = first_visible(payload, network, None)
+                .or_else(|| payload.accounts.iter().find(|r| r.network() == network));
+            let target = match first {
                 Some(existing) => {
                     let id = existing.id.clone();
                     self.commit(session, |payload| {

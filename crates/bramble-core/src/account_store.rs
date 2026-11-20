@@ -1,6 +1,7 @@
 //! The unlocked vault in memory: one record per account (family, class, ladder, index, salt,
 //! address, public key), one active account, and the phrase; beside them the wallet's labels,
-//! groups and backup flag, which live in `public_store`'s preferences file rather than the vault.
+//! groups, hidden accounts and backup flag, which live in `public_store`'s preferences file rather
+//! than the vault.
 //! `vault_v13` reads and writes the sealed form, the extension's schema v13.
 //!
 //! Nothing stored is trusted blindly. `validate` checks every field, and re-derives every record
@@ -94,6 +95,9 @@ pub(crate) struct VaultPayload {
     pub backup_pending: bool,
     #[zeroize(skip)]
     pub groups: Vec<StoredGroup>,
+    /// Accounts the host's lists leave out (the extension's `hiddenAccountIds`, a preference).
+    #[zeroize(skip)]
+    pub hidden_account_ids: Vec<String>,
     #[zeroize(skip)]
     pub labels: BTreeMap<String, String>,
     pub mnemonic: String,
@@ -105,6 +109,7 @@ pub(crate) struct PublicState {
     active_account_id: Option<String>,
     backup_pending: bool,
     groups: Vec<StoredGroup>,
+    hidden_account_ids: Vec<String>,
     labels: BTreeMap<String, String>,
 }
 
@@ -144,6 +149,7 @@ impl VaultPayload {
             active_account_id,
             backup_pending: false,
             groups: Vec::new(),
+            hidden_account_ids: Vec::new(),
             labels: BTreeMap::new(),
             mnemonic,
         }
@@ -202,6 +208,7 @@ impl VaultPayload {
             active_account_id: self.active_account_id.clone(),
             backup_pending: self.backup_pending,
             groups: self.groups.clone(),
+            hidden_account_ids: self.hidden_account_ids.clone(),
             labels: self.labels.clone(),
         }
     }
@@ -211,10 +218,11 @@ impl VaultPayload {
         self.accounts != before.accounts || self.active_account_id != before.active_account_id
     }
 
-    /// Whether the preferences (labels, groups, backup flag) moved since `before`.
+    /// Whether the preferences (labels, groups, hidden accounts, backup flag) moved since `before`.
     pub(crate) fn preferences_changed(&self, before: &PublicState) -> bool {
         self.labels != before.labels
             || self.groups != before.groups
+            || self.hidden_account_ids != before.hidden_account_ids
             || self.backup_pending != before.backup_pending
     }
 
@@ -223,6 +231,7 @@ impl VaultPayload {
         self.active_account_id = state.active_account_id;
         self.backup_pending = state.backup_pending;
         self.groups = state.groups;
+        self.hidden_account_ids = state.hidden_account_ids;
         self.labels = state.labels;
     }
 }
@@ -348,6 +357,16 @@ fn is_consistent(payload: &VaultPayload) -> bool {
             ids.contains(id.as_str()) && is_label(label) && js_trim(label) == label
         })
         && groups::is_valid(&payload.groups, &ids)
+        && payload
+            .hidden_account_ids
+            .iter()
+            .all(|id| ids.contains(id.as_str()))
+        && payload
+            .hidden_account_ids
+            .iter()
+            .collect::<HashSet<_>>()
+            .len()
+            == payload.hidden_account_ids.len()
 }
 
 // Re-derives every record from the phrase, one key per record, each also shown to `sealed`;
