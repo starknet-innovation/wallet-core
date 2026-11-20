@@ -382,8 +382,8 @@ fn reimports_merge_as_the_extension_merges() {
     for case in section(&fixture, "merges", 2) {
         let name = case["name"].as_str().unwrap();
         let merged = match name {
-            "addsTheOtherSignature" => local.merge_imported(&remote),
-            "terminalStateWins" => submitted.merge_imported(&remote),
+            "addsTheOtherSignature" => local.merge_imported(&remote).unwrap(),
+            "terminalStateWins" => submitted.merge_imported(&remote).unwrap(),
             other => panic!("unknown merge {other}"),
         };
         let keys: Vec<&str> = merged

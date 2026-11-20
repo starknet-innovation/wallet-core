@@ -228,14 +228,19 @@ impl SigningIntent {
 
     /// `mergeImportedArgentMultisigIntent`: a re-import of the same frozen hash. A terminal or
     /// stale local intent is kept as it is; an open one gains the incoming signers it lacks, in
-    /// GUID order, and keeps its own summary.
+    /// GUID order, up to the threshold, and keeps its own summary.
+    ///
+    /// Two departures from the extension, which finds the local intent by id and merges every
+    /// signer: `None` when `incoming` is another intent (id, account, snapshot or prepared
+    /// transaction differ), so local signatures never join another hash; and local signers are
+    /// kept first and incoming ones added only until the threshold, so a local `{A}` and an
+    /// incoming `{B, C}` at threshold 2 merge to a ready `{A, B}`, not an invalid `{A, B, C}`.
     ///
     /// This is one step of the extension's `importIntent`, not the whole of it. The caller reads
     /// `incoming` with [`IntentPackage::parse`] (a text it has bounded) and passes it through
     /// [`locally_derived_imported`] (this keeps the incoming lifecycle fields as given), and
-    /// stores the result only if it [`is_valid`] and the stored intent [`can_replace`] it, which
-    /// is also what refuses the same id over a different transaction. Before storing, the caller
-    /// must also do what nothing here does for it:
+    /// stores the result only if it [`is_valid`] and the stored intent [`can_replace`] it.
+    /// Before storing, the caller must also do what nothing here does for it:
     ///
     /// - replace `summary` with its own `multisig_review::review_calls` of `prepared.calls`, and
     ///   refuse the import when that review refuses. A remote summary is a claim, not bound by
@@ -248,12 +253,23 @@ impl SigningIntent {
     /// [`locally_derived_imported`]: SigningIntent::locally_derived_imported
     /// [`is_valid`]: SigningIntent::is_valid
     /// [`can_replace`]: SigningIntent::can_replace
-    pub fn merge_imported(&self, incoming: &SigningIntent) -> SigningIntent {
-        if !matches!(self.state, IntentState::Collecting | IntentState::Ready) {
-            return self.clone();
+    pub fn merge_imported(&self, incoming: &SigningIntent) -> Option<SigningIntent> {
+        if incoming.id != self.id
+            || incoming.account_id != self.account_id
+            || incoming.config_snapshot != self.config_snapshot
+            || incoming.prepared != self.prepared
+        {
+            return None;
         }
+        if !matches!(self.state, IntentState::Collecting | IntentState::Ready) {
+            return Some(self.clone());
+        }
+        let threshold = self.config_snapshot.threshold as usize;
         let mut signatures = self.signatures.clone();
         for signature in &incoming.signatures {
+            if signatures.len() >= threshold {
+                break;
+            }
             if !signatures
                 .iter()
                 .any(|stored| stored.public_key == signature.public_key)
@@ -261,9 +277,9 @@ impl SigningIntent {
                 signatures.push(signature.clone());
             }
         }
-        signatures.sort_by_key(|signature| guid_of(&signature.public_key));
-        let ready = signatures.len() == incoming.config_snapshot.threshold as usize;
-        SigningIntent {
+        signatures.sort_by_cached_key(|signature| guid_of(&signature.public_key));
+        let ready = signatures.len() == threshold;
+        Some(SigningIntent {
             signatures,
             state: if ready {
                 IntentState::Ready
@@ -272,7 +288,7 @@ impl SigningIntent {
             },
             summary: self.summary.clone(),
             ..incoming.clone()
-        }
+        })
     }
 
     /// `isArgentMultisigSigningIntent`: the snapshot is `class`'s, the prepared transaction

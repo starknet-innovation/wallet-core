@@ -155,7 +155,7 @@ fn run(network: &Value) {
         );
         let mut incoming = intent.clone();
         incoming.signatures.push(MultisigSignature::from(signature));
-        intent = intent.merge_imported(&incoming);
+        intent = intent.merge_imported(&incoming).unwrap();
         check_stage(&intent, &stages[step + 1]);
     }
     assert_eq!(stages.len(), cosigners.len() + 1);

@@ -77,7 +77,7 @@ fn ready_intent() -> SigningIntent {
         incoming
             .signatures
             .push(sign_stark_hash(&key, &hash).unwrap().into());
-        intent = intent.merge_imported(&incoming);
+        intent = intent.merge_imported(&incoming).unwrap();
     }
     assert_eq!(intent.state, IntentState::Ready);
     intent
@@ -358,17 +358,20 @@ fn a_merge_keeps_a_settled_intent_and_adds_only_new_signers() {
     let mut fewer = ready.clone();
     fewer.signatures.truncate(1);
     fewer.state = IntentState::Collecting;
-    assert_eq!(stale.merge_imported(&fewer), stale);
+    assert_eq!(stale.merge_imported(&fewer).unwrap(), stale);
     // Re-importing a signer already held changes nothing but the derived state.
-    let merged = fewer.merge_imported(&fewer);
+    let merged = fewer.merge_imported(&fewer).unwrap();
     assert_eq!(
         (merged.signatures.len(), merged.state),
         (1, IntentState::Collecting)
     );
-    let merged = fewer.merge_imported(&ready);
+    let merged = fewer.merge_imported(&ready).unwrap();
     assert_eq!(merged, ready);
     // The local summary wins over an imported one.
     let mut renamed = ready.clone();
     renamed.summary = "Something else".into();
-    assert_eq!(fewer.merge_imported(&renamed).summary, ready.summary);
+    assert_eq!(
+        fewer.merge_imported(&renamed).unwrap().summary,
+        ready.summary
+    );
 }

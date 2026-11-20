@@ -8,10 +8,13 @@ mod multisig_support;
 
 use multisig_support::*;
 use serde_json::Value;
+use starknet_wallet_core::accounts::multisig::signer_guid;
 use starknet_wallet_core::accounts::multisig_records::Record;
 use starknet_wallet_core::send::multisig_intent::{
     IntentPackage, IntentState, SigningIntent, StaleReason,
 };
+use starknet_wallet_core::send::multisig_invoke::MultisigSignature;
+use starknet_wallet_core::{felt, sign_stark_hash};
 
 fn refusals() -> Value {
     let path = format!(
@@ -51,7 +54,7 @@ fn local(ready: &SigningIntent) -> SigningIntent {
 /// `importIntent` over `local`: parse, derive locally, merge, then the store's two checks.
 fn import(local: &SigningIntent, text: &str) -> SigningIntent {
     let incoming = parse(text).unwrap().intent.locally_derived_imported();
-    let merged = local.merge_imported(&incoming);
+    let merged = local.merge_imported(&incoming).unwrap();
     let primitives = TestPrimitives::new();
     assert!(merged.is_valid(&class(), summary_length(), &primitives));
     assert!(local.can_replace(&merged, &class(), summary_length(), &primitives));
@@ -116,7 +119,7 @@ fn a_submitted_export_imports_as_ready() {
     assert_eq!(merged.signatures, ready.signatures);
     // Merged without the local derivation, the remote's broadcast hash would ride along on a
     // ready intent, which the validator refuses.
-    let underived = local(&ready).merge_imported(&submitted);
+    let underived = local(&ready).merge_imported(&submitted).unwrap();
     assert!(!underived.is_valid(&class(), summary_length(), &TestPrimitives::new()));
 }
 
@@ -132,8 +135,59 @@ fn a_remote_stale_reason_does_not_survive() {
     assert_eq!(merged.state, IntentState::Ready);
     assert_eq!((merged.stale_reason, merged.stale_outcome), (None, None));
     assert_eq!(
-        local(&ready).merge_imported(&stale).stale_reason,
+        local(&ready).merge_imported(&stale).unwrap().stale_reason,
         Some(StaleReason::Fee),
         "the merge alone carries it in; the derivation is what drops it"
     );
+}
+
+#[test]
+fn a_merge_stops_at_the_threshold() {
+    // 2-of-3: the local intent holds one signer; a co-signer's package holds the other two.
+    let ready = ready();
+    let config = current_config(&serde_json::from_value(refusals()["account"].clone()).unwrap());
+    let held: Vec<&str> = ready
+        .signatures
+        .iter()
+        .map(|s| s.public_key.as_str())
+        .collect();
+    let third = config
+        .signer_public_keys
+        .iter()
+        .find(|key| !held.contains(&key.as_str()))
+        .unwrap();
+    let index = (0..5).find(|&i| &signer(i).1 == third).unwrap();
+    let (key, _) = signer(index);
+    let extra =
+        MultisigSignature::from(sign_stark_hash(&key, &ready.prepared.transaction_hash).unwrap());
+    let mut others = vec![ready.signatures[0].clone(), extra];
+    others.sort_by_key(|s| signer_guid(&felt::parse(&s.public_key).unwrap()).unwrap());
+    let incoming = SigningIntent {
+        signatures: others,
+        ..ready.clone()
+    };
+    let merged = local(&ready).merge_imported(&incoming).unwrap();
+    let primitives = TestPrimitives::new();
+    assert_eq!(merged.state, IntentState::Ready);
+    assert_eq!(merged.signatures.len(), 2);
+    assert!(
+        merged.signatures.contains(&ready.signatures[1]),
+        "the local signer stays"
+    );
+    assert!(merged.is_valid(&class(), summary_length(), &primitives));
+    assert!(local(&ready).can_replace(&merged, &class(), summary_length(), &primitives));
+}
+
+#[test]
+fn a_merge_refuses_another_intent() {
+    let ready = ready();
+    let mut other_hash = ready.clone();
+    other_hash.prepared.nonce = "0x6".into();
+    let mut other_id = ready.clone();
+    other_id.id = format!("{}0", ready.id);
+    let mut other_snapshot = ready.clone();
+    other_snapshot.config_snapshot.threshold = 3;
+    for incoming in [other_hash, other_id, other_snapshot] {
+        assert_eq!(local(&ready).merge_imported(&incoming), None);
+    }
 }
