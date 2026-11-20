@@ -232,9 +232,8 @@ impl WalletCore {
 
     /// The network switch (`accountForNetwork` + `ensureNetworkAccount`): keeps the active account
     /// if it is on `network`; else selects the first account there, a visible one before a hidden
-    /// one; else projects the active
-    /// account (same family, index, class for non-OZ, salt) onto `network`, derived here, and
-    /// stores it. None only for a vault with no accounts yet.
+    /// one; else projects the active account (same family, index, class for non-OZ, salt) onto
+    /// `network`, derived here, and stores it. None only for a vault with no accounts yet.
     pub fn ensure_network_account(
         &self,
         network: NetworkId,

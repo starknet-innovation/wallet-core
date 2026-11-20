@@ -1,7 +1,7 @@
 //! Public, non-secret wallet metadata files kept beside `vault.json`: contacts, shared accounts,
 //! coordination checkpoints, and the wallet's preferences (labels, groups, hidden accounts, the
-//! backup flag). They inherit the data directory's protection (iOS complete file protection and backup exclusion;
-//! Android `noBackupFilesDir`).
+//! backup flag). They inherit the data directory's protection (iOS complete file protection and
+//! backup exclusion; Android `noBackupFilesDir`).
 //!
 //! Every file is `{"version":1, …}`, written with the vault's temp-file, `sync_all`, rename
 //! sequence, so an interrupted write never leaves a truncated file. Reading fails closed: an
