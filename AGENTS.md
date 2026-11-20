@@ -122,7 +122,8 @@ Grep first; extend in place rather than adding a sibling.
   RPC history scan (`events::HistoryScan`), the read cadence (`activity_book::ActivityBook`), row
   presentation (`appearance.rs`, `classify.rs`); the one log is `activity::ActivityLog` over
   `host::Storage` (status text and `monotonic` in `activity::store`, the observation windows in
-  `activity::observation`).
+  `activity::observation`, the receipt fee and value at submission an expanded row shows in
+  `activity::detail`; a receipt's fee is `send::judge::receipt_fee`).
 - Privacy reads live in `crates/wallet-core/src/privacy/`: the read plan
   (`plan::PrivacyReadPlan`, whose viewing key reaches it only through `PrivacyHost`, each reply in
   `plan_steps.rs`), the discovery and pool-fee bodies (`bodies.rs`, the only writer of the key),

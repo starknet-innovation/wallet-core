@@ -8,7 +8,7 @@
 //! which every `advance` borrows. Review steps live in `plan_review`, account-state reads in
 //! `plan_probe`, the submit path in `plan_submit` and the deployment in `plan_deploy`.
 
-use super::fees::{Bounds, FeeQuote};
+use super::fees::{Bounds, FeeQuote, TransactionFee};
 use super::judge::{self, Observation, TxStatus};
 pub use super::types::{
     Account, ArgentClass, Authorization, Kind, Policy, Token, Transfer, TransferRefusal,
@@ -66,6 +66,13 @@ pub trait PlanHost {
     fn record_pending(&self, record: PendingRecord);
     /// Merges a status observation into the record for `hash`; its settled status, if recorded.
     fn observe(&self, hash: &Felt, observation: Observation) -> Option<TxStatus>;
+    /// Whether the record for `hash` still wants the fee its receipt reports (`wantsFee`: this
+    /// wallet's row, no fee yet, an outcome with a receipt). A host that keeps no fee says no.
+    fn wants_fee(&self, _hash: &Felt) -> bool {
+        false
+    }
+    /// Records the receipt's fee on the record for `hash`. Best effort, like `record_pending`.
+    fn record_fee(&self, _hash: &Felt, _fee: &TransactionFee) {}
     /// The explorer page for a transaction hash, if the wallet has one for the plan's network.
     fn explorer_url(&self, hash: &str) -> Option<String>;
 }
@@ -101,6 +108,8 @@ pub(crate) enum Expect {
     InvokeWrite,
     ConfirmStatus,
     RefreshStatus,
+    /// The receipt of a transaction that settled with this status, read for its fee.
+    FeeReceipt(TxStatus),
 }
 
 pub(crate) use super::plan_probe::Probe;

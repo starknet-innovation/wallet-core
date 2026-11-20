@@ -380,6 +380,9 @@ fn submitted_and_on_chain_rows_share_one_log() {
         counterparty: Some("0x123".into()),
         direction: None,
         failure_notice: None,
+        fee_paid: None,
+        origin: None,
+        submitted_price: None,
         finalized_on_l1: None,
         hash: "0x777".into(),
         kind: ActivityKind::Transfer,
@@ -456,6 +459,9 @@ fn an_unresolved_record_is_retired_after_an_hour_with_one_notice() {
     let accepted = bramble_core::ActivityEntry {
         status: TxStatus::Accepted,
         failure_notice: None,
+        fee_paid: None,
+        origin: None,
+        submitted_price: None,
         ..record
     };
     assert!(activity_needs_observation(accepted.clone(), at + week - 1));

@@ -36,6 +36,9 @@ fn loose_entry(v: &JsValue) -> ActivityEntry {
             _ => None,
         },
         failure_notice: None,
+        fee_paid: None,
+        origin: None,
+        submitted_price: None,
         finalized_on_l1: None,
         hash: text(v, "hash"),
         kind: match text(v, "kind").as_str() {

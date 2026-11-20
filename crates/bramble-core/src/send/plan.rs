@@ -7,8 +7,11 @@
 //! below), which maps the core's session check, signing, pending records, observations and
 //! explorer links onto `WalletCore`, the activity store and the explorer catalog.
 
-use std::sync::{Arc, Mutex, MutexGuard, Weak};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 
+use wallet_core::activity::detail::submitted_price;
+use wallet_core::history::activity_rules::price_json;
+use wallet_core::send::fees::TransactionFee;
 use wallet_core::send::judge::{Observation, TxStatus};
 use wallet_core::send::plan::{
     Account, Kind, PendingKind, PendingRecord, Plan, PlanHost, SignRefusal,
@@ -22,6 +25,8 @@ use wallet_core::history::activity_rules::direction_text;
 
 use crate::activity::with_log;
 use crate::networks::NetworkId;
+use crate::portfolio::model::DisplayCurrency;
+use crate::portfolio::prices::{PriceBook, PricePlan};
 use crate::wallet::WalletCore;
 use crate::{felt, CoreError};
 
@@ -55,6 +60,8 @@ pub struct TransferPlan {
     /// The session generation (`lock_epoch`) the plan was prepared in.
     generation: u64,
     plan: Mutex<Plan>,
+    /// Where a public send's price at submission comes from (`price_with`).
+    prices: Mutex<Option<(Arc<PriceBook>, DisplayCurrency)>>,
 }
 
 impl TransferPlan {
@@ -72,6 +79,7 @@ impl TransferPlan {
             network,
             generation,
             plan: Mutex::new(Plan::new(account, kind, SEND_POLICY)),
+            prices: Mutex::new(None),
         })
     }
 
@@ -131,6 +139,34 @@ impl TransferPlan {
     pub fn close(&self) {
         self.lock_plan().close();
     }
+
+    /// Prices the send's activity record as it is written, as the extension's
+    /// `withSubmittedPrice`: the unit price `prices` holds for the token in `currency` (the
+    /// display currency), read from its cache only and only while fresh. Without this call, or
+    /// without a fresh price, the record carries none; a price never holds up a send.
+    pub fn price_with(&self, prices: Arc<PriceBook>, currency: DisplayCurrency) {
+        *self.prices.lock().unwrap_or_else(PoisonError::into_inner) = Some((prices, currency));
+    }
+}
+
+impl TransferPlan {
+    // The cached-only read the extension's `capturePrice` makes, at the record's own time.
+    fn price_at_submission(
+        &self,
+        entry: &Entry,
+    ) -> Option<wallet_core::history::activity::SubmittedPrice> {
+        let (book, currency) = self
+            .prices
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()?;
+        let address = entry.token_address.clone()?;
+        let now_ms = entry.submitted_at as f64;
+        match book.plan(self.network, vec![address], currency, now_ms, true) {
+            PricePlan::Serve { view } => submitted_price(entry, &view),
+            PricePlan::Fetch { .. } => None,
+        }
+    }
 }
 
 /// The wallet behind the plan. Every call re-reads the wallet through the weak reference; a
@@ -175,28 +211,46 @@ impl PlanHost for TransferPlan {
             ),
             PendingKind::Deployment => (ActivityKind::Deploy, None, None, None, None),
         };
-        with_log(&core.data_dir, |log| {
-            log.record(Entry {
-                account_id: self.account_id.clone(),
-                amount,
-                counterparty,
-                // A public send this wallet made moves value out (`wallet-ops.ts`).
-                direction: token
-                    .as_ref()
-                    .map(|_| direction_text(TransferDirection::Out).into()),
-                failure_notice: None,
-                finalized_on_l1: None,
-                hash: felt::canonical(&record.hash),
-                kind: kind_text(kind).into(),
-                network_id: self.network.catalog_id().into(),
-                not_found_count: None,
-                status: "pending".into(),
-                submitted_at: record.submitted_at,
-                summary: record.summary,
-                token,
-                token_address,
-            })
-        });
+        let mut entry = Entry {
+            account_id: self.account_id.clone(),
+            amount,
+            counterparty,
+            // A public send this wallet made moves value out (`wallet-ops.ts`).
+            direction: token
+                .as_ref()
+                .map(|_| direction_text(TransferDirection::Out).into()),
+            failure_notice: None,
+            fee_paid: None,
+            finalized_on_l1: None,
+            hash: felt::canonical(&record.hash),
+            kind: kind_text(kind).into(),
+            network_id: self.network.catalog_id().into(),
+            not_found_count: None,
+            // The one writer of this marker (`recordSubmittedActivity`, audit #163).
+            origin: Some("wallet".into()),
+            status: "pending".into(),
+            submitted_at: record.submitted_at,
+            submitted_price: None,
+            summary: record.summary,
+            token,
+            token_address,
+        };
+        entry.submitted_price = self.price_at_submission(&entry).map(|p| price_json(&p));
+        with_log(&core.data_dir, |log| log.record(entry));
+    }
+
+    fn wants_fee(&self, hash: &Felt) -> bool {
+        self.core.upgrade().is_some_and(|core| {
+            with_log(&core.data_dir, |log| log.wants_fee(&self.account_id, hash))
+        })
+    }
+
+    fn record_fee(&self, hash: &Felt, fee: &TransactionFee) {
+        if let Some(core) = self.core.upgrade() {
+            with_log(&core.data_dir, |log| {
+                log.record_fee(&self.account_id, hash, fee)
+            });
+        }
     }
 
     fn observe(&self, hash: &Felt, observation: Observation) -> Option<TxStatus> {

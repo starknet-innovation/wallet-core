@@ -164,7 +164,8 @@ impl Node {
                 json!({"result": {"transaction_hash": signed.unwrap()}})
             }
             "starknet_getTransactionStatus" => json!({ "result": self.status }),
-            "starknet_getTransactionReceipt" => json!({"result": {"type": "DEPLOY_ACCOUNT"}}),
+            "starknet_getTransactionReceipt" => json!({"result": {"type": "DEPLOY_ACCOUNT",
+                "actual_fee": {"amount": "0x2386f26fc10000", "unit": "FRI"}}}),
             other => panic!("unexpected method {other}"),
         }
     }

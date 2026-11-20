@@ -8,7 +8,8 @@ use std::collections::HashSet;
 use serde_json::{json, Map, Value};
 
 use super::activity_rules::{
-    activity_token_address, direction_text, is_recorded_token_address, parse_direction,
+    activity_token_address, direction_text, fee_json, is_recorded_token_address, parse_direction,
+    price_json, submitted_price, transaction_fee,
 };
 use super::explorer::is_account_id_for_network;
 use crate::activity::store::{kind_text, parse_kind, parse_status, status_text};
@@ -17,7 +18,8 @@ use crate::js::felt::{
 };
 use crate::js::json::JsValue;
 use crate::js::num::{is_safe_integer, utf16_len, utf16_slice};
-use crate::portfolio::model::{network_code, network_from_code, TokenConfig};
+use crate::portfolio::model::{network_code, network_from_code, DisplayCurrency, TokenConfig};
+pub use crate::send::fees::{FeeUnit, TransactionFee};
 pub use crate::send::judge::TxStatus;
 use crate::NetworkId;
 
@@ -48,9 +50,25 @@ pub enum TransferDirection {
     Out,
 }
 
+/// Provenance (`ActivityEntry.origin`): `Wallet` only on rows this wallet recorded for a
+/// transaction it submitted, never on discovered rows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ActivityOrigin {
+    Wallet,
+}
+
+/// What one unit of the row's token was worth in `currency` when this wallet submitted it
+/// (`SubmittedPrice`): a fresh cached price captured at `priced_at`, never a later one.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SubmittedPrice {
+    pub currency: DisplayCurrency,
+    pub priced_at: u64,
+    pub unit_price: f64,
+}
+
 /// The extension's `ActivityEntry`. Built only by the core (on-chain rows) or validated by it
 /// (`ActivityLog::record`).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ActivityEntry {
     pub account_id: String,
     pub amount: Option<String>,
@@ -60,13 +78,19 @@ pub struct ActivityEntry {
     /// chooses (Sherlock 196). Absent on legacy rows and rows that are not one value movement.
     pub direction: Option<TransferDirection>,
     pub failure_notice: Option<FailureNotice>,
+    /// The fee the receipt reported, read once a row this wallet submitted reached an outcome
+    /// with a receipt (`feePaid`). Never an estimate; absent on discovered and older rows.
+    pub fee_paid: Option<TransactionFee>,
     pub finalized_on_l1: Option<bool>,
     pub hash: String,
     pub kind: ActivityKind,
     pub network: NetworkId,
     pub not_found_count: Option<u64>,
+    pub origin: Option<ActivityOrigin>,
     pub status: TxStatus,
     pub submitted_at: u64,
+    /// The unit price known when this wallet submitted a public send; never back-filled.
+    pub submitted_price: Option<SubmittedPrice>,
     pub summary: String,
     pub token: Option<String>,
     /// The canonical address of the token `token` names (issue 643); never without `token`.
@@ -112,6 +136,9 @@ pub fn entry_to_json(entry: &ActivityEntry) -> Value {
             }),
         );
     }
+    if let Some(fee) = &entry.fee_paid {
+        map.insert("feePaid".into(), fee_json(fee));
+    }
     if let Some(v) = entry.finalized_on_l1 {
         map.insert("finalizedOnL1".into(), json!(v));
     }
@@ -121,8 +148,14 @@ pub fn entry_to_json(entry: &ActivityEntry) -> Value {
     if let Some(v) = entry.not_found_count {
         map.insert("notFoundCount".into(), json!(v));
     }
+    if entry.origin.is_some() {
+        map.insert("origin".into(), json!("wallet"));
+    }
     map.insert("status".into(), json!(status_text(entry.status)));
     map.insert("submittedAt".into(), json!(entry.submitted_at));
+    if let Some(price) = &entry.submitted_price {
+        map.insert("submittedPrice".into(), price_json(price));
+    }
     map.insert("summary".into(), json!(entry.summary));
     if let Some(v) = &entry.token {
         map.insert("token".into(), json!(v));
@@ -140,19 +173,22 @@ fn safe_count(value: &JsValue) -> Option<u64> {
 
 /// Reads a stored or fixture entry; `None` unless it passes `isActivityEntry`.
 pub fn entry_from_json(value: &JsValue) -> Option<ActivityEntry> {
-    const KEYS: [&str; 15] = [
+    const KEYS: [&str; 18] = [
         "accountId",
         "amount",
         "counterparty",
         "direction",
         "failureNotice",
+        "feePaid",
         "finalizedOnL1",
         "hash",
         "kind",
         "networkId",
         "notFoundCount",
+        "origin",
         "status",
         "submittedAt",
+        "submittedPrice",
         "summary",
         "token",
         "tokenAddress",
@@ -170,6 +206,24 @@ pub fn entry_from_json(value: &JsValue) -> Option<ActivityEntry> {
         Some(JsValue::String(s)) => Some(Some(s.clone())),
         Some(_) => None,
     };
+    // The nested fields are judged as JSON, by the store's own validators.
+    let nested = |key: &str| {
+        value
+            .get(key)
+            .and_then(|v| serde_json::from_str(&v.to_json()).ok())
+    };
+    let fee_paid = match value.get("feePaid") {
+        None => None,
+        Some(_) => Some(transaction_fee(&nested("feePaid")?)?),
+    };
+    // serde_json may round a double's last bit; the price is read again as JavaScript reads it.
+    let submitted = match value.get("submittedPrice") {
+        None => None,
+        Some(price) => Some(SubmittedPrice {
+            unit_price: price.get("unitPrice")?.as_f64()?,
+            ..submitted_price(&nested("submittedPrice")?)?
+        }),
+    };
     let entry = ActivityEntry {
         account_id: text("accountId")?,
         amount: optional_text("amount")?,
@@ -184,6 +238,7 @@ pub fn entry_from_json(value: &JsValue) -> Option<ActivityEntry> {
             Some(JsValue::String(s)) if s == "delivered" => Some(FailureNotice::Delivered),
             Some(_) => return None,
         },
+        fee_paid,
         finalized_on_l1: match value.get("finalizedOnL1") {
             None => None,
             Some(JsValue::Bool(b)) => Some(*b),
@@ -196,8 +251,14 @@ pub fn entry_from_json(value: &JsValue) -> Option<ActivityEntry> {
             None => None,
             Some(v) => Some(safe_count(v)?),
         },
+        origin: match optional_text("origin")?.as_deref() {
+            None => None,
+            Some("wallet") => Some(ActivityOrigin::Wallet),
+            Some(_) => return None,
+        },
         status: parse_status(&text("status")?)?,
         submitted_at: safe_count(value.get("submittedAt")?)?,
+        submitted_price: submitted,
         summary: text("summary")?,
         token: optional_text("token")?,
         token_address: optional_text("tokenAddress")?,
@@ -254,13 +315,16 @@ pub fn on_chain_activity_entry(
             TransferDirection::Out
         }),
         failure_notice: None,
+        fee_paid: None,
         finalized_on_l1: None,
         hash: decoded.hash.clone(),
         kind: ActivityKind::Transfer,
         network,
         not_found_count: None,
+        origin: None,
         status: TxStatus::Accepted,
         submitted_at: timestamp_ms,
+        submitted_price: None,
         summary: utf16_slice(&summary, 0, MAX_SUMMARY_LENGTH),
         token: Some(token.symbol.clone()),
         token_address: activity_token_address(&token.address),

@@ -26,7 +26,9 @@ use serde::{Deserialize, Serialize};
 use super::observation;
 use crate::felt;
 use crate::history::activity::ActivityKind;
-use crate::history::activity_rules::{is_recorded_token_address, parse_direction};
+use crate::history::activity_rules::{
+    is_recorded_token_address, parse_direction, submitted_price, transaction_fee,
+};
 use crate::host::Storage;
 use crate::js::num::utf16_len;
 use crate::send::judge::{Observation, TxStatus};
@@ -55,6 +57,9 @@ pub struct Entry {
     pub direction: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub failure_notice: Option<String>,
+    /// `feePaid`, as stored (`transaction_fee` judges it).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fee_paid: Option<serde_json::Value>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -66,8 +71,14 @@ pub struct Entry {
     pub network_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub not_found_count: Option<u32>,
+    /// `"wallet"` only on rows this wallet recorded for its own submission.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<String>,
     pub status: String,
     pub submitted_at: u64,
+    /// `submittedPrice`, as stored (`submitted_price` judges it).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub submitted_price: Option<serde_json::Value>,
     pub summary: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub token: Option<String>,
@@ -195,6 +206,18 @@ fn valid(entry: &Entry, scope: &str) -> bool {
             .failure_notice
             .as_deref()
             .is_none_or(|notice| matches!(notice, "pending" | "delivered"))
+        && entry
+            .fee_paid
+            .as_ref()
+            .is_none_or(|fee| transaction_fee(fee).is_some())
+        && entry
+            .origin
+            .as_deref()
+            .is_none_or(|origin| origin == "wallet")
+        && entry
+            .submitted_price
+            .as_ref()
+            .is_none_or(|p| submitted_price(p).is_some())
         && entry.submitted_at < (1u64 << 53)
 }
 

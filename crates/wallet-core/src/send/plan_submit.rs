@@ -159,6 +159,14 @@ impl Plan {
             Expect::DeployWrite => self.on_deploy_write(answer),
             Expect::DeployStatus => self.on_deploy_status(host, answer),
             Expect::DeployReceipt => {
+                // The deployment's receipt is read here anyway, so its record takes its fee.
+                if let (Some(hash), Some(fee)) =
+                    (self.work.deploy_hash, judge::receipt_fee(answer.as_ref()))
+                {
+                    if host.wants_fee(&hash) {
+                        host.record_fee(&hash, &fee);
+                    }
+                }
                 if judge::receipt(answer) {
                     self.work.deployment_accepted = true;
                     self.work.attempts = 0;
@@ -174,6 +182,15 @@ impl Plan {
             Expect::InvokeWrite => self.on_invoke_write(answer),
             Expect::ConfirmStatus | Expect::RefreshStatus => {
                 self.on_confirm_status(host, expect, answer)
+            }
+            Expect::FeeReceipt(status) => {
+                let Some(hash) = self.target_hash() else {
+                    return self.fail(Code::SubmissionIndeterminate, None);
+                };
+                if let Some(fee) = judge::receipt_fee(answer.as_ref()) {
+                    host.record_fee(&hash, &fee);
+                }
+                self.finish(host, status, hash)
             }
             _ => self.fail(Code::NodeError, None),
         }
@@ -322,6 +339,16 @@ impl Plan {
             _ => TxStatus::Pending,
         });
         if expect == Expect::RefreshStatus || status != TxStatus::Pending {
+            // `tx-reconcile.ts`: a record that settled with a receipt reads its fee once, in the
+            // same pass as the status; a failed read records nothing and settles the same.
+            if matches!(status, TxStatus::Accepted | TxStatus::Reverted) && host.wants_fee(&hash) {
+                return self.rpc(
+                    Expect::FeeReceipt(status),
+                    RpcPurpose::TransactionReceipt,
+                    false,
+                    |_, id| rpc_bodies::transaction_receipt(id, &hash),
+                );
+            }
             return self.finish(host, status, hash);
         }
         let next = self.work.checkpoint + 1;
