@@ -1,9 +1,11 @@
-//! `isNostrRelayUrl`, which is the extension's `isWebSocketServiceUrl` (`core/service-url.ts`):
-//! `wss:` anywhere, `ws:` only on a loopback host, no credentials or fragment, spelled exactly as
-//! the WHATWG URL parser serialises it. Hand-parsed (no URL crate): a spelling the parser would
-//! rewrite is refused, and so are the exotic ones it repairs (IDN hosts, `@`, an empty `#`).
+//! The extension's endpoint grammar (`core/service-url.ts` `isCanonicalFor`): the secure scheme
+//! anywhere, the cleartext one only on a loopback host, no credentials or fragment, spelled
+//! exactly as the WHATWG URL parser serialises it. Hand-parsed (no URL crate): a spelling the
+//! parser would rewrite is refused, and so are the exotic ones it repairs (IDN hosts, `@`, an
+//! empty `#`). Two schemes use it: a Nostr relay (`isNostrRelayUrl`, which is
+//! `isWebSocketServiceUrl`) and a custom RPC endpoint (`isCustomRpcUrl`, which is `isServiceUrl`).
 
-/// `LOOPBACK_HOSTS`: the hosts `ws:` is allowed on, as the parser prints them.
+/// `LOOPBACK_HOSTS`: the hosts the cleartext scheme is allowed on, as the parser prints them.
 const LOOPBACK_HOSTS: [&str; 2] = ["127.0.0.1", "localhost"];
 /// `MAX_SERVICE_URL_LENGTH`, measured on the canonical spelling (here the value itself).
 const MAX_SERVICE_URL_LENGTH: usize = 2048;
@@ -71,12 +73,25 @@ fn is_canonical_tail(tail: &str) -> bool {
 /// `localhost`, in plain ASCII with no credentials or fragment, spelled exactly as the WHATWG
 /// parser prints it (lowercase host, no default port, no leading zeros, no dot segments).
 pub fn is_nostr_relay_url(value: &str) -> bool {
+    is_canonical_endpoint(value, "wss://", "ws://")
+}
+
+/// `isCustomRpcUrl` (`wallet-model/networks/custom-network.ts`, which is `isServiceUrl`): the
+/// same grammar over `https://`, or `http://` on `127.0.0.1` or `localhost`. A wallet that may
+/// not use cleartext at all narrows it to `https://` itself.
+pub fn is_custom_rpc_url(value: &str) -> bool {
+    is_canonical_endpoint(value, "https://", "http://")
+}
+
+// `isCanonicalFor(value, secure, loopback)`. Both scheme pairs are special in the WHATWG parser,
+// so they share one serialisation; only the default ports differ (443 secure, 80 cleartext).
+fn is_canonical_endpoint(value: &str, secure: &str, loopback: &str) -> bool {
     if value.is_empty() || value.len() > MAX_SERVICE_URL_LENGTH || !value.is_ascii() {
         return false;
     }
-    let (rest, default_port, loopback_only) = if let Some(rest) = value.strip_prefix("wss://") {
+    let (rest, default_port, loopback_only) = if let Some(rest) = value.strip_prefix(secure) {
         (rest, 443, false)
-    } else if let Some(rest) = value.strip_prefix("ws://") {
+    } else if let Some(rest) = value.strip_prefix(loopback) {
         (rest, 80, true)
     } else {
         return false;
@@ -157,6 +172,56 @@ mod tests {
             "ws://localhost:80",
         ] {
             assert!(!is_nostr_relay_url(bad), "{bad}");
+        }
+    }
+
+    #[test]
+    fn rpc_urls_are_canonical_https_or_loopback_http() {
+        for good in [
+            "https://rpc.example",
+            "https://rpc.example/",
+            "https://rpc.example/v0_10/abcDEF123",
+            "https://rpc.example/rpc?apikey=Secret%2F",
+            "https://rpc.example:8443",
+            "https://[::1]:5050/rpc",
+            "http://127.0.0.1:5050/rpc",
+            "http://localhost:5050",
+            "http://localhost:443",
+        ] {
+            assert!(is_custom_rpc_url(good), "{good}");
+        }
+        let long = format!("https://rpc.example/{}", "a".repeat(2048));
+        for bad in [
+            "",
+            " https://rpc.example",
+            "https://rpc.example ",
+            "https://rpc.example\n",
+            "https://rpc.example/a b",
+            "https://rpc.example/\"key\"",
+            "https://rpc.example/<k>",
+            "https://rpc.example/`k`",
+            "https://rpc.example\\rpc",
+            "https://user:pw@rpc.example",
+            "https://key@rpc.example",
+            "https://rpc.example/#frag",
+            "https://rpc.example:443",
+            "https://RPC.example",
+            "HTTPS://rpc.example",
+            "https://rpc.example/a/../b",
+            "https://rpc.example?q=1",
+            "https://rpc.example/?q='x'",
+            "https://réseau.example",
+            "https://",
+            "http://rpc.example",
+            "http://10.0.0.1:5050",
+            "http://[::1]:5050",
+            "http://localhost:80",
+            "wss://rpc.example",
+            "ftp://rpc.example",
+            "rpc.example",
+            long.as_str(),
+        ] {
+            assert!(!is_custom_rpc_url(bad), "{bad}");
         }
     }
 }
