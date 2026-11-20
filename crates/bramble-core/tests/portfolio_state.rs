@@ -111,7 +111,8 @@ fn preferences_default_on_corruption_but_protect_newer_files() {
     assert_eq!(again.display_currency(), DisplayCurrency::Gbp);
     assert!(again.tracked(NetworkId::Mainnet)[0].hidden_from_home);
     assert!(again.set_hidden(String::new(), true).is_err());
-    assert!(again.explorer_fallback_allowed(NetworkId::Sepolia));
+    assert!(again.explorer_fallback_allowed(NetworkId::Sepolia, false));
+    assert!(!again.explorer_fallback_allowed(NetworkId::Sepolia, true));
     assert!(again.discovery_candidates(NetworkId::Sepolia).is_empty());
     assert!(again
         .discovery_candidates(NetworkId::Mainnet)

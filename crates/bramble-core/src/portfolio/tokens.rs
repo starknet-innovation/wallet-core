@@ -106,9 +106,11 @@ impl TokenPreferences {
         self.prefs().discovery_candidates(network)
     }
 
-    /// `explorerFallbackAllowed`: the stored choice, else allowed (mobile has no RPC override).
-    pub fn explorer_fallback_allowed(&self, network: NetworkId) -> bool {
-        self.prefs().explorer_fallback_allowed(network)
+    /// `explorerFallbackAllowed`: the stored choice, else allowed only while `network` has no RPC
+    /// override: pass whether the wallet holds one for `network` (its `rpc_override` getter).
+    pub fn explorer_fallback_allowed(&self, network: NetworkId, rpc_override: bool) -> bool {
+        self.prefs()
+            .explorer_fallback_allowed(network, rpc_override)
     }
 
     /// Whether the stored file came from a newer app and must not be overwritten.
