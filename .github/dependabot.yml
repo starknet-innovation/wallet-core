@@ -16,6 +16,8 @@ updates:
       - dependency-name: "starknet-types-core"
       # Moves in lockstep with uniffi-bindgen-react-native and @ubjs/*; bump by hand together.
       - dependency-name: "uniffi*"
+      # Must equal wasm-bindgen-cli everywhere it is installed (tools/check.sh checks).
+      - dependency-name: "wasm-bindgen"
 
   - package-ecosystem: "npm"
     directory: "/js"
