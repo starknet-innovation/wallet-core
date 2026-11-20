@@ -14,10 +14,10 @@ use starknet_types_core::felt::Felt;
 
 use super::fees::{quote_with, FeeRefusal, Overhead};
 use super::judge::{self, Answer, EstimateAnswer, WriteAnswer};
+use super::multisig_intent::{IntentState, SigningIntent};
 use super::multisig_invoke::{
     execute_calldata, input_felt, normalize_calls, query_signature, signature_felts, MultisigCall,
-    MultisigInvokeError, MultisigSignature, PreparedInvoke, StarkPrimitives,
-    MAX_EXECUTE_CALLDATA_FELTS,
+    MultisigInvokeError, PreparedInvoke, StarkPrimitives, MAX_EXECUTE_CALLDATA_FELTS,
 };
 use super::rpc_bodies::{self, InvokeTx};
 use super::types::{RpcPurpose, SendError, StepReply};
@@ -287,20 +287,30 @@ pub struct SubmitPlan {
 }
 
 impl SubmitPlan {
-    /// Re-validates `prepared` (its calldata and hash recomputed) and serialises exactly
-    /// `config.threshold` member signatures in GUID order. Signatures are not re-verified here:
-    /// a wallet submits only an intent its validator accepted (`multisig_intent`).
+    /// Re-validates the intent's prepared transaction (its calldata and hash recomputed),
+    /// serialises exactly `config.threshold` member signatures in GUID order, and then requires
+    /// what the extension's `resolveSubmission` reads from its store: a ready, stale or submitted
+    /// intent that [`SigningIntent::is_valid`] accepts, so every signature is verified over the
+    /// hash and the count is the snapshot's threshold.
     pub fn new(
-        prepared: &PreparedInvoke,
-        signatures: &[MultisigSignature],
+        intent: &SigningIntent,
         config: &ArgentMultisigConfig,
         class: &ArgentMultisigClass,
+        max_summary_length: usize,
         primitives: &dyn StarkPrimitives,
     ) -> Result<Self, MultisigInvokeError> {
+        let prepared = &intent.prepared;
         let (network, sender, calldata, nonce, bounds) = prepared
             .checked(primitives)
             .ok_or(MultisigInvokeError::InvalidPrepared)?;
-        let signature = signature_felts(signatures, config, class)?;
+        let signature = signature_felts(&intent.signatures, config, class)?;
+        let submittable = matches!(
+            intent.state,
+            IntentState::Ready | IntentState::Stale | IntentState::Submitted
+        );
+        if !submittable || !intent.is_valid(class, max_summary_length, primitives) {
+            return Err(MultisigInvokeError::InvalidIntent);
+        }
         let hash =
             felt::parse(&prepared.transaction_hash).ok_or(MultisigInvokeError::InvalidPrepared)?;
         Ok(Self {

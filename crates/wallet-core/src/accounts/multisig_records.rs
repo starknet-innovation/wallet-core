@@ -11,6 +11,17 @@ use super::multisig::{self, ArgentMultisigClass, ArgentMultisigConfig};
 use crate::kms::{utf16_length, NetworkId};
 use crate::{felt, Error};
 
+/// An optional key that may be absent but never `null`: the extension's `!== undefined` guards
+/// refuse a `null` the way serde's `Option` would read it as absent. Pair with
+/// `#[serde(default)]` so the absent key is still `None`.
+pub(crate) fn not_null<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    T::deserialize(deserializer).map(Some)
+}
+
 /// `ArgentMultisigCurrentConfig`: GUID-ordered Stark keys and a threshold.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -35,12 +46,24 @@ pub struct Record {
     pub account_contract_type: String,
     pub address: String,
     pub class_hash: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "not_null",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub current_config: Option<PublicConfig>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "not_null",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub deployment: Option<Deployment>,
     pub id: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "not_null",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub name: Option<String>,
     pub network_id: String,
 }

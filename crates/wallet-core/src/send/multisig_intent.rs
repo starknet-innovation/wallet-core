@@ -1,7 +1,9 @@
 //! The shared signing intent around a frozen multisig transaction, mirroring the extension's
 //! `packages/features/multisig/src/repository-schema.ts` (`ArgentMultisigSigningIntent`,
-//! `argentMultisigIntentId`, `isArgentMultisigSigningIntent`) and the background's
-//! `multisig-inputs.ts` (`argentMultisigIntentPackage`, `mergeImportedArgentMultisigIntent`) and
+//! `argentMultisigIntentId`, `isArgentMultisigSigningIntent`,
+//! `canReplaceArgentMultisigSigningIntent`) and the background's
+//! `multisig-inputs.ts` (`argentMultisigIntentPackage`, `readImportIntentInput`,
+//! `locallyDerivedImportedIntent`, `mergeImportedArgentMultisigIntent`) and
 //! `multisig-ops.ts` (`configSnapshot`). Field order is the extension's, so an intent and its
 //! package serialise to the bytes a co-signer's extension writes.
 //!
@@ -15,7 +17,7 @@ use super::multisig_invoke::{
     canonical_non_zero, is_calls, MultisigSignature, PreparedInvoke, StarkPrimitives,
 };
 use crate::accounts::multisig::{signer_guid, ArgentMultisigClass};
-use crate::accounts::multisig_records::is_authority;
+use crate::accounts::multisig_records::{is_authority, not_null};
 use crate::felt;
 use crate::history::explorer::canonical_account_id;
 use crate::js::felt::{canonical_felt, same_felt};
@@ -79,15 +81,27 @@ pub enum StaleReason {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SigningIntent {
     pub account_id: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "not_null",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub broadcast_transaction_hash: Option<String>,
     pub config_snapshot: ConfigSnapshot,
     pub id: String,
     pub prepared: PreparedInvoke,
     pub signatures: Vec<MultisigSignature>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "not_null",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub stale_outcome: Option<StaleOutcome>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "not_null",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub stale_reason: Option<StaleReason>,
     pub state: IntentState,
     pub summary: String,
@@ -97,16 +111,47 @@ pub struct SigningIntent {
 pub const INTENT_PACKAGE_KIND: &str = "bramble.argent-multisig-intent";
 pub const INTENT_PACKAGE_VERSION: u32 = 1;
 
-/// `ArgentMultisigIntentPackage`: what co-signers exchange.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+/// `ArgentMultisigIntentPackage`: what co-signers exchange. Read one only through
+/// [`IntentPackage::parse`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct IntentPackage {
     pub intent: SigningIntent,
     pub kind: String,
     pub version: u32,
 }
 
+/// The package as it arrives, before its envelope is checked.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Arrived {
+    intent: SigningIntent,
+    kind: String,
+    version: u32,
+}
+
 impl IntentPackage {
+    /// `readImportIntentInput`'s package checks: only `intent`, `kind` and `version`, exactly
+    /// this kind and version 1, and an intent [`SigningIntent::is_valid`] accepts. `None`
+    /// otherwise. The caller then derives it locally ([`SigningIntent::locally_derived_imported`]).
+    pub fn parse(
+        text: &str,
+        class: &ArgentMultisigClass,
+        max_summary_length: usize,
+        primitives: &dyn StarkPrimitives,
+    ) -> Option<Self> {
+        let arrived: Arrived = serde_json::from_str(text).ok()?;
+        (arrived.kind == INTENT_PACKAGE_KIND
+            && arrived.version == INTENT_PACKAGE_VERSION
+            && arrived
+                .intent
+                .is_valid(class, max_summary_length, primitives))
+        .then_some(Self {
+            intent: arrived.intent,
+            kind: arrived.kind,
+            version: arrived.version,
+        })
+    }
+
     /// Compact JSON, as `JSON.stringify` writes it.
     pub fn to_json(&self) -> String {
         // Plain strings, numbers and arrays: serialising this cannot fail.
@@ -163,17 +208,68 @@ impl SigningIntent {
         }
     }
 
+    /// `locallyDerivedImportedIntent`: an imported intent with the remote's lifecycle claims
+    /// discarded (its broadcast hash, stale outcome and stale reason) and the state derived only
+    /// from its already-validated signature count: ready at the threshold, else collecting.
+    pub fn locally_derived_imported(&self) -> SigningIntent {
+        let ready = self.signatures.len() == self.config_snapshot.threshold as usize;
+        SigningIntent {
+            broadcast_transaction_hash: None,
+            stale_outcome: None,
+            stale_reason: None,
+            state: if ready {
+                IntentState::Ready
+            } else {
+                IntentState::Collecting
+            },
+            ..self.clone()
+        }
+    }
+
     /// `mergeImportedArgentMultisigIntent`: a re-import of the same frozen hash. A terminal or
     /// stale local intent is kept as it is; an open one gains the incoming signers it lacks, in
-    /// GUID order, and keeps its own summary. Both must already have passed [`is_valid`].
+    /// GUID order, up to the threshold, and keeps its own summary.
     ///
+    /// Two departures from the extension, which finds the local intent by id and merges every
+    /// signer: `None` when `incoming` is another intent (id, account, snapshot or prepared
+    /// transaction differ), so local signatures never join another hash; and local signers are
+    /// kept first and incoming ones added only until the threshold, so a local `{A}` and an
+    /// incoming `{B, C}` at threshold 2 merge to a ready `{A, B}`, not an invalid `{A, B, C}`.
+    ///
+    /// This is one step of the extension's `importIntent`, not the whole of it. The caller reads
+    /// `incoming` with [`IntentPackage::parse`] (a text it has bounded) and passes it through
+    /// [`locally_derived_imported`] (this keeps the incoming lifecycle fields as given), and
+    /// stores the result only if it [`is_valid`] and the stored intent [`can_replace`] it.
+    /// Before storing, the caller must also do what nothing here does for it:
+    ///
+    /// - replace `summary` with its own `multisig_review::review_calls` of `prepared.calls`, and
+    ///   refuse the import when that review refuses. A remote summary is a claim, not bound by
+    ///   the hash; with no local intent to merge into it would otherwise be shown as given.
+    /// - read the account's authority from the chain and refuse unless it equals
+    ///   `config_snapshot`, which the hash does not bind either.
+    /// - read the account's nonce and refuse unless it equals `prepared.nonce`.
+    /// - check the account is one the wallet watches, and that the session is still current.
+    ///
+    /// [`locally_derived_imported`]: SigningIntent::locally_derived_imported
     /// [`is_valid`]: SigningIntent::is_valid
-    pub fn merge_imported(&self, incoming: &SigningIntent) -> SigningIntent {
-        if !matches!(self.state, IntentState::Collecting | IntentState::Ready) {
-            return self.clone();
+    /// [`can_replace`]: SigningIntent::can_replace
+    pub fn merge_imported(&self, incoming: &SigningIntent) -> Option<SigningIntent> {
+        if incoming.id != self.id
+            || incoming.account_id != self.account_id
+            || incoming.config_snapshot != self.config_snapshot
+            || incoming.prepared != self.prepared
+        {
+            return None;
         }
+        if !matches!(self.state, IntentState::Collecting | IntentState::Ready) {
+            return Some(self.clone());
+        }
+        let threshold = self.config_snapshot.threshold as usize;
         let mut signatures = self.signatures.clone();
         for signature in &incoming.signatures {
+            if signatures.len() >= threshold {
+                break;
+            }
             if !signatures
                 .iter()
                 .any(|stored| stored.public_key == signature.public_key)
@@ -181,9 +277,9 @@ impl SigningIntent {
                 signatures.push(signature.clone());
             }
         }
-        signatures.sort_by_key(|signature| guid_of(&signature.public_key));
-        let ready = signatures.len() == incoming.config_snapshot.threshold as usize;
-        SigningIntent {
+        signatures.sort_by_cached_key(|signature| guid_of(&signature.public_key));
+        let ready = signatures.len() == threshold;
+        Some(SigningIntent {
             signatures,
             state: if ready {
                 IntentState::Ready
@@ -192,7 +288,7 @@ impl SigningIntent {
             },
             summary: self.summary.clone(),
             ..incoming.clone()
-        }
+        })
     }
 
     /// `isArgentMultisigSigningIntent`: the snapshot is `class`'s, the prepared transaction
@@ -219,6 +315,39 @@ impl SigningIntent {
             && self.scope_matches_prepared()
             && self.signatures_valid(primitives)
             && self.authority_fits_state()
+    }
+
+    /// `canReplaceArgentMultisigSigningIntent`: whether `next` may overwrite this stored intent.
+    /// Both must be valid, every reviewed and hash-bound field unchanged, no signature dropped,
+    /// and the state move one the lifecycle allows (`validStateTransition`).
+    pub fn can_replace(
+        &self,
+        next: &SigningIntent,
+        class: &ArgentMultisigClass,
+        max_summary_length: usize,
+        primitives: &dyn StarkPrimitives,
+    ) -> bool {
+        use IntentState::{Accepted, Collecting, Ready, Rejected, Stale, Submitted};
+        let allowed: &[IntentState] = match self.state {
+            Accepted => &[Accepted],
+            Collecting => &[Collecting, Ready, Stale],
+            Ready => &[Accepted, Ready, Rejected, Stale, Submitted],
+            Rejected => &[Rejected],
+            Stale => &[Stale, Submitted],
+            Submitted => &[Accepted, Rejected, Submitted],
+        };
+        self.is_valid(class, max_summary_length, primitives)
+            && next.is_valid(class, max_summary_length, primitives)
+            && self.account_id == next.account_id
+            && self.id == next.id
+            && self.summary == next.summary
+            && self.config_snapshot == next.config_snapshot
+            && self.prepared == next.prepared
+            && self
+                .signatures
+                .iter()
+                .all(|signature| next.signatures.contains(signature))
+            && allowed.contains(&next.state)
     }
 
     /// `accountScopeMatchesPrepared`.

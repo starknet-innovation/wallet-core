@@ -4,7 +4,7 @@
 //! the selector is sha3's Keccak (a dev-dependency), and "verification" re-signs with the
 //! phrase's own keys, which only works because RFC-6979 signing is deterministic and every
 //! signer here is one of those keys.
-#![allow(dead_code)]
+#![allow(dead_code)] // Each multisig suite reads a different subset.
 
 use bramble_core::catalogs::multisig;
 use serde_json::{json, Value};

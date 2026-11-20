@@ -155,7 +155,7 @@ fn run(network: &Value) {
         );
         let mut incoming = intent.clone();
         incoming.signatures.push(MultisigSignature::from(signature));
-        intent = intent.merge_imported(&incoming);
+        intent = intent.merge_imported(&incoming).unwrap();
         check_stage(&intent, &stages[step + 1]);
     }
     assert_eq!(stages.len(), cosigners.len() + 1);
@@ -178,11 +178,12 @@ fn run(network: &Value) {
     let expected: Vec<String> = serde_json::from_value(proposal["signature"].clone()).unwrap();
     assert_eq!(serialized, expected, "{name}");
 
+    assert_eq!(intent.prepared, prepared, "{name}");
     let mut submit = SubmitPlan::new(
-        &prepared,
-        &intent.signatures,
+        &intent,
         &submit_config,
         &class,
+        summary_length(),
         &primitives,
     )
     .unwrap();
