@@ -67,7 +67,7 @@ v13 payload.
 | 2.6 Catalogs | done (#49) | done (M12, Bramble #928) |
 | 2.7 Swap | done (#50), behind the `mobile` feature | done (M13, Bramble #929), at `v0.3.0`: `mobile/core` is a shell over this crate |
 | Vault switch | done (V1 #58) | G4 done (Bramble #947); M14 done (Bramble #980): mobile pins `v0.4.0` |
-| [Mobile parity](#mobile-parity) | P6 done (#65), P2 done (#68); P1's mechanism done (P1a #70, P1b #71, P1c #72), not exported until Krusty exports a selector and signature verification; P3–P5 not started | not started |
+| [Mobile parity](#mobile-parity) | P6 done (#65), P2 done (#68); P1's mechanism done (P1a #70, P1b #71, P1c #72), not exported until Krusty exports a selector and signature verification; P4 done (#78), no fixture yet (needs a Bramble generator); P3 and P5 not started | not started |
 | 3 Extension | not started; `js/package.json` is private | n/a |
 
 `v0.1.0` is tagged at `35abc8b` (GitHub release only) and was what M2 and M3 pinned. `v0.2.0`
@@ -186,14 +186,26 @@ Checked:
   (`withRpcWrite`). With an override and no stored choice, `explorerFallbackAllowed` is off; a
   preferences restore never applies `rpcOverrides`. So the URL grammar is the relay one over
   `https`/`http` (`nostr::relay_url::is_custom_rpc_url`), and `bramble-core` stores `rpcOverrides`
-  in `public_store`'s preferences (`rpc_override.rs`), narrowed to `https` as relays are to `wss`,
-  and fails closed on a stored value the rule refuses. `WalletCore::networks` hands the host the
-  bundled records with the override first (`networks::with_rpc_override`); chain ids, tokens and
-  explorers never change, and the send plan's chain probes still check Krusty's chain id.
-  `explorer_fallback_allowed` now takes whether the network has an override. Deliberately different:
-  no `http` on loopback (cleartext is blocked on both platforms), and a typed URL the parser would
-  respell (case, a default port, dot segments) is refused rather than rewritten, since the core has
-  no URL parser. The rules have unit tests only and need a Bramble generator. Mobile has none yet.
+  in `public_store`'s preferences (`rpc_override.rs`), narrowed to `https` as relays are to `wss`.
+  A stored override the rule refuses (after a tightened grammar) is dropped on load, as
+  `withCanonicalEndpoints` drops one, with that network's explorer fallback kept off
+  (`explorerFallbackOff`, the extension's pin of `explorerFallback`); one on an unknown network
+  fails closed. `WalletCore::networks` hands the host the bundled records with the override first
+  (`networks::with_rpc_override`); chain ids, tokens and explorers never change, and the send
+  plan's chain probes still check Krusty's chain id. As in the extension, saving probes no chain:
+  a Sepolia URL saved for Mainnet is caught by the host's per-endpoint chain check or, for a
+  send, by the plan's probe. `WalletCore::explorer_fallback_allowed` reads the override itself
+  (false while locked), so the host cannot pass the wrong answer. The extension's `redactEndpoints`
+  is `relay_url::redact_endpoints`, exported to mobile; `NetworkInfo`'s `Debug` leaves out
+  `rpc_urls`. Deliberately different: no `http` on loopback (cleartext is blocked on both
+  platforms), and a typed URL the parser would respell (case, a default port, dot segments) is
+  refused rather than rewritten, since the core has no URL parser. The rules have unit tests only
+  and need a Bramble generator. Mobile has none yet. Mobile adoption: endpoints from
+  `wallet.networks()`, not `supported_networks()`; keep the per-endpoint chain check; the explorer
+  lane asks `wallet.explorer_fallback_allowed(network, preferences)`; pass every transport and RPC
+  failure text through `redact_endpoints` before it is shown, logged or reported, and never log a
+  `NetworkInfo`; add the settings field. Mobile has no explorer-fallback toggle, so a network
+  pinned off by a dropped override stays off.
 - **P6 Hidden accounts.** The extension (`main` at `a01b240c`) keeps them in its preferences,
   not the vault: `hiddenAccountIds`, unique canonical account ids, default `[]`
   (`packages/features/settings/src/preferences-accounts.ts`, `isHiddenAccountIds` in

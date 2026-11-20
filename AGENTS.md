@@ -143,7 +143,7 @@ Grep first; extend in place rather than adding a sibling.
   gates (`gates.rs`, `home.rs`). `DeploymentState` is `send::types`.
 - Nostr relay work lives beside the keys in `crates/wallet-core/src/nostr/`: the relay-URL
   grammar (`relay_url::is_nostr_relay_url`, which a custom RPC URL shares as
-  `is_custom_rpc_url`), relay selection, frame parsing, gift-wrap batches and
+  `is_custom_rpc_url`; the endpoint redactor `redact_endpoints` sits beside it), relay selection, frame parsing, gift-wrap batches and
   publishing (`relay.rs`: `valid_relay_urls`, `parsed_gift_wraps`, `PublishJudge`,
   `publish_many_nostr_gift_wraps`), the paged sync (`sync::SyncJudge`) and the sync window
   (`sync_window.rs`). Bramble's numbers for them (`RELAY_LIMITS`, `SYNC_LOOKBACKS`) and its
