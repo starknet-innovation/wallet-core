@@ -4,13 +4,13 @@
 //! line when the selector or the calldata does not fit a known shape. Nothing here guesses.
 //!
 //! Calldata arrives as parsed felts: the callers validate it first (a multisig call through
-//! `is_argent_multisig_calls`), so the extension's `BigInt` leniency over strings has nothing
+//! `multisig_invoke::is_calls`), so the extension's `BigInt` leniency over strings has nothing
 //! left to accept. What the wallet knows (its trusted tokens and watched NFT collections on this
 //! network) comes in as [`Known`].
 
 use starknet_types_core::felt::Felt;
 
-use super::calls::{format_token_amount, short_label};
+use super::calls::{format_token_amount, short_label, transfer_summary};
 use super::u256::U256;
 use crate::catalog::TokenInfo;
 use crate::felt;
@@ -187,7 +187,10 @@ fn transfer_or_approve(
     let token = known.token(contract);
     let party = short(&calldata[0]);
     Some(if entrypoint == "transfer" {
-        format!("Send {} to {party}", amount_label(&amount, token))
+        match token {
+            Some(token) => transfer_summary(&amount, token.decimals, &token.symbol, &calldata[0]),
+            None => format!("Send {} to {party}", amount_label(&amount, None)),
+        }
     } else if known.watches_nft(contract) {
         format!(
             "Allow {party} to transfer NFT #{} of collection {}",

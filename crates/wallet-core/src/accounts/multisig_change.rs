@@ -14,10 +14,10 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use super::multisig::{self, ArgentMultisigClass, ArgentMultisigConfig};
-use super::multisig_call::{is_argent_multisig_calls, ArgentMultisigCall};
 use super::multisig_records::PublicConfig;
 use crate::felt;
 use crate::js::felt::{canonical_felt, is_non_zero_felt, same_felt};
+use crate::send::multisig_invoke::{is_calls, MultisigCall};
 
 /// `ArgentMultisigConfigChange`: one decoded signer-management operation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -162,11 +162,10 @@ fn signer_array_at(
 /// management ABI. Non-self, unknown, trailing, non-Stark or malformed calls are refused.
 pub fn parse_config_change(
     account_address: &str,
-    call: &ArgentMultisigCall,
+    call: &MultisigCall,
     class: &ArgentMultisigClass,
 ) -> Result<ConfigChange, ChangeError> {
-    if !is_argent_multisig_calls(std::slice::from_ref(call))
-        || !same_felt(&call.contract_address, account_address)
+    if !is_calls(std::slice::from_ref(call)) || !same_felt(&call.contract_address, account_address)
     {
         return Err(ChangeError::InvalidSelfCall);
     }
@@ -217,7 +216,7 @@ pub fn config_change_call(
     account_address: &str,
     change: &ConfigChange,
     class: &ArgentMultisigClass,
-) -> Result<ArgentMultisigCall, ChangeError> {
+) -> Result<MultisigCall, ChangeError> {
     let signer = |key: &str| canonical_signer(key).map(|key| ["0x0".to_string(), key]);
     let count = |value: usize| format!("{value:#x}");
     let (entrypoint, calldata) = match change {
@@ -252,7 +251,7 @@ pub fn config_change_call(
             (entrypoint, calldata)
         }
     };
-    let call = ArgentMultisigCall {
+    let call = MultisigCall {
         calldata,
         contract_address: account_address.to_string(),
         entrypoint: entrypoint.to_string(),
@@ -394,7 +393,7 @@ pub fn config_change_summary(change: &ConfigChange) -> String {
 pub fn review_config_change(
     account_address: &str,
     current: &PublicConfig,
-    call: &ArgentMultisigCall,
+    call: &MultisigCall,
     class: &ArgentMultisigClass,
 ) -> Result<ConfigReview, ChangeError> {
     let change = parse_config_change(account_address, call, class)?;

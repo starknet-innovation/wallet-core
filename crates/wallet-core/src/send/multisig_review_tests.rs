@@ -7,8 +7,8 @@ use crate::accounts::multisig_change::ConfigChange;
 
 const ACCOUNT: &str = "0x28417e292e102205acc710013171cc42ff60afde90193b1c57977fdec5501c0";
 
-fn call(contract: &str, entrypoint: &str, calldata: &[&str]) -> ArgentMultisigCall {
-    ArgentMultisigCall {
+fn call(contract: &str, entrypoint: &str, calldata: &[&str]) -> MultisigCall {
+    MultisigCall {
         calldata: calldata.iter().map(|v| v.to_string()).collect(),
         contract_address: contract.into(),
         entrypoint: entrypoint.into(),
@@ -23,7 +23,7 @@ fn current() -> PublicConfig {
 }
 
 fn review(
-    calls: &[ArgentMultisigCall],
+    calls: &[MultisigCall],
     trusted: &[Felt],
     length: usize,
 ) -> Result<CallReview, CallReviewError> {
@@ -41,7 +41,7 @@ fn review(
 #[test]
 fn self_calls_are_alone_and_never_upgrade_callbacks() {
     use CallReviewError::*;
-    let safe = |calls: &[ArgentMultisigCall]| require_safe_calls(ACCOUNT, calls, &class());
+    let safe = |calls: &[MultisigCall]| require_safe_calls(ACCOUNT, calls, &class());
     let transfer = call("0x123", "transfer", &["0x456", "0x1", "0x0"]);
     assert_eq!(safe(&[]), Err(InvalidCalls));
     assert_eq!(safe(std::slice::from_ref(&transfer)), Ok(()));
@@ -116,6 +116,38 @@ fn ordinary_batches_summarise_the_first_call_and_count_the_rest() {
             .summary,
         "Send"
     );
+}
+
+#[test]
+fn an_account_address_outside_the_grammar_is_refused() {
+    // Upper case: `same_felt` would still match it, but the strict grammar does not, so the
+    // multisig would silently leave its own trusted set and this lookalike would pass.
+    let upper = ACCOUNT.to_uppercase().replacen("0X", "0x", 1);
+    let twin = format!("0x2841{}01c0", "0".repeat(55));
+    let calls = [call("0x123", "transfer", &[&twin, "0x1", "0x0"])];
+    let reviewed = review_calls(
+        &upper,
+        &calls,
+        Some(&current()),
+        &class(),
+        &Known::default(),
+        &[],
+        120,
+    );
+    assert_eq!(reviewed, Err(CallReviewError::InvalidCalls));
+    assert_eq!(
+        review(&calls, &[], 120),
+        Err(CallReviewError::PoisonedRecipient)
+    );
+}
+
+#[test]
+fn unparseable_calldata_is_refused_not_dropped() {
+    assert_eq!(
+        felts(&["0x1".into(), "0xZ".into()]),
+        Err(CallReviewError::InvalidCalls)
+    );
+    assert_eq!(felts(&["0x1".into()]), Ok(vec![Felt::ONE]));
 }
 
 #[test]

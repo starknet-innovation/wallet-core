@@ -451,3 +451,7 @@ pub(crate) fn query_signature(
         .collect();
     signature_felts(&dummies, &normalized, class)
 }
+
+#[cfg(test)]
+#[path = "multisig_invoke_tests.rs"]
+mod tests;

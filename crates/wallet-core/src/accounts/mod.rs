@@ -11,7 +11,6 @@
 
 pub mod advisory;
 pub mod multisig;
-pub mod multisig_call;
 pub mod multisig_change;
 pub mod multisig_declared;
 pub mod multisig_read;

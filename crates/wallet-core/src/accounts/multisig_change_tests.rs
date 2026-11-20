@@ -1,15 +1,15 @@
-//! One case per refusal in `config-change.ts` and `isArgentMultisigCall(s)`, including the ones
-//! the fixture does not reach. The fixture cases are in `bramble-core`'s
-//! `tests/multisig_signers_parity.rs`.
+//! One case per refusal in `config-change.ts`, including the ones the fixture does not reach
+//! (`isArgentMultisigCalls` is tested beside it in `send::multisig_invoke`). The fixture cases
+//! are in `bramble-core`'s `tests/multisig_signers_parity.rs`.
 
 use super::*;
 use crate::accounts::multisig::tests::class;
-use crate::accounts::multisig_call::ArgentMultisigCall;
+use crate::send::multisig_invoke::MultisigCall;
 
 const ACCOUNT: &str = "0xabc";
 
-fn call(entrypoint: &str, calldata: &[&str]) -> ArgentMultisigCall {
-    ArgentMultisigCall {
+fn call(entrypoint: &str, calldata: &[&str]) -> MultisigCall {
+    MultisigCall {
         calldata: calldata.iter().map(|v| v.to_string()).collect(),
         contract_address: ACCOUNT.into(),
         entrypoint: entrypoint.into(),
@@ -77,7 +77,7 @@ fn the_parser_refuses_every_malformed_self_call() {
         parse("add_signers", &["0x0", "0x1", "0x0", "0x2"]),
         Err(InvalidThreshold)
     );
-    let other = ArgentMultisigCall {
+    let other = MultisigCall {
         contract_address: "0xabd".into(),
         ..call("change_threshold", &["0x1"])
     };

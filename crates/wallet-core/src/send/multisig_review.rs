@@ -16,8 +16,8 @@ use starknet_types_core::felt::Felt;
 
 use super::call_decode::{call_summary, recipient_for_flags, Known};
 use super::calls::is_lookalike_address;
+use super::multisig_invoke::{is_calls, MultisigCall};
 use crate::accounts::multisig::ArgentMultisigClass;
-use crate::accounts::multisig_call::{is_argent_multisig_calls, ArgentMultisigCall};
 use crate::accounts::multisig_change::{
     parse_config_change, review_config_change, ChangeError, ConfigReview,
 };
@@ -90,10 +90,10 @@ impl From<ChangeError> for CallReviewError {
 /// signer change.
 pub fn require_safe_calls(
     account_address: &str,
-    calls: &[ArgentMultisigCall],
+    calls: &[MultisigCall],
     class: &ArgentMultisigClass,
 ) -> Result<(), CallReviewError> {
-    if !is_argent_multisig_calls(calls) {
+    if !is_calls(calls) {
         return Err(CallReviewError::InvalidCalls);
     }
     let mut self_calls = calls
@@ -112,28 +112,34 @@ pub fn require_safe_calls(
     Ok(())
 }
 
-/// The felts of a call `is_argent_multisig_calls` accepted.
-fn felts(values: &[String]) -> Vec<Felt> {
+/// The felts of a call `is_calls` accepted; any that does not parse refuses the batch rather
+/// than shifting the felts after it.
+fn felts(values: &[String]) -> Result<Vec<Felt>, CallReviewError> {
     values
         .iter()
-        .filter_map(|value| felt::parse(value))
+        .map(|value| felt::parse(value).ok_or(CallReviewError::InvalidCalls))
         .collect()
 }
 
 /// `reviewArgentMultisigCalls` for the multisig at `account_address`. `current` is its complete
 /// current configuration, required only for a self-call. `trusted` is every other address the
-/// person recognises on this network (their own accounts, saved contacts and recipients this
-/// wallet paid); the multisig itself is always trusted. `summary_length` is the wallet's cap on
+/// person recognises on this network (their own accounts, their other watched multisigs, saved
+/// contacts and recipients this wallet paid, as the extension's `trusted-recipients.ts`
+/// gathers them); the multisig itself is always trusted, so its address must be a canonical
+/// felt or the batch is refused. `summary_length` is the wallet's cap on
 /// the stored summary, in UTF-16 units.
 pub fn review_calls(
     account_address: &str,
-    calls: &[ArgentMultisigCall],
+    calls: &[MultisigCall],
     current: Option<&PublicConfig>,
     class: &ArgentMultisigClass,
     known: &Known,
     trusted: &[Felt],
     summary_length: usize,
 ) -> Result<CallReview, CallReviewError> {
+    // A spelling `same_felt` matches but the strict grammar does not would otherwise drop the
+    // multisig from its own trusted set.
+    let account = felt::parse(account_address).ok_or(CallReviewError::InvalidCalls)?;
     require_safe_calls(account_address, calls, class)?;
     if let Some(call) = calls
         .iter()
@@ -146,14 +152,12 @@ pub fn review_calls(
             config: Some(review),
         });
     }
-    let account = felt::parse(account_address);
     let mut summaries = Vec::with_capacity(calls.len());
     for call in calls {
         let contract = felt::parse(&call.contract_address).ok_or(CallReviewError::InvalidCalls)?;
-        let calldata = felts(&call.calldata);
+        let calldata = felts(&call.calldata)?;
         if let Some(recipient) = recipient_for_flags(&call.entrypoint, &calldata) {
-            if account
-                .iter()
+            if std::iter::once(&account)
                 .chain(trusted)
                 .any(|address| is_lookalike_address(&recipient, address))
             {
