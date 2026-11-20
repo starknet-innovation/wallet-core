@@ -12,7 +12,8 @@ All files: Bramble commit `c43b1a3d3d81410788effc74a413c8aba5e777ea` (`feature/m
 2026-11-20: G5's merge, #998, which added the three `extension-multisig-transactions*.json`, each
 byte-identical to its head `7d4cd801`). Every other file is byte-identical to its earlier copy:
 `extension-activity-detail.jsonl` from G6's merge (#999, `8b729036`), the rest from G4's merge
-(#947, `008f2968`), where re-running `mobile:parity` and `mobile:assets` left no diff; privacy SDK
+(#947, `008f2968`, 2026-11-13; all but its `vault-v13.json` as first copied from the G1–G3 stack
+at `7293d188`), where re-running `mobile:parity` and `mobile:assets` left no diff; privacy SDK
 `vendor/starknet-privacy` at `b40bf109` (Bramble's pin).
 Generators are under `scripts/` in Bramble; each fixture's is reached from
 `generate-mobile-parity-vectors.ts`.
@@ -52,9 +53,9 @@ Generators are under `scripts/` in Bramble; each fixture's is reached from
 | `extension-transactions-verification.json` | `generate-mobile-transaction-vectors.ts` | `44253f028a3caaf4ea896b6c09afec5c3b512cce729ccabe43e4422f712385be` |
 | `extension-transactions-wire.json` | `generate-mobile-transaction-vectors.ts` | `a4e8085ad6b5e14f05c66f291b8198a167cae729e639a812c7af908d412d8e3d` |
 | `extension-activity-detail.jsonl` | `mobile-parity-activity/` | `bcbf5b06b4eeab27bfe9b30961985397386cb2159a917667a40dc8cd768d227f` |
-| `extension-multisig-transactions.json` | `generate-mobile-parity-vectors.ts` (`mobile-multisig-transactions.ts`) | `32d850be66c25149257f61e343dbcaa6bc404209b6c7371475926cb745b17f8c` |
-| `extension-multisig-transactions-refusals.json` | `generate-mobile-parity-vectors.ts` (`mobile-multisig-refusals.ts`) | `99bb711e77ac5af4e518cab4d727555d958544d24074965d6de80797c24d08f8` |
-| `extension-multisig-transactions-signers.json` | `generate-mobile-parity-vectors.ts` (`mobile-multisig-transactions.ts`) | `78ad15af9b68692724cdb1e84118591870f545db892eeaf40ff1e92fe2d9a5b3` |
+| `extension-multisig-transactions.json` | `generate-mobile-parity-vectors.ts` (`mobile-multisig-*.ts`) | `32d850be66c25149257f61e343dbcaa6bc404209b6c7371475926cb745b17f8c` |
+| `extension-multisig-transactions-refusals.json` | `generate-mobile-parity-vectors.ts` (`mobile-multisig-*.ts`) | `99bb711e77ac5af4e518cab4d727555d958544d24074965d6de80797c24d08f8` |
+| `extension-multisig-transactions-signers.json` | `generate-mobile-parity-vectors.ts` (`mobile-multisig-*.ts`) | `78ad15af9b68692724cdb1e84118591870f545db892eeaf40ff1e92fe2d9a5b3` |
 | `vault-v13.json` | `generate-mobile-parity-vectors.ts` (`mobile-parity-vault.ts`) | `d4f0cf2a62d209cd05286a6d81b372bdaf1d356ba273b41e3e8ed2437912977f` |
 
 Read today: `extension-parity.json` (`parity.rs`, `vault_parity.rs`),
