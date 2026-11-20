@@ -16,7 +16,7 @@ use super::multisig_invoke::{
     canonical_non_zero, is_calls, MultisigSignature, PreparedInvoke, StarkPrimitives,
 };
 use crate::accounts::multisig::{signer_guid, ArgentMultisigClass};
-use crate::accounts::multisig_records::is_authority;
+use crate::accounts::multisig_records::{is_authority, not_null};
 use crate::felt;
 use crate::history::explorer::canonical_account_id;
 use crate::js::felt::{canonical_felt, same_felt};
@@ -80,15 +80,27 @@ pub enum StaleReason {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SigningIntent {
     pub account_id: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "not_null",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub broadcast_transaction_hash: Option<String>,
     pub config_snapshot: ConfigSnapshot,
     pub id: String,
     pub prepared: PreparedInvoke,
     pub signatures: Vec<MultisigSignature>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "not_null",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub stale_outcome: Option<StaleOutcome>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "not_null",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub stale_reason: Option<StaleReason>,
     pub state: IntentState,
     pub summary: String,
