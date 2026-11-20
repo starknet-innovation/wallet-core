@@ -142,7 +142,9 @@ Needed now:
   and submit deliberately differ too, closing gaps the extension has: `merge_imported` refuses
   another intent and stops at the threshold (the extension merges past it into an invalid
   intent), and `SubmitPlan` takes the `SigningIntent` and verifies it rather than trusting loose
-  signatures.
+  signatures. So does the deployment review, which refuses an address running another class
+  (`AccountClassUnrecognised`) where the extension reports it as already deployed; and
+  `ProposePlan` applies `require_safe_calls` itself rather than relying on the host's review.
   Neither app can deploy, propose, sign, submit or change signers today; Android's missing
   create stepper, participant picker and shared-account home are screens, Bramble's.
 - **P2 Activity fee and value when sent.** `ActivityEntry` gains the fee (from the receipt) and
