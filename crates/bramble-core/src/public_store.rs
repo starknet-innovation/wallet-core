@@ -1,6 +1,6 @@
 //! Public, non-secret wallet metadata files kept beside `vault.json`: contacts, shared accounts,
-//! coordination checkpoints, and the wallet's preferences (labels, groups, hidden accounts, the
-//! backup flag). They inherit the data directory's protection (iOS complete file protection and
+//! coordination checkpoints, and the wallet's preferences (labels, groups, hidden accounts, RPC
+//! overrides, the backup flag). They inherit the data directory's protection (iOS complete file protection and
 //! backup exclusion; Android `noBackupFilesDir`).
 //!
 //! Every file is `{"version":1, …}`, written with the vault's temp-file, `sync_all`, rename,
@@ -26,8 +26,8 @@ pub const CONTACTS: &str = "contacts.json";
 pub const MULTISIGS: &str = "multisigs.json";
 /// Relay choice, sync checkpoints, and held packages.
 pub const COORDINATION: &str = "coordination.json";
-/// Account labels, groups, hidden accounts and the backup flag: the extension keeps the first
-/// three in its preferences rather than the vault, and the flag is mobile's own.
+/// Account labels, groups, hidden accounts, RPC overrides and the backup flag: the extension keeps
+/// all but the flag in its preferences rather than the vault, and the flag is mobile's own.
 pub const PREFERENCES: &str = "preferences.json";
 /// Largest metadata file the core will read.
 const MAX_FILE_BYTES: u64 = 1024 * 1024;
@@ -96,6 +96,9 @@ struct Preferences {
     #[serde(default)]
     hidden_account_ids: Vec<String>,
     labels: BTreeMap<String, String>,
+    /// `rpcOverrides`: catalog id to endpoint. Absent from files written before it existed.
+    #[serde(default)]
+    rpc_overrides: BTreeMap<String, String>,
     version: u32,
 }
 
@@ -106,6 +109,7 @@ pub(crate) fn save_preferences(dir: &Path, payload: &VaultPayload) -> Result<(),
         groups: payload.groups.clone(),
         hidden_account_ids: payload.hidden_account_ids.clone(),
         labels: payload.labels.clone(),
+        rpc_overrides: payload.rpc_overrides.clone(),
         version: 1,
     };
     write(dir, PREFERENCES, &preferences)
@@ -114,7 +118,8 @@ pub(crate) fn save_preferences(dir: &Path, payload: &VaultPayload) -> Result<(),
 /// Loads the preferences into an opened `payload`; none on disk means none set. The vault and
 /// this file are written one after the other, so a label, group member or hidden id naming an
 /// account the vault does not hold is dropped; anything else invalid (a repeated hidden id
-/// included, as the extension's `isHiddenAccountIds`) fails closed.
+/// included, as the extension's `isHiddenAccountIds`, and an RPC override `isRpcOverrides` or
+/// mobile's `https` rule refuses) fails closed.
 pub(crate) fn load_preferences(dir: &Path, payload: &mut VaultPayload) -> Result<(), CoreError> {
     let Some(preferences) = read::<Preferences>(dir, PREFERENCES)? else {
         return Ok(());
@@ -138,5 +143,6 @@ pub(crate) fn load_preferences(dir: &Path, payload: &mut VaultPayload) -> Result
     payload.hidden_account_ids = hidden;
     payload.labels = labels;
     payload.groups = groups;
+    payload.rpc_overrides = preferences.rpc_overrides;
     account_store::check_consistent(payload).map_err(|_| unreadable(PREFERENCES))
 }

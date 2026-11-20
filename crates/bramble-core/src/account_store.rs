@@ -1,7 +1,7 @@
 //! The unlocked vault in memory: one record per account (family, class, ladder, index, salt,
 //! address, public key), one active account, and the phrase; beside them the wallet's labels,
-//! groups, hidden accounts and backup flag, which live in `public_store`'s preferences file rather
-//! than the vault.
+//! groups, hidden accounts, RPC overrides and backup flag, which live in `public_store`'s
+//! preferences file rather than the vault.
 //! `vault_v13` reads and writes the sealed form, the extension's schema v13.
 //!
 //! Nothing stored is trusted blindly. `validate` checks every field, and re-derives every record
@@ -21,7 +21,7 @@ use crate::files::storage;
 use crate::groups::{self, StoredGroup};
 use crate::kms::Ladder;
 use crate::networks::NetworkId;
-use crate::{felt, kms, CoreError};
+use crate::{felt, kms, rpc_override, CoreError};
 
 /// Records one vault may hold across networks (mobile policy; bounds vault size and unlock work).
 pub(crate) const MAX_ACCOUNT_RECORDS: usize = 128;
@@ -101,6 +101,10 @@ pub(crate) struct VaultPayload {
     #[zeroize(skip)]
     pub labels: BTreeMap<String, String>,
     pub mnemonic: String,
+    /// Each network's custom RPC endpoint, keyed by catalog id (the extension's `rpcOverrides`, a
+    /// preference). May carry an API key: never logged or put in an error.
+    #[zeroize(skip)]
+    pub rpc_overrides: BTreeMap<String, String>,
 }
 
 /// The non-secret state a mutation may change, captured so a failed write can be rolled back.
@@ -111,6 +115,7 @@ pub(crate) struct PublicState {
     groups: Vec<StoredGroup>,
     hidden_account_ids: Vec<String>,
     labels: BTreeMap<String, String>,
+    rpc_overrides: BTreeMap<String, String>,
 }
 
 impl VaultPayload {
@@ -152,6 +157,7 @@ impl VaultPayload {
             hidden_account_ids: Vec::new(),
             labels: BTreeMap::new(),
             mnemonic,
+            rpc_overrides: BTreeMap::new(),
         }
     }
 
@@ -210,6 +216,7 @@ impl VaultPayload {
             groups: self.groups.clone(),
             hidden_account_ids: self.hidden_account_ids.clone(),
             labels: self.labels.clone(),
+            rpc_overrides: self.rpc_overrides.clone(),
         }
     }
 
@@ -218,11 +225,13 @@ impl VaultPayload {
         self.accounts != before.accounts || self.active_account_id != before.active_account_id
     }
 
-    /// Whether the preferences (labels, groups, hidden accounts, backup flag) moved since `before`.
+    /// Whether the preferences (labels, groups, hidden accounts, RPC overrides, backup flag) moved
+    /// since `before`.
     pub(crate) fn preferences_changed(&self, before: &PublicState) -> bool {
         self.labels != before.labels
             || self.groups != before.groups
             || self.hidden_account_ids != before.hidden_account_ids
+            || self.rpc_overrides != before.rpc_overrides
             || self.backup_pending != before.backup_pending
     }
 
@@ -233,6 +242,7 @@ impl VaultPayload {
         self.groups = state.groups;
         self.hidden_account_ids = state.hidden_account_ids;
         self.labels = state.labels;
+        self.rpc_overrides = state.rpc_overrides;
     }
 }
 
@@ -367,6 +377,9 @@ fn is_consistent(payload: &VaultPayload) -> bool {
             .collect::<HashSet<_>>()
             .len()
             == payload.hidden_account_ids.len()
+        && payload.rpc_overrides.iter().all(|(network, url)| {
+            NetworkId::from_catalog_id(network).is_some() && rpc_override::is_rpc_url(url)
+        })
 }
 
 // Re-derives every record from the phrase, one key per record, each also shown to `sealed`;

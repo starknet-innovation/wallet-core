@@ -52,6 +52,7 @@ mod records;
 mod recovery;
 mod recovery_scan;
 pub(crate) use wallet_core::rpc;
+mod rpc_override;
 mod rpc_request;
 mod security;
 mod send;
