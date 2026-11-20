@@ -93,7 +93,6 @@ merged; each is described under its step in [Phases](#phases).
 | --- | --- | --- | --- |
 | M14 Take `v0.4.0` | Bramble, `feature/mobile-wallet` | `v0.4.0` | the pin moves; `importWallet` loses its unused `passphrase` argument at its call sites; both apps build; testers reset their wallets |
 | Extension Krusty 3 | Bramble, `main` | — | the extension still pins `@starknetfoundation/krusty-kms-wasm` `0.11.0`, which predates the fix (Krusty 3.0 changed the derivation; 2.0.0 and earlier kept the leading zero bytes), so its keys and mobile's part for affected phrases. Its users have funds, so it follows Krusty's [migration guide](https://github.com/starknet-innovation/krusty-kms/blob/v3.0.0/docs/migration-3.0.md): keep the old key for any existing account whose public key differs. Needed before Phase 3, where the extension takes this crate's Krusty |
-| G5 Multisig transaction fixtures | Bramble, `feature/mobile-wallet` | — | a generator running the extension's own propose, sign, submit, deploy and change-signers paths, for [P1](#mobile-parity) |
 
 ### Mobile parity
 
@@ -107,9 +106,10 @@ Needed now:
 
 - **P1 Multisig transactions.** Deploy, propose (calls, nonce, transaction hash), collect
   co-signer signatures, check the threshold, build the execute transaction, and change signers.
-  It builds on `accounts::multisig*`, 2.5b's coordination and `send/sign.rs`. Needs G5. Neither
-  app can deploy, propose, sign, submit or change signers today; Android's missing create
-  stepper, participant picker and shared-account home are screens, Bramble's.
+  It builds on `accounts::multisig*`, 2.5b's coordination and `send/sign.rs`. Its fixtures are
+  G5's (Bramble #998, `extension-multisig-transactions*.json`), here unread until it lands.
+  Neither app can deploy, propose, sign, submit or change signers today; Android's missing
+  create stepper, participant picker and shared-account home are screens, Bramble's.
 - **P2 Activity fee and value when sent.** `ActivityEntry` gains the fee (from the receipt) and
   the value when sent. It already has `network` and `token_address`, which mobile can show
   without a release. The oracle is the extension's `activity-detail.ts`. `PriceBook` has no
