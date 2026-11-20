@@ -219,6 +219,15 @@ pub enum Authorization {
         signing_classes: Vec<Felt>,
         implementation: Felt,
     },
+    /// Argent Multisig 0.2, for its own deployment only (`send::multisig_deploy`): one member,
+    /// `Account::public_key`, signs the DEPLOY_ACCOUNT as `[1, 0, public_key, r, s]`
+    /// (`serializeArgentMultisigDeploySignature`), and the estimate validates a query signature
+    /// of that shape over `query_signer`, the first signer in GUID order (`argentQueryAccount`).
+    /// Deployed means running exactly `class_hash`, read at `latest`; any other class is refused.
+    ArgentMultisig {
+        class_hash: Felt,
+        query_signer: Felt,
+    },
 }
 
 /// The acting account, as the wallet stored it.
@@ -244,19 +253,27 @@ impl Account {
         matches!(self.authorization, Authorization::Braavos { .. })
     }
 
-    /// The signature an invoke estimate carries: none for OpenZeppelin and Braavos (validation
-    /// skipped), the extension's `argentQueryAccount` shape `(r, s) = (1, 1)` for Ready.
+    pub(crate) fn is_multisig(&self) -> bool {
+        matches!(self.authorization, Authorization::ArgentMultisig { .. })
+    }
+
+    /// The signature an estimate carries: none for OpenZeppelin and Braavos (validation
+    /// skipped), the extension's `argentQueryAccount` shape `(r, s) = (1, 1)` for Ready, and for
+    /// a multisig's deployment over its first signer in GUID order.
     pub(crate) fn query_signature(&self) -> Vec<Felt> {
-        if self.is_argent() {
-            self.signature(Felt::ONE, Felt::ONE)
-        } else {
-            Vec::new()
+        match self.authorization {
+            Authorization::ArgentMultisig { query_signer, .. } => {
+                vec![Felt::ONE, Felt::ZERO, query_signer, Felt::ONE, Felt::ONE]
+            }
+            _ if self.is_argent() => self.signature(Felt::ONE, Felt::ONE),
+            _ => Vec::new(),
         }
     }
 
-    /// `serializeAccountSignature` for this account's family.
+    /// `serializeAccountSignature` for this account's family (a multisig's deployment:
+    /// `serializeArgentMultisigDeploySignature`, the same one-signer array).
     pub(crate) fn signature(&self, r: Felt, s: Felt) -> Vec<Felt> {
-        if self.is_argent() {
+        if self.is_argent() || self.is_multisig() {
             // One signer, `Signer::Starknet` (variant 0), its public key, then `(r, s)`.
             vec![Felt::ONE, Felt::ZERO, self.public_key, r, s]
         } else {

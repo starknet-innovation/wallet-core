@@ -66,7 +66,7 @@ Krusty 3.1.0). M13 merged before the vault step that 2.7 placed ahead of it, so 
 | 2.6 Catalogs | done (#49) | done (M12, Bramble #928) |
 | 2.7 Swap | done (#50), behind the `mobile` feature | done (M13, Bramble #929), at `v0.3.0`: `mobile/core` is a shell over this crate |
 | Vault switch | done (V1 #58) | G4 done (Bramble #947); M14 not started |
-| [Mobile parity](#mobile-parity) | P6 done (#65), P2 done (#68); the rest not started | not started |
+| [Mobile parity](#mobile-parity) | P6 done (#65), P2 done (#68); P1 in progress (P1a: deploy, propose, co-sign, submit) | not started |
 | 3 Extension | not started; `js/package.json` is private | n/a |
 
 `v0.1.0` is tagged at `35abc8b` (GitHub release only) and was what M2 and M3 pinned. `v0.2.0`
@@ -107,7 +107,17 @@ Needed now:
 - **P1 Multisig transactions.** Deploy, propose (calls, nonce, transaction hash), collect
   co-signer signatures, check the threshold, build the execute transaction, and change signers.
   It builds on `accounts::multisig*`, 2.5b's coordination and `send/sign.rs`. Its fixtures are
-  G5's (Bramble #998, `extension-multisig-transactions*.json`), here unread until it lands.
+  G5's (Bramble #998, `extension-multisig-transactions*.json`).
+  P1a (deploy, propose, co-sign, submit) is in `send::multisig_deploy` (the plan's standalone
+  deployment under `Authorization::ArgentMultisig`), `send::multisig_invoke` and
+  `multisig_invoke_plan` (`ProposePlan`, `SubmitPlan`: neither signs nor holds a key) and
+  `send::multisig_intent` (the signing intent, its package, merge and validator); Bramble's fee
+  overhead for a transaction that waits on co-signers is `MULTISIG_FEE_OVERHEAD`. Plain Rust,
+  not yet exported. Krusty 3.1.0 exports neither a selector (`starknet_keccak` of an entrypoint
+  name) nor Stark signature verification, and the core adds no crypto of its own, so both come
+  in through `multisig_invoke::StarkPrimitives`; nothing implements it outside the tests until
+  Krusty exports them, which the mobile export waits on. Left to the wallet: the class-declared
+  read before a deployment, endpoint failover, and the extension's operation bookkeeping.
   Neither app can deploy, propose, sign, submit or change signers today; Android's missing
   create stepper, participant picker and shared-account home are screens, Bramble's.
 - **P2 Activity fee and value when sent.** `ActivityEntry` gains the fee (from the receipt) and

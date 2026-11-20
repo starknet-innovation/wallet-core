@@ -286,6 +286,11 @@ impl Plan {
             next_id,
             ..Work::default()
         };
+        // A multisig authorises a send with its members' collected signatures, never one key's:
+        // this plan only deploys it.
+        if self.account.is_multisig() && matches!(self.kind, Kind::Transfer(_)) {
+            return self.fail(SendFailureCode::AccountClassUnsupported, None);
+        }
         if let Kind::Refresh { hash } = self.kind {
             return self.rpc(
                 Expect::RefreshStatus,

@@ -70,6 +70,25 @@ pub const CONFIRMATION_DELAYS_MS: [u32; 12] = [
     0, 250, 500, 900, 1_500, 2_500, 4_000, 5_000, 7_500, 10_000, 10_000, 10_000,
 ];
 
+/// `ARGENT_MULTISIG_RESOURCE_BOUNDS_OVERHEAD` (`rpc/multisig-invoke.ts`): a multisig proposal
+/// waits hours or days for co-signers, so the two L1 price lanes tolerate a 64x move (6300%)
+/// while amounts and the L2 price keep starknet.js's 50%.
+pub const MULTISIG_FEE_OVERHEAD: starknet_wallet_core::send::fees::Overhead = {
+    use starknet_wallet_core::send::fees::{LaneMargin, Overhead};
+    let l1 = LaneMargin {
+        amount_percent: 50,
+        price_percent: 6_300,
+    };
+    Overhead {
+        l1_gas: l1,
+        l2_gas: LaneMargin {
+            amount_percent: 50,
+            price_percent: 50,
+        },
+        l1_data_gas: l1,
+    }
+};
+
 /// Bramble's send numbers, for `starknet_wallet_core::send::plan::Plan`.
 pub const SEND_POLICY: starknet_wallet_core::send::plan::Policy =
     starknet_wallet_core::send::plan::Policy {

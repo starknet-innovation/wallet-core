@@ -98,6 +98,11 @@ Grep first; extend in place rather than adding a sibling.
   `ArgentMultisigRecord` and its validators), `accounts::multisig_read` (the pinned-block
   authority read) and `accounts::multisig_declared` (the class-declared read). `lenient_hex_felt`
   (hex in any case with trailing JavaScript whitespace) is `js::felt`.
+- Argent multisig transactions are `send::multisig_deploy` (deployment, through `Plan`),
+  `send::multisig_invoke` (calls, execute calldata, the frozen `PreparedInvoke`, the threshold
+  signature array), `send::multisig_invoke_plan` (`ProposePlan`, `SubmitPlan`) and
+  `send::multisig_intent` (the signing intent, package, merge, validator). Selectors of
+  arbitrary entrypoints and signature verification reach them only through `StarkPrimitives`.
 - The send state machine is `send::plan::Plan`; a wallet's session, keys and activity log reach
   it only through `PlanHost`, and its numbers through `Policy` (Bramble's: `SEND_POLICY`).
 - Network and token records (`NetworkInfo`, `TokenInfo`, `TokenRegistry`, borrowed together as

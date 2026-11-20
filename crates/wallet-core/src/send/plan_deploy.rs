@@ -39,9 +39,10 @@ impl Plan {
         Ok(signature)
     }
 
-    /// Emits the deployment estimate at the read nonce. Ready validates its query signature and
-    /// OpenZeppelin skips validation; Braavos validates a real signature over the query-version
-    /// hash, since its constructor checks the deploy authorization even in an estimate.
+    /// Emits the deployment estimate at the read nonce. Ready and a multisig validate their query
+    /// signature and OpenZeppelin skips validation; Braavos validates a real signature over the
+    /// query-version hash, since its constructor checks the deploy authorization even in an
+    /// estimate.
     pub(crate) fn estimate_deployment(&mut self, host: &dyn PlanHost, expect: Expect) -> SendStep {
         let nonce = self.work.nonce;
         let (signature, skip) = match self.account.deployment.as_ref() {
@@ -59,7 +60,10 @@ impl Plan {
                     Err(code) => return self.fail(code, None),
                 }
             }
-            _ => (self.account.query_signature(), !self.account.is_argent()),
+            _ => (
+                self.account.query_signature(),
+                !self.account.is_argent() && !self.account.is_multisig(),
+            ),
         };
         self.rpc(
             expect,
