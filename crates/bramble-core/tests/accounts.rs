@@ -435,20 +435,22 @@ fn a_tampered_or_malformed_vault_fails_closed() {
         },
         "a spare signing key",
     );
+    // Origin grants are kept (`vault_v13_kept.rs`), but one naming an account the vault lacks
+    // is refused, as the extension refuses it.
     reject(
         &|p| {
-            let id = p["accounts"][0]["id"].clone();
-            p["originGrants"] =
-                serde_json::json!([{ "accountIds": [id], "origin": "https://example.com" }]);
+            p["originGrants"] = serde_json::json!([
+                { "accountIds": ["SN_SEPOLIA:0x1"], "origin": "https://example.com" }
+            ]);
         },
-        "an origin grant",
+        "an origin grant for an unknown account",
     );
     reject(
         &|p| {
             p["accounts"][0]["derivation"] =
                 serde_json::json!({"kind": "ledger", "accountIndex": 0})
         },
-        "a derivation mobile does not hold",
+        "a malformed Ledger derivation",
     );
     reject(&|p| p["extra"] = 1.into(), "unknown field");
     reject(&|p| p["schemaVersion"] = 12.into(), "another schema");

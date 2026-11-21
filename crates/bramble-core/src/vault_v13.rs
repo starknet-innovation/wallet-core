@@ -1,16 +1,21 @@
 //! The vault payload: the extension's schema v13 (`packages/platform/vault/src/schema/`), sealed
 //! in mobile's DEK container (`container.rs`), whose `version` is the schema version.
 //!
-//! Mobile writes the subset of v13 it holds: phrase-derived accounts (`starknet-bip44` on either
-//! of its two ladders, Ready's `argentx-bip44`), accounts imported from a raw key
-//! (`imported-raw-key`, PLAN.md P3), one signing key per account, an active account, and the six
-//! collections it has no use for written empty. Reading accepts exactly that subset and checks it
-//! against both rule sets: the extension's (field grammar, canonical felts, the account ↔
-//! signing-key bijection, the active account) and mobile's stronger one, which re-derives every
+//! Reading accepts every vault the extension's v13 validator accepts (`vault_rules`,
+//! `vault_budget`), with one exception: a vault with no phrase (a Ledger-only or key-only wallet)
+//! is refused, since this wallet has nothing to run without one. Mobile operates the records it
+//! holds keys for: phrase-derived accounts (`starknet-bip44` on either of its two ladders, Ready's
+//! `argentx-bip44`) and accounts imported from a raw key (`imported-raw-key`, PLAN.md P3), on the
+//! networks it has. Those are checked against mobile's stronger rule too, which re-derives every
 //! record from its key (`account_store`): a phrase account's record, public key and sealed key
-//! from the phrase, an imported account's public key and address from the key it sealed. A vault
-//! holding anything else (a Ledger account, an origin grant, an imported seed, a null phrase) is
-//! refused rather than half-read.
+//! from the phrase, an imported account's public key and address from the key it sealed. A record
+//! of that kind that does not re-derive is refused.
+//!
+//! Everything else the vault holds (a Ledger account, an account derived from an imported phrase,
+//! one on the extension's devnet, their sealed keys, origin grants, imported phrases, Ledger
+//! viewing keys, shadow-account scopes, multisig viewing keys and conflict marks) is kept unused
+//! (`vault_wire::Kept`) and written back as it was read: the same records, in the same order. Only
+//! object key order and string escapes can differ, which no reader of the vault sees.
 //!
 //! Signing still derives each phrase account's key per call; its sealed key is what the
 //! extension's schema requires, and must equal the derived one. An imported account's sealed key
@@ -20,17 +25,17 @@
 //! no funds (`docs/PLAN.md`, Vault switch): any of them fails closed with `outdated()`, after the
 //! password is proven, and the user resets the wallet.
 
-use serde::de::{Error as _, IgnoredAny};
-use serde::ser::SerializeSeq;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
+use std::io;
+
+use zeroize::Zeroizing;
 
 use crate::account_catalog::AccountFamily;
 use crate::account_store::{self, KeySource, StoredAccount, VaultPayload};
 use crate::container::{Dek, StoredVault, VaultFile, V1_SCOPE};
 use crate::files::storage;
 use crate::kms::Ladder;
-use crate::{felt, vault, CoreError};
+use crate::vault_wire::{Account, Derivation, Kept, SigningKey, Vault};
+use crate::{felt, vault, vault_budget, vault_rules, CoreError};
 
 /// The extension's `CURRENT_SCHEMA_VERSION`: the payload's `schemaVersion` and the container's
 /// `version`.
@@ -45,40 +50,9 @@ fn outdated() -> CoreError {
     storage("this wallet was saved by an earlier test build; delete it and import your phrase")
 }
 
-/// A v13 collection mobile never holds: written `[]`; a vault with any entry is refused. Entries
-/// are skipped unread, so nothing in them (some are secrets) is kept in memory.
-struct Unused;
-
-impl Serialize for Unused {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_seq(Some(0))?.end()
-    }
-}
-
-impl<'de> Deserialize<'de> for Unused {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let entries = Vec::<IgnoredAny>::deserialize(deserializer)?;
-        if entries.is_empty() {
-            Ok(Self)
-        } else {
-            Err(D::Error::custom("unsupported vault entry"))
-        }
-    }
-}
-
-/// `AccountDerivation`, the kinds mobile writes: two phrase-derived, and an imported key.
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", deny_unknown_fields)]
-enum Derivation {
-    #[serde(rename = "starknet-bip44", rename_all = "camelCase")]
-    StarknetBip44 {
-        account_index: u32,
-        address_index: u32,
-    },
-    #[serde(rename = "argentx-bip44", rename_all = "camelCase")]
-    ArgentxBip44 { address_index: u32 },
-    #[serde(rename = "imported-raw-key")]
-    ImportedRawKey {},
+/// The extension's `VAULT_FULL`: the write would put the vault past the extension's budget.
+fn full() -> CoreError {
+    storage("vault storage limit reached")
 }
 
 impl Derivation {
@@ -87,105 +61,79 @@ impl Derivation {
             KeySource::Phrase(ladder) => ladder,
             KeySource::Imported => return Self::ImportedRawKey {},
         };
+        let index = u64::from(index);
         match ladder {
             Ladder::Account => Self::StarknetBip44 {
                 account_index: index,
                 address_index: 0,
+                seed_id: None,
             },
             Ladder::Address => Self::StarknetBip44 {
                 account_index: 0,
                 address_index: index,
+                seed_id: None,
             },
             Ladder::ArgentX => Self::ArgentxBip44 {
                 address_index: index,
+                seed_id: None,
             },
         }
     }
 
-    /// Mobile's coordinate. `{0, 0}` is index 0 on either Starknet ladder (the same key); it
-    /// reads as `Account`. A path stepping both fields is not one mobile derives. An imported key
-    /// has no coordinate; its record's index is 0.
+    /// Mobile's coordinate for a record it operates. `{0, 0}` is index 0 on either Starknet
+    /// ladder (the same key); it reads as `Account`. A path stepping both fields, or past a `u32`,
+    /// is not one mobile derives. An imported key has no coordinate; its record's index is 0.
     fn key(&self) -> Option<(KeySource, u32)> {
         let (ladder, index) = match *self {
             Self::StarknetBip44 {
                 account_index,
                 address_index: 0,
+                seed_id: None,
             } => (Ladder::Account, account_index),
             Self::StarknetBip44 {
                 account_index: 0,
                 address_index,
+                seed_id: None,
             } => (Ladder::Address, address_index),
-            Self::StarknetBip44 { .. } => return None,
-            Self::ArgentxBip44 { address_index } => (Ladder::ArgentX, address_index),
+            Self::ArgentxBip44 {
+                address_index,
+                seed_id: None,
+            } => (Ladder::ArgentX, address_index),
             Self::ImportedRawKey {} => return Some((KeySource::Imported, 0)),
+            _ => return None,
         };
-        Some((KeySource::Phrase(ladder), index))
+        Some((KeySource::Phrase(ladder), u32::try_from(index).ok()?))
     }
 }
 
-/// `AccountRef` (`wallet-model/src/accounts/accounts.ts`). Public data only.
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct Account {
-    account_contract_type: String,
-    address: String,
-    class_hash: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    deployment_salt: Option<String>,
-    derivation: Derivation,
-    id: String,
-    network_id: String,
-    public_key_x: String,
-    /// Present exactly for `starknet-bip44`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    public_key_y: Option<String>,
+/// Counts what `serde_json` writes, so `encode` can size its buffer exactly.
+#[derive(Default)]
+struct Counter(usize);
+
+impl io::Write for Counter {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        self.0 += bytes.len();
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
 }
 
-/// `SigningKeyRef`.
-#[derive(Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct SigningKey {
-    account_id: String,
-    private_key: String,
-}
-
-/// `VaultV13`. The phrase and signing keys are zeroized on drop.
-#[derive(Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct Vault {
-    #[zeroize(skip)]
-    accounts: Vec<Account>,
-    #[zeroize(skip)]
-    account_secrets: Unused,
-    #[zeroize(skip)]
-    active_account_id: Option<String>,
-    #[zeroize(skip)]
-    imported_seeds: Unused,
-    mnemonic: Option<String>,
-    #[zeroize(skip)]
-    multisig_strk20_key_conflicts: Unused,
-    #[zeroize(skip)]
-    multisig_strk20_viewing_keys: Unused,
-    #[zeroize(skip)]
-    origin_grants: Unused,
-    #[zeroize(skip)]
-    schema_version: u32,
-    #[zeroize(skip)]
-    shadow_account_scopes: Unused,
-    signing_keys: Vec<SigningKey>,
-}
-
-/// Room for one serialised account record and its signing key, with margin, so `encode`'s buffer
-/// never reallocates and leaves no copy of the phrase or a key behind.
-const RECORD_BYTES: usize = 1024;
-
-/// Serialises `payload` as a v13 vault, deriving each phrase account's signing key for the call
-/// only and sealing each imported key the session holds. Run `account_store::check_consistent`
-/// first.
+/// Serialises `payload` as a v13 vault: mobile's records, each phrase account's signing key
+/// derived for the call only and each imported key the session holds, with everything kept put
+/// back where it was. Refuses a vault the extension would refuse, including one past its budget.
+/// Run `account_store::check_consistent` first.
 pub(crate) fn encode(payload: &VaultPayload) -> Result<Zeroizing<Vec<u8>>, CoreError> {
-    let mut accounts = Vec::with_capacity(payload.accounts.len());
-    let mut signing_keys = Vec::with_capacity(payload.accounts.len());
-    for record in &payload.accounts {
+    let kept = &payload.kept;
+    let mut accounts = Vec::with_capacity(payload.accounts.len() + kept.accounts.len());
+    let mut signing_keys = Vec::with_capacity(payload.accounts.len() + kept.signing_keys.len());
+    let mut kept_accounts = kept.accounts.iter().peekable();
+    for (at, record) in payload.accounts.iter().enumerate() {
+        while let Some((_, account)) = kept_accounts.next_if(|(before, _)| *before <= at) {
+            accounts.push(account.clone());
+        }
         let (pair, public_key_y) = payload.signing_key(record)?;
         accounts.push(Account {
             account_contract_type: record.family.clone(),
@@ -204,22 +152,39 @@ pub(crate) fn encode(payload: &VaultPayload) -> Result<Zeroizing<Vec<u8>>, CoreE
             private_key: std::mem::take(&mut *pair.private_key.expose_secret_hex()),
         });
     }
+    accounts.extend(kept_accounts.map(|(_, account)| account.clone()));
+    signing_keys.extend(kept.signing_keys.iter().cloned());
+    // The vault's own key order; a key it did not list (a record added since) goes last.
+    signing_keys.sort_by_key(|key| {
+        kept.key_order
+            .iter()
+            .position(|id| *id == key.account_id)
+            .unwrap_or(usize::MAX)
+    });
     let vault = Vault {
         accounts,
-        account_secrets: Unused,
+        account_secrets: kept.account_secrets.clone(),
         active_account_id: payload.active_account_id.clone(),
-        imported_seeds: Unused,
+        imported_seeds: kept.imported_seeds.clone(),
         mnemonic: Some(payload.mnemonic.clone()),
-        multisig_strk20_key_conflicts: Unused,
-        multisig_strk20_viewing_keys: Unused,
-        origin_grants: Unused,
+        multisig_strk20_key_conflicts: kept.multisig_strk20_key_conflicts.clone(),
+        multisig_strk20_viewing_keys: kept.multisig_strk20_viewing_keys.clone(),
+        origin_grants: kept.origin_grants.clone(),
         schema_version: SCHEMA_VERSION,
-        shadow_account_scopes: Unused,
+        shadow_account_scopes: kept.shadow_account_scopes.clone(),
         signing_keys,
     };
-    let capacity = RECORD_BYTES * (vault.accounts.len() + 4);
-    let mut json = Zeroizing::new(Vec::with_capacity(capacity));
+    if !vault_rules::is_valid(&vault) {
+        return Err(invalid());
+    }
+    // Sized first, so the buffer never reallocates and leaves no copy of a secret behind.
+    let mut size = Counter::default();
+    serde_json::to_writer(&mut size, &vault).map_err(|_| storage("serialise vault"))?;
+    let mut json = Zeroizing::new(Vec::with_capacity(size.0));
     serde_json::to_writer(&mut *json, &vault).map_err(|_| storage("serialise vault"))?;
+    if !vault_budget::within(&json) {
+        return Err(full());
+    }
     Ok(json)
 }
 
@@ -227,30 +192,50 @@ pub(crate) fn encode(payload: &VaultPayload) -> Result<Zeroizing<Vec<u8>>, CoreE
 /// not in the vault; the caller loads them (`public_store::load_preferences`).
 pub(crate) fn decode(plaintext: &[u8]) -> Result<VaultPayload, CoreError> {
     let mut vault: Vault = serde_json::from_slice(plaintext).map_err(|_| invalid())?;
-    if vault.schema_version != SCHEMA_VERSION {
+    // The extension's rules over the whole vault, then mobile's: a phrase to run on.
+    if !vault_rules::is_valid(&vault) || !vault_budget::within(plaintext) {
         return Err(invalid());
     }
     let mnemonic = vault.mnemonic.take().ok_or_else(invalid)?;
-    let accounts = vault
-        .accounts
-        .iter()
-        .map(stored)
-        .collect::<Option<Vec<_>>>()
-        .ok_or_else(invalid)?;
-    let mut payload = VaultPayload::opened(mnemonic, accounts, vault.active_account_id.take());
-    // The extension's bijection: one signing key per account, none spare. With the ids unique
-    // (`validate` checks them first) and the counts equal, each account finding its key is enough.
-    if vault.signing_keys.len() != payload.accounts.len() {
-        return Err(invalid());
+    let mut kept = Kept {
+        key_order: vault
+            .signing_keys
+            .iter()
+            .map(|key| key.account_id.clone())
+            .collect(),
+        account_secrets: std::mem::take(&mut vault.account_secrets),
+        imported_seeds: std::mem::take(&mut vault.imported_seeds),
+        multisig_strk20_key_conflicts: std::mem::take(&mut vault.multisig_strk20_key_conflicts),
+        multisig_strk20_viewing_keys: std::mem::take(&mut vault.multisig_strk20_viewing_keys),
+        origin_grants: std::mem::take(&mut vault.origin_grants),
+        shadow_account_scopes: std::mem::take(&mut vault.shadow_account_scopes),
+        ..Kept::default()
+    };
+    let mut accounts = Vec::with_capacity(vault.accounts.len());
+    let mut wire = Vec::with_capacity(vault.accounts.len());
+    for account in std::mem::take(&mut vault.accounts) {
+        if vault_rules::is_operable(&account) {
+            accounts.push(stored(&account).ok_or_else(invalid)?);
+            wire.push(account);
+        } else {
+            kept.accounts.push((accounts.len(), account));
+        }
     }
+    // Each kept record's key goes with it; the extension's bindings already hold one key per
+    // record but a Ledger one.
+    let (kept_keys, own_keys): (Vec<_>, Vec<_>) = std::mem::take(&mut vault.signing_keys)
+        .into_iter()
+        .partition(|key| kept.account_ids().any(|id| id == key.account_id));
+    kept.signing_keys = kept_keys;
+    let mut payload = VaultPayload::opened(mnemonic, accounts, vault.active_account_id.take());
+    payload.kept = kept;
     // An imported account's key is the one it sealed: canonical, a usable scalar
     // (`isSigningKeyRef`).
     for record in &payload.accounts {
         if record.key != KeySource::Imported {
             continue;
         }
-        let sealed = vault
-            .signing_keys
+        let sealed = own_keys
             .iter()
             .find(|sealed| sealed.account_id == record.id)
             .and_then(|sealed| felt::parse_sealed_private_key(&sealed.private_key))
@@ -263,15 +248,13 @@ pub(crate) fn decode(plaintext: &[u8]) -> Result<VaultPayload, CoreError> {
     // each record what the vault sealed: a phrase account's key and y-coordinate must be the
     // derived ones; an imported account carries no y-coordinate.
     account_store::validate(&payload, |record, (pair, public_key_y)| {
-        let mut sealed = vault
-            .signing_keys
+        let mut sealed = own_keys
             .iter()
             .filter(|sealed| sealed.account_id == record.id);
         let (Some(sealed), None) = (sealed.next(), sealed.next()) else {
             return false;
         };
-        let wire_y = vault
-            .accounts
+        let wire_y = wire
             .iter()
             .find(|account| account.id == record.id)
             .map(|account| &account.public_key_y);
@@ -285,7 +268,7 @@ pub(crate) fn decode(plaintext: &[u8]) -> Result<VaultPayload, CoreError> {
     Ok(payload)
 }
 
-/// One v13 record in mobile's shape; `None` for a derivation mobile does not hold.
+/// One v13 record in mobile's shape; `None` for a coordinate or family mobile does not hold.
 fn stored(account: &Account) -> Option<StoredAccount> {
     let (key, account_index) = account.derivation.key()?;
     AccountFamily::from_wire(&account.account_contract_type)?;
@@ -370,8 +353,28 @@ mod tests {
         let both = Derivation::StarknetBip44 {
             account_index: 1,
             address_index: 1,
+            seed_id: None,
         };
         assert_eq!(both.key(), None);
+        // An imported phrase's account, an index past a `u32` and a device account are not
+        // records mobile operates.
+        let seeded = Derivation::StarknetBip44 {
+            account_index: 1,
+            address_index: 0,
+            seed_id: Some("phrase-1".into()),
+        };
+        assert_eq!(seeded.key(), None);
+        let wide = Derivation::ArgentxBip44 {
+            address_index: u64::from(u32::MAX) + 1,
+            seed_id: None,
+        };
+        assert_eq!(wide.key(), None);
+        let ledger = Derivation::Ledger {
+            account_index: 0,
+            eip2645_application: "LedgerW".into(),
+            path: "m/2645'/1195502025'/734980059'/0'/0'/0".into(),
+        };
+        assert_eq!(ledger.key(), None);
         assert_eq!(
             Derivation::of(KeySource::Imported, 0).key(),
             Some((KeySource::Imported, 0))
@@ -397,8 +400,23 @@ mod tests {
         let imported: Derivation =
             serde_json::from_value(serde_json::json!({"kind": "imported-raw-key"})).unwrap();
         assert_eq!(imported, Derivation::ImportedRawKey {});
+        let ledger = serde_json::json!({
+            "accountIndex": 3,
+            "eip2645application": "argentx",
+            "kind": "ledger",
+            "path": "m/2645'/1195502025'/1148870696'/0'/0'/3",
+        });
+        let read: Derivation = serde_json::from_value(ledger.clone()).unwrap();
+        assert_eq!(serde_json::to_value(read).unwrap(), ledger);
+        let seeded =
+            serde_json::json!({"kind": "argentx-bip44", "addressIndex": 2, "seedId": "phrase-3"});
+        let read: Derivation = serde_json::from_value(seeded.clone()).unwrap();
+        assert_eq!(serde_json::to_value(read).unwrap(), seeded);
         for refused in [
             serde_json::json!({"kind": "ledger", "accountIndex": 0}),
+            serde_json::json!({"kind": "starknet-bip44", "accountIndex": 0, "addressIndex": 0, "seedId": null}),
+            serde_json::json!({"kind": "starknet-bip44", "accountIndex": 1.0, "addressIndex": 0}),
+            serde_json::json!({"kind": "starknet-bip44", "accountIndex": -1, "addressIndex": 0}),
             serde_json::json!({"kind": "imported-raw-key", "addressIndex": 0}),
             serde_json::json!({"kind": "imported-raw-key", "seedId": "phrase-1"}),
             serde_json::json!({"kind": "argentx-bip44", "addressIndex": 0, "extra": 1}),
@@ -408,11 +426,36 @@ mod tests {
         }
     }
 
+    /// An optional key is absent or holds a value: `null` is refused where the extension's
+    /// checks refuse it (`deploymentSalt === undefined`, `hasOnlyKnownKeys` for `publicKeyY`), and
+    /// the two keys that may be `null` must still be present.
     #[test]
-    fn unused_collections_must_be_empty() {
-        assert!(serde_json::from_str::<Unused>("[]").is_ok());
-        assert!(serde_json::from_str::<Unused>(r#"[{"origin":"x"}]"#).is_err());
-        assert!(serde_json::from_str::<Unused>("null").is_err());
-        assert_eq!(serde_json::to_string(&Unused).unwrap(), "[]");
+    fn optional_keys_are_absent_never_null() {
+        let account = serde_json::json!({
+            "accountContractType": "openzeppelin",
+            "address": "0x1",
+            "classHash": "0x2",
+            "derivation": {"kind": "imported-raw-key"},
+            "id": "SN_MAIN:0x1",
+            "networkId": "SN_MAIN",
+            "publicKeyX": "0x3",
+        });
+        assert!(serde_json::from_value::<Account>(account.clone()).is_ok());
+        for key in ["deploymentSalt", "publicKeyY"] {
+            let mut nulled = account.clone();
+            nulled[key] = serde_json::Value::Null;
+            assert!(serde_json::from_value::<Account>(nulled).is_err(), "{key}");
+        }
+        let vault = serde_json::json!({
+            "accounts": [], "accountSecrets": [], "activeAccountId": null, "importedSeeds": [],
+            "mnemonic": null, "multisigStrk20KeyConflicts": [], "multisigStrk20ViewingKeys": [],
+            "originGrants": [], "schemaVersion": 13, "shadowAccountScopes": [], "signingKeys": [],
+        });
+        assert!(serde_json::from_value::<Vault>(vault.clone()).is_ok());
+        for key in ["activeAccountId", "mnemonic", "originGrants"] {
+            let mut missing = vault.clone();
+            missing.as_object_mut().unwrap().remove(key);
+            assert!(serde_json::from_value::<Vault>(missing).is_err(), "{key}");
+        }
     }
 }

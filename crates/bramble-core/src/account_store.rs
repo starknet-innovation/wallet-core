@@ -1,8 +1,9 @@
-//! The unlocked vault in memory: one record per account (family, class, key source, index, salt,
-//! address, public key), one active account, the phrase, and the keys of imported accounts;
-//! beside them the wallet's labels, groups, hidden accounts, RPC overrides and backup flag, which
-//! live in `public_store`'s preferences file rather than the vault.
-//! `vault_v13` reads and writes the sealed form, the extension's schema v13.
+//! The unlocked vault in memory: one record per account mobile operates (family, class, key
+//! source, index, salt, address, public key), one active account, the phrase, and the keys of
+//! imported accounts; beside them the wallet's labels, groups, hidden accounts, RPC overrides and
+//! backup flag, which live in `public_store`'s preferences file rather than the vault.
+//! `vault_v13` reads and writes the sealed form, the extension's schema v13, and keeps what mobile
+//! does not operate (`kept`) out of `accounts`, so nothing that lists, selects or signs reaches it.
 //!
 //! Nothing stored is trusted blindly. `validate` checks every field, and re-derives every record
 //! from its key (the phrase's, or an imported account's sealed one) and compares it with what was
@@ -22,6 +23,7 @@ use crate::files::storage;
 use crate::groups::StoredGroup;
 use crate::kms::Ladder;
 use crate::networks::NetworkId;
+use crate::vault_wire::Kept;
 use crate::{felt, kms, CoreError};
 
 /// Records one vault may hold across networks (mobile policy; bounds vault size and unlock work).
@@ -97,11 +99,15 @@ impl StoredAccount {
 /// an imported key). Resolved inside the call that needs it and dropped there.
 pub(crate) type DerivedKey = (StarkXOnlyKeypair, Option<String>);
 
-/// The unlocked wallet. The phrase and the imported keys are secret; both are zeroized on drop.
+/// The unlocked wallet. The phrase, the imported keys and the kept secrets are secret; all are
+/// zeroized on drop.
 #[derive(Zeroize, ZeroizeOnDrop)]
 pub(crate) struct VaultPayload {
+    /// The records mobile operates. Every list, selection and signature reads these only.
     #[zeroize(skip)]
     pub accounts: Vec<StoredAccount>,
+    /// The vault's active account. It may name a kept record (an extension backup whose active
+    /// account is a Ledger one), which `record` does not find: then no account is active here.
     #[zeroize(skip)]
     pub active_account_id: Option<String>,
     /// Set when a wallet is created and cleared once its Confirm backup step succeeds
@@ -117,6 +123,10 @@ pub(crate) struct VaultPayload {
     /// Boxed so the map moves pointers, never a key; `SecretFelt` zeroizes itself on drop.
     #[zeroize(skip)]
     pub imported_keys: BTreeMap<String, Box<SecretFelt>>,
+    /// What the vault holds that mobile does not operate, written back unchanged. Its secret
+    /// records zeroize themselves.
+    #[zeroize(skip)]
+    pub kept: Kept,
     #[zeroize(skip)]
     pub labels: BTreeMap<String, String>,
     pub mnemonic: String,
@@ -179,6 +189,7 @@ impl VaultPayload {
             groups: Vec::new(),
             hidden_account_ids: Vec::new(),
             imported_keys: BTreeMap::new(),
+            kept: Kept::default(),
             labels: BTreeMap::new(),
             mnemonic,
             rpc_overrides: BTreeMap::new(),
@@ -268,8 +279,20 @@ impl VaultPayload {
         )
     }
 
+    /// A record mobile operates; `None` for a kept one.
     pub(crate) fn record(&self, account_id: &str) -> Option<&StoredAccount> {
         self.accounts.iter().find(|record| record.id == account_id)
+    }
+
+    /// Whether the vault holds `account_id` at all, operated or kept: a new record must not
+    /// take an id the vault already holds.
+    pub(crate) fn holds(&self, account_id: &str) -> bool {
+        self.record(account_id).is_some() || self.kept.account_ids().any(|id| id == account_id)
+    }
+
+    /// Every account record the vault holds, operated or kept.
+    pub(crate) fn record_count(&self) -> usize {
+        self.accounts.len() + self.kept.accounts.len()
     }
 
     pub(crate) fn snapshot(&self) -> PublicState {

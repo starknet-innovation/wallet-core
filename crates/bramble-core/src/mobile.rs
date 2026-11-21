@@ -60,7 +60,10 @@ mod security;
 mod send;
 mod ui;
 mod vault;
+mod vault_budget;
+mod vault_rules;
 mod vault_v13;
+mod vault_wire;
 mod wallet;
 mod wallet_accounts;
 
