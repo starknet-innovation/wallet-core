@@ -16,7 +16,9 @@ use wallet_core::Felt;
 use crate::account_address::{argent_shape, resolve_class};
 use crate::account_catalog::{catalog, class_entry, deployment_classes, AccountFamily};
 use crate::account_names::short_label;
-use crate::account_store::{is_usable_account_index, record_at, StoredAccount, VaultPayload};
+use crate::account_store::{
+    is_usable_account_index, record_at, KeySource, StoredAccount, VaultPayload,
+};
 use crate::kms::Ladder;
 use crate::networks::NetworkId;
 use crate::{felt, CoreError};
@@ -355,7 +357,7 @@ pub(crate) fn derive_selections(
         };
         records.push(record_at(
             selection.family,
-            path,
+            KeySource::Phrase(path),
             selection.account_index,
             class_hash.as_ref(),
             None,

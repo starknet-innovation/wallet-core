@@ -1,7 +1,7 @@
 //! Mobile's relay rules over the core's judges. The judges' own tests (frame parsing, the frame
 //! budget, early ends, ordering, publishing and the URL grammar) live with them in wallet-core's
-//! `nostr/{relay_tests, sync_tests, relay_url}.rs`; what stays here is what mobile adds: one page
-//! per relay, the `wss:`-only rule, the settings normaliser and the stored-relay reader.
+//! `nostr/{relay_tests, sync_tests, relay_url}.rs`; what stays here is what mobile adds: the
+//! exported `RelayStep`, the `wss:`-only rule, the settings normaliser and the stored-relay reader.
 
 use super::*;
 use serde_json::{json, Value};
@@ -18,8 +18,8 @@ fn judge(relays: &[&str]) -> Result<SyncJudge, CoreError> {
     SyncJudge::new(RECIPIENT, 1, relays, HashSet::new())
 }
 
-// "closes a subscription at the accepted frame budget". With one page per relay, a full page
-// finishes the relay with its CLOSE instead of asking for the next page.
+// "closes a subscription at the accepted frame budget". A full page of unseen wraps fills the
+// batch, so the relay finishes with its CLOSE instead of asking for the next page.
 #[test]
 fn closes_a_subscription_at_the_frame_budget() {
     let sync = judge(&["wss://relay.team.example"]).unwrap();
@@ -37,26 +37,6 @@ fn closes_a_subscription_at_the_frame_budget() {
         }
     );
     assert_eq!(sync.candidates().unwrap().len(), 50);
-}
-
-// The paging fixture's "seen wraps are skipped before the batch bound" needs a second page; on
-// one page the same rule shows across relays: relay 0's seen wraps no longer take batch slots
-// from relay 1's unseen ones.
-#[test]
-fn seen_wraps_are_skipped_before_the_batch_bound() {
-    let id = |n: u64| format!("{n:064x}");
-    let seen: HashSet<String> = (0..25).map(id).collect();
-    let urls = vec!["wss://relay.one.example".into(), "wss://relay.two".into()];
-    let sync = SyncJudge::new(RECIPIENT, 1, urls, seen).unwrap();
-    for (relay, ids) in [(0, 0..50u64), (1, 100..130)] {
-        for n in ids {
-            sync.accept_frame(relay, &json!(["EVENT", "mcw-1", event(&id(n))]).to_string());
-        }
-        sync.accept_frame(relay, &json!(["EOSE", "mcw-1"]).to_string());
-    }
-    let candidates = sync.candidates().unwrap();
-    assert_eq!(candidates.len(), 50);
-    assert!(candidates.iter().all(|event| event.id >= id(25)));
 }
 
 // The paging fixture's "a loopback relay" and the rules fixture's `ws://localhost:7000`: the core
@@ -86,6 +66,8 @@ fn relay_urls_are_secure_and_trimmed() {
         matches!(normalize_relay_url("ws://localhost:7000"), Err(CoreError::InvalidInput { reason }) if reason.contains("wss"))
     );
     assert!(normalize_relay_url("WSS://relay.example").is_err());
+    // A multi-byte character across the scheme's fifth byte is refused, not a panic.
+    assert!(normalize_relay_url("aaaa\u{e9}://relay.example").is_err());
 }
 
 // `normalizeStoredWebSocketServiceUrl`: an earlier build's spelling reads back as the same

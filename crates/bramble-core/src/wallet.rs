@@ -361,10 +361,11 @@ impl WalletCore {
         *session = None;
     }
 
-    /// Deprecated shim (`docs/accounts.md` §3.1): the **OpenZeppelin** records on `network`, as
-    /// `AccountInfo` with `index = account_index`. Argent and Braavos records are never returned
-    /// here, so no caller can mistake one for OZ. Use `account_records`. Empty while recovery is
-    /// pending. Passive: never renews the idle window.
+    /// Deprecated shim (`docs/accounts.md` §3.1): the phrase-derived **OpenZeppelin** records on
+    /// `network`, as `AccountInfo` with `index = account_index`. Argent and Braavos records are
+    /// never returned here, so no caller can mistake one for OZ, nor imported ones, whose index
+    /// means nothing. Use `account_records`. Empty while recovery is pending. Passive: never
+    /// renews the idle window.
     pub fn accounts(&self, network: NetworkId) -> Result<Vec<AccountInfo>, CoreError> {
         self.with_session(false, |session| {
             Ok(session
@@ -372,7 +373,9 @@ impl WalletCore {
                 .accounts
                 .iter()
                 .filter(|record| {
-                    record.network() == network && record.family() == AccountFamily::OpenZeppelin
+                    record.network() == network
+                        && record.family() == AccountFamily::OpenZeppelin
+                        && record.phrase_path().is_some()
                 })
                 .map(|record| AccountInfo {
                     index: record.account_index,

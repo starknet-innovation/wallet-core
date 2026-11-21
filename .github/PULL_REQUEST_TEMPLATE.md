@@ -10,6 +10,7 @@
 - [ ] Behaviour changes come with tests; parity changes with regenerated fixtures
 - [ ] No secret can reach a log, error, `Debug` output or UniFFI error string
 - [ ] The mobile build (`--no-default-features --features mobile`) gains no raw-key export
+      (`import_private_key` is the one key it takes; it returns none)
 
 ## Fixtures
 

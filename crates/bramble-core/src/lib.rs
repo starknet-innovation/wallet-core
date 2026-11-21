@@ -19,9 +19,10 @@
 // A panic in a wallet is a crash: library code returns errors (unit tests may unwrap: clippy.toml).
 #![deny(clippy::unwrap_used, clippy::expect_used)]
 
-// The mobile build exports no raw keys. Cargo unifies features, so one dependent that forgets
-// `default-features = false` would silently add them; refuse that build instead. Only the test
-// suites, which run mobile's tests beside the extension's, combine the two.
+// The mobile build returns no raw key and takes one, only to seal it (`import_private_key`; see
+// AGENTS.md). Cargo unifies features, so one dependent that forgets `default-features = false`
+// would silently add the `raw-keys` exports; refuse that build instead. Only the test suites,
+// which run mobile's tests beside the extension's, combine the two.
 #[cfg(all(feature = "mobile", feature = "raw-keys", not(feature = "testing")))]
 compile_error!(
     "`mobile` with `raw-keys` exports raw private keys; build mobile with --no-default-features"

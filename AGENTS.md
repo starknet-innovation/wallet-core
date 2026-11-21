@@ -58,9 +58,13 @@ cargo test -p bramble-core <name>   # narrow loop while iterating
 - **No secret leaves through a side door.** Private keys, mnemonics, passphrases and viewing keys
   never reach logs, error messages, `Debug`/`Display` output or UniFFI error strings. Hold them in
   `Zeroizing` where the API allows. Library code has no print macros (checked).
-- **The mobile build exports no raw keys.** Anything that takes or returns a raw private key goes
-  behind the `raw-keys` feature; `--no-default-features --features mobile` must stay clean
-  (clippy checks it).
+- **The mobile build returns no raw key and takes exactly one.** Nothing on its surface returns a
+  private key, a phrase-derived key, or anything a key can be recovered from. The one inbound
+  exception is `WalletCore::import_private_key` (P3), which seals the pasted key into the
+  unlocked vault and returns only the account's public record. Anything else that takes or
+  returns a raw private key goes behind the `raw-keys` feature; `--no-default-features --features
+  mobile` must stay clean (clippy checks it, and `tests/ffi_surface.rs` fails if any other mobile
+  export takes a key or any returns one).
 - **Fixtures are evidence, not inputs.** Never edit a file under `tests/fixtures/` to make a test
   pass. Regenerate it in Bramble, copy it unchanged, and update its sha256 row (and the Bramble
   commit line) in the fixtures README.
@@ -103,6 +107,8 @@ Grep first; extend in place rather than adding a sibling.
   signature array), `send::multisig_invoke_plan` (`ProposePlan`, `SubmitPlan`) and
   `send::multisig_intent` (the signing intent, package, merge, validator). Selectors of
   arbitrary entrypoints and signature verification reach them only through `StarkPrimitives`.
+  Importing a co-signer's package (chain authority and nonce, the wallet's own review, merge,
+  store checks) is `send::multisig_import::import_intent`.
 - Signer changes are `accounts::multisig_change` (change, self-call, parser, next config,
   review); a multisig batch's safety rule and review are `send::multisig_review`; the
   extension's call summaries (`decodeCall`) and recipient positions are `send::call_decode`, over
@@ -111,7 +117,9 @@ Grep first; extend in place rather than adding a sibling.
   it only through `PlanHost`, and its numbers through `Policy` (Bramble's: `SEND_POLICY`).
 - Network and token records (`NetworkInfo`, `TokenInfo`, `TokenRegistry`, borrowed together as
   `Catalogs`) live in `crates/wallet-core/src/catalog.rs`; the core bundles none, the wallet
-  passes its own in. A network's catalog spelling (`SN_MAIN`) is `NetworkId::catalog_id`.
+  passes its own in. A network's catalog spelling (`SN_MAIN`) is `NetworkId::catalog_id`. A
+  network with the person's RPC override first is `bramble-core`'s
+  `networks::with_rpc_override`; the stored override is `rpc_override.rs`.
 - Bramble's catalogs live in `crates/bramble-core/src/catalogs/`, embedded from
   `crates/bramble-core/generated/`: `networks` (`all`, `info`, `registry`, `catalogs()`, and
   `LEGITIMATE_ALIASES`), `accounts` (the class table, family names, `send_authorization`,
@@ -140,7 +148,8 @@ Grep first; extend in place rather than adding a sibling.
   (`privacy::json`, stricter than `js::json`), routing and limits records (`config.rs`), and the
   gates (`gates.rs`, `home.rs`). `DeploymentState` is `send::types`.
 - Nostr relay work lives beside the keys in `crates/wallet-core/src/nostr/`: the relay-URL
-  grammar (`relay_url::is_nostr_relay_url`), relay selection, frame parsing, gift-wrap batches and
+  grammar (`relay_url::is_nostr_relay_url`, which a custom RPC URL shares as
+  `is_custom_rpc_url`; the endpoint redactor `redact_endpoints` sits beside it), relay selection, frame parsing, gift-wrap batches and
   publishing (`relay.rs`: `valid_relay_urls`, `parsed_gift_wraps`, `PublishJudge`,
   `publish_many_nostr_gift_wraps`), the paged sync (`sync::SyncJudge`) and the sync window
   (`sync_window.rs`). Bramble's numbers for them (`RELAY_LIMITS`, `SYNC_LOOKBACKS`) and its

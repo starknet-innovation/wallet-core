@@ -282,13 +282,15 @@ impl<'a> TokenPreferences<'a> {
             .collect()
     }
 
-    /// `explorerFallbackAllowed`: the stored choice, else allowed (mobile has no RPC override).
-    pub fn explorer_fallback_allowed(&self, network: NetworkId) -> bool {
+    /// `explorerFallbackAllowed`: the stored choice, else allowed only while `network` has no RPC
+    /// override (`rpcOverrides`): a person who set their own endpoint chose that no third party
+    /// sees their addresses, so an outage there is an error, not a silent disclosure.
+    pub fn explorer_fallback_allowed(&self, network: NetworkId, rpc_override: bool) -> bool {
         self.prefs
             .explorer_fallback
             .iter()
             .find(|(n, _)| *n == network)
-            .is_none_or(|(_, allowed)| *allowed)
+            .map_or(!rpc_override, |(_, allowed)| *allowed)
     }
 
     /// Whether the stored file came from a newer app and must not be overwritten.
@@ -400,5 +402,27 @@ mod tests {
             &prefs.trusted_token_addresses(NetworkId::Sepolia),
             "0x5678"
         ));
+    }
+
+    #[test]
+    fn explorer_fallback_defaults_off_under_an_rpc_override() {
+        let (networks, registry) = (testing::networks(), testing::registry());
+        let cat = catalogs(&networks, &registry);
+        let doc = |fallback: &str| {
+            format!(
+                r#"{{"schema":"{}","tokens":[],"hiddenTokens":[],"displayCurrency":"usd","explorerFallback":{fallback}}}"#,
+                TEST_POLICY.schema
+            )
+        };
+        let unset = TokenPreferences::new(Some(doc("{}")), cat, TEST_POLICY);
+        assert!(unset.explorer_fallback_allowed(NetworkId::Mainnet, false));
+        assert!(!unset.explorer_fallback_allowed(NetworkId::Mainnet, true));
+        let chosen = TokenPreferences::new(
+            Some(doc(r#"{"SN_MAIN":true,"SN_SEPOLIA":false}"#)),
+            cat,
+            TEST_POLICY,
+        );
+        assert!(chosen.explorer_fallback_allowed(NetworkId::Mainnet, true));
+        assert!(!chosen.explorer_fallback_allowed(NetworkId::Sepolia, false));
     }
 }

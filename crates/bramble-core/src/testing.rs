@@ -19,15 +19,9 @@ pub fn strk20_viewing_key(
     chain_id: &str,
     pool_address: &str,
 ) -> Result<String, crate::CoreError> {
-    crate::kms::scoped_viewing_key(
-        mnemonic,
-        None,
-        crate::kms::Ladder::Account,
-        account_index,
-        chain_id,
-        pool_address,
-    )
-    .map(|key| key.expose_secret_hex().to_string())
+    let key = crate::kms::private_key(mnemonic, None, crate::kms::Ladder::Account, account_index)?;
+    crate::kms::scoped_viewing_key(&key, chain_id, pool_address)
+        .map(|key| key.expose_secret_hex().to_string())
 }
 
 /// The public key the published phrase derives at `index` on `ladder`, which a signable

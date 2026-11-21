@@ -1,9 +1,13 @@
-//! `isNostrRelayUrl`, which is the extension's `isWebSocketServiceUrl` (`core/service-url.ts`):
-//! `wss:` anywhere, `ws:` only on a loopback host, no credentials or fragment, spelled exactly as
-//! the WHATWG URL parser serialises it. Hand-parsed (no URL crate): a spelling the parser would
-//! rewrite is refused, and so are the exotic ones it repairs (IDN hosts, `@`, an empty `#`).
+//! The extension's endpoint grammar (`core/service-url.ts` `isCanonicalFor`): the secure scheme
+//! anywhere, the cleartext one only on a loopback host, no credentials or fragment, spelled
+//! exactly as the WHATWG URL parser serialises it. Hand-parsed (no URL crate): a spelling the
+//! parser would rewrite is refused, and so are the exotic ones it repairs (IDN hosts, `@`, an
+//! empty `#`). Two schemes use it: a Nostr relay (`isNostrRelayUrl`, which is
+//! `isWebSocketServiceUrl`) and a custom RPC endpoint (`isCustomRpcUrl`, which is `isServiceUrl`).
 
-/// `LOOPBACK_HOSTS`: the hosts `ws:` is allowed on, as the parser prints them.
+use crate::js::num::is_js_whitespace;
+
+/// `LOOPBACK_HOSTS`: the hosts the cleartext scheme is allowed on, as the parser prints them.
 const LOOPBACK_HOSTS: [&str; 2] = ["127.0.0.1", "localhost"];
 /// `MAX_SERVICE_URL_LENGTH`, measured on the canonical spelling (here the value itself).
 const MAX_SERVICE_URL_LENGTH: usize = 2048;
@@ -71,12 +75,25 @@ fn is_canonical_tail(tail: &str) -> bool {
 /// `localhost`, in plain ASCII with no credentials or fragment, spelled exactly as the WHATWG
 /// parser prints it (lowercase host, no default port, no leading zeros, no dot segments).
 pub fn is_nostr_relay_url(value: &str) -> bool {
+    is_canonical_endpoint(value, "wss://", "ws://")
+}
+
+/// `isCustomRpcUrl` (`wallet-model/networks/custom-network.ts`, which is `isServiceUrl`): the
+/// same grammar over `https://`, or `http://` on `127.0.0.1` or `localhost`. A wallet that may
+/// not use cleartext at all narrows it to `https://` itself.
+pub fn is_custom_rpc_url(value: &str) -> bool {
+    is_canonical_endpoint(value, "https://", "http://")
+}
+
+// `isCanonicalFor(value, secure, loopback)`. Both scheme pairs are special in the WHATWG parser,
+// so they share one serialisation; only the default ports differ (443 secure, 80 cleartext).
+fn is_canonical_endpoint(value: &str, secure: &str, loopback: &str) -> bool {
     if value.is_empty() || value.len() > MAX_SERVICE_URL_LENGTH || !value.is_ascii() {
         return false;
     }
-    let (rest, default_port, loopback_only) = if let Some(rest) = value.strip_prefix("wss://") {
+    let (rest, default_port, loopback_only) = if let Some(rest) = value.strip_prefix(secure) {
         (rest, 443, false)
-    } else if let Some(rest) = value.strip_prefix("ws://") {
+    } else if let Some(rest) = value.strip_prefix(loopback) {
         (rest, 80, true)
     } else {
         return false;
@@ -107,9 +124,114 @@ pub fn is_nostr_relay_url(value: &str) -> bool {
         && is_canonical_tail(tail)
 }
 
+/// `REDACTED_ENDPOINT`: what an endpoint reads as once `redact_endpoints` has removed it.
+pub const REDACTED_ENDPOINT: &str = "[endpoint]";
+
+fn is_scheme_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || matches!(c, '+' | '.' | '-')
+}
+
+/// The end of an `ENDPOINT_PATTERN` match starting at `start`, an ASCII letter: the rest of a
+/// scheme, `:`, two slashes each after any run of backslashes (a JSON-escaped `https:\/\/`), then
+/// one or more characters up to whitespace, a quote, an angle bracket or a backtick.
+fn endpoint_end(text: &str, start: usize) -> Option<usize> {
+    let bytes = text.as_bytes();
+    let mut at = start + 1;
+    while bytes
+        .get(at)
+        .is_some_and(|b| is_scheme_char(char::from(*b)))
+    {
+        at += 1;
+    }
+    for expected in *b"://" {
+        while expected == b'/' && bytes.get(at) == Some(&b'\\') {
+            at += 1;
+        }
+        if bytes.get(at) != Some(&expected) {
+            return None;
+        }
+        at += 1;
+    }
+    let tail = text.get(at..)?;
+    let len = tail
+        .find(|c| is_js_whitespace(c) || matches!(c, '"' | '<' | '>' | '`'))
+        .unwrap_or(tail.len());
+    (len > 0).then_some(at + len)
+}
+
+/// The extension's `redactEndpoints` (`core/service-url.ts`): replaces every scheme-qualified URL
+/// in failure text with [`REDACTED_ENDPOINT`], keeping everything else (the method, an RPC code, a
+/// revert reason, felts). A configured endpoint may carry an API key, and failure text can echo
+/// it. A match starts only at the front of a word (the pattern's lookbehind), so a failed start
+/// rescans nothing and the scan stays linear.
+pub fn redact_endpoints(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let (mut copied, mut prev) = (0, None);
+    for (at, c) in text.char_indices() {
+        if at >= copied && c.is_ascii_alphabetic() && !prev.is_some_and(is_scheme_char) {
+            if let Some(end) = endpoint_end(text, at) {
+                out.push_str(text.get(copied..at).unwrap_or_default());
+                out.push_str(REDACTED_ENDPOINT);
+                copied = end;
+            }
+        }
+        prev = Some(c);
+    }
+    out.push_str(text.get(copied..).unwrap_or_default());
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // The extension's `redactEndpoints` cases (`core/tests/service-url.test.ts`).
+    #[test]
+    fn redacts_endpoints_as_the_extension_does() {
+        let e = REDACTED_ENDPOINT;
+        for (text, redacted) in [
+            (
+                "failed at https://rpc.example.test/v0_8/node-key-123?apikey=abc then wss://ws.example.test/k",
+                format!("failed at {e} then {e}"),
+            ),
+            ("Internal error:\nhttps://rpc.example/node-key-123", format!("Internal error:\n{e}")),
+            ("at https://rpc.example/key\nnext line", format!("at {e}\nnext line")),
+            (
+                r#"{"url":"https://rpc.example.test/key","code":-32603}"#,
+                r#"{"url":"[endpoint]","code":-32603}"#.into(),
+            ),
+            ("<a href=https://x.example/key>gateway</a>", "<a href=[endpoint]>gateway</a>".into()),
+            (
+                r#"upstream error: {"url":"https:\/\/rpc.example\/v1\/node-key-123"}"#,
+                format!(r#"upstream error: {{"url":"{e}"}}"#),
+            ),
+            (r"no endpoint configured: rpc:\/", r"no endpoint configured: rpc:\/".into()),
+            ("no endpoint configured: rpc://", "no endpoint configured: rpc://".into()),
+            (
+                "RPC: starknet_addInvokeTransaction with params {} 55: Account validation failed: 0x0123456789abcdef",
+                "RPC: starknet_addInvokeTransaction with params {} 55: Account validation failed: 0x0123456789abcdef".into(),
+            ),
+            // Mobile's own: the lookbehind, case, a non-ASCII break, and a multi-byte tail.
+            ("1https://a.example/k and HTTPS://B.example/k", format!("1https://a.example/k and {e}")),
+            ("at https://a.example/k\u{a0}after", format!("at {e}\u{a0}after")),
+            ("é https://a.example/ключ`", format!("é {e}`")),
+        ] {
+            assert_eq!(redact_endpoints(text), redacted, "{text}");
+        }
+        let nested = r#"{"error":"{\"url\":\"wss:\\/\\/relay.example\\/node-key-123\"}"}"#;
+        assert!(!redact_endpoints(nested).contains("node-key-123"));
+        let once = redact_endpoints("at https://rpc.example.test/key");
+        assert_eq!(redact_endpoints(&once), once);
+        for long in [
+            "a".repeat(200_000),
+            "a\n".repeat(100_000),
+            "https:".repeat(50_000),
+            format!("https:{}", "\\".repeat(200_000)),
+            "https:/\\".repeat(50_000),
+        ] {
+            assert_eq!(redact_endpoints(&long), long);
+        }
+    }
 
     #[test]
     fn relay_urls_are_canonical_secure_or_loopback() {
@@ -157,6 +279,56 @@ mod tests {
             "ws://localhost:80",
         ] {
             assert!(!is_nostr_relay_url(bad), "{bad}");
+        }
+    }
+
+    #[test]
+    fn rpc_urls_are_canonical_https_or_loopback_http() {
+        for good in [
+            "https://rpc.example",
+            "https://rpc.example/",
+            "https://rpc.example/v0_10/abcDEF123",
+            "https://rpc.example/rpc?apikey=Secret%2F",
+            "https://rpc.example:8443",
+            "https://[::1]:5050/rpc",
+            "http://127.0.0.1:5050/rpc",
+            "http://localhost:5050",
+            "http://localhost:443",
+        ] {
+            assert!(is_custom_rpc_url(good), "{good}");
+        }
+        let long = format!("https://rpc.example/{}", "a".repeat(2048));
+        for bad in [
+            "",
+            " https://rpc.example",
+            "https://rpc.example ",
+            "https://rpc.example\n",
+            "https://rpc.example/a b",
+            "https://rpc.example/\"key\"",
+            "https://rpc.example/<k>",
+            "https://rpc.example/`k`",
+            "https://rpc.example\\rpc",
+            "https://user:pw@rpc.example",
+            "https://key@rpc.example",
+            "https://rpc.example/#frag",
+            "https://rpc.example:443",
+            "https://RPC.example",
+            "HTTPS://rpc.example",
+            "https://rpc.example/a/../b",
+            "https://rpc.example?q=1",
+            "https://rpc.example/?q='x'",
+            "https://réseau.example",
+            "https://",
+            "http://rpc.example",
+            "http://10.0.0.1:5050",
+            "http://[::1]:5050",
+            "http://localhost:80",
+            "wss://rpc.example",
+            "ftp://rpc.example",
+            "rpc.example",
+            long.as_str(),
+        ] {
+            assert!(!is_custom_rpc_url(bad), "{bad}");
         }
     }
 }
