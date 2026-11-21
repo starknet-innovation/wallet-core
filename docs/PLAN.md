@@ -72,7 +72,7 @@ v13 payload.
 | 2.7 Swap | done (#50), behind the `mobile` feature | done (M13, Bramble #929), at `v0.3.0`: `mobile/core` is a shell over this crate |
 | Vault switch | done (V1 #58) | G4 done (Bramble #947); M14 done (Bramble #980): mobile pins `v0.4.0` |
 | [Mobile parity](#mobile-parity) | P6 done (#65), P2 done (#68); P1's mechanism done (P1a #70, P1b #71, P1c #72), not exported until Krusty exports a selector and signature verification; P3 done (#80), not shippable until Bramble's imported-key v13 fixture lands; P4 done (#78), no fixture yet (needs a Bramble generator); P5 done (#83), no fixture yet | not started |
-| [Parity](#parity) P7–P16 | P7's first half done (#87): every v13 collection is read and what mobile does not operate is kept unused; schema 14 remains. P9's mechanism done (#84), not exported: it waits on Krusty's selector (krusty-kms#257) and on the review's annotation flags. P10 done (#86). P12's read side done (#85), not exported; its revoke waits on P9. None has a fixture yet (G7). P8, P11 and P13–P16 not started | not started |
+| [Parity](#parity) P7–P16 | P7's first half done (#87): every v13 collection is read and what mobile does not operate is kept unused; schema 14 remains. P9's mechanism done (#84), not exported: it waits on Krusty's selector (krusty-kms#257), the review's annotation flags, a summary per call and the caller's activity text. P10 done (#86). P12's read side done (#85), not exported; its revoke waits on P9. None has a fixture yet (G7). P8, P11 and P13–P16 not started | not started |
 | 3 Extension | not started, and waits for parity; `js/package.json` is private | n/a |
 
 `v0.1.0` is tagged at `35abc8b` (GitHub release only) and was what M2 and M3 pinned. `v0.2.0`
@@ -420,7 +420,8 @@ Foundations, which the features need, and Ledger, which needs only the first:
   (`invoke::check` against its own account and `Policy`, and the batch's sender and network), so
   a batch reviewed for another account or network, or a looser policy, fails
   `PreparationUnavailable` before any request. The two counts are Bramble's (`MAX_INVOKE_CALLS`,
-  `MAX_CALL_CALLDATA_FELTS` in `SEND_POLICY`); the fee margin and headroom are the transfer's. A pending record is
+  `MAX_CALL_CALLDATA_FELTS` in `SEND_POLICY`); the fee margin and headroom are the transfer's.
+  A pending record is
   `PendingKind::Invoke`, mobile's row `ActivityKind::Invoke`, summarised as the review is.
   Departures: the self-call refusal, the bounds and the grammar apply to every batch, not only a
   dapp's; a poisoned payee refuses at `Invoke::new`, where the dapp path lets the flag ride the
@@ -439,7 +440,8 @@ Foundations, which the features need, and Ledger, which needs only the first:
   summary per call and the caller's activity text: a review with no warning on an unlimited
   approval, or on a swap paid to another address, is not the extension's review. Not ported, as
   for the transfer: the `fast` speed, a SNIP-36 proof (P15) and the approval queue's review
-  budget (P16). As for a multisig, Krusty 3.1.0 has no selector, so `Invoke::new` takes `multisig_invoke::StarkPrimitives`, and nothing
+  budget (P16). As for a multisig, Krusty 3.1.0 has no selector, so `Invoke::new` takes
+  `multisig_invoke::StarkPrimitives`, and nothing
   outside the tests can build a batch until krusty-kms#257. Evidence: every transfer capture
   (OpenZeppelin, Ready, Braavos) driven as a one-call batch puts the same requests on the wire
   and signs the same hashes (`transactions_invoke.rs`); the multicall, its refusals and failure
