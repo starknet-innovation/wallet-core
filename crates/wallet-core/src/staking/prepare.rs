@@ -223,16 +223,25 @@ pub fn prepare(
 /// `createStakingPreparationStore`: the one-time preparations, at most the policy's
 /// `max_preparations` (the oldest is dropped past it; a dropped review is prepared again). A
 /// wallet that shares one across threads wraps it in its own lock.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct StakingPreparations {
     pending: VecDeque<(u64, StakingPreparation)>,
     last_id: u64,
 }
 
 impl StakingPreparations {
+    /// An empty store whose ids start at a random point, so an id held from another store (an
+    /// earlier process, a store rebuilt on unlock) never names one of this store's preparations.
+    pub fn new() -> Result<Self, crate::Error> {
+        Ok(Self {
+            pending: VecDeque::new(),
+            last_id: u64::from_le_bytes(crate::envelope::random()?),
+        })
+    }
+
     /// Holds `preparation` for one confirm and returns its id.
     pub fn put(&mut self, preparation: StakingPreparation, policy: &StakingPolicy) -> u64 {
-        self.last_id += 1;
+        self.last_id = self.last_id.wrapping_add(1);
         self.pending.push_back((self.last_id, preparation));
         while self.pending.len() > policy.max_preparations {
             self.pending.pop_front();

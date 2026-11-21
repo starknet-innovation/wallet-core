@@ -24,7 +24,7 @@ fn a_preparation_confirms_once_and_only_on_the_account_and_network_it_was_review
         networks: &BOTH,
         ..POLICY
     };
-    let mut store = StakingPreparations::default();
+    let mut store = StakingPreparations::new().unwrap();
     let prepared = || act(&mut chain(), StakingAction::Stake, Some("5")).unwrap();
     let id = store.put(prepared(), &policy);
     let account = f(ACCOUNT);
@@ -63,7 +63,7 @@ fn a_preparation_confirms_once_and_only_on_the_account_and_network_it_was_review
 
 #[test]
 fn a_preparation_is_refused_once_staking_is_switched_off() {
-    let mut store = StakingPreparations::default();
+    let mut store = StakingPreparations::new().unwrap();
     let id = store.put(
         act(&mut chain(), StakingAction::Stake, Some("5")).unwrap(),
         &POLICY,
@@ -89,7 +89,7 @@ fn the_oldest_preparation_is_dropped_past_the_policys_cap() {
         max_preparations: 2,
         ..POLICY
     };
-    let mut store = StakingPreparations::default();
+    let mut store = StakingPreparations::new().unwrap();
     let ids: Vec<u64> = (0..3)
         .map(|_| {
             store.put(
@@ -108,4 +108,23 @@ fn the_oldest_preparation_is_dropped_past_the_policys_cap() {
             .claim(*id, &account, NetworkId::Mainnet, &small)
             .is_ok());
     }
+}
+
+#[test]
+fn an_id_from_another_store_claims_nothing_here() {
+    let prepared = || act(&mut chain(), StakingAction::Stake, Some("5")).unwrap();
+    let mut earlier = StakingPreparations::new().unwrap();
+    let stale = earlier.put(prepared(), &POLICY);
+    // The store is rebuilt (a restart, a new unlock) while a review still holds `stale`.
+    let mut store = StakingPreparations::new().unwrap();
+    let fresh = store.put(prepared(), &POLICY);
+    assert_ne!(stale, fresh);
+    let account = f(ACCOUNT);
+    assert_eq!(
+        store.claim(stale, &account, NetworkId::Mainnet, &POLICY),
+        Err(StakingRefusal::ReviewAgain)
+    );
+    assert!(store
+        .claim(fresh, &account, NetworkId::Mainnet, &POLICY)
+        .is_ok());
 }
