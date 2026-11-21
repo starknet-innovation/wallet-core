@@ -2,9 +2,10 @@
 //! source, index, salt, address, public key), one active account, the phrase, and the keys of
 //! imported accounts; beside them the wallet's labels, groups, hidden accounts, RPC overrides and
 //! backup flag, which live in `public_store`'s preferences file rather than the vault.
-//! `vault_v13` reads and writes the sealed form, the extension's schema v13, and keeps what mobile
-//! does not operate (`kept`) out of `accounts`, so nothing that lists, selects or signs reaches it;
-//! only its ids (`holds`) and public addresses (`own_addresses`) are read beyond the vault codec.
+//! `vault_v13` reads and writes the sealed form, the extension's schema v13 or v14, and keeps what
+//! mobile does not operate (`kept`) out of `accounts`, so nothing that lists, selects or signs
+//! reaches it; only its ids (`holds`) and public addresses (`own_addresses`) are read beyond the
+//! vault codec. A v14 vault's `accountProvenance` is held whole (`vault_provenance`).
 //!
 //! Nothing stored is trusted blindly. `validate` checks every field, and re-derives every record
 //! from its key (the phrase's, or an imported account's sealed one) and compares it with what was
@@ -24,6 +25,8 @@ use crate::files::storage;
 use crate::groups::StoredGroup;
 use crate::kms::Ladder;
 use crate::networks::NetworkId;
+use crate::vault_provenance::Provenance;
+use crate::vault_v13::NEW_VAULT_SCHEMA;
 use crate::vault_wire::Kept;
 use crate::{felt, kms, CoreError};
 
@@ -107,6 +110,10 @@ pub(crate) struct VaultPayload {
     /// The records mobile operates. Every list, selection and signature reads these only.
     #[zeroize(skip)]
     pub accounts: Vec<StoredAccount>,
+    /// A v14 vault's `accountProvenance`, operated and kept records alike; `None` when the vault
+    /// has none (always, at 13).
+    #[zeroize(skip)]
+    pub account_provenance: Option<Provenance>,
     /// The vault's active account. It may name a kept record (an extension backup whose active
     /// account is a Ledger one), which `record` does not find: then no account is active here.
     #[zeroize(skip)]
@@ -135,6 +142,10 @@ pub(crate) struct VaultPayload {
     /// preference). May carry an API key: never logged or put in an error.
     #[zeroize(skip)]
     pub rpc_overrides: BTreeMap<String, String>,
+    /// The schema the vault was read at, and is written back at (13 or 14; a new vault's is
+    /// `NEW_VAULT_SCHEMA`).
+    #[zeroize(skip)]
+    pub schema_version: u32,
     /// Catalog ids whose refused override was dropped on load (`public_store::load_preferences`):
     /// their explorer fallback stays off by default. Set only on load.
     #[zeroize(skip)]
@@ -185,6 +196,7 @@ impl VaultPayload {
     ) -> Self {
         Self {
             accounts,
+            account_provenance: None,
             active_account_id,
             backup_pending: false,
             groups: Vec::new(),
@@ -194,6 +206,7 @@ impl VaultPayload {
             labels: BTreeMap::new(),
             mnemonic,
             rpc_overrides: BTreeMap::new(),
+            schema_version: NEW_VAULT_SCHEMA,
             explorer_fallback_off: BTreeSet::new(),
         }
     }
