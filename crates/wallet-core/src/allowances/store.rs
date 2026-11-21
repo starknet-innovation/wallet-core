@@ -11,6 +11,8 @@
 //! mutation queue). ERC-20's relative changes are applied here (`apply_delta`) for that reason.
 //! A writer is given the `Ranking` of the tokens the account trusts at that moment.
 
+use std::collections::{HashMap, HashSet};
+
 use serde_json::Value;
 
 use super::discovery::AllowanceReading;
@@ -154,38 +156,27 @@ fn applied_delta(tracked: Option<&AllowanceRecord>, delta: &AllowanceDelta) -> A
 // amount and keeps the mark (the outcome is spent). Nothing else changes a record.
 fn settled_entry(
     stored: &AllowanceRecord,
-    readings: &[AllowanceReading],
-    outcomes: &[RevokeOutcome],
+    zeroed: &HashSet<&str>,
+    non_zero: &HashMap<&str, U256>,
+    outcomes: &HashMap<&str, RevokeStatus>,
 ) -> Option<AllowanceRecord> {
-    let reading = readings
-        .iter()
-        .rev()
-        .find(|r| r.id == stored.id && r.amount != U256::ZERO);
-    let zeroed = readings
-        .iter()
-        .any(|r| r.id == stored.id && r.amount == U256::ZERO);
     let zero_bound = stored.amount == U256::ZERO && stored.lower_bound;
-    if zeroed && (stored.revoking || zero_bound) {
+    if zeroed.contains(stored.id.as_str()) && (stored.revoking || zero_bound) {
         return None;
     }
-    // Conflicting reports for one hash resolve to failed: it only clears a mark.
     let outcome = stored
         .revoke_hash
-        .as_ref()
+        .as_deref()
         .filter(|_| stored.revoking)
-        .and_then(|hash| {
-            let mine = outcomes.iter().filter(|o| &o.hash == hash);
-            mine.map(|o| o.status)
-                .reduce(|a, b| if a == RevokeStatus::Failed { a } else { b })
-        });
-    match (outcome, reading) {
+        .and_then(|hash| outcomes.get(hash));
+    match (outcome, non_zero.get(stored.id.as_str())) {
         (Some(RevokeStatus::Failed), _) => Some(AllowanceRecord {
             revoking: false,
             revoke_hash: None,
             ..stored.clone()
         }),
-        (Some(RevokeStatus::Accepted), Some(reading)) => Some(AllowanceRecord {
-            amount: reading.amount,
+        (Some(RevokeStatus::Accepted), Some(&amount)) => Some(AllowanceRecord {
+            amount,
             lower_bound: false,
             revoke_hash: None,
             ..stored.clone()
@@ -284,10 +275,29 @@ impl<'a> AllowanceLog<'a> {
         readings: &[AllowanceReading],
         outcomes: &[RevokeOutcome],
     ) -> Result<(), Error> {
+        // Indexed once (`entriesAfterSettle`), so the work is linear in the log and the
+        // readings: a later non-zero reading for an id wins, and conflicting outcomes for one
+        // hash resolve to failed, which only clears a mark.
+        let zeroed: HashSet<&str> = readings
+            .iter()
+            .filter(|r| r.amount == U256::ZERO)
+            .map(|r| r.id.as_str())
+            .collect();
+        let non_zero: HashMap<&str, U256> = readings
+            .iter()
+            .filter(|r| r.amount != U256::ZERO)
+            .map(|r| (r.id.as_str(), r.amount))
+            .collect();
+        let mut by_hash: HashMap<&str, RevokeStatus> = HashMap::new();
+        for outcome in outcomes {
+            if by_hash.get(outcome.hash.as_str()) != Some(&RevokeStatus::Failed) {
+                by_hash.insert(outcome.hash.as_str(), outcome.status);
+            }
+        }
         let entries = self.load()?;
         let settled: Vec<AllowanceRecord> = entries
             .iter()
-            .filter_map(|stored| settled_entry(stored, readings, outcomes))
+            .filter_map(|stored| settled_entry(stored, &zeroed, &non_zero, &by_hash))
             .collect();
         if settled == entries {
             return Ok(());
