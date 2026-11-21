@@ -111,17 +111,17 @@ fn short(value: &Felt) -> String {
     short_label(&felt::canonical(value))
 }
 
-/// `UINT256_MAX`, where a running total that would overflow stops: past the threshold either way.
-const SATURATED: U256 = U256 {
-    low: u128::MAX,
-    high: u128::MAX,
-};
+/// A pair's running total, `None` once it has passed `UINT256_MAX`. It stays there through a
+/// decrease until an `approve` replaces it: the extension's `bigint` would know by how much, and
+/// a cap that forgot the excess would read a later grant from too low and miss its flag. Wrong, if
+/// at all, by over-warning, the direction this annotation may err in.
+type Total = Option<U256>;
 
 /// `standingAllowanceTotals` for `actor`: its records on its network, for a trusted token; the
 /// last record of each pair wins, as `Map.set` does. A watched collection's records may be seeded
 /// too, unlike the extension's, but are never read: an approve on a watched collection is an
 /// `NftApproval`, which moves no total.
-fn standing_totals(actor: &Account, context: &ReviewContext) -> HashMap<(Felt, Felt), U256> {
+fn standing_totals(actor: &Account, context: &ReviewContext) -> HashMap<(Felt, Felt), Total> {
     let mut totals = HashMap::new();
     let Ok(own) = activity_account_id(actor.network, felt::canonical(&actor.address)) else {
         return totals;
@@ -136,7 +136,7 @@ fn standing_totals(actor: &Account, context: &ReviewContext) -> HashMap<(Felt, F
             && canonical_account_id(&record.account_id).as_ref() == Some(&own)
             && context.known.token(&token).is_some()
         {
-            totals.insert((token, spender), record.amount);
+            totals.insert((token, spender), Some(record.amount));
         }
     }
     totals
@@ -162,18 +162,21 @@ fn unlimited_approvals(
                 return false;
             };
             let key = (call.contract_address, *spender);
-            let here = totals.get(&key).copied().unwrap_or_default();
+            let here = totals.get(&key).copied().unwrap_or(Some(U256::ZERO));
             let (grants, total) = if DECREASE_ALLOWANCE.contains(&call.entrypoint.as_str()) {
-                (false, here.checked_sub(amount).unwrap_or_default())
+                (
+                    false,
+                    here.map(|here| here.checked_sub(amount).unwrap_or_default()),
+                )
             } else if decoded.kind != CallKind::Approve {
                 return false;
             } else if call.entrypoint == "approve" {
-                (true, amount)
+                (true, Some(amount))
             } else {
-                (true, here.checked_add(amount).unwrap_or(SATURATED))
+                (true, here.and_then(|here| here.checked_add(amount)))
             };
             totals.insert(key, total);
-            grants && is_unlimited(total)
+            grants && total.is_none_or(is_unlimited)
         })
         .collect()
 }

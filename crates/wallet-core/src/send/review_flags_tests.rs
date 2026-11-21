@@ -395,6 +395,18 @@ fn a_total_past_uint256_saturates_instead_of_dropping_the_flag() {
     // A decrease that leaves the total past the threshold is still not a grant.
     let decrease = call(ETH, "decrease_allowance", &[SPENDER, "0x1", "0x0"]);
     assert_eq!(seeded(&[decrease], full, &[]), NONE);
+    // Past UINT256_MAX the total stays there through a decrease: the extension's bigint holds
+    // 2^257 - 2, less 2^256 - 1, plus one, and flags the last call; a capped total read it as one.
+    let max = call(ETH, "increase_allowance", &[SPENDER, MAX_U128, MAX_U128]);
+    let down = call(ETH, "decrease_allowance", &[SPENDER, MAX_U128, MAX_U128]);
+    with_eth(|context| {
+        let calls = [max.clone(), max, down, increase("0x1")];
+        let unlimited = vec!["unlimited-approval"];
+        assert_eq!(
+            codes(&calls, context),
+            [unlimited.clone(), unlimited.clone(), vec![], unlimited]
+        );
+    });
 }
 
 /// `avnuRouteCalldata`'s header (sell, its amount, buy, its quote, the floor, the beneficiary, the
