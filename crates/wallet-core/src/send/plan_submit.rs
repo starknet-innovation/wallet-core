@@ -66,8 +66,17 @@ pub(super) fn settle(
 }
 
 impl Plan {
-    pub(super) fn is_transfer(&self) -> bool {
-        matches!(self.kind, Kind::Transfer(_))
+    /// Whether the plan submits an INVOKE (deploying first when it must).
+    pub(super) fn is_invoke(&self) -> bool {
+        self.invoke_calldata().is_some()
+    }
+
+    /// The `__execute__` calldata of the INVOKE this plan submits.
+    pub(crate) fn invoke_calldata(&self) -> Option<&[Felt]> {
+        match &self.kind {
+            Kind::Transfer(transfer) => Some(&transfer.calldata),
+            Kind::Deployment | Kind::Refresh { .. } => None,
+        }
     }
 
     /// The refusal for a class this wallet does not deploy, in the family's own words.
@@ -133,7 +142,7 @@ impl Plan {
             Expect::SubmitNonce => match judge::nonce(answer) {
                 Some(nonce) => {
                     self.work.nonce = nonce;
-                    if self.is_transfer() {
+                    if self.is_invoke() {
                         let deployed = self.work.submit_deployed;
                         self.rpc(
                             Expect::SubmitEstimate,
@@ -200,10 +209,10 @@ impl Plan {
     /// `submitAccountDeployment`).
     pub(crate) fn submit_probed(&mut self, outcome: Outcome) -> SendStep {
         match outcome {
-            Outcome::Deployed if !self.is_transfer() => self.fail(Code::AlreadyDeployed, None),
+            Outcome::Deployed if !self.is_invoke() => self.fail(Code::AlreadyDeployed, None),
             // `refuseUndeployedBraavos`: a send never deploys a Braavos account.
             Outcome::Undeployed
-                if self.is_transfer()
+                if self.is_invoke()
                     && self.account.is_braavos()
                     && self.account.deployment.is_some() =>
             {
@@ -273,10 +282,11 @@ impl Plan {
     }
 
     fn sign_and_send_invoke(&mut self, host: &dyn PlanHost, nonce: Felt) -> SendStep {
-        let (Some(bounds), Kind::Transfer(transfer)) = (self.work.invoke_bounds, &self.kind) else {
+        let (Some(bounds), Some(calldata)) = (self.work.invoke_bounds, self.invoke_calldata())
+        else {
             return self.fail(Code::ReviewedFeeRequired, None);
         };
-        let calldata = transfer.calldata.clone();
+        let calldata = calldata.to_vec();
         let hash = match sign::invoke_hash(
             self.account.network,
             &self.account.address,

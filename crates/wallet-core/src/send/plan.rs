@@ -227,7 +227,7 @@ impl Plan {
         let work = &self.work;
         let (code, hash) = match (work.invoke_hash, work.deploy_hash) {
             (Some(hash), _) => (SendFailureCode::SubmissionIndeterminate, hash),
-            (None, Some(hash)) if matches!(self.kind, Kind::Transfer(_)) => {
+            (None, Some(hash)) if self.is_invoke() => {
                 (SendFailureCode::DeploymentUnconfirmed, hash)
             }
             (None, Some(hash)) => (SendFailureCode::SubmissionIndeterminate, hash),
@@ -288,7 +288,7 @@ impl Plan {
         };
         // A multisig authorises a send with its members' collected signatures, never one key's:
         // this plan only deploys it.
-        if self.account.is_multisig() && matches!(self.kind, Kind::Transfer(_)) {
+        if self.account.is_multisig() && self.is_invoke() {
             return self.fail(SendFailureCode::AccountClassUnsupported, None);
         }
         if let Kind::Refresh { hash } = self.kind {

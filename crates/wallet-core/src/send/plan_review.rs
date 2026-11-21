@@ -33,16 +33,13 @@ impl Plan {
         nonce: &'a Felt,
         signature: &'a [Felt],
     ) -> Option<InvokeTx<'a>> {
-        match &self.kind {
-            Kind::Transfer(transfer) => Some(InvokeTx {
-                sender: &self.account.address,
-                calldata: &transfer.calldata,
-                nonce,
-                bounds: None,
-                signature,
-            }),
-            _ => None,
-        }
+        Some(InvokeTx {
+            sender: &self.account.address,
+            calldata: self.invoke_calldata()?,
+            nonce,
+            bounds: None,
+            signature,
+        })
     }
 
     /// The DEPLOY_ACCOUNT this plan estimates, at `nonce`; `None` when the account's class is
