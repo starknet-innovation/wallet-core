@@ -276,15 +276,14 @@ fn the_spender_cap_bounds_the_reads_and_marks_the_rest() {
 }
 
 #[test]
-fn a_page_past_the_chunk_size_is_read_in_linear_time() {
-    // A node that ignores `chunk_size` answers the owner read with 100,000 distinct spenders in
-    // one page: the reads stop at the cap, and the scan is incomplete. De-duplicating them was
-    // quadratic (about 30 s here in a debug build, under 2 s since); the bound is generous.
+fn a_page_past_the_chunk_size_stops_at_the_cap() {
+    // A node that ignores `chunk_size` answers the owner read with far more distinct spenders
+    // than the cap in one page: the reads stop at the cap, and the scan is incomplete.
     let mut chain = node(100, vec![]);
     chain.fault = Some(|b| {
         let owner_read = b["params"]["filter"]["keys"][1].is_array();
         (b["method"] == json!("starknet_getEvents") && owner_read).then(|| {
-            let events: Vec<Value> = (0..100_000u64)
+            let events: Vec<Value> = (0..1_000u64)
                 .map(|i| {
                     let spender = format!("0x{:x}", 0x10_0000 + i);
                     json!({ "keys": [APPROVAL_EVENT_KEY, OWNER, spender], "data": [], "block_number": 1 })
@@ -293,9 +292,32 @@ fn a_page_past_the_chunk_size_is_read_in_linear_time() {
             ok(0, json!({ "events": events }))
         })
     });
-    let started = std::time::Instant::now();
     assert!(!run(&chain).complete);
-    assert!(started.elapsed().as_secs() < 10, "{:?}", started.elapsed());
+}
+
+#[test]
+fn de_duplicating_spenders_stops_one_past_the_cap() {
+    // Such a page can hold hundreds of thousands of spenders, and de-duplicating all of them was
+    // quadratic (about 30 s for 100,000 in a debug build). What bounds the work is that nothing
+    // past the cap is read, so that is counted here. A wall-clock limit said the same until the
+    // machine was busy, and then failed.
+    let cap = TEST_POLICY.max_spenders_per_token;
+    let spenders: Vec<String> = (0..100_000).map(|i| format!("0x{i:x}")).collect();
+    let read = std::cell::Cell::new(0usize);
+    let counted = spenders.iter().inspect(|_| read.set(read.get() + 1));
+    let distinct = distinct_spenders(counted, cap);
+    // One past the cap is kept, which is how `start_reads` knows the cap was passed.
+    assert_eq!(distinct, spenders[..=cap]);
+    assert!(read.get() <= cap + 2, "{} spenders read", read.get());
+    // A repeat is neither kept twice nor counted towards the cap, in first-seen order.
+    let repeated: Vec<String> = ["0x2", "0x1", "0x2", "0x1", "0x3"]
+        .map(String::from)
+        .to_vec();
+    assert_eq!(
+        distinct_spenders(repeated.iter(), cap),
+        ["0x2", "0x1", "0x3"]
+    );
+    assert_eq!(distinct_spenders(repeated.iter(), 1), ["0x2", "0x1"]);
 }
 
 #[test]
