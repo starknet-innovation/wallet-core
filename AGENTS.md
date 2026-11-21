@@ -85,6 +85,9 @@ Grep first; extend in place rather than adding a sibling.
 - Felt parsing, canonical hex and the private-key range live in `crates/wallet-core/src/felt.rs`.
 - Vault crypto (envelope v3, DEK container, AES-GCM and randomness helpers) lives in
   `crates/wallet-core/src/envelope.rs` and `container.rs`; host I/O goes through `host.rs`.
+- The v13 vault's records as written are `bramble-core`'s `vault_wire.rs`, the extension's
+  validator over them `vault_rules.rs` (`is_account_id`, `is_wallet_origin`, `chain_id`), its JSON
+  budget `vault_budget.rs`; what mobile does not operate is `VaultPayload::kept`, never `accounts`.
 - JSON-RPC bodies and reply judging live in `rpc.rs` and `send/{rpc_bodies,judge}.rs`; v3
   transaction hashes in `send/sign.rs`; fee bounds in `send/fees.rs`; u256 in `send/u256.rs`.
 - JavaScript semantics live in `crates/wallet-core/src/js/`: `trim`, `shortAddress`, UTF-16
