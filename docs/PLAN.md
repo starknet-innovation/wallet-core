@@ -406,6 +406,38 @@ Features, smallest and least dependent first:
   `transactions/swap-{inputs,preparations,build-policy,value-check,ops}.ts`. Needs P9.
 - **P12 Allowances.** Discovery, scan, records, retention and the revoke call:
   `transactions/src/allowances/` (1,916). The revoke needs P9.
+  As built, the read side (no generator yet, so unit tests only): `crates/wallet-core/src/
+  allowances/`. `record` is the record, its id and scope, `isAllowanceRecord`'s rules on load
+  and the unlimited cut-off (2^128 - 1); `retention` is `keepLargest` and `trimToTotal`, ranked
+  across tokens by the decimals of a caller's trusted `RankToken`s; `store::AllowanceLog` is the
+  log over `host::Storage` (`record`, `apply_delta`, `remove`, `settle_revocations` with revoke
+  outcomes, `list` newest first), the extension's array of records under the policy's key. The
+  log is plain local storage in the extension (`bramble:allowances`, `docs/WALLET_STORE.md`),
+  neither vault nor backup, so no record crosses between mobile and the extension; the shape
+  matches so the extension's own value reads unchanged in Phase 3. `discovery` is
+  `decodeApprovalEvent`, `parseAllowanceAmount`, `mergeAllowanceViews` and the background's
+  `outstandingAllowances` and `listingNotices`; `scan::ExternalAllowanceScan` is
+  `collectExternalAllowances` and `tracked::TrackedAllowanceRead` is `collectTrackedAllowances`
+  (with `tracked_pairs`, `readTrackedAmounts`' lower-bounds-first order), both one call at a
+  time as the extension awaits them, under `HistoryScan`'s `next_calls`/`accept`/`restart`/
+  `finish` contract and `ScanStep`, judged by `portfolio::wire::classify`. Every bound, cap and
+  the storage key are `AllowancePolicy`, set in `bramble-core`'s `ALLOWANCE_POLICY`; the
+  extension has no known-spender labels. Departures: amounts are `U256`, so a stored amount
+  above 2^256 - 1 is dropped on load (the extension's 78-digit rule keeps it; no extension
+  writer produces one); a record on devnet is dropped (`NetworkId` has none); an event without
+  a `keys` or `data` array, or a continuation token over `HistoryScan`'s 4 KiB, fails over
+  where the extension's handling varies by shape; a tracked pair whose token or spender is not
+  a non-zero felt is skipped rather than sent; a stored value that is not JSON reads as empty,
+  as a non-array does; the mutation queue is `&mut self`. The listing's orchestration stays the
+  wallet's, as in `allowance-ops.ts`: which scopes (the account and the multisigs it signs
+  for), dropping watched NFT contracts, reading revoke outcomes before readings, settling, then
+  merging. Remains: the revoke (P9: `allowanceTarget`, `isRevokableErc20`, the
+  `approve(spender, 0)` call and recording it), `allowances.ts` (decoding submitted calls into
+  log writes, and `standingAllowanceTotals` for the reviewer, also P9), `revokeOutcomes` (the
+  activity rows that settle a revoke), and the UniFFI export: two step machines, the log and
+  the merge would add several hundred lines, so it comes with mobile's screens. A Bramble
+  generator should record `Approval` decoding in both layouts, a scan over a scripted node with
+  legacy windows, the merge, eviction across tokens and scopes, and settling.
 - **P13 Staking.** Positions, the validator directory, calls and their review:
   `transactions/src/staking/` (1,062) and `background/staking/` (1,150). Needs P9.
 - **P14 Gasless and sponsored transactions.** `transactions/src/gasless/` (1,818) and

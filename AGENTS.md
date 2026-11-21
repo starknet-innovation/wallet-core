@@ -140,6 +140,12 @@ Grep first; extend in place rather than adding a sibling.
   reads (`token_meta.rs`), fiat and amount display (`fiat.rs`), the HTTP and portfolio RPC wire
   contract (`wire.rs`). Account ids and explorer links are `history::explorer`
   (`activity_account_id`, `canonical_account_id`, `explorer_transaction_url`, ...).
+- ERC-20 allowances live in `crates/wallet-core/src/allowances/`: the record, its id, scope and
+  load rules and the unlimited cut-off (`record.rs`), eviction ranking (`retention.rs`), the log
+  over `host::Storage` with its deltas and revoke settling (`store::AllowanceLog`), the
+  `Approval` decoder, merge and listing rules (`discovery.rs`), the external scan
+  (`scan::ExternalAllowanceScan`) and the tracked reads and their `allowance` call
+  (`tracked.rs`). Bramble's numbers are `ALLOWANCE_POLICY` in `bramble-core`'s `lib.rs`.
 - Activity lives in `crates/wallet-core/src/history/` and `activity/`: the row type
   (`history::activity::ActivityEntry`, `ActivityKind`), the Starkscan lane (`starkscan.rs`), the
   RPC history scan (`events::HistoryScan`), the read cadence (`activity_book::ActivityBook`), row
