@@ -3,7 +3,8 @@
 //! imported accounts; beside them the wallet's labels, groups, hidden accounts, RPC overrides and
 //! backup flag, which live in `public_store`'s preferences file rather than the vault.
 //! `vault_v13` reads and writes the sealed form, the extension's schema v13, and keeps what mobile
-//! does not operate (`kept`) out of `accounts`, so nothing that lists, selects or signs reaches it.
+//! does not operate (`kept`) out of `accounts`, so nothing that lists, selects or signs reaches it;
+//! only its ids (`holds`) and public addresses (`own_addresses`) are read beyond the vault codec.
 //!
 //! Nothing stored is trusted blindly. `validate` checks every field, and re-derives every record
 //! from its key (the phrase's, or an imported account's sealed one) and compares it with what was
@@ -288,6 +289,17 @@ impl VaultPayload {
     /// take an id the vault already holds.
     pub(crate) fn holds(&self, account_id: &str) -> bool {
         self.record(account_id).is_some() || self.kept.account_ids().any(|id| id == account_id)
+    }
+
+    /// Every address the vault holds on `network`, operated or kept: the person's own accounts,
+    /// which the address-poisoning check trusts (the extension's `vaultAccountAddresses`, every
+    /// vault account). Public addresses only; reading one makes no kept record usable.
+    pub(crate) fn own_addresses(&self, network: NetworkId) -> impl Iterator<Item = &str> {
+        self.accounts
+            .iter()
+            .filter(move |record| record.network() == network)
+            .map(|record| record.address.as_str())
+            .chain(self.kept.addresses_on(network.catalog_id()))
     }
 
     /// Every account record the vault holds, operated or kept.

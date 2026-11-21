@@ -194,8 +194,9 @@ pub(crate) struct Vault {
 /// Everything a v13 vault holds that mobile does not operate, kept exactly as read so that every
 /// write puts it back: the account records mobile holds no usable key for (a Ledger account, one
 /// derived from an imported phrase, one on the extension's devnet), their sealed keys, and the
-/// collections mobile has no use for. Nothing outside `vault_v13` reads it, so no list, selection
-/// or signing path can reach these records.
+/// collections mobile has no use for. `vault_v13` reads and writes it; outside it, only ids
+/// (`account_ids`, so no new record takes one) and public addresses (`addresses_on`, for the
+/// address-poisoning check) leave it, so no list, selection or signing path can reach a record.
 #[derive(Clone, Default)]
 pub(crate) struct Kept {
     /// Each record with the number of mobile's records the vault listed before it.
@@ -216,5 +217,13 @@ impl Kept {
     /// The kept records' ids.
     pub(crate) fn account_ids(&self) -> impl Iterator<Item = &str> {
         self.accounts.iter().map(|(_, account)| account.id.as_str())
+    }
+
+    /// The kept records' public addresses on the network `network_id` names.
+    pub(crate) fn addresses_on<'a>(&'a self, network_id: &'a str) -> impl Iterator<Item = &'a str> {
+        self.accounts
+            .iter()
+            .filter(move |(_, account)| account.network_id == network_id)
+            .map(|(_, account)| account.address.as_str())
     }
 }

@@ -136,8 +136,9 @@ impl WalletCore {
     }
 
     /// Every address on `network` the person can be expected to recognise, for the poisoning
-    /// check: their vault accounts, their multisig accounts, and saved contacts (the extension's
-    /// `withTrustedRecipients`). Recipients merely seen in the activity log are left out, because
+    /// check: every account the vault holds on it, kept ones included (a Ledger account is still
+    /// theirs: `VaultPayload::own_addresses`), their multisig accounts, and saved contacts (the
+    /// extension's `withTrustedRecipients`). Recipients merely seen in the activity log are left out, because
     /// chain history is merged into it and an attacker can plant rows there (the extension
     /// excludes chain-discovered history for the same reason). Fails closed: an unreadable
     /// contacts or multisig file refuses the send rather than checking against fewer addresses.
@@ -146,10 +147,8 @@ impl WalletCore {
             .with_session(false, |session| {
                 Ok(session
                     .payload
-                    .accounts
-                    .iter()
-                    .filter(|record| record.network() == network)
-                    .filter_map(|record| felt::parse(&record.address))
+                    .own_addresses(network)
+                    .filter_map(felt::parse)
                     .collect::<Vec<_>>())
             })
             .map_err(|_| SendError::Locked)?;
