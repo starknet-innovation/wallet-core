@@ -58,9 +58,13 @@ cargo test -p bramble-core <name>   # narrow loop while iterating
 - **No secret leaves through a side door.** Private keys, mnemonics, passphrases and viewing keys
   never reach logs, error messages, `Debug`/`Display` output or UniFFI error strings. Hold them in
   `Zeroizing` where the API allows. Library code has no print macros (checked).
-- **The mobile build exports no raw keys.** Anything that takes or returns a raw private key goes
-  behind the `raw-keys` feature; `--no-default-features --features mobile` must stay clean
-  (clippy checks it).
+- **The mobile build returns no raw key and takes exactly one.** Nothing on its surface returns a
+  private key, a phrase-derived key, or anything a key can be recovered from. The one inbound
+  exception is `WalletCore::import_private_key` (P3), which seals the pasted key into the
+  unlocked vault and returns only the account's public record. Anything else that takes or
+  returns a raw private key goes behind the `raw-keys` feature; `--no-default-features --features
+  mobile` must stay clean (clippy checks it, and `tests/ffi_surface.rs` fails if any other mobile
+  export takes a key or any returns one).
 - **Fixtures are evidence, not inputs.** Never edit a file under `tests/fixtures/` to make a test
   pass. Regenerate it in Bramble, copy it unchanged, and update its sha256 row (and the Bramble
   commit line) in the fixtures README.

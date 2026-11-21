@@ -400,7 +400,7 @@ fn a_tampered_or_malformed_vault_fails_closed() {
     );
     reject(
         &|p| p["accounts"][0]["derivation"] = serde_json::json!({"kind": "imported-raw-key"}),
-        "a derivation mobile does not hold",
+        "an imported record carrying a y-coordinate",
     );
     reject(
         &|p| p["activeAccountId"] = "SN_SEPOLIA:0x1".into(),
@@ -442,6 +442,13 @@ fn a_tampered_or_malformed_vault_fails_closed() {
                 serde_json::json!([{ "accountIds": [id], "origin": "https://example.com" }]);
         },
         "an origin grant",
+    );
+    reject(
+        &|p| {
+            p["accounts"][0]["derivation"] =
+                serde_json::json!({"kind": "ledger", "accountIndex": 0})
+        },
+        "a derivation mobile does not hold",
     );
     reject(&|p| p["extra"] = 1.into(), "unknown field");
     reject(&|p| p["schemaVersion"] = 12.into(), "another schema");

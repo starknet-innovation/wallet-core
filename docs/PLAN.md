@@ -67,7 +67,7 @@ v13 payload.
 | 2.6 Catalogs | done (#49) | done (M12, Bramble #928) |
 | 2.7 Swap | done (#50), behind the `mobile` feature | done (M13, Bramble #929), at `v0.3.0`: `mobile/core` is a shell over this crate |
 | Vault switch | done (V1 #58) | G4 done (Bramble #947); M14 done (Bramble #980): mobile pins `v0.4.0` |
-| [Mobile parity](#mobile-parity) | P6 done (#65), P2 done (#68); P1's mechanism done (P1a #70, P1b #71, P1c #72), not exported until Krusty exports a selector and signature verification; P4 done (#78), no fixture yet (needs a Bramble generator); P3 and P5 not started | not started |
+| [Mobile parity](#mobile-parity) | P6 done (#65), P2 done (#68); P1's mechanism done (P1a #70, P1b #71, P1c #72), not exported until Krusty exports a selector and signature verification; P3 done (#80), not shippable until Bramble's imported-key v13 fixture lands; P4 done (#78), no fixture yet (needs a Bramble generator); P5 not started | not started |
 | 3 Extension | not started; `js/package.json` is private | n/a |
 
 `v0.1.0` is tagged at `35abc8b` (GitHub release only) and was what M2 and M3 pinned. `v0.2.0`
@@ -183,10 +183,34 @@ Needed now:
 
 Only if the feature is wanted (a product decision first):
 
-- **P3 Private-key import.** An inbound-only export that seals the key into the vault and never
+- **P3 Private-key import.** Wanted: the product decision behind #80. An inbound-only export that seals the key into the vault and never
   returns it. That amends the hard rule that the mobile build exports no raw keys, so the rule
   in `AGENTS.md` changes in the same PR. V1's reader requires the collection the extension seals
   imported keys into to be empty, so it lifts that for this one collection.
+  As built: `WalletCore::import_private_key(network, private_key)` (`key_import.rs`) is the
+  extension's `wallet.importAccount` for an OpenZeppelin account: the text is read as
+  `normalizeFeltInput` then `isStarkPrivateKey` read it (`felt::parse_private_key_input`), Krusty
+  gives the public key, the account sits at Bramble's OZ class with no salt, an id the wallet
+  holds is refused, and the account becomes active with its key sealed. The extension does not
+  keep the key in one of the six unused collections, as assumed above: it seals it in
+  `signingKeys`, under an account whose derivation is `imported-raw-key` (no `publicKeyY`), which
+  V1 refused by its kind. So the reader accepts that kind, every unused collection stays
+  required empty, and mobile's stronger rule for such a record is that its public key and address
+  are what its sealed key derives. The session holds imported keys
+  (`VaultPayload::imported_keys`); sends, signatures, the privacy viewing key and the network
+  projection all take an account's key from `VaultPayload::signing_key`, and adding an account
+  skips an index already held as an imported key (the extension's Sherlock 226). Deliberately
+  not done: Argent import (releases picked after discovery, or a pasted address re-proved on
+  chain), a deployment salt, a wallet made from a key alone (`createKeyVault`), revealing the key
+  (the extension's reveal shows it; mobile returns no key), and removal, which the extension has
+  for no single account either (hiding works). A vault holding an address-picked import, whose
+  address is not what its key derives, is refused like any record that does not re-derive. The
+  record's parity has unit tests only: G4 holds no imported key, and a fixture is never written
+  by hand. Before a mobile release ships the import, Bramble needs a generator that seals, with
+  the extension's own store, a v13 vault holding one imported OpenZeppelin key (an imported Argent
+  one too, ideally) beside G4's accounts, for a test that opens it and writes it back unchanged. It must run at a v13 Bramble commit:
+  some Bramble branches move the vault to schema 14 (`accountProvenance`), which mobile's reader
+  (v13 only, unknown fields refused) does not open.
 - **P5 Stark names.** A sans-IO body and reply judge for name → address and address → name,
   beside `rpc.rs`; the naming contracts are Bramble's catalog data.
 
@@ -807,8 +831,10 @@ Each phase names the crate a module lands in; the table above decides anything n
         back as `i`). `originGrants`, `importedSeeds`, `accountSecrets`, `shadowAccountScopes` and
         the multisig key lists are written empty.
       - Every account's derived private key is sealed in `signingKeys`, as the extension does and
-        its validator requires. The keys stay inside Rust and never cross the FFI, so the mobile
-        build still exports no raw key; it is still a custody change and the PR says so.
+        its validator requires. The keys stay inside Rust and never cross the FFI outward, so the
+        mobile build still returns no raw key; it is still a custody change and the PR says so.
+        Since P3 one key crosses inward: `import_private_key` takes a pasted key and seals it
+        (see AGENTS.md).
       - Mobile's BIP39 passphrase (`mnemonicPassphrase`) is dropped: v13 has no field for it, and
         the extension's recovery refuses one. Both apps pass `nil` to `import_wallet`'s
         `passphrase` today, so the argument goes, which changes the bindings (M14 updates the call
@@ -828,12 +854,18 @@ Each phase names the crate a module lands in; the table above decides anything n
       payload's `schemaVersion`. Reading accepts exactly the subset of v13 mobile writes: the six
       collections it has no use for (`originGrants`, `importedSeeds`, `accountSecrets`,
       `shadowAccountScopes` and both multisig key lists) must be empty, `mnemonic` must not be
-      null, and every derivation must be one of mobile's three ladders. A vault holding anything
-      else is refused, not half-read, so their validators are not ported until mobile holds
-      them. On what it accepts, the extension's rules (field grammar, canonical felts, the
-      account ↔ signing-key bijection, the active account) and mobile's stronger ones apply: every
-      record, `publicKeyY` and sealed `privateKey` must equal what the phrase derives. Signing
-      still derives each key per call, so the sealed keys are checked, never used. An earlier
+      null, and every derivation must be one of mobile's three ladders or, since P3,
+      `imported-raw-key`, whose sealed key is checked against the record's public key and
+      address and is the one that signs (the rest of this paragraph is about phrase accounts). A
+      vault holding anything else is refused, not half-read, so their validators are not ported
+      until mobile holds them. On what it accepts, the extension's rules (field grammar, canonical
+      felts, the account ↔ signing-key bijection, the active account) and mobile's stronger ones
+      apply: every record, `publicKeyY` and sealed `privateKey` must equal what the phrase
+      derives. Signing
+      still derives each phrase account's key per call, so its sealed key is checked, never used.
+      An imported key (P3) has no phrase to derive from, so the session holds it in memory
+      (`VaultPayload::imported_keys`, zeroized on lock) for the whole unlock, where before P3 the
+      session held only the phrase. An earlier
       build's vault (bare envelope or container 2 to 5) is refused only after its password is
       proven, which resets the backoff; `delete_wallet` proves the password without reading the
       payload, so such a vault can still be deleted in the app. Labels, groups and

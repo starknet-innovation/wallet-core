@@ -5,8 +5,9 @@
 //! normalisation. The OpenZeppelin account version this wallet deploys is the crate's
 //! `OZ_ACCOUNT_VERSION`, its class `catalogs::account_address`'s.
 //!
-//! Private keys are derived per call, held in the zeroizing `SecretFelt` (Krusty's, re-exported
-//! by `wallet_core`), and never returned to a caller outside this crate.
+//! Private keys are derived per call (an imported account's is the one its vault sealed), held in
+//! the zeroizing `SecretFelt` (Krusty's, re-exported by `wallet_core`), and never returned to a
+//! caller outside this crate.
 
 use wallet_core::Felt;
 use wallet_core::SecretFelt;
@@ -56,7 +57,9 @@ pub enum Ladder {
     ArgentX,
 }
 
-/// Derives the Starknet signing key at `index` on `path`. Every account key goes through here.
+/// Derives the Starknet signing key at `index` on `path`, for the test hooks; the wallet's
+/// account keys go through `account_store::VaultPayload::signing_key`.
+#[cfg(any(test, feature = "testing"))]
 pub(crate) fn private_key(
     phrase: &str,
     passphrase: Option<&str>,
@@ -79,33 +82,24 @@ pub(crate) fn public_key(
     )?)
 }
 
-/// Signs a message hash with deterministic RFC-6979 Stark ECDSA.
-pub fn sign_hash(
-    phrase: &str,
-    passphrase: Option<&str>,
-    path: Ladder,
-    account_index: u32,
-    message_hash: &str,
-) -> Result<Signature, CoreError> {
-    let key = private_key(phrase, passphrase, path, account_index)?;
-    Ok(wallet_core::sign_stark_hash(&key, message_hash)?)
+/// Signs a message hash with deterministic RFC-6979 Stark ECDSA under an account's key
+/// (`account_store::VaultPayload::signing_key`).
+pub(crate) fn sign_hash(key: &SecretFelt, message_hash: &str) -> Result<Signature, CoreError> {
+    Ok(wallet_core::sign_stark_hash(key, message_hash)?)
 }
 
 /// The account's STRK20 viewing key scoped to `"<chain_id>:<pool>"`, exactly as the extension's
-/// adapter (`deriveStrk20ViewingKey`), zeroizing. The account key is derived per call into a
-/// zeroizing `SecretFelt`; the shared core holds both scope values to canonical non-zero felts
-/// and the result to a usable scalar.
+/// adapter (`deriveStrk20ViewingKey`), zeroizing, from the account's key (derived per call, or
+/// an imported account's sealed one, as the extension's `deriveVaultStrk20ViewingKey` reads it
+/// from `signingKeys`). The shared core holds both scope values to canonical non-zero felts and
+/// the result to a usable scalar.
 pub(crate) fn scoped_viewing_key(
-    phrase: &str,
-    passphrase: Option<&str>,
-    path: Ladder,
-    account_index: u32,
+    key: &SecretFelt,
     chain_id: &str,
     pool_address: &str,
 ) -> Result<SecretFelt, CoreError> {
-    let key = private_key(phrase, passphrase, path, account_index)?;
     Ok(wallet_core::derive_strk20_viewing_key(
-        &key,
+        key,
         chain_id,
         pool_address,
     )?)
@@ -123,14 +117,8 @@ pub fn scoped_viewing_public_key(
     chain_id: &str,
     pool_address: &str,
 ) -> Result<Felt, CoreError> {
-    let viewing_key = scoped_viewing_key(
-        phrase,
-        passphrase,
-        path,
-        account_index,
-        chain_id,
-        pool_address,
-    )?;
+    let key = private_key(phrase, passphrase, path, account_index)?;
+    let viewing_key = scoped_viewing_key(&key, chain_id, pool_address)?;
     parsed(
         &wallet_core::stark_public_key(&viewing_key)?,
         "viewing public key",

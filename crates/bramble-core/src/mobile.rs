@@ -6,7 +6,7 @@
 // extension's background service: Krusty KMS key custody (`kms`), the encrypted vault
 // (`vault`, byte-compatible with the extension envelope), the bundled network catalog
 // (`networks`), and sans-IO Starknet RPC (`wallet_core::rpc`). The native apps render UI and move
-// bytes; they never see a private key.
+// bytes; they never receive a private key (one they import goes in and is sealed, `key_import`).
 //
 // Errors carry an operation name or a fixed reason, never input text, so nothing a user typed
 // can reach a log through an error message.
@@ -20,6 +20,7 @@ use catalogs::{accounts as account_catalog, multisig as multisig_constants, netw
 mod account_address;
 mod account_names;
 mod account_store;
+mod account_validate;
 mod account_visibility;
 mod activity;
 mod argent_multisig;
@@ -37,6 +38,7 @@ mod files;
 mod groups;
 mod history;
 pub(crate) use wallet_core::js;
+mod key_import;
 mod kms;
 pub use kms::Ladder;
 mod multisig_rpc;
