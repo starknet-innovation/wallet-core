@@ -17,7 +17,7 @@
 //! Krusty 3.1.0 has no selector (`starknet_keccak` of an entrypoint name), so, as for a multisig,
 //! the caller lends one through `multisig_invoke::StarkPrimitives`.
 
-use super::call_decode::{decode_call, CallKind, Known};
+use super::call_decode::{decode_call, CallKind};
 use super::calls::{execute_calldata, Call};
 use super::multisig_invoke::StarkPrimitives;
 use super::multisig_review::{batch_line, refuse_poisoned, CallReviewError};
@@ -56,8 +56,8 @@ pub enum InvokeRefusal {
     Review(#[from] CallReviewError),
 }
 
-/// One reviewed batch. Built only by `Invoke::new` or `Invoke::reviewed`, so the calldata the plan
-/// signs is always the calls the review described.
+/// One reviewed batch. Built only by `Invoke::reviewed`, so the calldata the plan signs is always
+/// the calls the review described.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Invoke {
     pub(crate) network: NetworkId,
@@ -136,29 +136,11 @@ pub(crate) fn check(sender: &Felt, calls: &[Call], policy: &Policy) -> Result<()
 
 impl Invoke {
     /// Checks and reviews `calls` from `account` and derives their calldata. `policy` bounds the
-    /// batch (the plan's must be the same one, or the plan refuses it); `known` is the wallet's
-    /// trusted tokens and watched collections on the account's network, for the summary;
-    /// `trusted` every other address the person recognises there (as for `Transfer::new`), for
-    /// the poisoned-payee refusal. The flags are read without pinned contracts, extra token contracts or
-    /// standing allowances; `Invoke::reviewed` takes them.
-    pub fn new(
-        account: &Account,
-        calls: Vec<Call>,
-        policy: &Policy,
-        known: &Known,
-        trusted: &[Felt],
-        primitives: &dyn StarkPrimitives,
-    ) -> Result<Self, InvokeRefusal> {
-        let context = ReviewContext {
-            known: *known,
-            trusted,
-            ..ReviewContext::default()
-        };
-        Self::reviewed(account, calls, policy, &context, primitives)
-    }
-
-    /// `Invoke::new` with the whole of the wallet's review context (`verifyCalls` with its
-    /// `knownContracts` and `standing`).
+    /// batch (the plan's must be the same one, or the plan refuses it); `context` is everything
+    /// the wallet knows on the account's network (`verifyCalls` with its `knownContracts` and
+    /// `standing`): `known` for the summaries, `trusted` for the poisoned-payee refusal, and all
+    /// of it for the flags. The only constructor, so no batch is reviewed with less: a partial
+    /// context under-warns (a router reads as unknown, STRK as no token, no allowance is seeded).
     pub fn reviewed(
         account: &Account,
         calls: Vec<Call>,

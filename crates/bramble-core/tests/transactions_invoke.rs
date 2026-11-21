@@ -19,6 +19,7 @@ use starknet_wallet_core::send::multisig_review::CallReviewError;
 use starknet_wallet_core::send::plan::{
     Account, Authorization, Invoke, InvokeRefusal, Kind, PendingKind, Plan, Policy,
 };
+use starknet_wallet_core::send::review_flags::ReviewContext;
 use starknet_wallet_core::send::types::{
     FeeAffordability, SendError, SendFailureCode as Code, SendStep, StepReply,
 };
@@ -38,16 +39,19 @@ fn strk() -> TokenInfo {
 
 fn invoke(account: &Account, calls: Vec<Call>, trusted: &[Felt]) -> Result<Invoke, InvokeRefusal> {
     let tokens = [strk()];
-    let known = Known {
-        tokens: &tokens,
-        nft_contracts: &[],
+    let context = ReviewContext {
+        known: Known {
+            tokens: &tokens,
+            nft_contracts: &[],
+        },
+        trusted,
+        ..ReviewContext::default()
     };
-    Invoke::new(
+    Invoke::reviewed(
         account,
         calls,
         &bramble_core::SEND_POLICY,
-        &known,
-        trusted,
+        &context,
         &TestPrimitives::new(),
     )
 }

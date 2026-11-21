@@ -1,9 +1,10 @@
-//! `Invoke::new` against the extension's own cases, each named with its source. The plan's
+//! `Invoke::reviewed` against the extension's own cases, each named with its source. The plan's
 //! handling of a batch is in `bramble-core`'s `tests/transactions_invoke.rs`.
 
 use super::*;
 use crate::catalog::TokenInfo;
 use crate::kms::NetworkId;
+use crate::send::call_decode::Known;
 use crate::send::calls::{transfer_execute_calldata, TRANSFER_SELECTOR};
 use crate::send::fees::Headroom;
 use crate::send::review_flags::{ReviewContext, RiskFlag};
@@ -76,18 +77,16 @@ const POLICY: Policy = Policy {
 
 fn invoke(calls: Vec<Call>) -> Result<Invoke, InvokeRefusal> {
     let tokens = [eth()];
-    let known = Known {
-        tokens: &tokens,
-        nft_contracts: &[],
+    let trusted = [felt(CONTACT)];
+    let context = ReviewContext {
+        known: Known {
+            tokens: &tokens,
+            nft_contracts: &[],
+        },
+        trusted: &trusted,
+        ..ReviewContext::default()
     };
-    Invoke::new(
-        &account(),
-        calls,
-        &POLICY,
-        &known,
-        &[felt(CONTACT)],
-        &Keccak,
-    )
+    Invoke::reviewed(&account(), calls, &POLICY, &context, &Keccak)
 }
 
 #[test]
