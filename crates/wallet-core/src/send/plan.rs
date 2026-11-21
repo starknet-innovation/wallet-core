@@ -1,4 +1,4 @@
-//! `Plan`: one reviewed transfer (or standalone deployment, or status refresh) as a core-owned
+//! `Plan`: one reviewed transfer or call batch (or standalone deployment, or status refresh) as a core-owned
 //! state machine. The host only relays request bodies and replies; it cannot reorder steps, skip
 //! the re-estimate, substitute bounds, or hand in a hash. The step order is the extension's
 //! recorded wire order (`extension-transactions-*.json`).
@@ -9,6 +9,7 @@
 //! `plan_probe`, the submit path in `plan_submit` and the deployment in `plan_deploy`.
 
 use super::fees::{Bounds, FeeQuote, TransactionFee};
+pub use super::invoke::{Invoke, InvokeRefusal};
 use super::judge::{self, Observation, TxStatus};
 pub use super::types::{
     Account, ArgentClass, Authorization, Kind, Policy, Token, Transfer, TransferRefusal,
@@ -40,6 +41,8 @@ pub enum PendingKind {
         symbol: String,
         token_address: Felt,
     },
+    /// A call batch; the record's summary is its review's.
+    Invoke,
     Deployment,
 }
 
@@ -349,7 +352,7 @@ impl Plan {
     /// The hash the confirmation checkpoints follow.
     pub(crate) fn target_hash(&self) -> Option<Felt> {
         match self.kind {
-            Kind::Transfer(_) => self.work.invoke_hash,
+            Kind::Transfer(_) | Kind::Invoke(_) => self.work.invoke_hash,
             Kind::Deployment => self.work.deploy_hash,
             Kind::Refresh { hash } => Some(hash),
         }

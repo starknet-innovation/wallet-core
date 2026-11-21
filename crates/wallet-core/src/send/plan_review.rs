@@ -244,6 +244,9 @@ impl Plan {
                     && work.fee.is_some()
                     && (!work.requires_deployment || work.deploy_fee.is_some())
             }
+            Kind::Invoke(_) => {
+                work.fee.is_some() && (!work.requires_deployment || work.deploy_fee.is_some())
+            }
             Kind::Deployment => !work.already_deployed && work.deploy_fee.is_some(),
             Kind::Refresh { .. } => false,
         }
@@ -280,6 +283,29 @@ impl Plan {
         }
     }
 
+    /// The review of an INVOKE (and its deployment, when the account needs one) with `summary`:
+    /// a batch's whole review, and the fee half of a transfer's.
+    fn invoke_review(&self, summary: String) -> TransferReview {
+        let work = &self.work;
+        let requires_deployment = work.requires_deployment && !work.already_deployed;
+        TransferReview {
+            summary,
+            recipient: String::new(),
+            recipient_short: String::new(),
+            amount_display: String::new(),
+            token_symbol: String::new(),
+            fee: work.fee.as_ref().map(fees::fee_amount),
+            fee_estimate_failed: work.fee.is_none(),
+            deployment_fee: work.deploy_fee.as_ref().map(fees::fee_amount),
+            deployment_fee_estimate_failed: requires_deployment && work.deploy_fee.is_none(),
+            requires_deployment,
+            already_deployed: false,
+            affordability: FeeAffordability::Unknown,
+            flags: Vec::new(),
+            can_confirm: self.can_confirm(),
+        }
+    }
+
     pub(crate) fn review(&mut self) -> SendStep {
         let work = &self.work;
         let requires_deployment = work.requires_deployment && !work.already_deployed;
@@ -287,24 +313,17 @@ impl Plan {
             Kind::Transfer(transfer) => {
                 let recipient = felt::canonical(&transfer.recipient);
                 TransferReview {
-                    summary: transfer.summary.clone(),
                     recipient_short: short_label(&recipient),
                     recipient,
                     amount_display: transfer.amount_text.clone(),
                     token_symbol: transfer.symbol.clone(),
-                    fee: work.fee.as_ref().map(fees::fee_amount),
-                    fee_estimate_failed: work.fee.is_none(),
-                    deployment_fee: work.deploy_fee.as_ref().map(fees::fee_amount),
-                    deployment_fee_estimate_failed: requires_deployment
-                        && work.deploy_fee.is_none(),
-                    requires_deployment,
-                    already_deployed: false,
                     affordability: self.affordability(),
                     flags: transfer.flags.clone(),
-                    can_confirm: self.can_confirm(),
+                    ..self.invoke_review(transfer.summary.clone())
                 }
             }
-            _ => {
+            Kind::Invoke(invoke) => self.invoke_review(invoke.summary.clone()),
+            Kind::Deployment | Kind::Refresh { .. } => {
                 let address = felt::canonical(&self.account.address);
                 TransferReview {
                     summary: DEPLOY_SUMMARY.into(),

@@ -75,6 +75,7 @@ impl Plan {
     pub(crate) fn invoke_calldata(&self) -> Option<&[Felt]> {
         match &self.kind {
             Kind::Transfer(transfer) => Some(&transfer.calldata),
+            Kind::Invoke(invoke) => Some(&invoke.calldata),
             Kind::Deployment | Kind::Refresh { .. } => None,
         }
     }
@@ -404,6 +405,7 @@ impl Plan {
                 },
                 t.summary.clone(),
             ),
+            (Kind::Invoke(invoke), true) => (PendingKind::Invoke, invoke.summary.clone()),
             _ => (PendingKind::Deployment, DEPLOY_SUMMARY.to_string()),
         };
         host.record_pending(PendingRecord {

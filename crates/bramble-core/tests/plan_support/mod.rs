@@ -293,13 +293,23 @@ pub fn fee_matches(fee: Option<String>, expected: &Value, name: &str) {
 }
 
 pub fn run(scenario: &Value, family: &str) -> (Plan, Host) {
+    run_with(scenario, family, plan)
+}
+
+/// `run`, with the plan `make` builds for the scenario's account in place of Bramble's
+/// `prepare_transfer`.
+pub fn run_with(
+    scenario: &Value,
+    family: &str,
+    make: impl FnOnce(&Value, Account) -> Plan,
+) -> (Plan, Host) {
     let name = scenario["name"].as_str().unwrap();
     let host = Host::new();
     let account = account(scenario, family, host.public_key());
     if let Some(expected) = scenario["account"].get("publicKey") {
         assert_eq!(account.public_key, f(expected.as_str().unwrap()), "{name}");
     }
-    let mut plan = plan(scenario, account);
+    let mut plan = make(scenario, account);
     let step = plan.advance(&host, StepReply::Start).unwrap();
     let step = drive(&mut plan, &host, step, &review_calls(scenario), scenario);
     assert_eq!(step, SendStep::Review, "{name}");
@@ -354,6 +364,10 @@ pub fn run(scenario: &Value, family: &str) -> (Plan, Host) {
             assert_eq!(record.summary, "Send 1.5 STRK to 0x3fa7…41a3");
             assert_eq!((amount.as_str(), symbol.as_str()), ("1.5", "STRK"));
             assert_eq!(*recipient, f(scenario["recipient"].as_str().unwrap()));
+        }
+        // The same transfer as a one-call batch (`transactions_invoke.rs`): its review's line.
+        (PendingKind::Invoke, "transfer") => {
+            assert_eq!(record.summary, "Send 1.5 STRK to 0x3fa7…41a3");
         }
         (PendingKind::Deployment, "deployment") => {
             assert_eq!(record.summary, "Deploy account contract");

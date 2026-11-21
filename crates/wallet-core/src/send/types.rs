@@ -4,6 +4,7 @@
 
 use super::calls::{self, ReviewFlag, SendAmountError};
 use super::fees::{FeeAmount, Headroom};
+use super::invoke::Invoke;
 use super::judge::TxStatus;
 use super::sign::Deployment;
 use super::u256::U256;
@@ -362,6 +363,8 @@ impl Transfer {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Kind {
     Transfer(Box<Transfer>),
+    /// A reviewed batch of calls, submitted as a transfer is (`Invoke::new`).
+    Invoke(Box<Invoke>),
     /// The standalone Deploy account flow.
     Deployment,
     /// Reads one recorded transaction's status and settles its record; never signs.

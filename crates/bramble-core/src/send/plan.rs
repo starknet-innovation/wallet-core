@@ -209,6 +209,8 @@ impl PlanHost for TransferPlan {
                 Some(symbol),
                 Some(felt::canonical(&token_address)),
             ),
+            // No export builds a call batch yet; its row is the extension's dapp invoke's.
+            PendingKind::Invoke => (ActivityKind::Invoke, None, None, None, None),
             PendingKind::Deployment => (ActivityKind::Deploy, None, None, None, None),
         };
         let mut entry = Entry {
