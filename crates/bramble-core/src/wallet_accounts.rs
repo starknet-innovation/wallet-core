@@ -14,12 +14,10 @@
 
 use std::collections::HashSet;
 
-use wallet_core::SecretFelt;
-
 use crate::account_catalog::{authorization_shape, type_label, AccountFamily};
 use crate::account_names::{display_name, normalise_label, short_label};
 use crate::account_store::{
-    next_account_index, KeySource, StoredAccount, VaultPayload, MAX_ACCOUNT_RECORDS,
+    next_account_index, push_active, KeySource, StoredAccount, VaultPayload,
 };
 use crate::account_visibility::first_visible;
 use crate::groups::{self, AccountGroup};
@@ -28,6 +26,7 @@ use crate::networks::NetworkId;
 use crate::recovery::{derive_selections, RecoverySelection};
 use crate::recovery_scan::{self, RecoveryScanStep};
 use crate::rpc_request::RpcResponse;
+use crate::vault_provenance::Origin;
 use crate::wallet::{Session, StarkSignature, WalletCore};
 use crate::CoreError;
 
@@ -151,26 +150,6 @@ fn require_record<'a>(
     payload.record(account_id).ok_or_else(unknown_account)
 }
 
-/// Adds `record` as the active account, with `key` sealed under it when it is imported.
-pub(crate) fn push_active(
-    payload: &mut VaultPayload,
-    record: StoredAccount,
-    key: Option<Box<SecretFelt>>,
-) -> Result<(), CoreError> {
-    if payload.holds(&record.id) {
-        return Err(invalid("account already exists"));
-    }
-    if payload.record_count() >= MAX_ACCOUNT_RECORDS {
-        return Err(invalid("account limit reached"));
-    }
-    if let Some(key) = key {
-        payload.imported_keys.insert(record.id.clone(), key);
-    }
-    payload.active_account_id = Some(record.id.clone());
-    payload.accounts.push(record);
-    Ok(())
-}
-
 impl WalletCore {
     /// Applies `change` to the payload and re-seals it; on any failure the session is restored.
     pub(crate) fn commit<T>(
@@ -277,10 +256,13 @@ impl WalletCore {
                 }
                 None => {
                     // The same key on the other network: the source's own path (never a
-                    // different ladder's key at the same index) or its imported key.
+                    // different ladder's key at the same index) or its imported key, and at 14
+                    // the source's recorded origin.
                     let (projected, key) = payload.project(&source, network)?;
-                    let id = projected.id.clone();
-                    self.commit(session, |payload| push_active(payload, projected, key))?;
+                    let (id, origin) = (projected.id.clone(), payload.origin_of(&source.id));
+                    self.commit(session, |payload| {
+                        push_active(payload, projected, key, origin)
+                    })?;
                     id
                 }
             };
@@ -317,7 +299,10 @@ impl WalletCore {
                 taken.insert(index);
             };
             let id = record.id.clone();
-            self.commit(session, |payload| push_active(payload, record, None))?;
+            let created = Some(Origin::Created);
+            self.commit(session, |payload| {
+                push_active(payload, record, None, created)
+            })?;
             let payload = &session.payload;
             Ok(render(payload, require_record(payload, &id)?))
         })
