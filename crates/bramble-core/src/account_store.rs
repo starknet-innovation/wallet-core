@@ -1,7 +1,7 @@
 //! The unlocked vault in memory: one record per account (family, class, key source, index, salt,
 //! address, public key), one active account, the phrase, and the keys of imported accounts;
-//! beside them the wallet's labels, groups, hidden accounts and backup flag, which live in
-//! `public_store`'s preferences file rather than the vault.
+//! beside them the wallet's labels, groups, hidden accounts, RPC overrides and backup flag, which
+//! live in `public_store`'s preferences file rather than the vault.
 //! `vault_v13` reads and writes the sealed form, the extension's schema v13.
 //!
 //! Nothing stored is trusted blindly. `validate` checks every field, and re-derives every record
@@ -9,7 +9,7 @@
 //! stored, so a tampered or corrupted record fails closed rather than redirecting Receive or Copy
 //! to another address.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use wallet_core::Felt;
 use wallet_core::{SecretFelt, StarkXOnlyKeypair};
@@ -17,9 +17,9 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::account_address::family_address;
 use crate::account_catalog::{catalog, AccountFamily};
-use crate::account_names::{is_label, js_trim};
+pub(crate) use crate::account_validate::{check_consistent, validate};
 use crate::files::storage;
-use crate::groups::{self, StoredGroup};
+use crate::groups::StoredGroup;
 use crate::kms::Ladder;
 use crate::networks::NetworkId;
 use crate::{felt, kms, CoreError};
@@ -120,6 +120,14 @@ pub(crate) struct VaultPayload {
     #[zeroize(skip)]
     pub labels: BTreeMap<String, String>,
     pub mnemonic: String,
+    /// Each network's custom RPC endpoint, keyed by catalog id (the extension's `rpcOverrides`, a
+    /// preference). May carry an API key: never logged or put in an error.
+    #[zeroize(skip)]
+    pub rpc_overrides: BTreeMap<String, String>,
+    /// Catalog ids whose refused override was dropped on load (`public_store::load_preferences`):
+    /// their explorer fallback stays off by default. Set only on load.
+    #[zeroize(skip)]
+    pub explorer_fallback_off: BTreeSet<String>,
 }
 
 /// The non-secret state a mutation may change, captured so a failed write can be rolled back.
@@ -130,6 +138,7 @@ pub(crate) struct PublicState {
     groups: Vec<StoredGroup>,
     hidden_account_ids: Vec<String>,
     labels: BTreeMap<String, String>,
+    rpc_overrides: BTreeMap<String, String>,
 }
 
 impl VaultPayload {
@@ -172,6 +181,8 @@ impl VaultPayload {
             imported_keys: BTreeMap::new(),
             labels: BTreeMap::new(),
             mnemonic,
+            rpc_overrides: BTreeMap::new(),
+            explorer_fallback_off: BTreeSet::new(),
         }
     }
 
@@ -269,6 +280,7 @@ impl VaultPayload {
             groups: self.groups.clone(),
             hidden_account_ids: self.hidden_account_ids.clone(),
             labels: self.labels.clone(),
+            rpc_overrides: self.rpc_overrides.clone(),
         }
     }
 
@@ -277,11 +289,13 @@ impl VaultPayload {
         self.accounts != before.accounts || self.active_account_id != before.active_account_id
     }
 
-    /// Whether the preferences (labels, groups, hidden accounts, backup flag) moved since `before`.
+    /// Whether the preferences (labels, groups, hidden accounts, RPC overrides, backup flag) moved
+    /// since `before`.
     pub(crate) fn preferences_changed(&self, before: &PublicState) -> bool {
         self.labels != before.labels
             || self.groups != before.groups
             || self.hidden_account_ids != before.hidden_account_ids
+            || self.rpc_overrides != before.rpc_overrides
             || self.backup_pending != before.backup_pending
     }
 
@@ -296,6 +310,7 @@ impl VaultPayload {
         let accounts = &self.accounts;
         self.imported_keys
             .retain(|id, _| accounts.iter().any(|record| &record.id == id));
+        self.rpc_overrides = state.rpc_overrides;
     }
 }
 
@@ -335,14 +350,8 @@ pub(crate) fn record_at(
     })
 }
 
-fn invalid_payload() -> CoreError {
+pub(crate) fn invalid_payload() -> CoreError {
     storage("vault payload is invalid")
-}
-
-fn is_canonical_felt(value: &str, non_zero: bool) -> bool {
-    felt::parse(value)
-        .filter(|parsed| !non_zero || *parsed != Felt::ZERO)
-        .is_some_and(|parsed| felt::canonical(&parsed) == value)
 }
 
 /// Which ladders a family's records may sit on. Every family may be on this wallet's own ladder,
@@ -381,118 +390,4 @@ pub(crate) fn next_account_index(
         .ok_or_else(|| CoreError::InvalidInput {
             reason: "account limit reached".into(),
         })
-}
-
-// Field grammar of one record, before any derivation.
-fn is_well_formed(record: &StoredAccount) -> bool {
-    let (Some(family), Some(network)) = (
-        AccountFamily::from_wire(&record.family),
-        NetworkId::from_catalog_id(&record.network),
-    ) else {
-        return false;
-    };
-    let salt_ok = match (&family, &record.deployment_salt) {
-        (AccountFamily::OpenZeppelin, None) => true,
-        (AccountFamily::OpenZeppelin, Some(_)) | (_, None) => false,
-        (_, Some(salt)) => is_canonical_felt(salt, false),
-    };
-    let key_ok = match record.key {
-        KeySource::Phrase(ladder) => ladder_fits(family, ladder),
-        KeySource::Imported => record.account_index == 0,
-    };
-    record.account_index <= MAX_ACCOUNT_INDEX
-        && key_ok
-        && is_canonical_felt(&record.address, true)
-        && is_canonical_felt(&record.public_key, true)
-        && is_canonical_felt(&record.class_hash, true)
-        && salt_ok
-        && record.id == format!("{}:{}", network.catalog_id(), record.address)
-}
-
-// Every structural invariant, without derivation.
-fn is_consistent(payload: &VaultPayload) -> bool {
-    let ids: HashSet<&str> = payload.accounts.iter().map(|r| r.id.as_str()).collect();
-    let imported = payload
-        .accounts
-        .iter()
-        .filter(|record| record.key == KeySource::Imported);
-    kms::validate_mnemonic(&payload.mnemonic)
-        // One sealed key per imported record and none spare (ids are unique).
-        && imported.clone().count() == payload.imported_keys.len()
-        && imported
-            .clone()
-            .all(|record| payload.imported_keys.contains_key(&record.id))
-        && payload.accounts.len() <= MAX_ACCOUNT_RECORDS
-        && ids.len() == payload.accounts.len()
-        && payload.accounts.iter().all(is_well_formed)
-        && match &payload.active_account_id {
-            None => payload.accounts.is_empty(),
-            Some(id) => ids.contains(id.as_str()),
-        }
-        && payload.labels.len() <= MAX_ACCOUNT_RECORDS
-        && payload.labels.iter().all(|(id, label)| {
-            ids.contains(id.as_str()) && is_label(label) && js_trim(label) == label
-        })
-        && groups::is_valid(&payload.groups, &ids)
-        && payload
-            .hidden_account_ids
-            .iter()
-            .all(|id| ids.contains(id.as_str()))
-        && payload
-            .hidden_account_ids
-            .iter()
-            .collect::<HashSet<_>>()
-            .len()
-            == payload.hidden_account_ids.len()
-}
-
-// Re-derives every record from its key (the phrase's, or the imported one the vault sealed), one
-// key per record, each also shown to `sealed`; any difference is tampering or corruption.
-fn rederives(
-    payload: &VaultPayload,
-    sealed: &mut dyn FnMut(&StoredAccount, &DerivedKey) -> bool,
-) -> Result<bool, CoreError> {
-    for record in &payload.accounts {
-        let key = payload.signing_key(record)?;
-        let Some(public_key) = felt::parse_non_zero(&key.0.public_key_x) else {
-            return Ok(false);
-        };
-        let family = record.family();
-        let class_hash = (family != AccountFamily::OpenZeppelin).then(|| record.class_felt());
-        let expected = record_at(
-            family,
-            record.key,
-            record.account_index,
-            class_hash.as_ref(),
-            record.salt_felt().as_ref(),
-            &public_key,
-            record.network(),
-        );
-        if expected.ok().as_ref() != Some(record) || !sealed(record, &key) {
-            return Ok(false);
-        }
-    }
-    Ok(true)
-}
-
-/// Checks a payload in full, re-deriving every record; `sealed` also checks what the vault
-/// sealed beside each record against its derived key. Used on open.
-pub(crate) fn validate(
-    payload: &VaultPayload,
-    mut sealed: impl FnMut(&StoredAccount, &DerivedKey) -> bool,
-) -> Result<(), CoreError> {
-    if !is_consistent(payload) || !rederives(payload, &mut sealed)? {
-        return Err(invalid_payload());
-    }
-    Ok(())
-}
-
-/// Checks every structural invariant without re-deriving. Used before every write, whose new
-/// records were derived by this core in the same call.
-pub(crate) fn check_consistent(payload: &VaultPayload) -> Result<(), CoreError> {
-    if is_consistent(payload) {
-        Ok(())
-    } else {
-        Err(invalid_payload())
-    }
 }

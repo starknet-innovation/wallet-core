@@ -33,7 +33,9 @@ pub struct TokenInfo {
 }
 
 /// Public network metadata. RPC endpoints are tried in order; the host verifies
-/// `starknet_chainId` against `chain_id` before trusting any response.
+/// `starknet_chainId` against `chain_id` before trusting any response. The first endpoint may be
+/// the person's override and carry an API key: never log a record, and redact failure text with
+/// `redact_endpoints`.
 #[cfg(feature = "mobile")]
 #[uniffi::remote(Record)]
 pub struct NetworkInfo {
@@ -173,6 +175,17 @@ pub fn registry() -> &'static TokenRegistry {
     })
 }
 
+/// `networkRpcUrls` (`background/runtime/runtime-state.ts`): `network`'s bundled metadata with the
+/// person's RPC override, if any, tried first. The bundled endpoints stay behind it as transport
+/// failover (`withRpcFallback`); the chain id, tokens and explorer never change.
+pub fn with_rpc_override(network: NetworkId, rpc_override: Option<&str>) -> NetworkInfo {
+    let mut info = info(network).clone();
+    if let Some(url) = rpc_override {
+        info.rpc_urls.insert(0, url.to_string());
+    }
+    info
+}
+
 /// Both bundled catalogs, as `starknet_wallet_core` takes them.
 pub fn catalogs() -> Catalogs<'static> {
     Catalogs {
@@ -191,6 +204,19 @@ mod tests {
             let expected = felt::canonical(&network.chain_id());
             assert_eq!(info(network).chain_id, expected);
             assert!(info(network).tokens.iter().any(|t| t.symbol == "STRK"));
+        }
+    }
+
+    #[test]
+    fn an_rpc_override_goes_first_and_keeps_the_bundled_failover() {
+        for network in [NetworkId::Mainnet, NetworkId::Sepolia] {
+            assert_eq!(&with_rpc_override(network, None), info(network));
+            let custom = with_rpc_override(network, Some("https://rpc.example/key"));
+            assert_eq!(custom.rpc_urls[0], "https://rpc.example/key");
+            assert_eq!(custom.rpc_urls[1..], info(network).rpc_urls[..]);
+            assert_eq!(custom.chain_id, info(network).chain_id);
+            assert_eq!(custom.tokens, info(network).tokens);
+            assert!(!format!("{custom:?}").contains("rpc.example"));
         }
     }
 

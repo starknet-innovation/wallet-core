@@ -67,7 +67,7 @@ v13 payload.
 | 2.6 Catalogs | done (#49) | done (M12, Bramble #928) |
 | 2.7 Swap | done (#50), behind the `mobile` feature | done (M13, Bramble #929), at `v0.3.0`: `mobile/core` is a shell over this crate |
 | Vault switch | done (V1 #58) | G4 done (Bramble #947); M14 done (Bramble #980): mobile pins `v0.4.0` |
-| [Mobile parity](#mobile-parity) | P6 done (#65), P2 done (#68); P1's mechanism done (P1a #70, P1b #71, P1c #72), not exported until Krusty exports a selector and signature verification; P3 done (#80), not shippable until Bramble's imported-key v13 fixture lands; P4–P5 not started | not started |
+| [Mobile parity](#mobile-parity) | P6 done (#65), P2 done (#68); P1's mechanism done (P1a #70, P1b #71, P1c #72), not exported until Krusty exports a selector and signature verification; P3 done (#80), not shippable until Bramble's imported-key v13 fixture lands; P4 done (#78), no fixture yet (needs a Bramble generator); P5 not started | not started |
 | 3 Extension | not started; `js/package.json` is private | n/a |
 
 `v0.1.0` is tagged at `35abc8b` (GitHub release only) and was what M2 and M3 pinned. `v0.2.0`
@@ -134,10 +134,26 @@ Needed now:
   explicit `null` in an intent's or record's optional key read as absent and passed the validator,
   and now fails to parse; the package envelope is checked (`IntentPackage::parse`) and a remote's
   lifecycle claims are dropped before the merge (`SigningIntent::locally_derived_imported`).
-  The rest of the extension's `importIntent` is still the wallet's to do before it stores an
-  import, and the mobile export must enforce it: replace the remote summary with its own call
-  review (refusing when the review refuses), and refuse unless the chain's authority equals the
-  intent's snapshot and its nonce the prepared one. Two refusals deliberately differ: a non-member deployer is
+  The rest of the extension's `importIntent` is `send::multisig_import::import_intent`: given
+  the authority and nonce the host read, it refuses unless they equal the intent's snapshot and
+  prepared nonce, replaces the remote summary with the wallet's own call review (refusing when
+  the review refuses), refuses a stored intent under the id that froze another transaction,
+  merges, and returns only what the validator and replacement rule accept. These rules have
+  mechanism tests only (G5 recorded no import case) and need a Bramble generator. Still the
+  wallet's: the session check, the active network and the store's capacity; reading the nonce
+  of the record's own address (`import_intent` takes a bare felt, as the extension's unpinned
+  read does, so nothing in the core binds it to an address); and showing the fee before
+  co-signing (the extension's import also returns `feeReview`; the core returns only the
+  intent, whose `PreparedInvoke::fee()` the wallet shows). The mobile export must route every
+  import through `import_intent`. The import departs from the extension in four ways: the
+  record must be the frozen transaction's account by address and network as well as by id
+  (`UnknownAccount`; the extension's lookup cannot miss); an authority read of another address,
+  network or class is `ReadForAnotherAccount` (no counterpart: the extension builds its read
+  from the record); a read that ends other than `Available` is `AuthorityUnavailable`, the
+  extension's fixed fallback sentence, where the extension shows whatever its read threw; and a
+  stored intent with another snapshot is `Conflict` straight from the stricter merge, the
+  answer the extension's store gives after its looser one. Two refusals deliberately differ: a
+  non-member deployer is
   refused before any read, and a write answered with another hash is `HashMismatch`. The merge
   and submit deliberately differ too, closing gaps the extension has: `merge_imported` refuses
   another intent and stops at the threshold (the extension merges past it into an invalid
@@ -195,14 +211,41 @@ Only if the feature is wanted (a product decision first):
   one too, ideally) beside G4's accounts, for a test that opens it and writes it back unchanged. It must run at a v13 Bramble commit:
   some Bramble branches move the vault to schema 14 (`accountProvenance`), which mobile's reader
   (v13 only, unknown fields refused) does not open.
-- **P4 Custom RPC.** A stored custom network in `bramble-core`, passed in through `Catalogs`;
-  `wallet-core` already takes the wallet's `NetworkInfo`. Mainnet and Sepolia stay the fixed
-  defaults.
 - **P5 Stark names.** A sans-IO body and reply judge for name → address and address → name,
   beside `rpc.rs`; the naming contracts are Bramble's catalog data.
 
 Checked:
 
+- **P4 Custom RPC.** Wanted (product owner, 2026-11-20). The extension (`main` at `a01b240c`) keeps
+  one override per network in its preferences, not the vault: `rpcOverrides`, network id to URL
+  (`isRpcOverrides`, `wallet-model/preferences/preferences.ts`), set and cleared by `setRpcOverride`
+  (`settings/src/preferences.ts`: trimmed, empty clears, else `isCustomRpcUrl`, which is
+  `isServiceUrl` in `core/service-url.ts`). It defines no network: `networkRpcUrls`
+  (`runtime/runtime-state.ts`) tries the override before the bundled endpoints, which stay as
+  transport failover. It probes no chain id on save; writes probe every endpoint before signing
+  (`withRpcWrite`). With an override and no stored choice, `explorerFallbackAllowed` is off; a
+  preferences restore never applies `rpcOverrides`. So the URL grammar is the relay one over
+  `https`/`http` (`nostr::relay_url::is_custom_rpc_url`), and `bramble-core` stores `rpcOverrides`
+  in `public_store`'s preferences (`rpc_override.rs`), narrowed to `https` as relays are to `wss`.
+  A stored override the rule refuses (after a tightened grammar) is dropped on load, as
+  `withCanonicalEndpoints` drops one, with that network's explorer fallback kept off
+  (`explorerFallbackOff`, the extension's pin of `explorerFallback`); one on an unknown network
+  fails closed. `WalletCore::networks` hands the host the bundled records with the override first
+  (`networks::with_rpc_override`); chain ids, tokens and explorers never change, and the send
+  plan's chain probes still check Krusty's chain id. As in the extension, saving probes no chain:
+  a Sepolia URL saved for Mainnet is caught by the host's per-endpoint chain check or, for a
+  send, by the plan's probe. `WalletCore::explorer_fallback_allowed` reads the override itself
+  (false while locked), so the host cannot pass the wrong answer. The extension's `redactEndpoints`
+  is `relay_url::redact_endpoints`, exported to mobile; `NetworkInfo`'s `Debug` leaves out
+  `rpc_urls`. Deliberately different: no `http` on loopback (cleartext is blocked on both
+  platforms), and a typed URL the parser would respell (case, a default port, dot segments) is
+  refused rather than rewritten, since the core has no URL parser. The rules have unit tests only
+  and need a Bramble generator. Mobile has none yet. Mobile adoption: endpoints from
+  `wallet.networks()`, not `supported_networks()`; keep the per-endpoint chain check; the explorer
+  lane asks `wallet.explorer_fallback_allowed(network, preferences)`; pass every transport and RPC
+  failure text through `redact_endpoints` before it is shown, logged or reported, and never log a
+  `NetworkInfo`; add the settings field. Mobile has no explorer-fallback toggle, so a network
+  pinned off by a dropped override stays off.
 - **P6 Hidden accounts.** The extension (`main` at `a01b240c`) keeps them in its preferences,
   not the vault: `hiddenAccountIds`, unique canonical account ids, default `[]`
   (`packages/features/settings/src/preferences-accounts.ts`, `isHiddenAccountIds` in
@@ -959,13 +1002,13 @@ today's exposure; it is a bridge, not the target.
   native stack outside linear memory; and a memory read while unlocked or during an unlock.
 
 Two things the target does not yet answer (both in Open questions, both to settle before 3.2 is
-designed, neither measured or tested yet):
+designed; only the first is measured):
 - **The passphrase key loses non-extractability.** Today PBKDF2 runs in WebCrypto and yields a
   non-extractable key. In the core it runs as Rust compiled to wasm, and the derived key is bytes
   in linear memory: zeroized on lock, but readable while unlocked. This costs little while the
   plaintext passphrase is held beside it, as it is today. PBKDF2 runs once per unlock (and once
-  per restored session), so its speed at 600,000 iterations in wasm matters there; it is
-  unmeasured.
+  per restored session), so its speed at 600,000 iterations in wasm matters there: about 155 ms,
+  3.6 times WebCrypto's (Open questions).
 - **A session in wasm memory ends when the service worker does.** An MV3 worker is stopped when
   idle. Today a restart restores the unlock from the plaintext passphrase in `storage.session`.
   3.2 picks one: keep that mirror (same as today, and the passphrase stays in JavaScript), or
@@ -1147,9 +1190,17 @@ Added 2026-11-09 after reviewing the first day's work. Items marked *proposed* a
   bare envelopes, and one of them owns the freshness check.
 - What a `VaultSession` does when the MV3 service worker restarts: keep the extension's
   plaintext passphrase mirror in `storage.session`, or unlock again (see Key exposure).
-- PBKDF2 in wasm: how long 600,000 iterations take at unlock, and whether losing WebCrypto's
-  non-extractable key is accepted (see Key exposure). A throwaway export timed in
-  `smoke.test.mjs` answers the first.
+- PBKDF2 in wasm: whether its unlock cost and losing WebCrypto's non-extractable key are
+  accepted (see Key exposure). Measured 2026-11-20 (Apple M5, macOS 27.2, Node 24.18, rustc
+  1.97.1): `envelope::open` at `KDF_ITERATIONS` (600,000) takes 155 ms median in the release
+  wasm (n = 30, 152–171; a fresh process's first call 155–160), against 43 ms (42–48) for
+  WebCrypto `deriveKey` and 28 ms for native release Rust: 3.6 times WebCrypto, per round.
+  Method: a throwaway export (not kept) ran `envelope::open` on an envelope WebCrypto sealed, in
+  the `npm run build` wasm, interleaved with `deriveKey` on the same password and 16-byte salt,
+  first round discarded; native Rust derived the same key bytes. Under load the medians swung to
+  250–1,000 ms. Not measured: Chrome's service worker, slower laptops and phones (assumed to
+  keep the ratio), wasm `simd128` (off; `sha2` has a backend for it). The wasm call also blocks
+  the worker for its length, where WebCrypto runs off-thread.
 - Where the generators write after 2.7. *Provisional*: they keep writing Bramble's
   `mobile/core/tests/fixtures/`, which M13 keeps (the conformance tests read it there), and this
   repo copies from it as before.
@@ -1181,8 +1232,13 @@ Added 2026-11-09 after reviewing the first day's work. Items marked *proposed* a
   fixture says so); mobile keeps refusing every `ws:` relay as a platform rule (App Transport
   Security and `usesCleartextTraffic=false` block cleartext), on top of the core's grammar
   (M11, Bramble #927). Revisit if a mobile build ever needs a local relay.
-- *Provisional, 2.5b*: mobile reads one page per relay (the core at a page cap of 1) until 2.7,
-  because paging needs a third `RelayStep` variant across the FFI and the bindings may not
-  change before then. Three paging cases stay listed as mobile's differences until 2.7.
+- Mobile's coordination sync pages as the extension's does: `bramble-core` exports
+  `RelayStep::NextPage { close_frame, request }` and runs the judge at `RELAY_LIMITS`
+  (`MAX_SYNC_PAGES`, 4) instead of a page cap of 1, and the three paging cases mobile skipped are
+  asserted through mobile's judge. Bramble owes the adoption, in the same PR as the bump, since
+  the new case breaks no build: `RelayTransport.swift` and `CoordinationTransport.kt` check only
+  for `Finish`, so they would ignore a `NextPage`, time out, and lose the relay's first page. On
+  `NextPage` each sends `close_frame` then `request` on the same socket, restarts the request
+  timeout (the extension's is per page), and keeps reading.
 - Which modules count as mobile-only glue, and whether they live in the app or in `bramble-core`
   behind mobile's build (Phase 2).

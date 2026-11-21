@@ -2,23 +2,19 @@
 //! extension's `nostr-relay-socket.ts`, `nostr-relay.ts` and `isNostrRelayUrl`. The host owns the
 //! WebSockets and the timers; the core builds every frame it sends and judges every frame it
 //! receives. Mobile adds two things here: its UniFFI `RelayStep`, and the `wss:`-only platform
-//! rule.
-//!
-//! The sync reads one page per relay until the FFI can page (wallet-core plan, 2.7): the core's
-//! judge runs with a page cap of 1, so mobile already has its unseen-first bound (seen wraps are
-//! skipped before the 50-wrap batch bound) and its error messages, but not the `until` cursor or
-//! later pages.
+//! rule. The sync pages as the extension's does, at Bramble's `RELAY_LIMITS`.
 
 use std::collections::HashSet;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use wallet_core::nostr::relay::{self, RelayError, RelayLimits};
+use wallet_core::nostr::relay::{self, RelayError};
 use wallet_core::nostr::relay_url::is_nostr_relay_url;
 use wallet_core::nostr::sync;
 
 use crate::contact_card::js_trim;
+use crate::coordination::RELAY_LIMITS;
 use crate::nostr::NostrEvent;
-use crate::{multisig_constants, CoreError};
+use crate::CoreError;
 
 /// What the host does after handing the core a frame.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
@@ -27,6 +23,11 @@ pub enum RelayStep {
     Continue,
     /// Send `close_frame` if present, then close the socket.
     Finish { close_frame: Option<String> },
+    /// Send `close_frame`, then `request` (the next page) on the same socket, and keep reading.
+    NextPage {
+        close_frame: String,
+        request: String,
+    },
 }
 
 impl From<relay::RelayStep> for RelayStep {
@@ -34,10 +35,12 @@ impl From<relay::RelayStep> for RelayStep {
         match step {
             relay::RelayStep::Continue => Self::Continue,
             relay::RelayStep::Finish { close_frame } => Self::Finish { close_frame },
-            // Unreachable at mobile's page cap of 1; stopping is the fail-safe. It goes at 2.7,
-            // when the FFI's `RelayStep` gains the next page.
-            relay::RelayStep::NextPage { close_frame, .. } => Self::Finish {
-                close_frame: Some(close_frame),
+            relay::RelayStep::NextPage {
+                close_frame,
+                request,
+            } => Self::NextPage {
+                close_frame,
+                request,
             },
         }
     }
@@ -65,15 +68,6 @@ fn invalid_relay() -> CoreError {
 /// Transport Security and `usesCleartextTraffic=false` block cleartext sockets, loopback included.
 pub fn is_relay_url(value: &str) -> bool {
     value.starts_with("wss://") && is_nostr_relay_url(value)
-}
-
-/// Mobile's relay numbers: as many relays as the reviewed defaults, and one page (see the module
-/// comment).
-fn limits() -> RelayLimits {
-    RelayLimits {
-        max_relays: multisig_constants::get().relays.defaults.len(),
-        max_sync_pages: 1,
-    }
 }
 
 // The core checked the selection; mobile additionally refuses `ws:` with the same error.
@@ -123,7 +117,10 @@ pub fn normalize_relay_url(raw: &str) -> Result<Option<String>, CoreError> {
     if trimmed.is_empty() {
         return Ok(None);
     }
-    if trimmed.len() >= 5 && trimmed[..5].eq_ignore_ascii_case("ws://") {
+    if trimmed
+        .get(..5)
+        .is_some_and(|scheme| scheme.eq_ignore_ascii_case("ws://"))
+    {
         return Err(CoreError::InvalidInput {
             reason: "mobile relays must use wss".into(),
         });
@@ -147,7 +144,7 @@ impl SyncJudge {
         relays: Vec<String>,
         seen: HashSet<String>,
     ) -> Result<Self, CoreError> {
-        let judge = sync::sync_nostr_gift_wraps(recipient, since, relays, seen, limits())?;
+        let judge = sync::sync_nostr_gift_wraps(recipient, since, relays, seen, RELAY_LIMITS)?;
         secure(judge.relay_urls())?;
         Ok(Self(Mutex::new(judge)))
     }
@@ -191,7 +188,7 @@ pub fn publish_many(
     gift_wraps: &[relay::NostrGiftWrapDelivery],
     relay_urls: &[String],
 ) -> Result<relay::PublishMany, CoreError> {
-    let publish = relay::publish_many_nostr_gift_wraps(gift_wraps, relay_urls, limits())?;
+    let publish = relay::publish_many_nostr_gift_wraps(gift_wraps, relay_urls, RELAY_LIMITS)?;
     secure(relay_urls)?;
     Ok(publish)
 }
