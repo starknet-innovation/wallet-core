@@ -294,11 +294,14 @@ impl Plan {
         if self.account.is_multisig() && self.is_invoke() {
             return self.fail(SendFailureCode::AccountClassUnsupported, None);
         }
-        // The plan holds a batch to its own account and policy, whatever the host built it with:
-        // reviewed for another account, a call to this one would not have been refused.
+        // The plan holds a batch to its own account, network and policy, whatever the host built
+        // it with: reviewed for another account, a call to this one would not have been refused;
+        // on another network, its known tokens and trusted addresses are not this one's.
         if let Kind::Invoke(invoke) = &self.kind {
             let checked = super::invoke::check(&self.account.address, &invoke.calls, &self.policy);
-            if invoke.sender != self.account.address || checked.is_err() {
+            let own =
+                invoke.sender == self.account.address && invoke.network == self.account.network;
+            if !own || checked.is_err() {
                 return self.fail(SendFailureCode::PreparationUnavailable, None);
             }
         }

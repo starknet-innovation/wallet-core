@@ -22,7 +22,7 @@ use starknet_wallet_core::send::plan::{
 use starknet_wallet_core::send::types::{
     FeeAffordability, SendError, SendFailureCode as Code, SendStep, StepReply,
 };
-use starknet_wallet_core::{felt, Felt};
+use starknet_wallet_core::{felt, Felt, NetworkId};
 
 /// 1.5 STRK in base units.
 const AMOUNT: u128 = 1_500_000_000_000_000_000;
@@ -293,34 +293,46 @@ fn a_different_broadcast_hash_is_a_mismatch_carrying_the_signed_hash() {
 }
 
 #[test]
-fn the_plan_holds_a_batch_to_its_own_account_and_policy() {
-    // A batch reviewed for one account cannot be sent from another: its self-call check, its
-    // trusted set and its sender were the other account's. Refused before any request.
+fn the_plan_holds_a_batch_to_its_own_account_network_and_policy() {
+    // A batch reviewed for another account, network or policy is refused before any request:
+    // its self-call check, trusted set, known tokens and bounds were that one's.
     let host = Host::new();
     let account = oz_account(&host);
+    let refused = |batch: Invoke, policy: Policy| {
+        let mut plan = Plan::new(account.clone(), Kind::Invoke(Box::new(batch)), policy);
+        let failed = failure(plan.advance(&host, StepReply::Start).unwrap());
+        assert_eq!(failed.code, Code::PreparationUnavailable);
+        assert_eq!(plan.signatures_made(), 0);
+    };
     let mut elsewhere = account.clone();
     elsewhere.address = f(ACCOUNT_1);
     // From ACCOUNT_1's point of view, a call to the plan's own account is an ordinary call.
     let to_self = call(ACCOUNT_0, "upgrade", vec![Felt::ONE]);
-    let batch = invoke(&elsewhere, vec![to_self], &[]).unwrap();
-    let mut plan = Plan::new(
-        account.clone(),
-        Kind::Invoke(Box::new(batch)),
+    refused(
+        invoke(&elsewhere, vec![to_self], &[]).unwrap(),
         bramble_core::SEND_POLICY,
     );
-    let failed = failure(plan.advance(&host, StepReply::Start).unwrap());
-    assert_eq!(failed.code, Code::PreparationUnavailable);
-
+    // Calls this account could send too: only the sender tells them apart.
+    refused(
+        invoke(&elsewhere, two_calls(), &[]).unwrap(),
+        bramble_core::SEND_POLICY,
+    );
+    // The same address on the other network.
+    let mut other_network = account.clone();
+    other_network.network = match account.network {
+        NetworkId::Mainnet => NetworkId::Sepolia,
+        NetworkId::Sepolia => NetworkId::Mainnet,
+    };
+    refused(
+        invoke(&other_network, two_calls(), &[]).unwrap(),
+        bramble_core::SEND_POLICY,
+    );
     // A plan whose policy is tighter than the one the batch was checked against.
-    let batch = invoke(&account, two_calls(), &[]).unwrap();
     let tight = Policy {
         max_invoke_calls: 1,
         ..bramble_core::SEND_POLICY
     };
-    let mut plan = Plan::new(account, Kind::Invoke(Box::new(batch)), tight);
-    let failed = failure(plan.advance(&host, StepReply::Start).unwrap());
-    assert_eq!(failed.code, Code::PreparationUnavailable);
-    assert_eq!(plan.signatures_made(), 0);
+    refused(invoke(&account, two_calls(), &[]).unwrap(), tight);
     assert!(host.signed.borrow().is_empty());
 }
 

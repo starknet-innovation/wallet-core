@@ -17,7 +17,7 @@ use super::multisig_invoke::StarkPrimitives;
 use super::multisig_review::{summarise_calls, CallReviewError};
 use super::types::{Account, Policy};
 use crate::history::activity::MAX_SUMMARY_LENGTH;
-use crate::Felt;
+use crate::{Felt, NetworkId};
 
 /// `INVOKE_LIMITS.entrypointCharacters` (`wallet-protocol/src/transactions/invoke-limits.ts`): a
 /// bound of the call grammar, like the multisig one, not a wallet's choice.
@@ -49,6 +49,7 @@ pub enum InvokeRefusal {
 /// calls the review described.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Invoke {
+    pub(crate) network: NetworkId,
     pub(crate) sender: Felt,
     pub(crate) calls: Vec<Call>,
     pub(crate) calldata: Vec<Felt>,
@@ -117,6 +118,7 @@ impl Invoke {
         let calldata = execute_calldata(&calls, |entrypoint| primitives.selector(entrypoint))
             .ok_or(InvokeRefusal::InvalidCall)?;
         Ok(Self {
+            network: account.network,
             sender: account.address,
             calls,
             calldata,
