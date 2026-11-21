@@ -26,8 +26,9 @@ pub struct SwapActivity {
 
 /// A reviewed swap, ready for `send::plan::Plan`: built only by `PendingBuild::judge`, released
 /// only to the account and network it was prepared for, and consumed when released, so one
-/// preparation submits at most once (`claim`).
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// preparation submits at most once (`claim`). Deliberately not `Clone`: a copy would be a
+/// second claim on the same reviewed batch.
+#[derive(Debug, PartialEq, Eq)]
 pub struct SwapPreparation {
     network: NetworkId,
     account: Felt,
