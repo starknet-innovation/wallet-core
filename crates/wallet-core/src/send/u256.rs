@@ -72,6 +72,35 @@ impl U256 {
         })
     }
 
+    /// Floor division by a non-zero `divisor`, with the remainder; `None` for zero. Schoolbook
+    /// over four 64-bit limbs: each step divides a value below `divisor << 64`, so it fits u128.
+    pub fn checked_div_rem_small(self, divisor: u64) -> Option<(Self, u64)> {
+        if divisor == 0 {
+            return None;
+        }
+        let divisor = u128::from(divisor);
+        let limbs = [
+            self.high >> 64,
+            self.high & u128::from(u64::MAX),
+            self.low >> 64,
+            self.low & u128::from(u64::MAX),
+        ];
+        let mut quotient = [0u128; 4];
+        let mut remainder = 0u128;
+        for (slot, limb) in quotient.iter_mut().zip(limbs) {
+            let current = (remainder << 64) | limb;
+            *slot = current / divisor;
+            remainder = current % divisor;
+        }
+        Some((
+            Self {
+                high: (quotient[0] << 64) | quotient[1],
+                low: (quotient[2] << 64) | quotient[3],
+            },
+            u64::try_from(remainder).ok()?,
+        ))
+    }
+
     /// Parses a base-10 integer (digits only, at most 78 of them) without wrapping.
     pub fn from_decimal(text: &str) -> Option<Self> {
         if text.is_empty() || text.len() > 78 || !text.bytes().all(|b| b.is_ascii_digit()) {
@@ -81,6 +110,23 @@ impl U256 {
             value
                 .checked_mul_small(10)?
                 .checked_add(Self::from_u128(u128::from(digit - b'0')))
+        })
+    }
+
+    /// Parses 1 to 64 hex digits in either case (no prefix, no sign) without wrapping.
+    pub fn from_hex(digits: &str) -> Option<Self> {
+        if digits.is_empty() || digits.len() > 64 || !digits.bytes().all(|b| b.is_ascii_hexdigit())
+        {
+            return None;
+        }
+        let (high, low) = digits.split_at(digits.len().saturating_sub(32));
+        Some(Self {
+            high: if high.is_empty() {
+                0
+            } else {
+                u128::from_str_radix(high, 16).ok()?
+            },
+            low: u128::from_str_radix(low, 16).ok()?,
         })
     }
 
@@ -135,5 +181,50 @@ mod tests {
         );
         assert_eq!(U256::from_u128(1).checked_sub(U256::from_u128(2)), None);
         assert_eq!(U256::ZERO.checked_sub(two_words), None);
+    }
+
+    #[test]
+    fn hex_is_one_to_sixty_four_digits_in_either_case() {
+        assert_eq!(U256::from_hex("fF"), Some(U256::from_u128(255)));
+        assert_eq!(
+            U256::from_hex(&format!("1{}", "0".repeat(32))),
+            Some(U256 { high: 1, low: 0 })
+        );
+        assert_eq!(
+            U256::from_hex(&"f".repeat(64)),
+            Some(U256 {
+                high: u128::MAX,
+                low: u128::MAX
+            })
+        );
+        for refused in ["", "+1", "-1", "0x1", "g", &"1".repeat(65)] {
+            assert_eq!(U256::from_hex(refused), None, "{refused}");
+        }
+    }
+
+    #[test]
+    fn division_by_a_small_divisor_is_exact() {
+        let max = U256 {
+            high: u128::MAX,
+            low: u128::MAX,
+        };
+        let (quotient, remainder) = max.checked_div_rem_small(10_000).unwrap();
+        // 2^256 - 1 = q * 10_000 + r, checked by rebuilding it.
+        assert_eq!(
+            quotient
+                .checked_mul_small(10_000)
+                .and_then(|v| v.checked_add(U256::from_u128(u128::from(remainder)))),
+            Some(max)
+        );
+        assert_eq!(remainder, 9_935);
+        assert_eq!(
+            U256 { high: 1, low: 0 }.checked_div_rem_small(2),
+            Some((U256::from_u128(1 << 127), 0))
+        );
+        assert_eq!(
+            U256::from_u128(12_499).checked_div_rem_small(10_000),
+            Some((U256::from_u128(1), 2_499))
+        );
+        assert_eq!(U256::from_u128(1).checked_div_rem_small(0), None);
     }
 }

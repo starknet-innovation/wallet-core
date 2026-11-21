@@ -1,26 +1,33 @@
-//! ERC-20 allowances, the read side: the records a wallet keeps of the grants it submitted
-//! (`record`), which of them it keeps when full (`retention`), the log over `host::Storage`
-//! (`store`), how grants made elsewhere are found and read on chain (`discovery`, `scan`,
-//! `tracked`), and how the two are merged for the allowance manager. Each is a sans-IO port of
-//! the extension's `packages/features/transactions/src/allowances/` and the listing rules in
-//! `apps/extension/src/background/portfolio/allowance-ops.ts`.
-//!
-//! The revoke (`allowance-revoke.ts`'s call and `allowanceTarget`) is not here: it submits a
-//! call, which waits on the plan's call batches (P9). Decoding the calls a wallet submits into
-//! log writes (`allowances.ts`) waits with it. The record already carries the fields the revoke
-//! settles on (`revoking`, `revoke_hash`), and `store` already settles them.
+//! ERC-20 allowances: the records a wallet keeps of the grants it submitted (`record`), which of
+//! them it keeps when full (`retention`), the log over `host::Storage` (`store`), what a
+//! submitted batch files there (`calls`), how grants made elsewhere are found and read on chain
+//! (`discovery`, `scan`, `tracked`), how the two are merged for the allowance manager, and the
+//! revoke and how it settles (`revoke`). Each is a sans-IO port of the extension's
+//! `packages/features/transactions/src/allowances/` and the rules in
+//! `apps/extension/src/background/portfolio/allowance-{ops,recording}.ts`. Nothing here signs:
+//! a revoke leaves as a `send::invoke::Invoke` for the plan.
 
+pub mod calls;
 pub mod discovery;
 pub mod record;
 pub mod retention;
+pub mod revoke;
 pub mod scan;
 pub mod store;
 pub mod tracked;
 
 #[cfg(test)]
+mod calls_tests;
+#[cfg(test)]
 mod discovery_tests;
 #[cfg(test)]
+mod recording_tests;
+#[cfg(test)]
 mod retention_tests;
+#[cfg(test)]
+mod revoke_outcome_tests;
+#[cfg(test)]
+mod revoke_tests;
 #[cfg(test)]
 mod scan_node;
 #[cfg(test)]
@@ -78,9 +85,11 @@ mod tests {
     #[test]
     fn allowances_never_touch_key_material() {
         let sources = [
+            include_str!("calls.rs"),
             include_str!("discovery.rs"),
             include_str!("record.rs"),
             include_str!("retention.rs"),
+            include_str!("revoke.rs"),
             include_str!("scan.rs"),
             include_str!("store.rs"),
             include_str!("tracked.rs"),

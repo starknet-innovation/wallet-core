@@ -99,7 +99,7 @@ fn activity_origin(origin: &str) -> String {
 }
 
 /// `readProviderInvokeCall`'s entrypoint grammar: `^[A-Za-z_][A-Za-z0-9_]*$`, at most 64.
-fn is_entrypoint(name: &str) -> bool {
+pub(crate) fn is_entrypoint(name: &str) -> bool {
     let bytes = name.as_bytes();
     bytes.len() <= MAX_ENTRYPOINT_CHARACTERS
         && bytes

@@ -32,7 +32,7 @@ pub use crate::records::{
 use crate::recovery_scan::ScanState;
 use crate::security;
 use crate::vault::{self, Envelope, SealingKey};
-use crate::vault_v13::{self, open_stored, Opened, SCHEMA_VERSION};
+use crate::vault_v13::{self, open_stored, Opened, NEW_VAULT_SCHEMA, PROVENANCE_SCHEMA};
 use crate::{kms, public_store, CoreError};
 
 pub(crate) const VAULT_FILE: &str = "vault.json";
@@ -103,7 +103,7 @@ impl WalletCore {
     }
 
     pub(crate) fn read_vault(&self) -> Result<StoredVault, CoreError> {
-        container::read(&Directory(&self.data_dir), VAULT_FILE, SCHEMA_VERSION)?
+        container::read(&Directory(&self.data_dir), VAULT_FILE, PROVENANCE_SCHEMA)?
             .ok_or(CoreError::NoWallet)
     }
 
@@ -216,7 +216,8 @@ impl WalletCore {
             StoredVault::Container(file) if file.password_slot == session.password_slot => *file,
             _ => return Err(storage("vault changed on disk")),
         };
-        self.write_vault(&base.with_payload(&session.dek, SCHEMA_VERSION, &payload)?)
+        let version = session.payload.schema_version;
+        self.write_vault(&base.with_payload(&session.dek, version, &payload)?)
     }
 
     /// The app-private directory the vault and the public metadata files live in.
@@ -248,7 +249,8 @@ impl WalletCore {
         vault::check_password(password)?;
         let key = SealingKey::create(password)?;
         let dek = container::new_dek()?;
-        let file = container::seal_new(&key, &dek, SCHEMA_VERSION, &sealed, &Randomness::draw()?)?;
+        let file =
+            container::seal_new(&key, &dek, NEW_VAULT_SCHEMA, &sealed, &Randomness::draw()?)?;
         {
             let _file = self.lock_file();
             if self.vault_path().exists() {

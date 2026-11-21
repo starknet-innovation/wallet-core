@@ -1,10 +1,11 @@
 //! The extension's v13 validator (`isVaultV13`, `packages/platform/vault/src/schema/schema.ts`
-//! and what it imports), rule for rule, over the vault as written (`vault_wire`): every record's
-//! grammar, the references between collections, and the bounds. `vault_v13` runs it on every
-//! vault it opens and on every vault it is about to write, so mobile never accepts a vault the
-//! extension refuses and never writes one. The JSON budget is `vault_budget`; serde's shapes
-//! cover `hasOnlyKnownKeys` and the required keys. Mobile's stronger rules for the records it
-//! operates (every one re-derived from its key) are `account_validate`'s, on top of these.
+//! and what it imports), rule for rule, and v14's (`isVaultV14`: v13's over the rest, and
+//! `validAccountProvenance`, `vault_provenance`), over the vault as written (`vault_wire`):
+//! every record's grammar, the references between collections, and the bounds. `vault_v13` runs
+//! it on every vault it opens and on every vault it is about to write, so mobile never accepts a
+//! vault the extension refuses and never writes one. The JSON budget is `vault_budget`; serde's
+//! shapes cover `hasOnlyKnownKeys` and the required keys. Mobile's stronger rules for the records
+//! it operates (every one re-derived from its key) are `account_validate`'s, on top of these.
 
 use std::collections::HashSet;
 use std::hash::Hash;
@@ -15,7 +16,8 @@ use crate::account_catalog::{deployment_classes, AccountFamily};
 use crate::account_names::{js_trim, utf16_len};
 use crate::felt;
 use crate::networks::NetworkId;
-use crate::vault_v13::SCHEMA_VERSION;
+use crate::vault_provenance;
+use crate::vault_v13::PROVENANCE_SCHEMA;
 use crate::vault_wire::{
     Account, AccountSecret, Derivation, ImportedSeed, MultisigConflict, MultisigKey, OriginGrant,
     ShadowScope, SigningKey, Vault,
@@ -357,9 +359,15 @@ fn has_multisig_keys(keys: &[MultisigKey], conflicts: &[MultisigConflict]) -> bo
         && conflict_ids.iter().all(|id| key_ids.contains(id))
 }
 
-/// `isVaultV13`, but for the JSON budget (`vault_budget::within`).
+/// `isVaultV13` or `isVaultV14`, but for the JSON budget (`vault_budget::within`).
 pub(crate) fn is_valid(vault: &Vault) -> bool {
-    vault.schema_version == SCHEMA_VERSION
+    let provenance = vault.account_provenance.as_ref();
+    let version_ok = match vault.schema_version {
+        13 => provenance.is_none(),
+        PROVENANCE_SCHEMA => vault_provenance::is_valid(provenance, &vault.accounts),
+        _ => false,
+    };
+    version_ok
         && vault.mnemonic.as_deref().is_none_or(is_mnemonic_text)
         && has_references(vault)
         && has_account_secrets(&vault.accounts, &vault.account_secrets)
