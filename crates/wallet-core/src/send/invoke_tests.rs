@@ -386,3 +386,62 @@ fn the_whole_context_reaches_the_flags() {
         Err(InvokeRefusal::Review(CallReviewError::PoisonedRecipient))
     );
 }
+
+#[test]
+fn the_activity_text_is_the_builders_or_the_review_line() {
+    let batch = invoke(transfer_then_approve()).unwrap();
+    assert_eq!(batch.activity_summary(), batch.summary());
+    // swap-ops.ts's line, kept as given.
+    let swap = "Swap 5 USDC for ~0.001 ETH via avnu";
+    assert_eq!(
+        batch.clone().with_activity_summary(swap).activity_summary(),
+        swap
+    );
+    // An empty text leaves the review line.
+    assert_eq!(
+        batch.clone().with_activity_summary("").activity_summary(),
+        batch.summary()
+    );
+    // `clampActivitySummary`: 200 UTF-16 units kept, 201 cut to 199 and an ellipsis.
+    let exact = "a".repeat(199) + "é";
+    assert_eq!(
+        batch
+            .clone()
+            .with_activity_summary(&exact)
+            .activity_summary(),
+        exact
+    );
+    let long = "a".repeat(199) + "😀";
+    assert_eq!(
+        batch
+            .clone()
+            .with_activity_summary(&long)
+            .activity_summary(),
+        "a".repeat(199) + "…"
+    );
+}
+
+#[test]
+fn a_dapps_batch_names_its_origin_and_its_own_count() {
+    // provider-ops.ts: "<activityOrigin(origin)> submitted N call(s)".
+    let three = invoke(transfer_then_approve()).unwrap();
+    assert_eq!(
+        three
+            .with_dapp_origin("https://app.avnu.fi")
+            .activity_summary(),
+        "https://app.avnu.fi submitted 3 calls"
+    );
+    let one = invoke(vec![call(ETH, "transfer", &[CONTACT, "0x1", "0x0"])]).unwrap();
+    // `activityOrigin`: 80 units kept; a longer origin keeps its last 79 behind an ellipsis.
+    let at_bound = format!("https://{}", "a".repeat(72));
+    assert_eq!(
+        one.clone().with_dapp_origin(&at_bound).activity_summary(),
+        format!("{at_bound} submitted 1 call")
+    );
+    let past = format!("https://app.example.com.{}.evil.io", "b".repeat(70));
+    let kept: String = past.chars().skip(past.chars().count() - 79).collect();
+    assert_eq!(
+        one.with_dapp_origin(&past).activity_summary(),
+        format!("…{kept} submitted 1 call")
+    );
+}

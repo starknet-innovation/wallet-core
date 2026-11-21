@@ -405,7 +405,9 @@ impl Plan {
                 },
                 t.summary.clone(),
             ),
-            (Kind::Invoke(invoke), true) => (PendingKind::Invoke, invoke.summary.clone()),
+            (Kind::Invoke(invoke), true) => {
+                (PendingKind::Invoke, invoke.activity_summary().to_string())
+            }
             _ => (PendingKind::Deployment, DEPLOY_SUMMARY.to_string()),
         };
         host.record_pending(PendingRecord {

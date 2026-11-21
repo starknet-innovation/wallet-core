@@ -184,6 +184,34 @@ fn a_multicall_signs_and_submits_every_call() {
 }
 
 #[test]
+fn the_builders_activity_text_is_what_the_row_records() {
+    // provider-ops.ts: a dapp's batch is recorded as "<origin> submitted N calls", while the
+    // review still shows the calls.
+    let host = Host::new();
+    let mut node = Node::sepolia(true);
+    let account = oz_account(&host);
+    let batch = invoke(&account, two_calls(), &[])
+        .unwrap()
+        .with_dapp_origin("https://app.example");
+    let mut plan = Plan::new(
+        account,
+        Kind::Invoke(Box::new(batch)),
+        bramble_core::SEND_POLICY,
+    );
+    review(&mut plan, &host, &mut node);
+    let shown = plan.current_review().unwrap().clone();
+    assert!(shown.summary.ends_with("(+1 more)"));
+    let step = plan.advance(&host, StepReply::Confirm).unwrap();
+    let write = run_until(&mut plan, &host, &mut node, step, |_, is_write| is_write);
+    let (id, method, params, _) = parts(&write);
+    let accepted = node.reply(&method, &params, Some(latest_hash(&host)));
+    plan.advance(&host, reply(id, &accepted)).unwrap();
+    let records = host.records.borrow();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].summary, "https://app.example submitted 2 calls");
+}
+
+#[test]
 fn an_undeployed_account_deploys_then_submits_the_batch() {
     let host = Host::new();
     let mut node = Node::sepolia(false);
