@@ -40,6 +40,7 @@ pub mod rpc;
 mod scrub;
 pub mod send;
 pub mod stark_name;
+pub mod swap;
 
 pub use kms::{
     account_key, account_keypair, account_public_key, derive_argent_legacy_keypair,
