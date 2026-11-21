@@ -30,7 +30,7 @@ const HISTORY_BLOCK_WINDOW: u64 = 200_000;
 const HISTORY_RECENT_STRIDE: u64 = 20_000;
 const BLOCK_TIMESTAMP_CONCURRENCY: usize = 4;
 /// A continuation token longer than this (serialised) is treated as a malformed answer.
-const MAX_CONTINUATION_BYTES: usize = 4_096;
+pub(crate) const MAX_CONTINUATION_BYTES: usize = 4_096;
 
 /// What the host does after handing a reply to `accept`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

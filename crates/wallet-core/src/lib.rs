@@ -14,6 +14,9 @@
 //!
 //! Errors carry an operation name or a fixed reason, never input text, so nothing a user typed
 //! can reach a log through an error message.
+//!
+//! ERC-20 allowance discovery and the allowance log (`allowances`) follow the same rules: sans-IO
+//! reads over caller-given tokens, the log over the host's storage, the wallet's numbers passed in.
 
 #![forbid(unsafe_code)]
 // A panic in a wallet is a crash: library code returns errors (unit tests may unwrap: clippy.toml).
@@ -21,6 +24,7 @@
 
 pub mod accounts;
 pub mod activity;
+pub mod allowances;
 pub mod catalog;
 pub mod container;
 pub mod envelope;
