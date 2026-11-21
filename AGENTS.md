@@ -137,13 +137,15 @@ Grep first; extend in place rather than adding a sibling.
 - Activity lives in `crates/wallet-core/src/history/` and `activity/`: the row type
   (`history::activity::ActivityEntry`, `ActivityKind`), the Starkscan lane (`starkscan.rs`), the
   RPC history scan (`events::HistoryScan`), the read cadence (`activity_book::ActivityBook`), row
-  presentation (`appearance.rs`, `classify.rs`), the feed's filter and amount sort
-  (`history::filter`); the one log is `activity::ActivityLog` over `host::Storage` (status text
-  and `monotonic` in `activity::store`, the observation windows in `activity::observation`, the
-  receipt fee and value at submission an expanded row shows in `activity::detail`, the CSV
-  export in `activity::csv`; a receipt's fee is `send::judge::receipt_fee`). The UTC date-time
-  the export prints is `history::time::format_utc_date_time`; JavaScript string order is
-  `js::num::utf16_cmp`.
+  presentation (`appearance.rs`, `classify.rs`; a row's tracked token is
+  `appearance::activity_tracked_token`), the feed's filter, amount sort and stale-axis reset
+  (`history::filter`) and its per-counterparty summary (`history::party`); the one log is
+  `activity::ActivityLog` over `host::Storage` (status text and `monotonic` in
+  `activity::store`, the observation windows in `activity::observation`, the receipt fee and
+  value at submission an expanded row shows in `activity::detail`, the CSV export in
+  `activity::csv`; a receipt's fee is `send::judge::receipt_fee`). The UTC date-time the export
+  prints is `history::time::format_utc_date_time`; JavaScript string order is
+  `js::num::utf16_cmp`, `bigint` addition `js::big::Big::plus`.
 - Privacy reads live in `crates/wallet-core/src/privacy/`: the read plan
   (`plan::PrivacyReadPlan`, whose viewing key reaches it only through `PrivacyHost`, each reply in
   `plan_steps.rs`), the discovery and pool-fee bodies (`bodies.rs`, the only writer of the key),
