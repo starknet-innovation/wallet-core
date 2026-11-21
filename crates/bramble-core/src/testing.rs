@@ -108,7 +108,7 @@ fn write_vault(dir: &str, body: &[u8]) -> Result<(), crate::CoreError> {
 pub fn open_vault(dir: &str, password: &str) -> Result<String, crate::CoreError> {
     let path = std::path::Path::new(dir).join(crate::wallet::VAULT_FILE);
     let json = std::fs::read_to_string(path).map_err(|_| crate::CoreError::NoWallet)?;
-    let plaintext = match crate::container::parse(&json, crate::vault_v13::SCHEMA_VERSION)? {
+    let plaintext = match crate::container::parse(&json, crate::vault_v13::PROVENANCE_SCHEMA)? {
         crate::container::StoredVault::Container(file) => {
             let (dek, _) = file.open_dek(password)?;
             file.open_payload(&dek)?

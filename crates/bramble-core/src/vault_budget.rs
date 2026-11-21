@@ -1,6 +1,7 @@
 //! The extension's JSON budget (`isJson`, `JSON_BUDGETS.provider` in `core/src/json.ts`) as
 //! `isVaultV11` applies it: to the whole vault but its shadow-account scopes and multisig viewing
-//! keys, which `isVaultV12`/`isVaultV13` set aside first and bound by count. It is the vault's one
+//! keys, which `isVaultV12`/`isVaultV13` set aside first and bound by count, and v14's account
+//! provenance, which `isVaultV14` sets aside (`vault_provenance` bounds it). It is the vault's one
 //! capacity in the extension (Sherlock 261): a vault past it does not open there, so mobile
 //! refuses to open one and refuses to write one.
 //!
@@ -22,7 +23,8 @@ const MAX_NODES: usize = 50_000;
 const MAX_OBJECT_KEYS: usize = 2_048;
 const MAX_STRING_LENGTH: usize = 512 * 1024;
 /// The top-level collections the budget leaves out.
-const UNBUDGETED: [&str; 3] = [
+const UNBUDGETED: [&str; 4] = [
+    "accountProvenance",
     "multisigStrk20KeyConflicts",
     "multisigStrk20ViewingKeys",
     "shadowAccountScopes",
