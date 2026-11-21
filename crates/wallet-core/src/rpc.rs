@@ -175,16 +175,22 @@ pub fn format_amount(raw: &str, decimals: u8, max_fraction: u8) -> Result<String
     if raw.is_empty() || raw.len() > 78 || !raw.bytes().all(|b| b.is_ascii_digit()) {
         return Err(Error::invalid("amount is not a base-10 integer"));
     }
+    Ok(format_digits(raw, decimals, max_fraction))
+}
+
+/// `format_amount` without its u256 length bound, for a sum JavaScript keeps as an unbounded
+/// `bigint`; `raw` is base-10 digits.
+pub(crate) fn format_digits(raw: &str, decimals: u8, max_fraction: u8) -> String {
     let digits = raw.trim_start_matches('0');
     let decimals = usize::from(decimals);
     let padded = format!("{digits:0>width$}", width = decimals + 1);
     let (whole, fraction) = padded.split_at(padded.len() - decimals);
     let fraction = fraction[..fraction.len().min(usize::from(max_fraction))].trim_end_matches('0');
-    Ok(if fraction.is_empty() {
+    if fraction.is_empty() {
         whole.to_string()
     } else {
         format!("{whole}.{fraction}")
-    })
+    }
 }
 
 #[cfg(test)]

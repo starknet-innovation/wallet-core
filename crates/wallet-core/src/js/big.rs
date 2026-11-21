@@ -53,6 +53,29 @@ impl Big {
         rem as u32
     }
 
+    /// `self + other`, as `bigint` addition.
+    pub fn plus(&self, other: &Self) -> Self {
+        let (long, short) = if self.0.len() >= other.0.len() {
+            (&self.0, &other.0)
+        } else {
+            (&other.0, &self.0)
+        };
+        let mut carry = 0u64;
+        let mut out: Vec<u32> = long
+            .iter()
+            .enumerate()
+            .map(|(i, limb)| {
+                let sum = u64::from(*limb) + u64::from(short.get(i).copied().unwrap_or(0)) + carry;
+                carry = sum >> 32;
+                sum as u32
+            })
+            .collect();
+        if carry != 0 {
+            out.push(carry as u32);
+        }
+        Self(out).trim()
+    }
+
     /// Bits needed to hold the value.
     pub fn bits(&self) -> usize {
         match self.0.iter().rposition(|limb| *limb != 0) {

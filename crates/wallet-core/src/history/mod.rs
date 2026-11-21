@@ -1,5 +1,5 @@
 //! Activity: the Starkscan lane, the RPC history scan, the local log's cadence, the row
-//! presentation and the feed's filter, each a sans-IO port of the extension's TypeScript. The log
+//! presentation, the feed's filter and its per-counterparty summary, each a sans-IO port of the extension's TypeScript. The log
 //! itself is `crate::activity`; catalogs (`crate::catalog`) and the wallet's choices
 //! (`HistoryPolicy`) are arguments.
 
@@ -11,6 +11,7 @@ pub mod classify;
 pub mod events;
 pub mod explorer;
 pub mod filter;
+pub mod party;
 pub mod starkscan;
 pub mod time;
 

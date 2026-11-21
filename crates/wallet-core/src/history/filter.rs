@@ -74,7 +74,7 @@ fn trimmed_token(entry: &ActivityEntry) -> &str {
 // `activityTokenKey`, given the row model's tracked token: the canonical address, so two tokens
 // that share a symbol are never one; a `symbol:` key for a legacy row no single tracked token
 // answers; `""` when the row names no token.
-fn token_key(entry: &ActivityEntry, tracked_address: Option<String>) -> String {
+pub(super) fn token_key(entry: &ActivityEntry, tracked_address: Option<String>) -> String {
     let symbol = trimmed_token(entry);
     if symbol.is_empty() {
         return String::new();
@@ -89,7 +89,7 @@ fn token_key(entry: &ActivityEntry, tracked_address: Option<String>) -> String {
 }
 
 // `contactFor`: by field element, never by substring.
-fn contact_for<'a>(
+pub(super) fn contact_for<'a>(
     counterparty: Option<&str>,
     contacts: &'a [ActivityContact],
 ) -> Option<&'a ActivityContact> {

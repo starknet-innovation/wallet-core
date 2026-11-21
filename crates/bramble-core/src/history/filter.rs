@@ -1,10 +1,16 @@
-//! The Activity feed's filter and amount sort (`wallet_core::history::filter`, the extension's
-//! `portfolio/activity-filter.ts`): the UniFFI shapes and the exports. The host keeps the filter
-//! the person chose; the core says which values the controls offer and which rows a filter keeps.
+//! The Activity feed's filter, amount sort and per-counterparty summary
+//! (`wallet_core::history::{filter, party}`, the extension's `portfolio/activity-filter.ts`): the
+//! UniFFI shapes and the exports. The host keeps the filter the person chose; the core says which
+//! values the controls offer, which rows a filter keeps, and what
+//! the summary above them reads.
 
 use wallet_core::history::filter as port;
 pub use wallet_core::history::filter::{
     ActivityContact, ActivityFilter, ActivityFilterOptions, ActivitySort, ActivityTokenOption,
+};
+use wallet_core::history::party;
+pub use wallet_core::history::party::{
+    ActivityPartySummary, ActivityPartySummaryParts, ActivityTokenTotal,
 };
 
 use super::activity::{ActivityEntry, TxStatus};
@@ -53,6 +59,32 @@ pub struct ActivityFilterOptions {
     pub tokens: Vec<ActivityTokenOption>,
 }
 
+/// One token's settled totals with the counterparty, in that token's units.
+#[uniffi::remote(Record)]
+pub struct ActivityTokenTotal {
+    pub received: String,
+    pub sent: String,
+    pub symbol: String,
+}
+
+/// The rows counted, their first and last submission times, the counterparty's name (or its
+/// address), and the totals per token.
+#[uniffi::remote(Record)]
+pub struct ActivityPartySummary {
+    pub count: u64,
+    pub first_at: Option<u64>,
+    pub label: String,
+    pub last_at: Option<u64>,
+    pub totals: Vec<ActivityTokenTotal>,
+}
+
+/// The summary's two texts: the name (written as plain text), and the joined detail line.
+#[uniffi::remote(Record)]
+pub struct ActivityPartySummaryParts {
+    pub body: String,
+    pub label: String,
+}
+
 /// `activityFilterOptions` over one account's feed; `tracked` is every tracked token.
 #[uniffi::export]
 pub fn activity_filter_options(
@@ -72,4 +104,26 @@ pub fn filter_activity(
     contacts: Vec<ActivityContact>,
 ) -> Vec<ActivityEntry> {
     port::filter_activity(entries, &filter, &tracked, &contacts)
+}
+
+/// `activityPartySummary` over the rows `filter_activity` returned for `filter`: `None` unless
+/// they name exactly one counterparty. As in the extension's feed (`activity-ui.ts`), there is no
+/// summary while the search is blank.
+#[uniffi::export]
+pub fn activity_party_summary(
+    rows: Vec<ActivityEntry>,
+    filter: ActivityFilter,
+    tracked: Vec<TokenConfig>,
+    contacts: Vec<ActivityContact>,
+) -> Option<ActivityPartySummary> {
+    if crate::js::num::js_trim(&filter.query).is_empty() {
+        return None;
+    }
+    party::activity_party_summary(&rows, &tracked, &contacts)
+}
+
+/// `activityPartySummaryParts`: "{n} transaction(s) · Sent … · Received … · {date or range}".
+#[uniffi::export]
+pub fn activity_party_summary_parts(summary: ActivityPartySummary) -> ActivityPartySummaryParts {
+    party::activity_party_summary_parts(&summary)
 }
