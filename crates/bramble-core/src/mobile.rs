@@ -58,6 +58,7 @@ mod rpc_override;
 mod rpc_request;
 mod security;
 mod send;
+mod stark_name;
 mod ui;
 mod vault;
 mod vault_v13;
@@ -115,6 +116,9 @@ pub use send::{
     activity_needs_observation, activity_observation_period_for, activity_observation_period_ms,
     confirmation_checkpoints_ms, deployment_status_request, judge_deployment_status,
     parse_token_amount, validate_recipient,
+};
+pub use stark_name::{
+    stark_name_address_request, stark_name_judge_address, stark_name_normalize, StarkNameAnswer,
 };
 pub use ui::{PassphraseLevel, PassphraseStrength};
 pub use wallet::{AccountInfo, RecoveryPhrase, SecurityStatus, WalletCore, WalletStatus};

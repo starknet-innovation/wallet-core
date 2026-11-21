@@ -230,6 +230,36 @@ Wanted (2026-11-20: P3 and P4 by name, P5 with the parity decision):
   (v13 only, unknown fields refused) does not open.
 - **P5 Stark names.** A sans-IO body and reply judge for name → address and address → name,
   beside `rpc.rs`; the naming contracts are Bramble's catalog data.
+  As built: name → address only, the extension's `resolveStarkName`
+  (`packages/platform/starknet/src/rpc/stark-name.ts`); address → name has no oracle and is not
+  built. `wallet_core::stark_name` holds `normalize` (`normalizeStarkName`: JavaScript `trim`
+  and `toLowerCase`, then starknet.js 10.8.0's `isStarkDomain`), `address_request` (the
+  `domain_to_address` `starknet_call` at `latest`, calldata the label count, each label's
+  `useEncoded` felt and an empty hint, against a contract the caller passes) and `judge_address`
+  (`StarkNameAnswer`: a nonzero felt resolves; zero, negative or past the prime is `NotFound`, as
+  `canonicalFelt` then `isNonZeroStarkFieldElement` read it; JSON-RPC 20 or "contract not found"
+  is `UnsupportedNetwork`; an unreadable or non-felt answer, or an error with no numeric code,
+  is `TryNextEndpoint`, the extension's failover; any other node error is `Failed`, where the
+  extension throws). `address_request` also refuses what the extension refuses before the call:
+  typed text past 128 UTF-16 units (`readStarkNameInput`) and a 48-character label whose
+  encoding passes the prime (`CallData.compile` throws). The encoder uses `js::big`; no new
+  crypto. `bramble-core` (`stark_name.rs`) holds the mainnet and Sepolia naming contracts as
+  constants (starknet.js's `StarknetIdContract`; the generated catalogs do not carry them) and
+  exports `stark_name_normalize`, `stark_name_address_request` and `stark_name_judge_address`.
+  Departures: the chain-id check and failover stay with the host, as for every sans-IO read
+  (mobile reads each endpoint's chain id with `rpc_verify_chain_id` first and never sends the
+  call to another chain's endpoint; the extension fails closed when none matches, rather than
+  answering unreachable, and mobile should too); the network picks the contract, where the
+  extension picks it from the chain id the endpoint reports, which is the same once that check
+  passes, and both of Bramble's networks have one, so `UnsupportedNetwork` comes only from the
+  node; and the judge is stricter than starknet.js, failing over on a reply to another id, a
+  result that is not an array, or an entry that is not a string, which starknet.js would read.
+  The extension's own test cases are ported as unit tests (`stark_name_tests.rs`, each citing
+  `stark-name.test.ts` by line), with one per refusal branch; no fixture yet, and a Bramble
+  generator should write the normalisation, calldata and judging cases from the extension's code.
+  Mobile has none yet: its send form asks `stark_name_normalize` whether the recipient is a name,
+  and a resolved address must be dropped if the network changed while the read was in flight,
+  as the extension's panel does.
 
 Checked:
 

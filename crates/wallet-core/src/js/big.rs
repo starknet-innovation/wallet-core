@@ -28,7 +28,7 @@ impl Big {
         self.0.iter().all(|limb| *limb == 0)
     }
 
-    fn mul_add(&mut self, mul: u32, add: u32) {
+    pub(crate) fn mul_add(&mut self, mul: u32, add: u32) {
         let mut carry = u64::from(add);
         for limb in &mut self.0 {
             let value = u64::from(*limb) * u64::from(mul) + carry;
