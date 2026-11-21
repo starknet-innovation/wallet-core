@@ -121,6 +121,11 @@ impl MultisigAuthorityRead {
         felt::canonical(&self.address)
     }
 
+    /// The class hash this read requires the address to run.
+    pub fn class_hash(&self) -> Felt {
+        self.class
+    }
+
     /// Threshold and ascending signer GUIDs, once the status is `Available`.
     pub fn authority(&self) -> Option<(u32, Vec<Felt>)> {
         self.authority.clone()

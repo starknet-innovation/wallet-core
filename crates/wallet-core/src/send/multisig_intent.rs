@@ -234,23 +234,11 @@ impl SigningIntent {
     /// kept first and incoming ones added only until the threshold, so a local `{A}` and an
     /// incoming `{B, C}` at threshold 2 merge to a ready `{A, B}`, not an invalid `{A, B, C}`.
     ///
-    /// This is one step of the extension's `importIntent`, not the whole of it. The caller reads
-    /// `incoming` with [`IntentPackage::parse`] (a text it has bounded) and passes it through
-    /// [`locally_derived_imported`] (this keeps the incoming lifecycle fields as given), and
-    /// stores the result only if it [`is_valid`] and the stored intent [`can_replace`] it.
-    /// Before storing, the caller must also do what nothing here does for it:
-    ///
-    /// - replace `summary` with its own `multisig_review::review_calls` of `prepared.calls`, and
-    ///   refuse the import when that review refuses. A remote summary is a claim, not bound by
-    ///   the hash; with no local intent to merge into it would otherwise be shown as given.
-    /// - read the account's authority from the chain and refuse unless it equals
-    ///   `config_snapshot`, which the hash does not bind either.
-    /// - read the account's nonce and refuse unless it equals `prepared.nonce`.
-    /// - check the account is one the wallet watches, and that the session is still current.
-    ///
-    /// [`locally_derived_imported`]: SigningIntent::locally_derived_imported
-    /// [`is_valid`]: SigningIntent::is_valid
-    /// [`can_replace`]: SigningIntent::can_replace
+    /// This is one step of the extension's `importIntent`, not the whole of it (this keeps the
+    /// incoming lifecycle fields and summary as given): import a package read with
+    /// [`IntentPackage::parse`] (a text the caller has bounded) through
+    /// `multisig_import::import_intent`, which derives it locally, checks the chain's authority
+    /// and nonce, replaces the summary with the wallet's own review, merges, and validates.
     pub fn merge_imported(&self, incoming: &SigningIntent) -> Option<SigningIntent> {
         if incoming.id != self.id
             || incoming.account_id != self.account_id

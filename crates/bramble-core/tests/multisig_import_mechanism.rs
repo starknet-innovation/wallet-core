@@ -1,65 +1,21 @@
 //! Importing a co-signer's intent package as the extension's `importIntent` does:
 //! `readImportIntentInput` (`IntentPackage::parse`), `locallyDerivedImportedIntent`
-//! (`SigningIntent::locally_derived_imported`), then the merge, validator and replacement rule.
+//! (`SigningIntent::locally_derived_imported`), then the merge, validator and replacement rule;
+//! the whole of it through `multisig_import::import_intent` is `multisig_import_checks.rs`.
 //! Built from `extension-multisig-transactions-refusals.json`'s ready intent; the extension
 //! recorded no import cases, so these hold the Rust to the TypeScript rules directly.
 
+mod multisig_import_support;
 mod multisig_support;
 
+use multisig_import_support::*;
 use multisig_support::*;
 use serde_json::Value;
 use starknet_wallet_core::accounts::multisig::signer_guid;
 use starknet_wallet_core::accounts::multisig_records::Record;
-use starknet_wallet_core::send::multisig_intent::{
-    IntentPackage, IntentState, SigningIntent, StaleReason,
-};
+use starknet_wallet_core::send::multisig_intent::{IntentState, SigningIntent, StaleReason};
 use starknet_wallet_core::send::multisig_invoke::MultisigSignature;
 use starknet_wallet_core::{felt, sign_stark_hash};
-
-fn refusals() -> Value {
-    let path = format!(
-        "{}/tests/fixtures/extension-multisig-transactions-refusals.json",
-        env!("CARGO_MANIFEST_DIR")
-    );
-    serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
-}
-
-fn ready() -> SigningIntent {
-    serde_json::from_str(refusals()["readyIntent"].as_str().unwrap()).unwrap()
-}
-
-fn parse(text: &str) -> Option<IntentPackage> {
-    IntentPackage::parse(text, &class(), summary_length(), &TestPrimitives::new())
-}
-
-/// What a co-signer sends: `intent` in a package, every field it holds kept.
-fn sent(intent: &SigningIntent) -> String {
-    IntentPackage {
-        intent: intent.clone(),
-        kind: "bramble.argent-multisig-intent".into(),
-        version: 1,
-    }
-    .to_json()
-}
-
-/// The local collecting intent holding only the second signature.
-fn local(ready: &SigningIntent) -> SigningIntent {
-    SigningIntent {
-        signatures: vec![ready.signatures[1].clone()],
-        state: IntentState::Collecting,
-        ..ready.clone()
-    }
-}
-
-/// `importIntent` over `local`: parse, derive locally, merge, then the store's two checks.
-fn import(local: &SigningIntent, text: &str) -> SigningIntent {
-    let incoming = parse(text).unwrap().intent.locally_derived_imported();
-    let merged = local.merge_imported(&incoming).unwrap();
-    let primitives = TestPrimitives::new();
-    assert!(merged.is_valid(&class(), summary_length(), &primitives));
-    assert!(local.can_replace(&merged, &class(), summary_length(), &primitives));
-    merged
-}
 
 #[test]
 fn an_explicit_null_is_not_an_absent_key() {

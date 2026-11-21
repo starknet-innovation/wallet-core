@@ -134,10 +134,26 @@ Needed now:
   explicit `null` in an intent's or record's optional key read as absent and passed the validator,
   and now fails to parse; the package envelope is checked (`IntentPackage::parse`) and a remote's
   lifecycle claims are dropped before the merge (`SigningIntent::locally_derived_imported`).
-  The rest of the extension's `importIntent` is still the wallet's to do before it stores an
-  import, and the mobile export must enforce it: replace the remote summary with its own call
-  review (refusing when the review refuses), and refuse unless the chain's authority equals the
-  intent's snapshot and its nonce the prepared one. Two refusals deliberately differ: a non-member deployer is
+  The rest of the extension's `importIntent` is `send::multisig_import::import_intent`: given
+  the authority and nonce the host read, it refuses unless they equal the intent's snapshot and
+  prepared nonce, replaces the remote summary with the wallet's own call review (refusing when
+  the review refuses), refuses a stored intent under the id that froze another transaction,
+  merges, and returns only what the validator and replacement rule accept. These rules have
+  mechanism tests only (G5 recorded no import case) and need a Bramble generator. Still the
+  wallet's: the session check, the active network and the store's capacity; reading the nonce
+  of the record's own address (`import_intent` takes a bare felt, as the extension's unpinned
+  read does, so nothing in the core binds it to an address); and showing the fee before
+  co-signing (the extension's import also returns `feeReview`; the core returns only the
+  intent, whose `PreparedInvoke::fee()` the wallet shows). The mobile export must route every
+  import through `import_intent`. The import departs from the extension in four ways: the
+  record must be the frozen transaction's account by address and network as well as by id
+  (`UnknownAccount`; the extension's lookup cannot miss); an authority read of another address,
+  network or class is `ReadForAnotherAccount` (no counterpart: the extension builds its read
+  from the record); a read that ends other than `Available` is `AuthorityUnavailable`, the
+  extension's fixed fallback sentence, where the extension shows whatever its read threw; and a
+  stored intent with another snapshot is `Conflict` straight from the stricter merge, the
+  answer the extension's store gives after its looser one. Two refusals deliberately differ: a
+  non-member deployer is
   refused before any read, and a write answered with another hash is `HashMismatch`. The merge
   and submit deliberately differ too, closing gaps the extension has: `merge_imported` refuses
   another intent and stops at the threshold (the extension merges past it into an invalid
