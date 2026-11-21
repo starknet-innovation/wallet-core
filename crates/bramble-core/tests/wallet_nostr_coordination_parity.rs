@@ -12,25 +12,19 @@ use std::collections::HashSet;
 use bramble_core::testing::{coordination_sender_trusted, publish_many, SyncJudge};
 use bramble_core::{
     nostr_relay_url_normalize, CoreError, MultisigAuthorityRead, MultisigAuthorityStatus,
-    NetworkId, WalletCore,
+    NetworkId, RelayStep, WalletCore,
 };
 use serde_json::{json, Value};
 use starknet_wallet_core::nostr::relay::{NostrGiftWrapDelivery, RelayError};
 
 /// Cases where mobile differs from the extension, left out of the assertions below rather than
 /// asserted either way. Every other case is asserted.
-const MOBILE_DIFFERS: [&str; 6] = [
+const MOBILE_DIFFERS: [&str; 3] = [
     // Mobile refuses `ws:` relays, loopback included: App Transport Security and
     // `usesCleartextTraffic=false` block cleartext sockets.
     "ws://localhost:7000",
     "ws://127.0.0.1:7000",
     "a loopback relay",
-    // Mobile reads one page per relay until the FFI can page (2.7); these need a second page.
-    // ("paging stops after the page cap" and "the cursor stops at since" pass: their later pages
-    // hold only seen wraps.)
-    "a burst of newer wraps hides an older one",
-    "seen wraps are skipped before the batch bound",
-    "a full page from one second steps below it",
 ];
 
 fn differs(case: &Value, key: &str) -> bool {
@@ -183,8 +177,10 @@ fn reason(error: CoreError) -> String {
     }
 }
 
-/// What mobile's sync judge returns for one paging case when each relay answers its first request
-/// (mobile reads one page), or the error message.
+/// Replays one paging case through mobile's sync judge, the one `NostrSyncPlan` drives, as the
+/// host's relay loop would: each relay answers each recorded request with the recorded events (or
+/// CLOSED when it refuses) and EOSE, the host follows the exported `RelayStep`, and every REQ the
+/// judge asks for must be the recorded frame. The ordered result, or the error message.
 fn mobile_candidates(recipient: &str, template: &Value, case: &Value) -> Result<Vec<u64>, String> {
     let recipient = case["recipient"].as_str().unwrap_or(recipient);
     let since = case["since"].as_i64().unwrap();
@@ -193,22 +189,44 @@ fn mobile_candidates(recipient: &str, template: &Value, case: &Value) -> Result<
     let seen: HashSet<String> = numbers(&case["seen"]).into_iter().map(id_of).collect();
     let judge = SyncJudge::new(recipient, since, urls, seen).map_err(reason)?;
     for (index, relay) in relays.iter().enumerate() {
-        let expected: Value =
-            serde_json::from_str(relay["requests"][0]["frame"].as_str().unwrap()).unwrap();
-        let opened: Value = serde_json::from_str(&judge.open_frame()).unwrap();
-        assert_eq!(opened, expected, "{}: first request", case["name"]);
-        if relay.get("refuses").is_some() {
-            judge.accept_frame(index, &json!(["CLOSED", "mcw-1", "restricted"]).to_string());
-            continue;
-        }
+        let name = format!("{} / {}", case["name"], relay["url"]);
         let stored = numbers(&relay["ids"]);
         let created = numbers(&relay["createdAt"]);
-        for n in numbers(&relay["requests"][0]["answer"]) {
-            let at = created[stored.iter().position(|id| *id == n).unwrap()];
-            let frame = json!(["EVENT", "mcw-1", event(template, n, at)]).to_string();
-            judge.accept_frame(index, &frame);
+        let requests = relay["requests"].as_array().unwrap();
+        let mut request = judge.open_frame();
+        for (page, recorded) in requests.iter().enumerate() {
+            assert_eq!(request, text(&recorded["frame"]), "{name}: request {page}");
+            let subscription = serde_json::from_str::<Value>(&request).unwrap()[1].clone();
+            let mut step = RelayStep::Continue;
+            if relay.get("refuses").is_some() {
+                let closed = json!(["CLOSED", subscription, "restricted"]);
+                step = judge.accept_frame(index, &closed.to_string());
+            } else {
+                for n in numbers(&recorded["answer"]) {
+                    let at = created[stored.iter().position(|id| *id == n).unwrap()];
+                    let frame = json!(["EVENT", subscription, event(template, n, at)]);
+                    if step == RelayStep::Continue {
+                        step = judge.accept_frame(index, &frame.to_string());
+                    }
+                }
+                if step == RelayStep::Continue {
+                    let eose = json!(["EOSE", subscription]).to_string();
+                    step = judge.accept_frame(index, &eose);
+                }
+            }
+            let last = page + 1 == requests.len();
+            match step {
+                RelayStep::NextPage {
+                    close_frame,
+                    request: next,
+                } if !last => {
+                    assert_eq!(close_frame, json!(["CLOSE", subscription]).to_string());
+                    request = next;
+                }
+                RelayStep::Finish { .. } if last => {}
+                step => panic!("{name}: request {page} ended with {step:?}"),
+            }
         }
-        judge.accept_frame(index, &json!(["EOSE", "mcw-1"]).to_string());
     }
     let candidates = judge.candidates().map_err(reason)?;
     Ok(candidates

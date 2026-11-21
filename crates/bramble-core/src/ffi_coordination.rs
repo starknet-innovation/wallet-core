@@ -30,7 +30,8 @@ pub struct CoordinationSyncOutcome {
 }
 
 /// One coordination sync: the host opens a socket per relay, sends `open_frame`, forwards every
-/// frame to `accept_frame`, and reports timeouts, errors and closes through `relay_ended`.
+/// frame to `accept_frame` and does what its `RelayStep` says (a `NextPage` is read on the same
+/// socket), and reports timeouts, errors and closes through `relay_ended`.
 #[derive(uniffi::Object)]
 pub struct NostrSyncPlan {
     judge: SyncJudge,
