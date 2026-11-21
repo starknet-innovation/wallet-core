@@ -72,7 +72,7 @@ v13 payload.
 | 2.7 Swap | done (#50), behind the `mobile` feature | done (M13, Bramble #929), at `v0.3.0`: `mobile/core` is a shell over this crate |
 | Vault switch | done (V1 #58) | G4 done (Bramble #947); M14 done (Bramble #980): mobile pins `v0.4.0` |
 | [Mobile parity](#mobile-parity) | P6 done (#65), P2 done (#68); P1's mechanism done (P1a #70, P1b #71, P1c #72), not exported until Krusty exports a selector and signature verification; P3 done (#80), not shippable until Bramble's imported-key v13 fixture lands; P4 done (#78), no fixture yet (needs a Bramble generator); P5 done (#83), no fixture yet | not started |
-| [Parity](#parity) P7–P16 | P7's first half done (#87): every v13 collection is read and what mobile does not operate is kept unused; schema 14 remains. P9's mechanism done (#84), not exported: it waits on Krusty's selector (krusty-kms#257), the review's annotation flags, a summary per call and the caller's activity text. P10 done (#86). P12's read side done (#85), not exported; its revoke waits on P9. None has a fixture yet (G7). P8, P11 and P13–P16 not started | not started |
+| [Parity](#parity) P7–P16 | P7 done for reading (#87, #92): every v13 and v14 collection is read and what mobile does not operate is kept unused; the 13→14 migration waits on v0.10.11 reaching the extension's `main`. P9's mechanism done (#84) with its review flags, per-call summaries and caller's activity text (#91), not exported: it waits on Krusty's selector (krusty-kms#257). P10 done (#86). P11's core half done (#90), P12's done (#85, #89) and P13's done (#93), none exported: each waits on P9's export, and swap and staking on the integration PR. None has a fixture yet (G7). P8 and P14–P16 not started | not started |
 | 3 Extension | not started, and waits for parity; `js/package.json` is private | n/a |
 
 `v0.1.0` is tagged at `35abc8b` (GitHub release only) and was what M2 and M3 pinned. `v0.2.0`
@@ -100,17 +100,21 @@ the rest are [Parity](#parity), where each step is described. P1's export waits 
 does not hold the tag or the steps after it. #83–#87 (2026-11-21) landed P5 and the core halves
 of P7, P9, P10 and P12 together, at the product owner's request: five steps ahead of mobile,
 where [Process](#process) says one, and each on unit tests ported from the extension's own, with
-its generator owed to G7.
+its generator owed to G7. #89–#93 (2026-11-21) did the same again for P7's schema
+14, P9's review flags, P11, the rest of P12 and P13: built in parallel, so they meet in one
+integration PR.
 
 | PR | Repo, base | Needs | What it is |
 | --- | --- | --- | --- |
 | `0.5.0`, then M15 | here; Bramble, `feature/mobile-wallet` | — | the tag, and mobile taking it: the relay loops #77 changes, the screens for P2–P6 and P10 (activity filter, counterparty summary and CSV export), and Stark-name lookup in the send form (P5) |
-| G7 | Bramble, `feature/mobile-wallet` | — | the generators P1, P3 and P4 landed without: an imported-key vault, the RPC override rules, the multisig import cases and the call summaries beyond an ERC-20 transfer. And the ones #83–#87 landed without: Stark-name normalisation, calldata and judging (P5); G4 extended to a v13 vault with every collection filled (P7); a multicall and a refused batch through `submitInvokeTransaction` (P9); the CSV, filter and counterparty summary over one feed (P10); `Approval` decoding, a scan with legacy windows, the merge, eviction and settling (P12) |
+| G7 | Bramble, `feature/mobile-wallet` | — | the generators P1, P3 and P4 landed without: an imported-key vault, the RPC override rules, the multisig import cases and the call summaries beyond an ERC-20 transfer. And the ones #83–#87 landed without: Stark-name normalisation, calldata and judging (P5); G4 extended to a v13 vault with every collection filled (P7); a multicall and a refused batch through `submitInvokeTransaction` (P9); the CSV, filter and counterparty summary over one feed (P10); `Approval` decoding, a scan with legacy windows, the merge, eviction and settling (P12). And the ones #89–#93 landed without: G4 at schema 14 with an `accountProvenance`, sealed by the v0.10.11 store (P7); `verifyCalls` over batches that raise each flag (P9); a quote, a build and the refused builds through the real swap handler (P11); the revoke call and its settling (P12); a live directory page, a positions answer, a pinned read and each action's calls (P13) |
+| Integration | here | #89, #91, #90 and #93 merged | what building them in parallel left apart: swap and staking move to `Invoke::reviewed` (the router or pool pinned as a known contract) and name their activity text through `Invoke::with_activity_summary`, with the row's amount and token; both file their approval through `allowances::calls::record_submitted`; `review_flags`' standing totals become `allowances::calls::standing_allowance_totals`; the approve and decrease spellings and the transfer kind come from `call_decode` alone (`swap::policy`, `allowances::calls`) |
 | P1 export | here, then Bramble | krusty-kms#257 (open) | whenever Krusty ships it: the bump that exports a selector and signature verification, an implementation of `StarkPrimitives` over it, P1's FFI surface, and its screens in the tag after |
-| P7 Vault: schema 14 | here | a generator, and the product owner's answers | the second half: `accountProvenance` (`release/v0.10.11`). The first half (#87) left questions open: whether kept accounts are listed, what an active kept account means, and whether a record that fails mobile's stronger rules is kept unused rather than refusing the vault |
+| P7 Vault: migrate to 14 | here | v0.10.11 on the extension's `main`, a generator, and the product owner's answers | the reader takes 13 and 14 (#87, #92) and writes each back as read. Left: `NEW_VAULT_SCHEMA` to 14 and raising a v13 vault on unlock, as the extension's migration does. Open questions: whether to migrate before v0.10.11 ships; whether a vault holding a pre-Krusty-3 Ready key should open (the extension keeps signing it; mobile refuses the vault); and #87's (whether kept accounts are listed, what an active kept account means, and whether a record that fails mobile's stronger rules is kept unused rather than refusing the vault) |
 | P8 Ledger | here | the transport question | moved up 2026-11-21: every extension user has it, and a Ledger user cannot use mobile without it. #87 reads and keeps a Ledger account; P8 makes it usable |
-| P9 flags and export | here | krusty-kms#257 (open), a generator | the mechanism is in (#84), with no export. Owed before one: the review's annotation flags (`verify.ts`: unknown contract, unlimited and operator approvals, a swap's foreign beneficiary, an undecoded swap), a summary per call that a host can show (the extension's approval lists every call), the caller's activity text (a dapp's "<origin> submitted N call(s)", a swap's or a stake's own), and a selector from Krusty, as for P1 |
-| P11, P13–P16, and the rest of P12 | here, each with its generator and its mobile PR | P9's export | swap, staking, gasless, STRK20 submission, dapp connect; for allowances (read side in, #85) the revoke, recording submitted approvals, and the UniFFI export |
+| P9 export | here | krusty-kms#257 (open), a generator | the mechanism (#84) and its review (#91: the flags, a summary per call, the caller's activity text) are in, with no export. Owed before one: a selector from Krusty, as for P1; every export through `Invoke::reviewed`, not `Invoke::new`, which under-warns; and fee affordability with an amount for a batch, which the invoke kind cannot yet answer |
+| P11, P12 and P13 exports | here, each with its generator and its mobile PR | P9's export, the integration PR | the core halves are in (#90, #85 and #89, #93), unexported; each export arrives with its screens |
+| P14–P16 | here, each with its generator and its mobile PR | P9's export | gasless, STRK20 submission, dapp connect |
 | Extension Krusty 3 | Bramble, `main` | — | the extension still pins `@starknetfoundation/krusty-kms-wasm` `0.11.0`, which predates the fix (Krusty 3.0 changed the derivation; 2.0.0 and earlier kept the leading zero bytes), so its keys and mobile's part for affected phrases. Its users have funds, so it follows Krusty's [migration guide](https://github.com/starknet-innovation/krusty-kms/blob/v3.0.0/docs/migration-3.0.md): keep the old key for any existing account whose public key differs. Needed before Phase 3, where the extension takes this crate's Krusty |
 
 ### Mobile parity
@@ -383,8 +387,32 @@ Foundations, which the features need, and Ledger, which needs only the first:
   `vault_v13_poisoning.rs`: the extension's own validator cases, moved onto G4's payload in test
   code): G4 holds none of these, so before a release relies on it Bramble needs G4 extended with
   every collection filled, sealed by the extension's own store at a v13 commit, for a test that
-  opens it and writes it back unchanged. The second half, schema 14 (`accountProvenance`),
-  remains.
+  opens it and writes it back unchanged.
+  As built, second half (v14, #92): the reader accepts the extension's schema 14
+  (`release/v0.10.11` at `62db6fc10`) beside 13. `isVaultV14` is v13's rules over the rest and
+  `validAccountProvenance` over the new optional `accountProvenance` (`vault_provenance.rs`):
+  absent or an object, keyed only by ids of accounts the vault holds, operated or kept, each
+  `created` or `imported`; `null`, an array, another origin, and the key in a v13 vault are
+  refused. As in the extension the map is outside the JSON budget; its parse stops past mobile's
+  128-record cap, and a repeated key is refused where `JSON.parse` keeps the last. There is no
+  migration while the released extension (v0.10.10) reads only 13: a vault is written back at
+  the schema it was read at, in a container of that version (the payload's schema must equal
+  the container's), and a new one at `NEW_VAULT_SCHEMA`, 13. That was the coordinator's call,
+  not yet the product owner's; once v0.10.11 is on `main` the constant becomes 14 and a v13
+  vault opened is raised to 14 with no provenance and written back on unlock, as the
+  extension's migration does. At 14, mobile records origins as the extension's service does:
+  `created` for `add_regular_account` (and a new wallet's first account), `imported` for
+  `import_private_key`, the source's origin (or none) for the network switch's projection, none
+  for a restore from the phrase; every other entry, a kept record's included, is written back
+  unchanged, and a failed write rolls the map back. Unit-tested only (`tests/vault_v14.rs`,
+  `vault_v14_writes.rs`), over G4's payload in test code; a v14 G4 sealed by the extension's
+  own store is owed by a Bramble generator. Found, not fixed: v0.10.11 moves the extension to
+  Krusty 3.1.0 and keeps signing an `argentx-bip44` account whose stored key came from the
+  pre-3.0 derivation (`ready-key-drift.ts`; about 1 phrase in 256), with a warning, while
+  mobile re-derives every such record and refuses the whole vault on a mismatch, so that
+  person's backup does not open on mobile. It needs a product decision and belongs with the
+  "Extension Krusty 3" row. Left for P16: per-account origin revocation
+  (`withoutOriginAccess`).
 - **P8 Ledger.** Straight after the vault step: the extension ships it to every user (#990's
   "trusted testers" is wrong), so a Ledger user cannot use mobile at all until this lands. The
   device protocol and session as sans-IO APDU exchanges: `packages/platform/ledger-protocol/`
@@ -428,17 +456,28 @@ Foundations, which the features need, and Ledger, which needs only the first:
   approval card and refuses at execution (Sherlock 140: an instant refusal tells the site whom
   the person trusts), so P16 must not relay that refusal to the site before the person acts; the
   trusted set is fixed when the batch is built, where the extension re-reads it at execution
-  (as for the transfer kind); the summary is the multisig review's line (the first call and a
-  count, cut without the activity clamp's ellipsis), not one line per call, and `Invoke` keeps
-  only that line, so a host cannot show calls after the first; the activity row records that
-  line too, where the extension records a dapp's batch as "<origin> submitted N call(s)" and a
-  swap or a stake as its own text (`swap-ops.ts`, `stakingActivitySummary`); the annotation flags
-  (`unknown-contract`, `unlimited-approval` with standing allowances, `operator-approval`,
-  `self-transfer`, `token-contract-recipient`, `foreign-beneficiary`, `undecoded-swap`) and fee
-  affordability with an amount are not ported: they refuse nothing, and their consumers (P12,
-  P16) bring them with their screens. They are owed before any export of `Invoke`, with a
-  summary per call and the caller's activity text: a review with no warning on an unlimited
-  approval, or on a swap paid to another address, is not the extension's review. Not ported, as
+  (as for the transfer kind).
+  The review keeps every call (#91): `Invoke::calls` is each call's `decodeCall` kind and
+  summary (`call_decode::decode_call`, `CallKind`) and the annotation flags `verifyCalls` raises
+  on it (`send::review_flags`: `unknown-contract`, `unlimited-approval`, `operator-approval`,
+  `self-transfer`, `token-contract-recipient`, `foreign-beneficiary`, `undecoded-swap`, as
+  `RiskFlag` with the extension's sentences); `Invoke::flags` is the card's deduplicated list,
+  and `Invoke::summary` stays the multisig review's line. The approval rules run over the whole
+  batch, `approve` replacing a pair's running total, an increase adding, a decrease subtracting
+  (clamped at zero, never a grant), seeded from the wallet's own allowance log for the acting
+  account on its network and a trusted token only. `Invoke::reviewed` takes the whole
+  `ReviewContext` (trusted tokens and collections, the trusted set, pinned contracts such as a
+  router or pool, the token contracts, Bramble's `known_token_addresses`, and the allowance
+  log); `Invoke::new` reads the flags without the last three, and so under-warns: any export
+  goes through `reviewed`. The builder names the activity row (`with_activity_summary`, clamped
+  as `clampActivitySummary`; `with_dapp_origin`, "<origin> submitted N call(s)" from the
+  batch's own count and `activityOrigin`), falling back to the review line; it rides on the
+  `Invoke` the plan already binds to its account and network. Departures: each flag is attached
+  to its call; `address-poisoning` refuses instead of flagging; the standing totals are filtered
+  in the core rather than by the caller; an empty activity text keeps the review line. Not
+  ported: fee affordability with an amount (the invoke kind reads no STRK balance) and the
+  approval queue's summary bound (P16). `RiskFlag` is not the transfer's `ReviewFlag`; the two
+  meet at export. Not ported, as
   for the transfer: the `fast` speed, a SNIP-36 proof (P15) and the approval queue's review
   budget (P16). As for a multisig, Krusty 3.1.0 has no selector, so `Invoke::new` takes
   `multisig_invoke::StarkPrimitives`, and nothing
@@ -483,6 +522,31 @@ Features, smallest and least dependent first:
 - **P11 Token swap.** The AVNU quote and build as sans-IO bodies and reply judges, like the price
   book's: `transactions/src/swap/` (420), `wallet-model/src/swap/` (319) and the background's
   `transactions/swap-{inputs,preparations,build-policy,value-check,ops}.ts`. Needs P9.
+  As built (#90; mechanism only, not exported): `crates/wallet-core/src/swap/`.
+  `PendingQuote::new` applies `readSwapQuoteInput` and `swapPair`'s rules and builds
+  `getQuote`'s GET (the query in the extension's order, the `swap` body cap and the 15 s
+  deadline); `judge` is `readQuote`: the first quote, every field in its grammar, pinned to the
+  requested pair and amount. `SwapQuote::prepare` applies `readSwapPrepareInput`'s quote id and
+  slippage rules and `reviewedMinBuyAmount` (exact over u256), and builds `buildCalls`' POST;
+  `PendingBuild::judge` checks the envelope (this network's chain id, 1–4 calls, counted before
+  any is read) and `readCall`, then `buildPolicy` (one exact `approve` of the sell token to the
+  router the wallet pinned, no direct transfer, one `multi_route_swap` on that router whose
+  route, decoded by `send::avnu_route`, sells, buys, pays and floors exactly as reviewed, with
+  an integrator fee of at most 100 bps), then `Invoke::new`. `SwapPreparation` carries the
+  per-call review lines (the route's is wallet-authored: "Swap … for at least …, paid to …"),
+  the route's minimum and the activity row, and `into_invoke` releases the batch only to the
+  account and network it was prepared for, consuming it (the store's one-time claim).
+  `SwapQuote::value_delta_percent` is `walletSwapValueDelta` over the price book's view. Every
+  number and pin is `SwapPolicy`, Bramble's in `bramble-core`'s `swap::SWAP_POLICY`.
+  Departures: a quote is a bound value, so preparation takes no quote id or buy amount from the
+  screen; malformed felts in a build refuse as "invalid swap call" where the extension's
+  harness reached the policy; amounts of 2^256 and above refuse at the input; no fee is
+  estimated at preparation (the plan's review does it); no preparation store or digest (the
+  host holds the value), and no expiry, as in the extension. Not ported: `listTokens`, filing
+  the router approval in the allowance log after broadcast, and the swap's own activity row in
+  the plan's pending record (owed to the integration PR below). Unit-tested only, with the
+  extension's cases and sentences, and not checked against live AVNU replies; a Bramble
+  generator (a quote, a build and the refused builds through the real handler) is still owed.
 - **P12 Allowances.** Discovery, scan, records, retention and the revoke call:
   `transactions/src/allowances/` (1,916). The revoke needs P9.
   As built, the read side (no generator yet, so unit tests only): `crates/wallet-core/src/
@@ -510,15 +574,58 @@ Features, smallest and least dependent first:
   as a non-array does; the mutation queue is `&mut self`. The listing's orchestration stays the
   wallet's, as in `allowance-ops.ts`: which scopes (the account and the multisigs it signs
   for), dropping watched NFT contracts, reading revoke outcomes before readings, settling, then
-  merging. Remains: the revoke (P9: `allowanceTarget`, `isRevokableErc20`, the
-  `approve(spender, 0)` call and recording it), `allowances.ts` (decoding submitted calls into
-  log writes, and `standingAllowanceTotals` for the reviewer, also P9), `revokeOutcomes` (the
-  activity rows that settle a revoke), and the UniFFI export: two step machines, the log and
-  the merge would add several hundred lines, so it comes with mobile's screens. A Bramble
-  generator should record `Approval` decoding in both layouts, a scan over a scripted node with
-  legacy windows, the merge, eviction across tokens and scopes, and settling.
+  merging.
+  The revoke and the write side followed (#89; mechanism only, not exported):
+  `allowances::calls` is `allowances.ts` and the background's `allowance-recording.ts`
+  (`decode_allowance_call`, `approved_asset_kind`, `allowance_changes`, `record_submitted`
+  under an `AllowanceOwner` that names the network, best effort per change, and
+  `standing_allowance_totals` for the reviewer's unlimited-approval rule); `allowances::revoke`
+  is `allowanceTarget` and `handleRevokeAllowance`'s rules: `RevokeTarget::resolve` (the id
+  grammar and 240-character cap, a record this account owns on this network or an id naming
+  its own pair, the watched-collection refusal), `confirmation_pair` (`isRevokableErc20`'s
+  `allowance(owner, spender)` read, handed to the host as one `TrackedAllowancePair`), and
+  `invoke`, which holds the account to the binding it was resolved for, checks collection and
+  fungibility again, and hands `approve(spender, 0)` to `send::invoke::Invoke::new`; the
+  activity line is the review's summary. `revoke_outcomes` is the background's `revokeOutcomes`
+  over `ActivityEntry` rows (this wallet's own rows in the revoking scope and network,
+  canonical hash). The extension revokes ERC-20 allowances only; operator and NFT approvals are
+  refused, not revoked. `settle_revocations` now indexes readings and outcomes once. Departures:
+  the refusals are checked again at build time; a stored record whose network disagrees with
+  its account is refused; message parsing, the fee round trip and the lost-reply rows stay the
+  wallet's and the plan's. Remains: the UniFFI export (two step machines, the log and the merge
+  would add several hundred lines, so it comes with mobile's screens) and a Bramble generator:
+  `Approval` decoding in both layouts, a scan over a scripted node with legacy windows, the
+  merge, eviction across tokens and scopes, the revoke call and settling.
 - **P13 Staking.** Positions, the validator directory, calls and their review:
   `transactions/src/staking/` (1,062) and `background/staking/` (1,150). Needs P9.
+  As built (#93; mechanism only, not exported; no generator yet, so unit tests only):
+  `crates/wallet-core/src/staking/`. `decode` is `staking-decode.ts`: the staking contract's
+  and a pool's replies, `None` for any shape off the layout, and `verify_staking_pool` (the
+  staking contract lists the pool for the staker and token, and the pool's own parameters name
+  the same staker, contract and token). `read::StakingRead` is `staking-reads.ts` over
+  `readAtPinnedBlock`: the facts (active tokens, exit window, rewards in STRK), then each
+  pair's staker and pool reads, all pinned to one accepted block, re-pinned on "Block not
+  found" at most three times and replayed per endpoint, under `HistoryScan`'s contract. The
+  `StakingReading` it yields is bound to its account and network, and every consumer refuses
+  another's. `coverage`, `directory` and `positions` are Starkscan's coverage rule, validator
+  directory and positions as requests and strict judges: body cap before parse, every array
+  bounded before it is walked, malformed answers refused whole, the directory's own order
+  kept. `view` is the overview and "Your stakes" rows (`staking-row-view.ts`), incomplete
+  whenever a candidate is untracked, inactive, unverifiable or over the read cap. `calls` and
+  `review` are `staking-calls.ts` and `staking-review.ts`. `prepare` is the rule half of
+  `staking-action.ts`, `-inputs.ts` and `-preparations.ts`: input rules, then calls built from
+  a verified reading and reviewed by `send::invoke::Invoke::new`, frozen in
+  `StakingPreparations` for one claim bound to the account and network and refused once
+  staking is off. Bramble's choices are `bramble-core`'s `staking::STAKING_POLICY` (Mainnet
+  only). Departures: the activity row records the batch review's summary, not
+  `stakingActivitySummary`, until the integration PR below (owed before export); fee freezing
+  and the execute-time trusted-set re-check are the plan's (as P9); the stake's approval is
+  not filed in the allowance log; preparation ids are a counter and there is no time expiry
+  (the extension has none); the website hostname is hand-parsed and stricter than WHATWG
+  (display only); amounts are exact integers; a staker is read once per pinned read. Not
+  ported: message envelopes, the shared Starkscan cooldown (`history::starkscan::cooldown_ms`
+  serves), screens. Owed: a Bramble generator capturing a live directory page, a positions
+  answer, a pinned read and each action's calls, and the UniFFI export with mobile's screens.
 - **P14 Gasless and sponsored transactions.** `transactions/src/gasless/` (1,818) and
   `routing/{outside-execution-*,paymaster-http}.ts`: a SNIP-9 v2 outside execution the gateway
   builds and the wallet checks before signing (its calls, the fee transfer, the ceiling, the
