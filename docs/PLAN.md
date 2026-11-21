@@ -307,41 +307,52 @@ Foundations, which the features need, and Ledger, which needs only the first:
   schema 14. #990 says that step changes only the number; it does not: on `release/v0.10.11`
   it adds account provenance (`schema-provenance.ts`, with a migration). Oracle: G4 extended to
   a vault with every collection filled, then the same at 14.
-  As built, first half (v13): the reader accepts every vault the extension's v13 validator
-  accepts but one kind, a vault with no phrase (`mnemonic: null`: a Ledger-only or key-only
-  wallet), which stays refused since mobile has no phrase-less wallet. `vault_wire.rs` is the
-  schema's records as serde types (unknown keys refused; an optional key absent or set, never
-  `null`, which V1 let through for `deploymentSalt` and `publicKeyY`; `activeAccountId` and
-  `mnemonic` present), `vault_rules.rs` is `isVaultV13` rule for rule (every account kind, Ledger
-  paths, the signing-key bindings with keyless Ledger records, origin grants, imported phrases and
-  their bindings, Ledger viewing keys, shadow-account scopes, multisig viewing keys and conflict
-  marks, the extension's devnet), and `vault_budget.rs` is `isJson`'s provider budget as
-  `isVaultV11` applies it. Both run on every open and every write, so mobile neither opens nor
-  writes a vault the extension refuses; a write past the budget fails with the extension's
-  `vault storage limit reached`. Mobile operates only the records it holds keys for, its phrase's
-  `starknet-bip44` and `argentx-bip44` records and `imported-raw-key` ones on Mainnet and
-  Sepolia, and on those its stronger rules stay: every record, y-coordinate and sealed key
-  re-derived, mobile's three ladders, `u32` indices, the reserved agent index, Bramble's OZ class;
-  the 128-record cap stays too, now over every record. Every other record (a Ledger account, one
-  derived from an imported phrase, one on `SN_DEVNET`), its sealed key and the six collections
-  are `VaultPayload::kept`, outside `accounts`, so no list, selection, signature, send or privacy
-  read reaches them, and every write puts them back where they were (records at their positions,
-  signing keys in the vault's order); a new record never takes a kept record's id. "Unchanged"
-  means equal as JSON, as G4's test already compared V1's records: object key order
-  (alphabetical here, insertion order in the extension) and string escapes may differ, nothing
-  else. Where the port's grammar is stricter than the extension's: an origin is held to the
-  shared endpoint grammar (no IDN or other host the WHATWG parser accepts beyond letters, digits,
-  `-` and `_`; at most 2,048 characters), a number to a plain integer literal (`1.0` and `1e0`
-  are refused), and serde refuses repeated keys and lone surrogates that `JSON.parse` takes. One
-  gap the other way: an origin with an `xn--` label that is not valid punycode passes the hand
-  grammar where the extension's URL parser refuses it. Open for the product owner: kept records
-  are not listed at all (rather than listed as unusable), and a vault whose active account is a
-  kept one opens with no active account until one is picked or the network switch picks one.
-  Unit-tested only (`tests/vault_v13_kept.rs`, `vault_v13_rules.rs`, `vault_v13_accounts.rs`: the
-  extension's own validator cases, moved onto G4's payload in test code): G4 holds none of these,
-  so before a release relies on it Bramble needs G4 extended with every collection filled, sealed
-  by the extension's own store at a v13 commit, for a test that opens it and writes it back
-  unchanged. The second half, schema 14 (`accountProvenance`), remains.
+  As built, first half (v13): the reader accepts the vaults the extension's v13 validator
+  accepts, except those it refuses whole for one of mobile's stronger rules: a vault with no
+  phrase (`mnemonic: null`: a Ledger-only or key-only wallet; mobile has no phrase-less wallet);
+  a phrase record off mobile's three ladders (both index fields stepped), past a `u32` index or at
+  the reserved agent index; an OpenZeppelin record at a class other than Bramble's; any record of
+  a kind mobile operates that does not re-derive from its key, including an `imported-raw-key`
+  record whose address is not what its key derives (the extension's Argent import at a picked
+  address, see P3); more than 128 records; and the grammar cases below (origins, number literals,
+  repeated keys, lone surrogates). `vault_wire.rs` is the schema's records as serde types
+  (unknown keys refused; an optional key absent or set, never `null`, which V1 let through for
+  `deploymentSalt` and `publicKeyY`; `activeAccountId` and `mnemonic` present), `vault_rules.rs`
+  is `isVaultV13` rule for rule (every account kind, Ledger paths, the signing-key bindings with
+  keyless Ledger records, origin grants, imported phrases and their bindings, Ledger viewing keys,
+  shadow-account scopes, multisig viewing keys and conflict marks, the extension's devnet), and
+  `vault_budget.rs` is `isJson`'s provider budget as `isVaultV11` applies it. Both run on every
+  open and every write, so mobile neither opens nor writes a vault the extension refuses; a write
+  past the budget fails with the extension's `vault storage limit reached`. Mobile operates only
+  the records it holds keys for, its phrase's `starknet-bip44` and `argentx-bip44` records and
+  `imported-raw-key` ones on Mainnet and Sepolia, under the stronger rules above (every record,
+  y-coordinate and sealed key re-derived). Every other record (a Ledger account, one derived from
+  an imported phrase, one on `SN_DEVNET`), its sealed key and the six collections are
+  `VaultPayload::kept`, outside `accounts`, so no list, selection, signature, send or privacy read
+  reaches them, and every write puts them back where they were (records at their positions,
+  signing keys in the vault's order); a new record never takes a kept record's id, and the
+  address-poisoning check trusts a kept record's public address on its network as the person's
+  own, as the extension's `ownAccounts` does (`VaultPayload::own_addresses`). "Unchanged" means
+  equal as JSON, as G4's test already compared V1's records: object key order (alphabetical here,
+  insertion order in the extension) and string escapes may differ, nothing else. Where the port's
+  grammar is stricter than the extension's: an origin is held to the shared endpoint grammar (no
+  IDN or other host the WHATWG parser accepts beyond letters, digits, `-` and `_`; at most 2,048
+  characters), a number to a plain integer literal (`1.0` and `1e0` are refused), and serde
+  refuses repeated keys and lone surrogates that `JSON.parse` takes. One gap the other way: an
+  origin with an `xn--` label that is not valid punycode passes the hand grammar where the
+  extension's URL parser refuses it. Open for the product owner: whether a record of a kind mobile
+  operates that breaks one of its stronger rules should be kept unused rather than refuse the
+  vault (today a backup holding one address-picked import does not open on mobile at all);
+  whether phrase-less backups should open; kept records are not listed at all (rather than listed
+  as unusable); a vault whose active account is a kept one opens with no active account until one
+  is picked or the network switch picks one; and a vault holding a phrase and only kept records
+  opens as waiting for discovery ("Find your accounts"). Unit-tested only
+  (`tests/vault_v13_kept.rs`, `vault_v13_rules.rs`, `vault_v13_accounts.rs`,
+  `vault_v13_poisoning.rs`: the extension's own validator cases, moved onto G4's payload in test
+  code): G4 holds none of these, so before a release relies on it Bramble needs G4 extended with
+  every collection filled, sealed by the extension's own store at a v13 commit, for a test that
+  opens it and writes it back unchanged. The second half, schema 14 (`accountProvenance`),
+  remains.
 - **P8 Ledger.** Straight after the vault step: the extension ships it to every user (#990's
   "trusted testers" is wrong), so a Ledger user cannot use mobile at all until this lands. The
   device protocol and session as sans-IO APDU exchanges: `packages/platform/ledger-protocol/`
