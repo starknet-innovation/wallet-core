@@ -354,7 +354,9 @@ Foundations, which the features need, and Ledger, which needs only the first:
   (`unknown-contract`, `unlimited-approval` with standing allowances, `operator-approval`,
   `self-transfer`, `token-contract-recipient`, `foreign-beneficiary`, `undecoded-swap`) and fee
   affordability with an amount are not ported: they refuse nothing, and their consumers (P12,
-  P16) bring them with their screens. Not ported, as for the transfer: the `fast` speed, a
+  P16) bring them with their screens. They are owed before any export of `Invoke`: a review
+  with no warning on an unlimited approval, or on a swap paid to another address, is not the
+  extension's review. Not ported, as for the transfer: the `fast` speed, a
   SNIP-36 proof (P15) and the approval queue's review budget (P16). As for a multisig, Krusty
   3.1.0 has no selector, so `Invoke::new` takes `multisig_invoke::StarkPrimitives`, and nothing
   outside the tests can build a batch until krusty-kms#257. Evidence: every transfer capture
