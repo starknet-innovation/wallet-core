@@ -90,12 +90,21 @@ pub const MULTISIG_FEE_OVERHEAD: starknet_wallet_core::send::fees::Overhead = {
     }
 };
 
+/// `INVOKE_LIMITS.calls` (`wallet-protocol/src/transactions/invoke-limits.ts`): the most calls
+/// the extension accepts in one invoke. It bounds a dapp's request there; here every call batch.
+pub const MAX_INVOKE_CALLS: usize = 16;
+
+/// `INVOKE_LIMITS.calldataFelts` (the same file): the most calldata felts in one call.
+pub const MAX_CALL_CALLDATA_FELTS: usize = 4_096;
+
 /// Bramble's send numbers, for `starknet_wallet_core::send::plan::Plan`.
 pub const SEND_POLICY: starknet_wallet_core::send::plan::Policy =
     starknet_wallet_core::send::plan::Policy {
         fee_margin_percent: FEE_MARGIN_PERCENT,
         reviewed_fee_headroom: REVIEWED_FEE_HEADROOM,
         confirmation_delays_ms: &CONFIRMATION_DELAYS_MS,
+        max_invoke_calls: MAX_INVOKE_CALLS,
+        max_call_calldata_felts: MAX_CALL_CALLDATA_FELTS,
     };
 
 /// Bramble's portfolio choices, for `starknet_wallet_core::portfolio`'s stores: the schema tag of

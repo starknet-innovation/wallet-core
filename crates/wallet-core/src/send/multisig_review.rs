@@ -50,6 +50,8 @@ pub enum CallReviewError {
     MissingCurrentConfig,
     /// A payee closely mimics an address the person trusts.
     PoisonedRecipient,
+    /// A single-signer batch calls the account itself (`refuseOnAccountSelfCall`).
+    AccountSelfCall,
 }
 
 impl CallReviewError {
@@ -67,6 +69,7 @@ impl CallReviewError {
             Self::PoisonedRecipient => {
                 "The recipient closely mimics an address you saved or paid but is a different account. Re-check every character before sending."
             }
+            Self::AccountSelfCall => "Dapps cannot call the wallet account contract itself",
         }
     }
 }

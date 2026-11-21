@@ -294,6 +294,14 @@ impl Plan {
         if self.account.is_multisig() && self.is_invoke() {
             return self.fail(SendFailureCode::AccountClassUnsupported, None);
         }
+        // The plan holds a batch to its own account and policy, whatever the host built it with:
+        // reviewed for another account, a call to this one would not have been refused.
+        if let Kind::Invoke(invoke) = &self.kind {
+            let checked = super::invoke::check(&self.account.address, &invoke.calls, &self.policy);
+            if invoke.sender != self.account.address || checked.is_err() {
+                return self.fail(SendFailureCode::PreparationUnavailable, None);
+            }
+        }
         if let Kind::Refresh { hash } = self.kind {
             return self.rpc(
                 Expect::RefreshStatus,

@@ -16,7 +16,9 @@ use starknet_wallet_core::send::call_decode::Known;
 use starknet_wallet_core::send::calls::Call;
 use starknet_wallet_core::send::multisig_invoke::StarkPrimitives;
 use starknet_wallet_core::send::multisig_review::CallReviewError;
-use starknet_wallet_core::send::plan::{Account, Invoke, InvokeRefusal, Kind, PendingKind, Plan};
+use starknet_wallet_core::send::plan::{
+    Account, Authorization, Invoke, InvokeRefusal, Kind, PendingKind, Plan, Policy,
+};
 use starknet_wallet_core::send::types::{
     FeeAffordability, SendError, SendFailureCode as Code, SendStep, StepReply,
 };
@@ -40,7 +42,14 @@ fn invoke(account: &Account, calls: Vec<Call>, trusted: &[Felt]) -> Result<Invok
         tokens: &tokens,
         nft_contracts: &[],
     };
-    Invoke::new(account, calls, &known, trusted, &TestPrimitives::new())
+    Invoke::new(
+        account,
+        calls,
+        &bramble_core::SEND_POLICY,
+        &known,
+        trusted,
+        &TestPrimitives::new(),
+    )
 }
 
 fn call(contract: &str, entrypoint: &str, calldata: Vec<Felt>) -> Call {
@@ -281,4 +290,83 @@ fn a_different_broadcast_hash_is_a_mismatch_carrying_the_signed_hash() {
     );
     // The signed write's record stays: it may still land.
     assert_eq!(host.records.borrow().len(), 1);
+}
+
+#[test]
+fn the_plan_holds_a_batch_to_its_own_account_and_policy() {
+    // A batch reviewed for one account cannot be sent from another: its self-call check, its
+    // trusted set and its sender were the other account's. Refused before any request.
+    let host = Host::new();
+    let account = oz_account(&host);
+    let mut elsewhere = account.clone();
+    elsewhere.address = f(ACCOUNT_1);
+    // From ACCOUNT_1's point of view, a call to the plan's own account is an ordinary call.
+    let to_self = call(ACCOUNT_0, "upgrade", vec![Felt::ONE]);
+    let batch = invoke(&elsewhere, vec![to_self], &[]).unwrap();
+    let mut plan = Plan::new(
+        account.clone(),
+        Kind::Invoke(Box::new(batch)),
+        bramble_core::SEND_POLICY,
+    );
+    let failed = failure(plan.advance(&host, StepReply::Start).unwrap());
+    assert_eq!(failed.code, Code::PreparationUnavailable);
+
+    // A plan whose policy is tighter than the one the batch was checked against.
+    let batch = invoke(&account, two_calls(), &[]).unwrap();
+    let tight = Policy {
+        max_invoke_calls: 1,
+        ..bramble_core::SEND_POLICY
+    };
+    let mut plan = Plan::new(account, Kind::Invoke(Box::new(batch)), tight);
+    let failed = failure(plan.advance(&host, StepReply::Start).unwrap());
+    assert_eq!(failed.code, Code::PreparationUnavailable);
+    assert_eq!(plan.signatures_made(), 0);
+    assert!(host.signed.borrow().is_empty());
+}
+
+#[test]
+fn a_self_call_or_an_oversized_batch_never_becomes_a_plan() {
+    let host = Host::new();
+    let account = oz_account(&host);
+    // A padded spelling of the account is the account.
+    let padded = format!("0x0{}", &ACCOUNT_0[2..]);
+    let to_self = Call {
+        contract_address: f(&padded),
+        ..call(STRK, "upgrade", vec![Felt::ONE])
+    };
+    assert_eq!(
+        invoke(&account, vec![transfer_call(ACCOUNT_1), to_self], &[]).unwrap_err(),
+        InvokeRefusal::Review(CallReviewError::AccountSelfCall)
+    );
+    assert_eq!(
+        invoke(&account, vec![transfer_call(ACCOUNT_1); 17], &[]).unwrap_err(),
+        InvokeRefusal::TooManyCalls
+    );
+    // Bramble's numbers are the extension's `INVOKE_LIMITS`.
+    assert_eq!(
+        (
+            bramble_core::SEND_POLICY.max_invoke_calls,
+            bramble_core::SEND_POLICY.max_call_calldata_felts
+        ),
+        (16, 4_096)
+    );
+}
+
+#[test]
+fn a_multisig_never_signs_a_batch_with_one_key() {
+    let host = Host::new();
+    let mut account = oz_account(&host);
+    let batch = invoke(&account, two_calls(), &[]).unwrap();
+    account.authorization = Authorization::ArgentMultisig {
+        class_hash: Felt::from(7u8),
+        query_signer: account.public_key,
+    };
+    let mut plan = Plan::new(
+        account,
+        Kind::Invoke(Box::new(batch)),
+        bramble_core::SEND_POLICY,
+    );
+    let failed = failure(plan.advance(&host, StepReply::Start).unwrap());
+    assert_eq!(failed.code, Code::AccountClassUnsupported);
+    assert_eq!(plan.signatures_made(), 0);
 }

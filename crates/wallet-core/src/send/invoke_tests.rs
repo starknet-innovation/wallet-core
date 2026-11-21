@@ -5,6 +5,7 @@ use super::*;
 use crate::catalog::TokenInfo;
 use crate::kms::NetworkId;
 use crate::send::calls::{transfer_execute_calldata, TRANSFER_SELECTOR};
+use crate::send::fees::Headroom;
 use crate::send::types::Authorization;
 use crate::send::u256::U256;
 
@@ -60,13 +61,32 @@ fn call(contract: &str, entrypoint: &str, calldata: &[&str]) -> Call {
     }
 }
 
+/// Bramble's `INVOKE_LIMITS` numbers, as `SEND_POLICY` sets them.
+const POLICY: Policy = Policy {
+    fee_margin_percent: 50,
+    reviewed_fee_headroom: Headroom {
+        numerator: 3,
+        denominator: 2,
+    },
+    confirmation_delays_ms: &[0],
+    max_invoke_calls: 16,
+    max_call_calldata_felts: 4_096,
+};
+
 fn invoke(calls: Vec<Call>) -> Result<Invoke, InvokeRefusal> {
     let tokens = [eth()];
     let known = Known {
         tokens: &tokens,
         nft_contracts: &[],
     };
-    Invoke::new(&account(), calls, &known, &[felt(CONTACT)], &Keccak)
+    Invoke::new(
+        &account(),
+        calls,
+        &POLICY,
+        &known,
+        &[felt(CONTACT)],
+        &Keccak,
+    )
 }
 
 #[test]
@@ -197,5 +217,74 @@ fn a_swap_beneficiary_that_mimics_a_contact_is_refused() {
     assert_eq!(
         invoke(vec![call("0xabc", "multi_route_swap", &calldata)]),
         Err(InvokeRefusal::Review(CallReviewError::PoisonedRecipient))
+    );
+}
+
+#[test]
+fn a_call_to_the_account_itself_is_refused_in_any_spelling() {
+    // `verify.test.ts`, "refuses account self-calls through felt aliases": a padded spelling of
+    // the account is the account; a call to a token is not a self-call.
+    let padded = format!("0x0{}", &ACCOUNT[2..]);
+    let refused = invoke(vec![call(&padded, "upgrade", &["0x1"])]);
+    assert_eq!(
+        refused,
+        Err(InvokeRefusal::Review(CallReviewError::AccountSelfCall))
+    );
+    assert_eq!(
+        refused.unwrap_err().to_string(),
+        "Dapps cannot call the wallet account contract itself"
+    );
+    // Anywhere in the batch, not only alone (the multisig rule allows a lone signer change).
+    let batch = vec![
+        call(ETH, "transfer", &[ETH, "0x1", "0x0"]),
+        call(ACCOUNT, "change_owner", &[]),
+    ];
+    assert_eq!(
+        invoke(batch),
+        Err(InvokeRefusal::Review(CallReviewError::AccountSelfCall))
+    );
+    assert!(invoke(vec![call(ETH, "transfer", &[ETH, "0x1", "0x0"])]).is_ok());
+}
+
+#[test]
+fn a_batch_must_fit_the_policy() {
+    // `providerInvokeRequest`'s bounds (`INVOKE_LIMITS`), applied to every batch.
+    let one = || call(ETH, "approve", &["0x5", "0x1", "0x0"]);
+    assert!(invoke(vec![one(); 16]).is_ok());
+    assert_eq!(invoke(vec![one(); 17]), Err(InvokeRefusal::TooManyCalls));
+    let long = |felts: usize| Call {
+        calldata: vec![Felt::ONE; felts],
+        ..call("0xabc", "execute", &[])
+    };
+    assert!(invoke(vec![long(4_096)]).is_ok());
+    assert_eq!(
+        invoke(vec![long(4_097)]),
+        Err(InvokeRefusal::CalldataTooLong)
+    );
+}
+
+#[test]
+fn every_call_names_a_contract_and_a_grammatical_entrypoint() {
+    // `readProviderInvokeCall`: a non-zero contract, `^[A-Za-z_][A-Za-z0-9_]*$`, 64 at most.
+    for name in [
+        "",
+        "1transfer",
+        "trans-fer",
+        "transfer()",
+        "é",
+        &"a".repeat(65),
+    ] {
+        assert_eq!(
+            invoke(vec![call(ETH, name, &[])]),
+            Err(InvokeRefusal::InvalidCall),
+            "{name:?}"
+        );
+    }
+    for name in ["Transfer", "_x", "transferFrom", &"a".repeat(64)] {
+        assert!(invoke(vec![call(ETH, name, &[])]).is_ok(), "{name}");
+    }
+    assert_eq!(
+        invoke(vec![call("0x0", "transfer", &[])]),
+        Err(InvokeRefusal::InvalidCall)
     );
 }

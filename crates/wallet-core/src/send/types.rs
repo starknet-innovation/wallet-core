@@ -190,6 +190,10 @@ pub struct Policy {
     pub reviewed_fee_headroom: Headroom,
     /// When to read a broadcast transaction's status, as delays between reads.
     pub confirmation_delays_ms: &'static [u32],
+    /// The most calls one batch (`Kind::Invoke`) may carry.
+    pub max_invoke_calls: usize,
+    /// The most calldata felts one call in a batch may carry.
+    pub max_call_calldata_felts: usize,
 }
 
 /// One Argent class the wallet knows, from its catalog.
