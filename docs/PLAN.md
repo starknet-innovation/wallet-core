@@ -468,8 +468,9 @@ Foundations, which the features need, and Ledger, which needs only the first:
   account on its network and a trusted token only. `Invoke::reviewed` takes the whole
   `ReviewContext` (trusted tokens and collections, the trusted set, pinned contracts such as a
   router or pool, the token contracts, Bramble's `known_token_addresses`, and the allowance
-  log); `Invoke::new` reads the flags without the last three, and so under-warns: any export
-  goes through `reviewed`. The builder names the activity row (`with_activity_summary`, clamped
+  log); `Invoke::new`, now crate-only, reads the flags without the last three, and so
+  under-warns: any export goes through `reviewed`, and the review card reads the signed batch's
+  flags from `Plan::risk_flags()`. The builder names the activity row (`with_activity_summary`, clamped
   as `clampActivitySummary`; `with_dapp_origin`, "<origin> submitted N call(s)" from the
   batch's own count and `activityOrigin`), falling back to the review line; it rides on the
   `Invoke` the plan already binds to its account and network. Departures: each flag is attached
