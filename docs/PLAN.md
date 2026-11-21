@@ -327,6 +327,25 @@ Features, smallest and least dependent first:
 - **P10 Activity filter and CSV export.** `transactions/src/activity/activity-csv.ts`, and the
   filter in `wallet-ui`'s `portfolio/activity-filter.ts`. Small, and no longer left to the apps:
   two apps would write it twice.
+  As built (core half, against Bramble `a01b240c`): `activity::csv::activity_to_csv` is
+  `activityToCsv` cell for cell (the header, every cell quoted, the formula guard of
+  MCW-V09-123 on every cell, the rebuilt transfer summary, `\n` between rows and none after);
+  the value column shares `activity::detail::submitted_value` with the expanded row, so the two
+  price the same rows. `history::filter` is the feed's filter and amount sort
+  (`ActivityFilter`, `activityFilterOptions`, `activityTokenKey`, `activitySearchIndex`,
+  `activityRowMatches`, `activityAmountComparator`): the extension writes each row's facts
+  onto its DOM node and filters the nodes, the core reads the same facts off the
+  `ActivityEntry` through `activity_row_model`. `bramble-core` exports `activity_csv` (the
+  text; the host writes and shares the file), `activity_csv_file_name`
+  (`bramble-activity.csv`, Bramble's), `activity_filter_options` and `filter_activity`.
+  Departures: an axis's `all` is `None`; the explorer link comes from the caller's network
+  catalog; the host passes the contacts a search resolves (`activityContacts`, which reads
+  preferences, is not ported), and `reconcileActivityFilter` (UI state), the
+  per-counterparty summary (`activityPartySummary`, `activityPartySummaryParts`) and the
+  export toast (`activityExportToast`) are left to a later step or the apps. The extension's
+  export is one account's whole feed, unfiltered. Unit-tested only: the extension's own cases
+  for both files are ported with their expected strings, plus the branches they leave out;
+  a Bramble generator writing both outputs over one feed is still owed.
 - **P11 Token swap.** The AVNU quote and build as sans-IO bodies and reply judges, like the price
   book's: `transactions/src/swap/` (420), `wallet-model/src/swap/` (319) and the background's
   `transactions/swap-{inputs,preparations,build-policy,value-check,ops}.ts`. Needs P9.
