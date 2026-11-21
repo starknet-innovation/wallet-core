@@ -193,6 +193,11 @@ impl StakingRead {
     }
 
     fn enter(&mut self, stage: Stage, asks: Vec<Ask>) {
+        if stage == Stage::Pin {
+            // A new attempt keeps nothing of the last: refused facts must read as unreadable.
+            self.reading.facts = None;
+            self.reading.pools.clear();
+        }
         self.stage = stage;
         self.answers = vec![None; asks.len().max(usize::from(stage == Stage::Pin))];
         self.asks = asks;

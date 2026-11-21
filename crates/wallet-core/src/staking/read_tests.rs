@@ -402,3 +402,27 @@ fn a_contract_that_is_not_a_felt_reads_nothing() {
     };
     assert!(StakingRead::new(&network, &strk_info(), f(ACCOUNT), vec![]).is_none());
 }
+
+#[test]
+fn a_new_attempt_keeps_no_facts_from_the_last() {
+    let mut chain = chain();
+    let mut read = read_of(vec![strk_pair()]);
+    pinned(&mut read);
+    for call in read.next_calls() {
+        assert_eq!(read.accept(chain.reply(&call)), ScanStep::Continue);
+    }
+    // The first endpoint read the facts, then fails while the stakers are out.
+    let calls = read.next_calls();
+    let failed = RpcReply {
+        id: calls[0].id,
+        status: 0,
+        body: None,
+    };
+    assert_eq!(read.accept(failed), ScanStep::Transport);
+    read.restart();
+    // The next endpoint's staking contract pays rewards in another token: no facts.
+    chain.reward_token = Felt::from(0x777u32);
+    let reading = run(read, &mut chain).unwrap();
+    assert_eq!(reading.facts, None);
+    assert!(reading.pools.is_empty());
+}
