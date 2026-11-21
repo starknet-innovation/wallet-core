@@ -403,7 +403,8 @@ fn a_vault_whose_imported_record_does_not_match_its_sealed_key_fails_closed() {
         &|p| p["accounts"][account]["deploymentSalt"] = "0x0".into(),
         "a salt on an OpenZeppelin record",
     );
-    // Lifting the rule for imported keys lifts it for no other collection.
+    // Every collection is read now (P7), each by its own record shape: an entry of another
+    // collection's shape is refused in all of them.
     let entry = json!({ "accountId": record.id, "id": "phrase-1", "mnemonic": LEGAL });
     for collection in [
         "accountSecrets",
@@ -415,7 +416,7 @@ fn a_vault_whose_imported_record_does_not_match_its_sealed_key_fails_closed() {
     ] {
         reject(
             &|p| p[collection] = json!([entry.clone()]),
-            &format!("a non-empty {collection}"),
+            &format!("a malformed entry in {collection}"),
         );
     }
 }

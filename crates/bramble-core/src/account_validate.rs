@@ -47,9 +47,15 @@ fn is_well_formed(record: &StoredAccount) -> bool {
         && record.id == format!("{}:{}", network.catalog_id(), record.address)
 }
 
-// Every structural invariant, without derivation.
+// Every structural invariant, without derivation. Ids are unique across every record the vault
+// holds, kept ones included, and the active account may be a kept one.
 fn is_consistent(payload: &VaultPayload) -> bool {
     let ids: HashSet<&str> = payload.accounts.iter().map(|r| r.id.as_str()).collect();
+    let all: HashSet<&str> = ids
+        .iter()
+        .copied()
+        .chain(payload.kept.account_ids())
+        .collect();
     let imported = payload
         .accounts
         .iter()
@@ -60,12 +66,12 @@ fn is_consistent(payload: &VaultPayload) -> bool {
         && imported
             .clone()
             .all(|record| payload.imported_keys.contains_key(&record.id))
-        && payload.accounts.len() <= MAX_ACCOUNT_RECORDS
-        && ids.len() == payload.accounts.len()
+        && payload.record_count() <= MAX_ACCOUNT_RECORDS
+        && all.len() == payload.record_count()
         && payload.accounts.iter().all(is_well_formed)
         && match &payload.active_account_id {
-            None => payload.accounts.is_empty(),
-            Some(id) => ids.contains(id.as_str()),
+            None => payload.record_count() == 0,
+            Some(id) => all.contains(id.as_str()),
         }
         && payload.labels.len() <= MAX_ACCOUNT_RECORDS
         && payload.labels.iter().all(|(id, label)| {
