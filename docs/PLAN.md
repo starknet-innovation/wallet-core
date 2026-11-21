@@ -419,8 +419,8 @@ Foundations, which the features need, and Ledger, which needs only the first:
   extension's sentences where it has them. The plan re-applies the context-free rules at start
   (`invoke::check` against its own account and `Policy`, and the batch's sender and network), so
   a batch reviewed for another account or network, or a looser policy, fails
-  `PreparationUnavailable` before any request. The two counts are Bramble's (`MAX_INVOKE_CALLS`, `MAX_CALL_CALLDATA_FELTS` in
-  `SEND_POLICY`); the fee margin and headroom are the transfer's. A pending record is
+  `PreparationUnavailable` before any request. The two counts are Bramble's (`MAX_INVOKE_CALLS`,
+  `MAX_CALL_CALLDATA_FELTS` in `SEND_POLICY`); the fee margin and headroom are the transfer's. A pending record is
   `PendingKind::Invoke`, mobile's row `ActivityKind::Invoke`, summarised as the review is.
   Departures: the self-call refusal, the bounds and the grammar apply to every batch, not only a
   dapp's; a poisoned payee refuses at `Invoke::new`, where the dapp path lets the flag ride the
@@ -438,8 +438,8 @@ Foundations, which the features need, and Ledger, which needs only the first:
   P16) bring them with their screens. They are owed before any export of `Invoke`, with a
   summary per call and the caller's activity text: a review with no warning on an unlimited
   approval, or on a swap paid to another address, is not the extension's review. Not ported, as
-  for the transfer: the `fast` speed, a SNIP-36 proof (P15) and the approval queue's review budget (P16). As for a multisig, Krusty
-  3.1.0 has no selector, so `Invoke::new` takes `multisig_invoke::StarkPrimitives`, and nothing
+  for the transfer: the `fast` speed, a SNIP-36 proof (P15) and the approval queue's review
+  budget (P16). As for a multisig, Krusty 3.1.0 has no selector, so `Invoke::new` takes `multisig_invoke::StarkPrimitives`, and nothing
   outside the tests can build a batch until krusty-kms#257. Evidence: every transfer capture
   (OpenZeppelin, Ready, Braavos) driven as a one-call batch puts the same requests on the wire
   and signs the same hashes (`transactions_invoke.rs`); the multicall, its refusals and failure
