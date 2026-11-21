@@ -62,6 +62,7 @@ mod stark_name;
 mod ui;
 mod vault;
 mod vault_budget;
+mod vault_provenance;
 mod vault_rules;
 mod vault_v13;
 mod vault_wire;

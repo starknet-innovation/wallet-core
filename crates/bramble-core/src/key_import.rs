@@ -13,10 +13,11 @@
 use wallet_core::Zeroizing;
 
 use crate::account_catalog::AccountFamily;
-use crate::account_store::{record_at, KeySource};
+use crate::account_store::{push_active, record_at, KeySource};
 use crate::networks::NetworkId;
+use crate::vault_provenance::Origin;
 use crate::wallet::WalletCore;
-use crate::wallet_accounts::{push_active, render, AccountRecord};
+use crate::wallet_accounts::{render, AccountRecord};
 use crate::{felt, CoreError};
 
 fn invalid(reason: &str) -> CoreError {
@@ -70,7 +71,10 @@ impl WalletCore {
                 network,
             )?;
             let id = record.id.clone();
-            self.commit(session, |payload| push_active(payload, record, Some(key)))?;
+            let imported = Some(Origin::Imported);
+            self.commit(session, |payload| {
+                push_active(payload, record, Some(key), imported)
+            })?;
             let payload = &session.payload;
             payload
                 .record(&id)

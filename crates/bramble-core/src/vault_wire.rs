@@ -1,5 +1,6 @@
 //! The extension's vault schema v13 as it is written (`VaultV13`,
-//! `packages/platform/vault/src/schema/schema.ts`): one serde type per record. Unknown keys are
+//! `packages/platform/vault/src/schema/schema.ts`), and v14's one more key (`VaultV14`'s optional
+//! `accountProvenance`, `vault_provenance`): one serde type per record. Unknown keys are
 //! refused (`hasOnlyKnownKeys`), every key the extension requires must be present, and an optional
 //! key is either absent or holds a value: a `null` there is refused, as the extension's field
 //! checks refuse it. Numbers are plain non-negative integer literals. Shapes only: the rules over
@@ -10,6 +11,8 @@
 
 use serde::{Deserialize, Deserializer, Serialize};
 use zeroize::{Zeroize, ZeroizeOnDrop};
+
+use crate::vault_provenance::Provenance;
 
 /// An optional key: absent is `None`, and a present one must hold a value.
 fn present<'de, D: Deserializer<'de>, T: Deserialize<'de>>(d: D) -> Result<Option<T>, D::Error> {
@@ -162,12 +165,20 @@ pub(crate) struct MultisigConflict {
     pub(crate) pool_address: String,
 }
 
-/// `VaultV13`. The phrase zeroizes on drop; every secret record zeroizes itself.
+/// `VaultV13`, or `VaultV14` with `accountProvenance`, which a v13 vault never holds
+/// (`vault_rules::is_valid`). The phrase zeroizes on drop; every secret record zeroizes itself.
 #[derive(Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct Vault {
     #[zeroize(skip)]
     pub(crate) accounts: Vec<Account>,
+    #[zeroize(skip)]
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(crate) account_provenance: Option<Provenance>,
     #[zeroize(skip)]
     pub(crate) account_secrets: Vec<AccountSecret>,
     #[zeroize(skip)]
