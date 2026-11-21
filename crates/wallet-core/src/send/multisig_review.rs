@@ -192,7 +192,27 @@ pub(crate) fn summarise_calls(
     summary_length: usize,
     empty: &str,
 ) -> Result<String, CallReviewError> {
-    let mut summaries = Vec::with_capacity(calls.len());
+    refuse_poisoned(account, calls, trusted)?;
+    let summaries: Vec<String> = calls
+        .iter()
+        .map(|call| {
+            call_summary(
+                &call.contract_address,
+                &call.entrypoint,
+                &call.calldata,
+                known,
+            )
+        })
+        .collect();
+    Ok(batch_line(&summaries, summary_length, empty))
+}
+
+/// `refuseOnPoisonedRecipient`: a payee that mimics `account` or an address in `trusted`.
+pub(crate) fn refuse_poisoned(
+    account: &Felt,
+    calls: &[Call],
+    trusted: &[Felt],
+) -> Result<(), CallReviewError> {
     for call in calls {
         if let Some(recipient) = recipient_for_flags(&call.entrypoint, &call.calldata) {
             if std::iter::once(account)
@@ -202,21 +222,25 @@ pub(crate) fn summarise_calls(
                 return Err(CallReviewError::PoisonedRecipient);
             }
         }
-        summaries.push(call_summary(
-            &call.contract_address,
-            &call.entrypoint,
-            &call.calldata,
-            known,
-        ));
     }
+    Ok(())
+}
+
+/// The batch's one line: the first summary and a count of the rest, cut to `summary_length`
+/// UTF-16 units; `empty` when there are none.
+pub(crate) fn batch_line<S: AsRef<str>>(
+    summaries: &[S],
+    summary_length: usize,
+    empty: &str,
+) -> String {
     let suffix = match summaries.len() {
         0 | 1 => String::new(),
         count => format!(" (+{} more)", count - 1),
     };
-    let first = summaries.first().map_or(empty, String::as_str);
+    let first = summaries.first().map_or(empty, AsRef::as_ref);
     // Trimmed after the cut, as the extension does: a cut can end on a space.
     let summary = utf16_slice(&format!("{first}{suffix}"), 0, summary_length);
-    Ok(summary.trim_end_matches(is_js_whitespace).to_string())
+    summary.trim_end_matches(is_js_whitespace).to_string()
 }
 
 #[cfg(test)]
