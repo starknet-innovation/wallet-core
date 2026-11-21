@@ -13,6 +13,7 @@ use crate::history::activity_rules::MAX_ACTIVITY_TIMESTAMP_MS;
 use crate::js::big::parse_bigint;
 use crate::js::num::{js_trim, string_to_number};
 use crate::portfolio::fiat::format_fiat;
+use crate::portfolio::model::DisplayCurrency;
 use crate::portfolio::prices::PriceView;
 use crate::send::calls::format_token_amount;
 use crate::send::fees::format_fri;
@@ -100,9 +101,10 @@ pub fn fee_text(entry: &ActivityEntry) -> Option<String> {
     })
 }
 
-/// `submittedValueText`: the amount at the captured unit price, in the currency it was priced
-/// in (`formatFiat`). `None` without a captured price or a plain positive amount.
-pub fn submitted_value_text(entry: &ActivityEntry) -> Option<String> {
+/// The amount at the captured unit price, and the currency it was priced in: the figure behind
+/// `submittedValueText` and the CSV's `submittedValue`. `None` without a captured price or a
+/// plain positive amount.
+pub fn submitted_value(entry: &ActivityEntry) -> Option<(f64, DisplayCurrency)> {
     let price = entry.submitted_price.as_ref()?;
     // `Number(entry.amount?.trim() || NaN)`: an empty amount is NaN, not zero.
     let amount = js_trim(entry.amount.as_deref()?);
@@ -111,6 +113,10 @@ pub fn submitted_value_text(entry: &ActivityEntry) -> Option<String> {
     } else {
         string_to_number(amount)
     };
-    (amount.is_finite() && amount > 0.0)
-        .then(|| format_fiat(amount * price.unit_price, price.currency))
+    (amount.is_finite() && amount > 0.0).then_some((amount * price.unit_price, price.currency))
+}
+
+/// `submittedValueText`: `submitted_value` through `formatFiat`.
+pub fn submitted_value_text(entry: &ActivityEntry) -> Option<String> {
+    submitted_value(entry).map(|(value, currency)| format_fiat(value, currency))
 }
