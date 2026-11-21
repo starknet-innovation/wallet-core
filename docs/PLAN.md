@@ -109,7 +109,7 @@ its generator owed to G7.
 | P1 export | here, then Bramble | krusty-kms#257 (open) | whenever Krusty ships it: the bump that exports a selector and signature verification, an implementation of `StarkPrimitives` over it, P1's FFI surface, and its screens in the tag after |
 | P7 Vault: schema 14 | here | a generator, and the product owner's answers | the second half: `accountProvenance` (`release/v0.10.11`). The first half (#87) left questions open: whether kept accounts are listed, what an active kept account means, and whether a record that fails mobile's stronger rules is kept unused rather than refusing the vault |
 | P8 Ledger | here | the transport question | moved up 2026-11-21: every extension user has it, and a Ledger user cannot use mobile without it. #87 reads and keeps a Ledger account; P8 makes it usable |
-| P9 flags and export | here | krusty-kms#257 (open), a generator | the mechanism is in (#84), with no export. Owed before one: the review's annotation flags (`verify.ts`: unknown contract, unlimited and operator approvals, a swap's foreign beneficiary, an undecoded swap) and a selector from Krusty, as for P1 |
+| P9 flags and export | here | krusty-kms#257 (open), a generator | the mechanism is in (#84), with no export. Owed before one: the review's annotation flags (`verify.ts`: unknown contract, unlimited and operator approvals, a swap's foreign beneficiary, an undecoded swap), a summary per call that a host can show (the extension's approval lists every call), the caller's activity text (a dapp's "<origin> submitted N call(s)", a swap's or a stake's own), and a selector from Krusty, as for P1 |
 | P11, P13–P16, and the rest of P12 | here, each with its generator and its mobile PR | P9's export | swap, staking, gasless, STRK20 submission, dapp connect; for allowances (read side in, #85) the revoke, recording submitted approvals, and the UniFFI export |
 | Extension Krusty 3 | Bramble, `main` | — | the extension still pins `@starknetfoundation/krusty-kms-wasm` `0.11.0`, which predates the fix (Krusty 3.0 changed the derivation; 2.0.0 and earlier kept the leading zero bytes), so its keys and mobile's part for affected phrases. Its users have funds, so it follows Krusty's [migration guide](https://github.com/starknet-innovation/krusty-kms/blob/v3.0.0/docs/migration-3.0.md): keep the old key for any existing account whose public key differs. Needed before Phase 3, where the extension takes this crate's Krusty |
 
@@ -417,9 +417,9 @@ Foundations, which the features need, and Ledger, which needs only the first:
   reviews it with `multisig_review::summarise_calls` (the ordinary-call half of the multisig
   review, now shared), and compiles the calldata; refusals are `InvokeRefusal`, with the
   extension's sentences where it has them. The plan re-applies the context-free rules at start
-  (`invoke::check` against its own account and `Policy`, and the batch's sender), so a batch
-  reviewed for another account or a looser policy fails `PreparationUnavailable` before any
-  request. The two counts are Bramble's (`MAX_INVOKE_CALLS`, `MAX_CALL_CALLDATA_FELTS` in
+  (`invoke::check` against its own account and `Policy`, and the batch's sender and network), so
+  a batch reviewed for another account or network, or a looser policy, fails
+  `PreparationUnavailable` before any request. The two counts are Bramble's (`MAX_INVOKE_CALLS`, `MAX_CALL_CALLDATA_FELTS` in
   `SEND_POLICY`); the fee margin and headroom are the transfer's. A pending record is
   `PendingKind::Invoke`, mobile's row `ActivityKind::Invoke`, summarised as the review is.
   Departures: the self-call refusal, the bounds and the grammar apply to every batch, not only a
@@ -428,14 +428,17 @@ Foundations, which the features need, and Ledger, which needs only the first:
   the person trusts), so P16 must not relay that refusal to the site before the person acts; the
   trusted set is fixed when the batch is built, where the extension re-reads it at execution
   (as for the transfer kind); the summary is the multisig review's line (the first call and a
-  count, cut without the activity clamp's ellipsis), not one line per call; the annotation flags
+  count, cut without the activity clamp's ellipsis), not one line per call, and `Invoke` keeps
+  only that line, so a host cannot show calls after the first; the activity row records that
+  line too, where the extension records a dapp's batch as "<origin> submitted N call(s)" and a
+  swap or a stake as its own text (`swap-ops.ts`, `stakingActivitySummary`); the annotation flags
   (`unknown-contract`, `unlimited-approval` with standing allowances, `operator-approval`,
   `self-transfer`, `token-contract-recipient`, `foreign-beneficiary`, `undecoded-swap`) and fee
   affordability with an amount are not ported: they refuse nothing, and their consumers (P12,
-  P16) bring them with their screens. They are owed before any export of `Invoke`: a review
-  with no warning on an unlimited approval, or on a swap paid to another address, is not the
-  extension's review. Not ported, as for the transfer: the `fast` speed, a
-  SNIP-36 proof (P15) and the approval queue's review budget (P16). As for a multisig, Krusty
+  P16) bring them with their screens. They are owed before any export of `Invoke`, with a
+  summary per call and the caller's activity text: a review with no warning on an unlimited
+  approval, or on a swap paid to another address, is not the extension's review. Not ported, as
+  for the transfer: the `fast` speed, a SNIP-36 proof (P15) and the approval queue's review budget (P16). As for a multisig, Krusty
   3.1.0 has no selector, so `Invoke::new` takes `multisig_invoke::StarkPrimitives`, and nothing
   outside the tests can build a batch until krusty-kms#257. Evidence: every transfer capture
   (OpenZeppelin, Ready, Braavos) driven as a one-call batch puts the same requests on the wire
