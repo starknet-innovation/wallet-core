@@ -18,7 +18,6 @@ use super::retention::Ranking;
 use super::store::{AllowanceDelta, AllowanceLog, DeltaDirection};
 use crate::felt;
 use crate::history::explorer::activity_account_id;
-use crate::js::felt::same_felt;
 use crate::send::call_decode::{uint256_at, Known};
 use crate::send::calls::Call;
 use crate::send::u256::U256;
@@ -101,14 +100,9 @@ pub fn decode_allowance_call(call: &Call) -> Option<DecodedAllowanceCall> {
 
 /// `approvedAssetKind`: a watched collection first, then a trusted token, compared by value.
 pub fn approved_asset_kind(known: &Known, contract: &Felt) -> AssetKind {
-    let contract = felt::canonical(contract);
-    if known.nft_contracts.iter().any(|c| same_felt(c, &contract)) {
+    if known.watches_nft(contract) {
         AssetKind::Collection
-    } else if known
-        .tokens
-        .iter()
-        .any(|t| same_felt(&t.address, &contract))
-    {
+    } else if known.token(contract).is_some() {
         AssetKind::Fungible
     } else {
         AssetKind::Unknown

@@ -36,14 +36,14 @@ pub struct Known<'a> {
 }
 
 impl Known<'_> {
-    fn token(&self, contract: &Felt) -> Option<&TokenInfo> {
+    pub(crate) fn token(&self, contract: &Felt) -> Option<&TokenInfo> {
         let contract = felt::canonical(contract);
         self.tokens
             .iter()
             .find(|token| same_felt(&token.address, &contract))
     }
 
-    fn watches_nft(&self, contract: &Felt) -> bool {
+    pub(crate) fn watches_nft(&self, contract: &Felt) -> bool {
         let contract = felt::canonical(contract);
         self.nft_contracts
             .iter()
