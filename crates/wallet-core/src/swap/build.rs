@@ -10,23 +10,12 @@ use crate::js::num::number_to_string;
 use crate::portfolio::wire::{HttpHeader, HttpMethod, HttpOutcome, HttpRequest, HTTP_DEADLINE_MS};
 use crate::send::call_decode::Known;
 use crate::send::calls::Call;
-use crate::send::invoke::Invoke;
+// `isEntrypoint` (`avnu.ts`, `^[a-zA-Z_][a-zA-Z0-9_]{0,63}$`) is the invoke grammar.
+use crate::send::invoke::{is_entrypoint, Invoke};
 use crate::send::multisig_invoke::StarkPrimitives;
 use crate::send::types::{Account, Policy};
 use crate::send::u256::U256;
 use crate::Felt;
-
-/// `isEntrypoint` (`avnu.ts`): `^[a-zA-Z_][a-zA-Z0-9_]{0,63}$`.
-fn is_entrypoint(name: &str) -> bool {
-    let bytes = name.as_bytes();
-    bytes.len() <= 64
-        && bytes
-            .first()
-            .is_some_and(|b| b.is_ascii_alphabetic() || *b == b'_')
-        && bytes
-            .iter()
-            .all(|b| b.is_ascii_alphanumeric() || *b == b'_')
-}
 
 /// `isQuoteIdText` (`swap-inputs.ts`): `^[A-Za-z0-9-]{1,120}$`. The quote judge already held
 /// the id to 1..=`max_quote_id_length` UTF-16 units, which for these ASCII characters is bytes.

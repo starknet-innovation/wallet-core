@@ -113,6 +113,23 @@ impl U256 {
         })
     }
 
+    /// Parses 1 to 64 hex digits in either case (no prefix, no sign) without wrapping.
+    pub fn from_hex(digits: &str) -> Option<Self> {
+        if digits.is_empty() || digits.len() > 64 || !digits.bytes().all(|b| b.is_ascii_hexdigit())
+        {
+            return None;
+        }
+        let (high, low) = digits.split_at(digits.len().saturating_sub(32));
+        Some(Self {
+            high: if high.is_empty() {
+                0
+            } else {
+                u128::from_str_radix(high, 16).ok()?
+            },
+            low: u128::from_str_radix(low, 16).ok()?,
+        })
+    }
+
     /// Base-10 spelling, no leading zeros.
     pub fn to_decimal(self) -> String {
         crate::rpc::u256_to_decimal(self.low, self.high)
@@ -164,6 +181,25 @@ mod tests {
         );
         assert_eq!(U256::from_u128(1).checked_sub(U256::from_u128(2)), None);
         assert_eq!(U256::ZERO.checked_sub(two_words), None);
+    }
+
+    #[test]
+    fn hex_is_one_to_sixty_four_digits_in_either_case() {
+        assert_eq!(U256::from_hex("fF"), Some(U256::from_u128(255)));
+        assert_eq!(
+            U256::from_hex(&format!("1{}", "0".repeat(32))),
+            Some(U256 { high: 1, low: 0 })
+        );
+        assert_eq!(
+            U256::from_hex(&"f".repeat(64)),
+            Some(U256 {
+                high: u128::MAX,
+                low: u128::MAX
+            })
+        );
+        for refused in ["", "+1", "-1", "0x1", "g", &"1".repeat(65)] {
+            assert_eq!(U256::from_hex(refused), None, "{refused}");
+        }
     }
 
     #[test]

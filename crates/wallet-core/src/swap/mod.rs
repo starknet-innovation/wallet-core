@@ -149,20 +149,7 @@ fn u256_hex(value: U256) -> String {
 
 /// `isHexAmount`: `0x` + 1–64 hex digits in either case, as a u256.
 fn hex_u256(text: &str) -> Option<U256> {
-    let digits = text.strip_prefix("0x")?;
-    // An empty digit run fails `from_str_radix` below; the digit check also refuses its `+`.
-    if digits.len() > 64 || !digits.bytes().all(|b| b.is_ascii_hexdigit()) {
-        return None;
-    }
-    let split = digits.len().saturating_sub(32);
-    let high = match split {
-        0 => 0,
-        _ => u128::from_str_radix(&digits[..split], 16).ok()?,
-    };
-    Some(U256 {
-        high,
-        low: u128::from_str_radix(&digits[split..], 16).ok()?,
-    })
+    U256::from_hex(text.strip_prefix("0x")?)
 }
 
 #[cfg(test)]
