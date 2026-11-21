@@ -276,6 +276,29 @@ fn the_spender_cap_bounds_the_reads_and_marks_the_rest() {
 }
 
 #[test]
+fn a_page_past_the_chunk_size_is_read_in_linear_time() {
+    // A node that ignores `chunk_size` answers the owner read with 100,000 distinct spenders in
+    // one page: the reads stop at the cap, and the scan is incomplete. De-duplicating them was
+    // quadratic (about 30 s here in a debug build, under 2 s since); the bound is generous.
+    let mut chain = node(100, vec![]);
+    chain.fault = Some(|b| {
+        let owner_read = b["params"]["filter"]["keys"][1].is_array();
+        (b["method"] == json!("starknet_getEvents") && owner_read).then(|| {
+            let events: Vec<Value> = (0..100_000u64)
+                .map(|i| {
+                    let spender = format!("0x{:x}", 0x10_0000 + i);
+                    json!({ "keys": [APPROVAL_EVENT_KEY, OWNER, spender], "data": [], "block_number": 1 })
+                })
+                .collect();
+            ok(0, json!({ "events": events }))
+        })
+    });
+    let started = std::time::Instant::now();
+    assert!(!run(&chain).complete);
+    assert!(started.elapsed().as_secs() < 10, "{:?}", started.elapsed());
+}
+
+#[test]
 fn a_transport_failure_restarts_the_whole_scan() {
     // edges.test.ts "propagates a transport error rather than skipping the token".
     let mut chain = node(100, vec![cairo1(OWNER, &drainer(), 1)]);

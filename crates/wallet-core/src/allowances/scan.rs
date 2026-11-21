@@ -11,6 +11,8 @@
 //! on the next endpoint (`restart`), as `withRpcFallback` reruns it. With every endpoint failed
 //! the host lists `ExternalAllowanceScanResult::unavailable()`, as the extension's caller does.
 
+use std::collections::HashSet;
+
 use serde_json::{json, Value};
 
 use super::discovery::{
@@ -20,7 +22,7 @@ use super::tracked::allowance_call;
 use super::AllowancePolicy;
 pub use crate::history::events::ScanStep;
 use crate::history::events::MAX_CONTINUATION_BYTES;
-use crate::js::felt::{canonical_felt, is_non_zero_felt, same_felt};
+use crate::js::felt::{canonical_felt, is_non_zero_felt};
 use crate::js::json::JsValue;
 use crate::js::num::is_safe_integer;
 use crate::portfolio::wire::{classify, rpc_call, Reply, RpcReply, RpcRequest};
@@ -280,7 +282,8 @@ impl ExternalAllowanceScan {
             cairo1 |= keys.len() >= 3;
             legacy |= keys.len() < 3;
             if let Some((owner, spender)) = decode_approval_event(keys, data) {
-                if same_felt(&owner, &self.owner) {
+                // Both canonical (`decode_approval_event`, `new`).
+                if owner == self.owner {
                     spenders.push(spender);
                 }
             }
@@ -358,13 +361,19 @@ impl ExternalAllowanceScan {
 
     // `discoverSpenders`: the distinct spenders of both reads, at most the cap.
     fn start_reads(&mut self, log_complete: bool) {
+        // A node that ignores `chunk_size` can send a page of hundreds of thousands: linear, and
+        // one past the cap is enough to know the cap was passed.
+        let cap = self.policy.max_spenders_per_token;
+        let mut seen = HashSet::new();
         let mut spenders: Vec<String> = Vec::new();
         for spender in self.state.owned.iter().chain(&self.state.log) {
-            if !spenders.contains(spender) {
+            if spenders.len() > cap {
+                break;
+            }
+            if seen.insert(spender) {
                 spenders.push(spender.clone());
             }
         }
-        let cap = self.policy.max_spenders_per_token;
         self.state.token_complete =
             !self.state.owned_truncated && log_complete && spenders.len() <= cap;
         spenders.truncate(cap);
