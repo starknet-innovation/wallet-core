@@ -4,6 +4,7 @@
 
 use super::calls::{self, ReviewFlag, SendAmountError};
 use super::fees::{FeeAmount, Headroom};
+use super::invoke::Invoke;
 use super::judge::TxStatus;
 use super::sign::Deployment;
 use super::u256::U256;
@@ -189,6 +190,10 @@ pub struct Policy {
     pub reviewed_fee_headroom: Headroom,
     /// When to read a broadcast transaction's status, as delays between reads.
     pub confirmation_delays_ms: &'static [u32],
+    /// The most calls one batch (`Kind::Invoke`) may carry.
+    pub max_invoke_calls: usize,
+    /// The most calldata felts one call in a batch may carry.
+    pub max_call_calldata_felts: usize,
 }
 
 /// One Argent class the wallet knows, from its catalog.
@@ -362,6 +367,8 @@ impl Transfer {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Kind {
     Transfer(Box<Transfer>),
+    /// A reviewed batch of calls, submitted as a transfer is (`Invoke::new`).
+    Invoke(Box<Invoke>),
     /// The standalone Deploy account flow.
     Deployment,
     /// Reads one recorded transaction's status and settles its record; never signs.

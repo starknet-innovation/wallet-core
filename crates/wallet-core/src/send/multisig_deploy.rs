@@ -93,6 +93,8 @@ mod tests {
             denominator: 2,
         },
         confirmation_delays_ms: &[0],
+        max_invoke_calls: 16,
+        max_call_calldata_felts: 4_096,
     };
 
     fn config(threshold: u32, keys: &[&str]) -> ArgentMultisigConfig {

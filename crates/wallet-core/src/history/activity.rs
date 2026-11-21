@@ -23,7 +23,8 @@ pub use crate::send::fees::{FeeUnit, TransactionFee};
 pub use crate::send::judge::TxStatus;
 use crate::NetworkId;
 
-const MAX_SUMMARY_LENGTH: usize = 200;
+/// The longest summary a row stores, in UTF-16 units (`MAX_ACTIVITY_SUMMARY_LENGTH`).
+pub(crate) const MAX_SUMMARY_LENGTH: usize = 200;
 const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 
 /// What an activity row's transaction did: the extension's `ActivityEntry.kind`. The one kind

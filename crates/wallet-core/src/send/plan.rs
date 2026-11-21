@@ -1,4 +1,4 @@
-//! `Plan`: one reviewed transfer (or standalone deployment, or status refresh) as a core-owned
+//! `Plan`: one reviewed transfer or call batch (or standalone deployment, or status refresh) as a core-owned
 //! state machine. The host only relays request bodies and replies; it cannot reorder steps, skip
 //! the re-estimate, substitute bounds, or hand in a hash. The step order is the extension's
 //! recorded wire order (`extension-transactions-*.json`).
@@ -9,6 +9,7 @@
 //! `plan_probe`, the submit path in `plan_submit` and the deployment in `plan_deploy`.
 
 use super::fees::{Bounds, FeeQuote, TransactionFee};
+pub use super::invoke::{Invoke, InvokeRefusal};
 use super::judge::{self, Observation, TxStatus};
 pub use super::types::{
     Account, ArgentClass, Authorization, Kind, Policy, Token, Transfer, TransferRefusal,
@@ -40,6 +41,8 @@ pub enum PendingKind {
         symbol: String,
         token_address: Felt,
     },
+    /// A call batch; the record's summary is its review's.
+    Invoke,
     Deployment,
 }
 
@@ -227,7 +230,7 @@ impl Plan {
         let work = &self.work;
         let (code, hash) = match (work.invoke_hash, work.deploy_hash) {
             (Some(hash), _) => (SendFailureCode::SubmissionIndeterminate, hash),
-            (None, Some(hash)) if matches!(self.kind, Kind::Transfer(_)) => {
+            (None, Some(hash)) if self.is_invoke() => {
                 (SendFailureCode::DeploymentUnconfirmed, hash)
             }
             (None, Some(hash)) => (SendFailureCode::SubmissionIndeterminate, hash),
@@ -288,8 +291,19 @@ impl Plan {
         };
         // A multisig authorises a send with its members' collected signatures, never one key's:
         // this plan only deploys it.
-        if self.account.is_multisig() && matches!(self.kind, Kind::Transfer(_)) {
+        if self.account.is_multisig() && self.is_invoke() {
             return self.fail(SendFailureCode::AccountClassUnsupported, None);
+        }
+        // The plan holds a batch to its own account, network and policy, whatever the host built
+        // it with: reviewed for another account, a call to this one would not have been refused;
+        // on another network, its known tokens and trusted addresses are not this one's.
+        if let Kind::Invoke(invoke) = &self.kind {
+            let checked = super::invoke::check(&self.account.address, &invoke.calls, &self.policy);
+            let own =
+                invoke.sender == self.account.address && invoke.network == self.account.network;
+            if !own || checked.is_err() {
+                return self.fail(SendFailureCode::PreparationUnavailable, None);
+            }
         }
         if let Kind::Refresh { hash } = self.kind {
             return self.rpc(
@@ -349,7 +363,7 @@ impl Plan {
     /// The hash the confirmation checkpoints follow.
     pub(crate) fn target_hash(&self) -> Option<Felt> {
         match self.kind {
-            Kind::Transfer(_) => self.work.invoke_hash,
+            Kind::Transfer(_) | Kind::Invoke(_) => self.work.invoke_hash,
             Kind::Deployment => self.work.deploy_hash,
             Kind::Refresh { hash } => Some(hash),
         }

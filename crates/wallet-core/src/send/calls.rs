@@ -103,6 +103,33 @@ fn u128_felt(value: u128) -> Felt {
     Felt::from(value)
 }
 
+/// One Cairo 1 call (starknet.js `Call`), its felts already parsed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Call {
+    pub contract_address: Felt,
+    pub entrypoint: String,
+    pub calldata: Vec<Felt>,
+}
+
+/// `transaction.getExecuteCalldata(calls, "1")`: the account `__execute__` calldata, the count
+/// then each call's contract, selector, calldata length and calldata. Every family this wallet
+/// signs for takes this one encoding (the extension builds every account with `cairoVersion:
+/// "1"`, `krustyAccount` in `rpc/account-signer.ts`). `None` when `selector` cannot name an
+/// entrypoint.
+pub fn execute_calldata(
+    calls: &[Call],
+    selector: impl Fn(&str) -> Option<Felt>,
+) -> Option<Vec<Felt>> {
+    let mut out = vec![Felt::from(calls.len() as u64)];
+    for call in calls {
+        out.push(call.contract_address);
+        out.push(selector(&call.entrypoint)?);
+        out.push(Felt::from(call.calldata.len() as u64));
+        out.extend_from_slice(&call.calldata);
+    }
+    Some(out)
+}
+
 /// `transaction.getExecuteCalldata([transfer(recipient, amount)], "1")`: the Cairo-1 account
 /// `__execute__` calldata for one ERC-20 transfer. `None` for a zero token or recipient, as
 /// `buildErc20TransferCall` throws "Invalid transfer address" for either.
@@ -114,16 +141,14 @@ pub fn transfer_execute_calldata(
     if *token == Felt::ZERO || *recipient == Felt::ZERO {
         return None;
     }
-    let selector = Felt::from_hex(TRANSFER_SELECTOR).ok()?;
-    Some(vec![
-        Felt::ONE,
-        *token,
-        selector,
-        Felt::from(3u8),
-        *recipient,
-        u128_felt(amount.low),
-        u128_felt(amount.high),
-    ])
+    let call = Call {
+        contract_address: *token,
+        entrypoint: "transfer".into(),
+        calldata: vec![*recipient, u128_felt(amount.low), u128_felt(amount.high)],
+    };
+    execute_calldata(std::slice::from_ref(&call), |_| {
+        Felt::from_hex(TRANSFER_SELECTOR).ok()
+    })
 }
 
 /// The verifier's transfer summary: `Send <formatTokenAmount> <SYMBOL> to <shortAddress>`.

@@ -117,7 +117,10 @@ Grep first; extend in place rather than adding a sibling.
   extension's call summaries (`decodeCall`) and recipient positions are `send::call_decode`, over
   the pinned AVNU route layout in `send::avnu_route`.
 - The send state machine is `send::plan::Plan`; a wallet's session, keys and activity log reach
-  it only through `PlanHost`, and its numbers through `Policy` (Bramble's: `SEND_POLICY`).
+  it only through `PlanHost`, and its numbers through `Policy` (Bramble's: `SEND_POLICY`). A
+  single-signer call batch is `send::invoke::Invoke` (`Kind::Invoke`), its checks
+  `invoke::check`; every `__execute__` calldata is `calls::execute_calldata`, and the
+  ordinary-call review both batches share is `multisig_review::summarise_calls`.
 - Network and token records (`NetworkInfo`, `TokenInfo`, `TokenRegistry`, borrowed together as
   `Catalogs`) live in `crates/wallet-core/src/catalog.rs`; the core bundles none, the wallet
   passes its own in. A network's catalog spelling (`SN_MAIN`) is `NetworkId::catalog_id`. A

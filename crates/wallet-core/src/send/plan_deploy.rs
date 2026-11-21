@@ -83,7 +83,7 @@ impl Plan {
         // Inside `ensureAccountDeployed` a transport failure is "deployment status unknown" and
         // any other error "automatic deployment failed"; the standalone flow reports them as
         // any other write preparation does.
-        let transfer = self.is_transfer();
+        let transfer = self.is_invoke();
         let (transport, node) = if transfer {
             (Code::DeploymentStatusUnknown, Code::AutoDeploymentFailed)
         } else {
@@ -154,7 +154,7 @@ impl Plan {
         };
         // Once signed, the deployment may land whatever the node answers, so its record stays
         // and every failure carries its hash; only the code depends on the answer.
-        let transfer = self.is_transfer();
+        let transfer = self.is_invoke();
         let code = match judge::write(answer, &hash) {
             WriteAnswer::Accepted if transfer => {
                 return self.wait(DEPLOY_POLL_INTERVAL_MS, AfterWait::DeployStatus)

@@ -60,6 +60,8 @@ fn send_policy_matches_the_extension() {
     assert_eq!(SEND_POLICY.reviewed_fee_headroom, REVIEWED_FEE_HEADROOM);
     // The margin is the one starknet.js bounds were computed with: every quotable case's spend.
     assert_eq!(SEND_POLICY.fee_margin_percent, FEE_MARGIN_PERCENT);
+    // Mobile's copy is the crate's own.
+    assert_eq!(SEND_POLICY, crate::SEND_POLICY);
     let mut quoted = 0;
     for case in whole["fees"]["bounds"].as_array().unwrap() {
         if let Ok((_, quote)) = fees::quote(&case["estimate"], FEE_MARGIN_PERCENT) {

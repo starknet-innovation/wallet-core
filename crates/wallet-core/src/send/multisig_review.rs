@@ -15,7 +15,7 @@ use serde::Serialize;
 use starknet_types_core::felt::Felt;
 
 use super::call_decode::{call_summary, recipient_for_flags, Known};
-use super::calls::is_lookalike_address;
+use super::calls::{is_lookalike_address, Call};
 use super::multisig_invoke::{is_calls, MultisigCall};
 use crate::accounts::multisig::ArgentMultisigClass;
 use crate::accounts::multisig_change::{
@@ -50,6 +50,8 @@ pub enum CallReviewError {
     MissingCurrentConfig,
     /// A payee closely mimics an address the person trusts.
     PoisonedRecipient,
+    /// A single-signer batch calls the account itself (`refuseOnAccountSelfCall`).
+    AccountSelfCall,
 }
 
 impl CallReviewError {
@@ -67,6 +69,7 @@ impl CallReviewError {
             Self::PoisonedRecipient => {
                 "The recipient closely mimics an address you saved or paid but is a different account. Re-check every character before sending."
             }
+            Self::AccountSelfCall => "Dapps cannot call the wallet account contract itself",
         }
     }
 }
@@ -152,33 +155,68 @@ pub fn review_calls(
             config: Some(review),
         });
     }
+    let calls = calls
+        .iter()
+        .map(|call| {
+            Ok(Call {
+                contract_address: felt::parse(&call.contract_address)
+                    .ok_or(CallReviewError::InvalidCalls)?,
+                entrypoint: call.entrypoint.clone(),
+                calldata: felts(&call.calldata)?,
+            })
+        })
+        .collect::<Result<Vec<_>, CallReviewError>>()?;
+    let summary = summarise_calls(
+        &account,
+        &calls,
+        known,
+        trusted,
+        summary_length,
+        "Review Argent multisig call",
+    )?;
+    Ok(CallReview {
+        config: None,
+        summary,
+    })
+}
+
+/// The ordinary-call review, shared by a multisig batch and a single-signer one (`send::invoke`):
+/// a payee that mimics `account` or an address in `trusted` refuses the batch
+/// (`refuseOnPoisonedRecipient`); otherwise the first call's `decodeCall` summary and a count of
+/// the rest, cut to `summary_length` UTF-16 units. `empty` is the line for a batch with no calls.
+pub(crate) fn summarise_calls(
+    account: &Felt,
+    calls: &[Call],
+    known: &Known,
+    trusted: &[Felt],
+    summary_length: usize,
+    empty: &str,
+) -> Result<String, CallReviewError> {
     let mut summaries = Vec::with_capacity(calls.len());
     for call in calls {
-        let contract = felt::parse(&call.contract_address).ok_or(CallReviewError::InvalidCalls)?;
-        let calldata = felts(&call.calldata)?;
-        if let Some(recipient) = recipient_for_flags(&call.entrypoint, &calldata) {
-            if std::iter::once(&account)
+        if let Some(recipient) = recipient_for_flags(&call.entrypoint, &call.calldata) {
+            if std::iter::once(account)
                 .chain(trusted)
                 .any(|address| is_lookalike_address(&recipient, address))
             {
                 return Err(CallReviewError::PoisonedRecipient);
             }
         }
-        summaries.push(call_summary(&contract, &call.entrypoint, &calldata, known));
+        summaries.push(call_summary(
+            &call.contract_address,
+            &call.entrypoint,
+            &call.calldata,
+            known,
+        ));
     }
     let suffix = match summaries.len() {
         0 | 1 => String::new(),
         count => format!(" (+{} more)", count - 1),
     };
-    let first = summaries
-        .first()
-        .map_or("Review Argent multisig call", String::as_str);
+    let first = summaries.first().map_or(empty, String::as_str);
     // Trimmed after the cut, as the extension does: a cut can end on a space.
     let summary = utf16_slice(&format!("{first}{suffix}"), 0, summary_length);
-    Ok(CallReview {
-        config: None,
-        summary: summary.trim_end_matches(is_js_whitespace).to_string(),
-    })
+    Ok(summary.trim_end_matches(is_js_whitespace).to_string())
 }
 
 #[cfg(test)]
