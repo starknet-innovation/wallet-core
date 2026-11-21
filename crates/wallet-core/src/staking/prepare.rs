@@ -104,9 +104,11 @@ fn action_pair(
 }
 
 /// What `prepare` needs besides the input and the reading: the acting account and tracked
-/// token, the clock (Unix seconds) and `Invoke::new`'s arguments.
+/// token, the wallet's staking policy, the clock (Unix seconds) and `Invoke::new`'s arguments.
 pub struct PrepareContext<'a> {
     pub account: &'a Account,
+    /// The one source of the staking contract a reading must have been made against.
+    pub staking: &'a StakingPolicy,
     pub token: &'a TokenConfig,
     pub now: u64,
     pub policy: &'a Policy,
@@ -144,8 +146,14 @@ pub fn prepare(
 ) -> Result<StakingPreparation, StakingRefusal> {
     let account = context.account;
     let pair = action_pair(input, account, context.token)?;
+    let contract = context
+        .staking
+        .network(account.network)
+        .and_then(|staking| felt::parse_non_zero(staking.staking_contract))
+        .ok_or(StakingRefusal::Unavailable)?;
     let reading = reading
         .filter(|r| r.is_for(&account.address, account.network))
+        .filter(|r| r.staking_contract == contract)
         .ok_or(StakingRefusal::Unreadable)?;
     if reading.facts.is_none() {
         return Err(StakingRefusal::TokenNotStakeable);

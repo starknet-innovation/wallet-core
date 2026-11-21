@@ -78,6 +78,7 @@ fn context<'a>(
 ) -> PrepareContext<'a> {
     PrepareContext {
         account,
+        staking: &POLICY,
         token,
         now: NOW,
         policy,
@@ -417,6 +418,7 @@ fn prepare_takes_only_a_reading_of_this_pair_for_this_account_and_network() {
     for change in [
         |r: &mut StakingReading| r.account = Felt::from(7u8),
         |r: &mut StakingReading| r.network = NetworkId::Sepolia,
+        |r: &mut StakingReading| r.staking_contract = Felt::from(7u8),
         |r: &mut StakingReading| r.pools[0].pair.staker = Felt::from(7u8),
         |r: &mut StakingReading| r.pools[0].pair.token = Felt::from(7u8),
     ] {
@@ -427,6 +429,19 @@ fn prepare_takes_only_a_reading_of_this_pair_for_this_account_and_network() {
             Err(StakingRefusal::Unreadable)
         );
     }
+    // Staking switched off for the account's network: no contract to check the reading against.
+    let off = super::StakingPolicy {
+        networks: &[],
+        ..POLICY
+    };
+    let switched_off = PrepareContext {
+        staking: &off,
+        ..self::context(&account, &token, &SEND)
+    };
+    assert_eq!(
+        prepare(&input, reading().as_ref(), &switched_off),
+        Err(StakingRefusal::Unavailable)
+    );
     let elsewhere = TokenConfig {
         network: NetworkId::Sepolia,
         ..strk_config()
