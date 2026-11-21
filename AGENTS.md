@@ -85,8 +85,14 @@ Grep first; extend in place rather than adding a sibling.
 - Felt parsing, canonical hex and the private-key range live in `crates/wallet-core/src/felt.rs`.
 - Vault crypto (envelope v3, DEK container, AES-GCM and randomness helpers) lives in
   `crates/wallet-core/src/envelope.rs` and `container.rs`; host I/O goes through `host.rs`.
+- The v13 vault's records as written are `bramble-core`'s `vault_wire.rs`, the extension's
+  validator over them `vault_rules.rs` (`is_account_id`, `is_wallet_origin`, `chain_id`), its JSON
+  budget `vault_budget.rs`; what mobile does not operate is `VaultPayload::kept`, never `accounts`.
 - JSON-RPC bodies and reply judging live in `rpc.rs` and `send/{rpc_bodies,judge}.rs`; v3
   transaction hashes in `send/sign.rs`; fee bounds in `send/fees.rs`; u256 in `send/u256.rs`.
+- Starknet ID names (name → address: grammar, `useEncoded`, the `domain_to_address` body and its
+  judge) are `stark_name`; Bramble's naming contracts and exports are `bramble-core`'s
+  `stark_name.rs`.
 - JavaScript semantics live in `crates/wallet-core/src/js/`: `trim`, `shortAddress`, UTF-16
   lengths and `Number` formatting in `js::num` (`js_trim`, `short_label`; `send::calls`
   re-exports both), `BigInt` in `js::big`, `JSON` in `js::json`, the budgeted regex matcher in
@@ -114,7 +120,10 @@ Grep first; extend in place rather than adding a sibling.
   extension's call summaries (`decodeCall`) and recipient positions are `send::call_decode`, over
   the pinned AVNU route layout in `send::avnu_route`.
 - The send state machine is `send::plan::Plan`; a wallet's session, keys and activity log reach
-  it only through `PlanHost`, and its numbers through `Policy` (Bramble's: `SEND_POLICY`).
+  it only through `PlanHost`, and its numbers through `Policy` (Bramble's: `SEND_POLICY`). A
+  single-signer call batch is `send::invoke::Invoke` (`Kind::Invoke`), its checks
+  `invoke::check`; every `__execute__` calldata is `calls::execute_calldata`, and the
+  ordinary-call review both batches share is `multisig_review::summarise_calls`.
 - Network and token records (`NetworkInfo`, `TokenInfo`, `TokenRegistry`, borrowed together as
   `Catalogs`) live in `crates/wallet-core/src/catalog.rs`; the core bundles none, the wallet
   passes its own in. A network's catalog spelling (`SN_MAIN`) is `NetworkId::catalog_id`. A
@@ -134,13 +143,24 @@ Grep first; extend in place rather than adding a sibling.
   reads (`token_meta.rs`), fiat and amount display (`fiat.rs`), the HTTP and portfolio RPC wire
   contract (`wire.rs`). Account ids and explorer links are `history::explorer`
   (`activity_account_id`, `canonical_account_id`, `explorer_transaction_url`, ...).
+- ERC-20 allowances live in `crates/wallet-core/src/allowances/`: the record, its id, scope and
+  load rules and the unlimited cut-off (`record.rs`), eviction ranking (`retention.rs`), the log
+  over `host::Storage` with its deltas and revoke settling (`store::AllowanceLog`), the
+  `Approval` decoder, merge and listing rules (`discovery.rs`), the external scan
+  (`scan::ExternalAllowanceScan`) and the tracked reads and their `allowance` call
+  (`tracked.rs`). Bramble's numbers are `ALLOWANCE_POLICY` in `bramble-core`'s `lib.rs`.
 - Activity lives in `crates/wallet-core/src/history/` and `activity/`: the row type
   (`history::activity::ActivityEntry`, `ActivityKind`), the Starkscan lane (`starkscan.rs`), the
   RPC history scan (`events::HistoryScan`), the read cadence (`activity_book::ActivityBook`), row
-  presentation (`appearance.rs`, `classify.rs`); the one log is `activity::ActivityLog` over
-  `host::Storage` (status text and `monotonic` in `activity::store`, the observation windows in
-  `activity::observation`, the receipt fee and value at submission an expanded row shows in
-  `activity::detail`; a receipt's fee is `send::judge::receipt_fee`).
+  presentation (`appearance.rs`, `classify.rs`; a row's tracked token is
+  `appearance::activity_tracked_token`), the feed's filter, amount sort and stale-axis reset
+  (`history::filter`) and its per-counterparty summary (`history::party`); the one log is
+  `activity::ActivityLog` over `host::Storage` (status text and `monotonic` in
+  `activity::store`, the observation windows in `activity::observation`, the receipt fee and
+  value at submission an expanded row shows in `activity::detail`, the CSV export in
+  `activity::csv`; a receipt's fee is `send::judge::receipt_fee`). The UTC date-time the export
+  prints is `history::time::format_utc_date_time`; JavaScript string order is
+  `js::num::utf16_cmp`, `bigint` addition `js::big::Big::plus`.
 - Privacy reads live in `crates/wallet-core/src/privacy/`: the read plan
   (`plan::PrivacyReadPlan`, whose viewing key reaches it only through `PrivacyHost`, each reply in
   `plan_steps.rs`), the discovery and pool-fee bodies (`bodies.rs`, the only writer of the key),

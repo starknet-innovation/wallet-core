@@ -13,6 +13,7 @@
 use serde::{Deserialize, Serialize};
 use starknet_types_core::felt::Felt;
 
+use super::calls::{self, Call};
 use super::fees::{max_spend, Bound, Bounds, FeeQuote, FeeUnit};
 use super::sign::invoke_hash;
 use crate::accounts::multisig::{self, ArgentMultisigClass, ArgentMultisigConfig};
@@ -194,23 +195,27 @@ pub fn is_calls(calls: &[MultisigCall]) -> bool {
         && calls.iter().map(|call| call.calldata.len()).sum::<usize>() <= MAX_TOTAL_CALLDATA_FELTS
 }
 
-/// `transaction.getExecuteCalldata(calls, "1")`: the count, then each call's contract, selector,
-/// calldata length and calldata. `None` for a felt that does not parse or a selector the
-/// primitives cannot name.
+/// `transaction.getExecuteCalldata(calls, "1")` (`calls::execute_calldata`). `None` for a felt
+/// that does not parse or a selector the primitives cannot name.
 pub fn execute_calldata(
     calls: &[MultisigCall],
     primitives: &dyn StarkPrimitives,
 ) -> Option<Vec<Felt>> {
-    let mut out = vec![Felt::from(calls.len() as u64)];
-    for call in calls {
-        out.push(input_felt(&call.contract_address)?);
-        out.push(primitives.selector(&call.entrypoint)?);
-        out.push(Felt::from(call.calldata.len() as u64));
-        for entry in &call.calldata {
-            out.push(input_felt(entry)?);
-        }
-    }
-    Some(out)
+    let parsed = calls
+        .iter()
+        .map(|call| {
+            Some(Call {
+                contract_address: input_felt(&call.contract_address)?,
+                entrypoint: call.entrypoint.clone(),
+                calldata: call
+                    .calldata
+                    .iter()
+                    .map(|entry| input_felt(entry))
+                    .collect::<Option<_>>()?,
+            })
+        })
+        .collect::<Option<Vec<_>>>()?;
+    calls::execute_calldata(&parsed, |entrypoint| primitives.selector(entrypoint))
 }
 
 fn hex(value: u128) -> String {

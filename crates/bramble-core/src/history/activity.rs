@@ -94,3 +94,55 @@ pub fn activity_fee_text(entry: ActivityEntry) -> Option<String> {
 pub fn activity_value_text(entry: ActivityEntry) -> Option<String> {
     wallet_core::activity::detail::submitted_value_text(&entry)
 }
+
+/// `activityToCsv`: the text of the export file, which the host writes under
+/// `activity_csv_file_name()` and shares. The extension exports one account's whole feed (every
+/// row `ActivityBook` reads for it, not the filtered view), in the feed's order.
+#[uniffi::export]
+pub fn activity_csv(entries: Vec<ActivityEntry>) -> String {
+    wallet_core::activity::csv::activity_to_csv(&entries, crate::networks::all())
+}
+
+/// The export's file name (`activity-ui.ts`).
+#[uniffi::export]
+pub fn activity_csv_file_name() -> String {
+    "bramble-activity.csv".into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // The core's cases are `wallet_core::activity::csv`'s; this pins Bramble's explorer links.
+    #[test]
+    fn the_export_links_each_row_to_bramble_explorers() {
+        let entry = |network, account_id: &str| ActivityEntry {
+            account_id: account_id.into(),
+            amount: None,
+            counterparty: None,
+            direction: None,
+            failure_notice: None,
+            fee_paid: None,
+            finalized_on_l1: None,
+            hash: "0xabc".into(),
+            kind: ActivityKind::Invoke,
+            network,
+            not_found_count: None,
+            origin: None,
+            status: TxStatus::Accepted,
+            submitted_at: 1_700_000_000_000,
+            submitted_price: None,
+            summary: "Approve spender".into(),
+            token: None,
+            token_address: None,
+        };
+        let csv = activity_csv(vec![
+            entry(NetworkId::Mainnet, "SN_MAIN:0x1"),
+            entry(NetworkId::Sepolia, "SN_SEPOLIA:0x2"),
+        ]);
+        let rows: Vec<&str> = csv.split('\n').collect();
+        assert_eq!(rows[1], "\"2023-11-14 22:13:20\",\"SN_MAIN\",\"0x1\",\"invoke\",\"accepted\",\"\",\"\",\"\",\"0xabc\",\"https://starkscan.co/tx/0xabc\",\"\",\"\",\"Approve spender\"");
+        assert_eq!(rows[2], "\"2023-11-14 22:13:20\",\"SN_SEPOLIA\",\"0x2\",\"invoke\",\"accepted\",\"\",\"\",\"\",\"0xabc\",\"https://sepolia.starkscan.co/tx/0xabc\",\"\",\"\",\"Approve spender\"");
+        assert_eq!(activity_csv_file_name(), "bramble-activity.csv");
+    }
+}

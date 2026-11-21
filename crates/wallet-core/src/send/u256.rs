@@ -54,6 +54,15 @@ impl U256 {
         Some(Self { high, low })
     }
 
+    pub fn checked_sub(self, other: Self) -> Option<Self> {
+        let (low, borrow) = self.low.overflowing_sub(other.low);
+        let high = self
+            .high
+            .checked_sub(other.high)?
+            .checked_sub(u128::from(borrow))?;
+        Some(Self { high, low })
+    }
+
     pub fn checked_mul_small(self, factor: u64) -> Option<Self> {
         let low = Self::product(self.low, u128::from(factor));
         let high = self.high.checked_mul(u128::from(factor))?;
@@ -119,5 +128,12 @@ mod tests {
             .checked_mul_small(2),
             None
         );
+        let two_words = U256 { high: 1, low: 0 };
+        assert_eq!(
+            two_words.checked_sub(U256::from_u128(1)),
+            Some(U256::from_u128(u128::MAX))
+        );
+        assert_eq!(U256::from_u128(1).checked_sub(U256::from_u128(2)), None);
+        assert_eq!(U256::ZERO.checked_sub(two_words), None);
     }
 }

@@ -157,10 +157,10 @@ pub(crate) fn push_active(
     record: StoredAccount,
     key: Option<Box<SecretFelt>>,
 ) -> Result<(), CoreError> {
-    if payload.record(&record.id).is_some() {
+    if payload.holds(&record.id) {
         return Err(invalid("account already exists"));
     }
-    if payload.accounts.len() >= MAX_ACCOUNT_RECORDS {
+    if payload.record_count() >= MAX_ACCOUNT_RECORDS {
         return Err(invalid("account limit reached"));
     }
     if let Some(key) = key {
@@ -297,9 +297,9 @@ impl WalletCore {
             if session.payload.recovery_pending() {
                 return Err(invalid("finish finding your accounts first"));
             }
-            // An index whose account is already here as an imported key is skipped, not
-            // refused (the extension's `deriveNextFreeAccount`, Sherlock 226); each skip is a
-            // distinct stored account, so the walk ends.
+            // An index whose account is already here (as an imported key, or a kept record) is
+            // skipped, not refused (the extension's `deriveNextFreeAccount`, Sherlock 226); each
+            // skip is a distinct stored account, so the walk ends.
             let mut taken = HashSet::new();
             let record = loop {
                 let index = next_account_index(&session.payload, network, &taken)?;
@@ -311,7 +311,7 @@ impl WalletCore {
                     None,
                     network,
                 )?;
-                if session.payload.record(&record.id).is_none() {
+                if !session.payload.holds(&record.id) {
                     break record;
                 }
                 taken.insert(index);
@@ -474,6 +474,13 @@ impl WalletCore {
                 return Err(invalid("no account recovery is pending"));
             }
             let records = derive_selections(&session.payload, network, &selections)?;
+            // A kept record (the only kind a vault waiting for discovery holds) keeps its id.
+            if records
+                .iter()
+                .any(|record| session.payload.holds(&record.id))
+            {
+                return Err(invalid("account already exists"));
+            }
             self.commit(session, |payload| {
                 payload.active_account_id = records.first().map(|record| record.id.clone());
                 payload.accounts = records;

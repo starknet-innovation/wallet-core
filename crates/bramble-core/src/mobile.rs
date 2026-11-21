@@ -58,9 +58,13 @@ mod rpc_override;
 mod rpc_request;
 mod security;
 mod send;
+mod stark_name;
 mod ui;
 mod vault;
+mod vault_budget;
+mod vault_rules;
 mod vault_v13;
+mod vault_wire;
 mod wallet;
 mod wallet_accounts;
 
@@ -116,14 +120,17 @@ pub use send::{
     confirmation_checkpoints_ms, deployment_status_request, judge_deployment_status,
     parse_token_amount, validate_recipient,
 };
+pub use stark_name::{
+    stark_name_address_request, stark_name_judge_address, stark_name_normalize, StarkNameAnswer,
+};
 pub use ui::{PassphraseLevel, PassphraseStrength};
 pub use wallet::{AccountInfo, RecoveryPhrase, SecurityStatus, WalletCore, WalletStatus};
 pub use wallet_accounts::AccountRecord;
 
 // Portfolio and activity (mobile/docs/portfolio-activity.md).
 pub use history::activity::{
-    activity_fee_text, activity_value_text, ActivityEntry, ActivityOrigin, FailureNotice,
-    SubmittedPrice, TransactionFee, TransferDirection,
+    activity_csv, activity_csv_file_name, activity_fee_text, activity_value_text, ActivityEntry,
+    ActivityOrigin, FailureNotice, SubmittedPrice, TransactionFee, TransferDirection,
 };
 pub use history::activity_book::{ActivityBook, ActivityView};
 pub use history::appearance::{
@@ -132,6 +139,12 @@ pub use history::appearance::{
 };
 pub use history::events::{HistoryScan, ScanStep};
 pub use history::explorer::{activity_account_id, explorer_transaction_url};
+pub use history::filter::{
+    activity_filter_options, activity_party_summary, activity_party_summary_parts, filter_activity,
+    reconcile_activity_filter, ActivityContact, ActivityFilter, ActivityFilterOptions,
+    ActivityPartySummary, ActivityPartySummaryParts, ActivitySort, ActivityTokenOption,
+    ActivityTokenTotal,
+};
 pub use portfolio::fiat::{
     compact_amount, fiat_value_text, format_fiat, portfolio_amount, portfolio_hero, token_row_fiat,
     token_sparkline, ChangeBadge, FiatDelta, PortfolioHero, Sparkline, SparklinePoint,

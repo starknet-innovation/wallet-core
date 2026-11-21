@@ -232,6 +232,36 @@ Wanted (2026-11-20: P3 and P4 by name, P5 with the parity decision):
   (v13 only, unknown fields refused) does not open.
 - **P5 Stark names.** A sans-IO body and reply judge for name → address and address → name,
   beside `rpc.rs`; the naming contracts are Bramble's catalog data.
+  As built: name → address only, the extension's `resolveStarkName`
+  (`packages/platform/starknet/src/rpc/stark-name.ts`); address → name has no oracle and is not
+  built. `wallet_core::stark_name` holds `normalize` (`normalizeStarkName`: JavaScript `trim`
+  and `toLowerCase`, then starknet.js 10.8.0's `isStarkDomain`), `address_request` (the
+  `domain_to_address` `starknet_call` at `latest`, calldata the label count, each label's
+  `useEncoded` felt and an empty hint, against a contract the caller passes) and `judge_address`
+  (`StarkNameAnswer`: a nonzero felt resolves; zero, negative or past the prime is `NotFound`, as
+  `canonicalFelt` then `isNonZeroStarkFieldElement` read it; JSON-RPC 20 or "contract not found"
+  is `UnsupportedNetwork`; an unreadable or non-felt answer, or an error with no numeric code,
+  is `TryNextEndpoint`, the extension's failover; any other node error is `Failed`, where the
+  extension throws). `address_request` also refuses what the extension refuses before the call:
+  typed text past 128 UTF-16 units (`readStarkNameInput`) and a 48-character label whose
+  encoding passes the prime (`CallData.compile` throws). The encoder uses `js::big`; no new
+  crypto. `bramble-core` (`stark_name.rs`) holds the mainnet and Sepolia naming contracts as
+  constants (starknet.js's `StarknetIdContract`; the generated catalogs do not carry them) and
+  exports `stark_name_normalize`, `stark_name_address_request` and `stark_name_judge_address`.
+  Departures: the chain-id check and failover stay with the host, as for every sans-IO read
+  (mobile reads each endpoint's chain id with `rpc_verify_chain_id` first and never sends the
+  call to another chain's endpoint; the extension fails closed when none matches, rather than
+  answering unreachable, and mobile should too); the network picks the contract, where the
+  extension picks it from the chain id the endpoint reports, which is the same once that check
+  passes, and both of Bramble's networks have one, so `UnsupportedNetwork` comes only from the
+  node; and the judge is stricter than starknet.js, failing over on a reply to another id, a
+  result that is not an array, or an entry that is not a string, which starknet.js would read.
+  The extension's own test cases are ported as unit tests (`stark_name_tests.rs`, each citing
+  `stark-name.test.ts` by line), with one per refusal branch; no fixture yet, and a Bramble
+  generator should write the normalisation, calldata and judging cases from the extension's code.
+  Mobile has none yet: its send form asks `stark_name_normalize` whether the recipient is a name,
+  and a resolved address must be dropped if the network changed while the read was in flight,
+  as the extension's panel does.
 
 Checked:
 
@@ -309,6 +339,52 @@ Foundations, which the features need, and Ledger, which needs only the first:
   schema 14. #990 says that step changes only the number; it does not: on `release/v0.10.11`
   it adds account provenance (`schema-provenance.ts`, with a migration). Oracle: G4 extended to
   a vault with every collection filled, then the same at 14.
+  As built, first half (v13): the reader accepts the vaults the extension's v13 validator
+  accepts, except those it refuses whole for one of mobile's stronger rules: a vault with no
+  phrase (`mnemonic: null`: a Ledger-only or key-only wallet; mobile has no phrase-less wallet);
+  a phrase record off mobile's three ladders (both index fields stepped), past a `u32` index or at
+  the reserved agent index; an OpenZeppelin record at a class other than Bramble's; any record of
+  a kind mobile operates that does not re-derive from its key, including an `imported-raw-key`
+  record whose address is not what its key derives (the extension's Argent import at a picked
+  address, see P3); more than 128 records; and the grammar cases below (origins, number literals,
+  repeated keys, lone surrogates). `vault_wire.rs` is the schema's records as serde types
+  (unknown keys refused; an optional key absent or set, never `null`, which V1 let through for
+  `deploymentSalt` and `publicKeyY`; `activeAccountId` and `mnemonic` present), `vault_rules.rs`
+  is `isVaultV13` rule for rule (every account kind, Ledger paths, the signing-key bindings with
+  keyless Ledger records, origin grants, imported phrases and their bindings, Ledger viewing keys,
+  shadow-account scopes, multisig viewing keys and conflict marks, the extension's devnet), and
+  `vault_budget.rs` is `isJson`'s provider budget as `isVaultV11` applies it. Both run on every
+  open and every write, so mobile neither opens nor writes a vault the extension refuses; a write
+  past the budget fails with the extension's `vault storage limit reached`. Mobile operates only
+  the records it holds keys for, its phrase's `starknet-bip44` and `argentx-bip44` records and
+  `imported-raw-key` ones on Mainnet and Sepolia, under the stronger rules above (every record,
+  y-coordinate and sealed key re-derived). Every other record (a Ledger account, one derived from
+  an imported phrase, one on `SN_DEVNET`), its sealed key and the six collections are
+  `VaultPayload::kept`, outside `accounts`, so no list, selection, signature, send or privacy read
+  reaches them, and every write puts them back where they were (records at their positions,
+  signing keys in the vault's order); a new record never takes a kept record's id, and the
+  address-poisoning check trusts a kept record's public address on its network as the person's
+  own, as the extension's `ownAccounts` does (`VaultPayload::own_addresses`). "Unchanged" means
+  equal as JSON, as G4's test already compared V1's records: object key order (alphabetical here,
+  insertion order in the extension) and string escapes may differ, nothing else. Where the port's
+  grammar is stricter than the extension's: an origin is held to the shared endpoint grammar (no
+  IDN or other host the WHATWG parser accepts beyond letters, digits, `-` and `_`; at most 2,048
+  characters), a number to a plain integer literal (`1.0` and `1e0` are refused), and serde
+  refuses repeated keys and lone surrogates that `JSON.parse` takes. One gap the other way: an
+  origin with an `xn--` label that is not valid punycode passes the hand grammar where the
+  extension's URL parser refuses it. Open for the product owner: whether a record of a kind mobile
+  operates that breaks one of its stronger rules should be kept unused rather than refuse the
+  vault (today a backup holding one address-picked import does not open on mobile at all);
+  whether phrase-less backups should open; kept records are not listed at all (rather than listed
+  as unusable); a vault whose active account is a kept one opens with no active account until one
+  is picked or the network switch picks one; and a vault holding a phrase and only kept records
+  opens as waiting for discovery ("Find your accounts"). Unit-tested only
+  (`tests/vault_v13_kept.rs`, `vault_v13_rules.rs`, `vault_v13_accounts.rs`,
+  `vault_v13_poisoning.rs`: the extension's own validator cases, moved onto G4's payload in test
+  code): G4 holds none of these, so before a release relies on it Bramble needs G4 extended with
+  every collection filled, sealed by the extension's own store at a v13 commit, for a test that
+  opens it and writes it back unchanged. The second half, schema 14 (`accountProvenance`),
+  remains.
 - **P8 Ledger.** Straight after the vault step: the extension ships it to every user (#990's
   "trusted testers" is wrong), so a Ledger user cannot use mobile at all until this lands. The
   device protocol and session as sans-IO APDU exchanges: `packages/platform/ledger-protocol/`
@@ -323,17 +399,119 @@ Foundations, which the features need, and Ledger, which needs only the first:
   (`packages/platform/starknet/src/rpc/rpc-submit.ts`) and its call checks
   (`packages/features/transactions/src/routing/verify*.ts`); neither has been read for this
   plan, so the step starts by reading them.
+  As built (mechanism only, not exported): the extension has one submission path. Its ERC-20
+  send is `submitInvokeTransaction` with one call (`submitErc20Transfer`, `rpc/rpc.ts`), and
+  every family is a starknet.js `Account` with `cairoVersion: "1"` (`krustyAccount`), so a batch
+  is the transfer path with N calls in the same `__execute__` encoding. `Kind::Invoke` therefore
+  rides the transfer's steps unchanged (probe, review estimate, submit re-estimate under the
+  reviewed ceiling, automatic deployment, sign, write, hash check, record), reading its calldata
+  from `Plan::invoke_calldata`; `calls::execute_calldata` is the one encoder for the transfer,
+  the batch and a multisig proposal. Before it signs a batch the extension checks, besides what
+  the transfer path already does: a non-empty batch ("No calls to submit", `rpc-submit.ts`);
+  `refuseOnPoisonedRecipient` (`verify.ts`), which every caller applies (swap, staking, NFT,
+  transfer, STRK20, dapp); and, for a dapp's invoke only, `refuseOnAccountSelfCall` ("Dapps
+  cannot call the wallet account contract itself") and `readProviderInvokeCall`'s bounds and
+  grammar (`INVOKE_LIMITS`: 16 calls, 4,096 felts a call, entrypoints
+  `^[A-Za-z_][A-Za-z0-9_]*$` of at most 64). `send::invoke::Invoke::new` is the only way to
+  build a batch: it applies all of them to every batch (the core cannot tell who built one),
+  reviews it with `multisig_review::summarise_calls` (the ordinary-call half of the multisig
+  review, now shared), and compiles the calldata; refusals are `InvokeRefusal`, with the
+  extension's sentences where it has them. The plan re-applies the context-free rules at start
+  (`invoke::check` against its own account and `Policy`, and the batch's sender), so a batch
+  reviewed for another account or a looser policy fails `PreparationUnavailable` before any
+  request. The two counts are Bramble's (`MAX_INVOKE_CALLS`, `MAX_CALL_CALLDATA_FELTS` in
+  `SEND_POLICY`); the fee margin and headroom are the transfer's. A pending record is
+  `PendingKind::Invoke`, mobile's row `ActivityKind::Invoke`, summarised as the review is.
+  Departures: the self-call refusal, the bounds and the grammar apply to every batch, not only a
+  dapp's; a poisoned payee refuses at `Invoke::new`, where the dapp path lets the flag ride the
+  approval card and refuses at execution (Sherlock 140: an instant refusal tells the site whom
+  the person trusts), so P16 must not relay that refusal to the site before the person acts; the
+  trusted set is fixed when the batch is built, where the extension re-reads it at execution
+  (as for the transfer kind); the summary is the multisig review's line (the first call and a
+  count, cut without the activity clamp's ellipsis), not one line per call; the annotation flags
+  (`unknown-contract`, `unlimited-approval` with standing allowances, `operator-approval`,
+  `self-transfer`, `token-contract-recipient`, `foreign-beneficiary`, `undecoded-swap`) and fee
+  affordability with an amount are not ported: they refuse nothing, and their consumers (P12,
+  P16) bring them with their screens. They are owed before any export of `Invoke`: a review
+  with no warning on an unlimited approval, or on a swap paid to another address, is not the
+  extension's review. Not ported, as for the transfer: the `fast` speed, a
+  SNIP-36 proof (P15) and the approval queue's review budget (P16). As for a multisig, Krusty
+  3.1.0 has no selector, so `Invoke::new` takes `multisig_invoke::StarkPrimitives`, and nothing
+  outside the tests can build a batch until krusty-kms#257. Evidence: every transfer capture
+  (OpenZeppelin, Ready, Braavos) driven as a one-call batch puts the same requests on the wire
+  and signs the same hashes (`transactions_invoke.rs`); the multicall, its refusals and failure
+  paths, and the extension's `verify*` and submit cases, have unit tests only and need a Bramble
+  generator (a multicall and a refused batch through `submitInvokeTransaction`). No UniFFI
+  export signs arbitrary calls: it arrives with its first reviewed consumer (P11–P13, P16).
 
 Features, smallest and least dependent first:
 
 - **P10 Activity filter and CSV export.** `transactions/src/activity/activity-csv.ts`, and the
   filter in `wallet-ui`'s `portfolio/activity-filter.ts`. Small, and no longer left to the apps:
   two apps would write it twice.
+  As built (core half, against Bramble `a01b240c`): `activity::csv::activity_to_csv` is
+  `activityToCsv` cell for cell (the header, every cell quoted, the formula guard of
+  MCW-V09-123 on every cell, the rebuilt transfer summary, `\n` between rows and none after);
+  the value column shares `activity::detail::submitted_value` with the expanded row, so the two
+  price the same rows. `history::filter` is the feed's filter, amount sort and stale-axis
+  reset (`ActivityFilter`, `activityFilterOptions`, `activityTokenKey`, `activitySearchIndex`,
+  `activityRowMatches`, `activityAmountComparator`, `reconcileActivityFilter`), and
+  `history::party` the summary above a search that names one counterparty
+  (`activityPartySummary`, `activityPartySummaryParts`, with unbounded `bigint` totals): the
+  extension writes each row's facts onto its DOM node and filters and summarises the nodes,
+  the core reads the same facts off the `ActivityEntry` through `activity_row_model`.
+  `bramble-core` exports `activity_csv` (the text; the host writes and shares the file),
+  `activity_csv_file_name` (`bramble-activity.csv`, Bramble's), `activity_filter_options`,
+  `reconcile_activity_filter`, `filter_activity`, `activity_party_summary` (none while the
+  search is blank, as in `activity-ui.ts`) and `activity_party_summary_parts`.
+  Found on the way: `activity_row_model` resolved a row's tracked token by symbol alone, where
+  `activityTrackedToken` also requires the recorded token address to be that token's
+  (Sherlock 249); `activity_tracked_token` now follows it, so a spam contract recorded under a
+  tracked symbol no longer takes the tracked token's logo or decimals. The golden row fixture
+  passes unchanged. Departures: an axis's `all` is `None`; the explorer link comes from the
+  caller's network catalog. Left out: `activityContacts` (it reads preferences; the host
+  passes the contacts a search resolves) and `activityExportToast` (screen copy). The
+  extension's export is one account's whole feed, unfiltered. Unit-tested only: the
+  extension's own cases for these files are ported with their expected strings, plus the
+  branches they leave out; a Bramble generator writing the CSV, the filtered rows and the
+  summary over one feed is still owed.
 - **P11 Token swap.** The AVNU quote and build as sans-IO bodies and reply judges, like the price
   book's: `transactions/src/swap/` (420), `wallet-model/src/swap/` (319) and the background's
   `transactions/swap-{inputs,preparations,build-policy,value-check,ops}.ts`. Needs P9.
 - **P12 Allowances.** Discovery, scan, records, retention and the revoke call:
   `transactions/src/allowances/` (1,916). The revoke needs P9.
+  As built, the read side (no generator yet, so unit tests only): `crates/wallet-core/src/
+  allowances/`. `record` is the record, its id and scope, `isAllowanceRecord`'s rules on load
+  and the unlimited cut-off (2^128 - 1); `retention` is `keepLargest` and `trimToTotal`, ranked
+  across tokens by the decimals of a caller's trusted `RankToken`s; `store::AllowanceLog` is the
+  log over `host::Storage` (`record`, `apply_delta`, `remove`, `settle_revocations` with revoke
+  outcomes, `list` newest first), the extension's array of records under the policy's key. The
+  log is plain local storage in the extension (`bramble:allowances`, `docs/WALLET_STORE.md`),
+  neither vault nor backup, so no record crosses between mobile and the extension; the shape
+  matches so the extension's own value reads unchanged in Phase 3. `discovery` is
+  `decodeApprovalEvent`, `parseAllowanceAmount`, `mergeAllowanceViews` and the background's
+  `outstandingAllowances` and `listingNotices`; `scan::ExternalAllowanceScan` is
+  `collectExternalAllowances` and `tracked::TrackedAllowanceRead` is `collectTrackedAllowances`
+  (with `tracked_pairs`, `readTrackedAmounts`' lower-bounds-first order), both one call at a
+  time as the extension awaits them, under `HistoryScan`'s `next_calls`/`accept`/`restart`/
+  `finish` contract and `ScanStep`, judged by `portfolio::wire::classify`. Every bound, cap and
+  the storage key are `AllowancePolicy`, set in `bramble-core`'s `ALLOWANCE_POLICY`; the
+  extension has no known-spender labels. Departures: amounts are `U256`, so a stored amount
+  above 2^256 - 1 is dropped on load (the extension's 78-digit rule keeps it; no extension
+  writer produces one); a record on devnet is dropped (`NetworkId` has none); an event without
+  a `keys` or `data` array, or a continuation token over `HistoryScan`'s 4 KiB, fails over
+  where the extension's handling varies by shape; a tracked pair whose token or spender is not
+  a non-zero felt is skipped rather than sent; a stored value that is not JSON reads as empty,
+  as a non-array does; the mutation queue is `&mut self`. The listing's orchestration stays the
+  wallet's, as in `allowance-ops.ts`: which scopes (the account and the multisigs it signs
+  for), dropping watched NFT contracts, reading revoke outcomes before readings, settling, then
+  merging. Remains: the revoke (P9: `allowanceTarget`, `isRevokableErc20`, the
+  `approve(spender, 0)` call and recording it), `allowances.ts` (decoding submitted calls into
+  log writes, and `standingAllowanceTotals` for the reviewer, also P9), `revokeOutcomes` (the
+  activity rows that settle a revoke), and the UniFFI export: two step machines, the log and
+  the merge would add several hundred lines, so it comes with mobile's screens. A Bramble
+  generator should record `Approval` decoding in both layouts, a scan over a scripted node with
+  legacy windows, the merge, eviction across tokens and scopes, and settling.
 - **P13 Staking.** Positions, the validator directory, calls and their review:
   `transactions/src/staking/` (1,062) and `background/staking/` (1,150). Needs P9.
 - **P14 Gasless and sponsored transactions.** `transactions/src/gasless/` (1,818) and

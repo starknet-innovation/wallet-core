@@ -47,6 +47,8 @@ pub(crate) const SEND_POLICY: wallet_core::send::plan::Policy = wallet_core::sen
     fee_margin_percent: FEE_MARGIN_PERCENT,
     reviewed_fee_headroom: REVIEWED_FEE_HEADROOM,
     confirmation_delays_ms: &CONFIRMATION_DELAYS_MS,
+    max_invoke_calls: crate::MAX_INVOKE_CALLS,
+    max_call_calldata_felts: crate::MAX_CALL_CALLDATA_FELTS,
 };
 
 /// One plan. Dropped on any edit, lock or dismissal; a new plan means a new review.
@@ -209,6 +211,8 @@ impl PlanHost for TransferPlan {
                 Some(symbol),
                 Some(felt::canonical(&token_address)),
             ),
+            // No export builds a call batch yet; its row is the extension's dapp invoke's.
+            PendingKind::Invoke => (ActivityKind::Invoke, None, None, None, None),
             PendingKind::Deployment => (ActivityKind::Deploy, None, None, None, None),
         };
         let mut entry = Entry {

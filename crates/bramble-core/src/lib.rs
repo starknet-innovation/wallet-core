@@ -9,8 +9,8 @@
 //! - multisig coordination: the identifier, relays, page cap, sync window and who is a
 //!   co-signer (`coordination`, plain Rust until the swap);
 //! - its catalogs (`catalogs`: networks, token registry, account classes, multisig constants,
-//!   embedded from `generated/`) and its portfolio and history choices (`PORTFOLIO_POLICY`,
-//!   `HISTORY_POLICY`), plain Rust until the swap;
+//!   embedded from `generated/`) and its portfolio, history and allowance choices
+//!   (`PORTFOLIO_POLICY`, `HISTORY_POLICY`, `ALLOWANCE_POLICY`), plain Rust until the swap;
 //! - the extension's v13 vault schema, which mobile writes (`vault_v13`, behind `mobile`).
 //!
 //! Functions keep the names and argument order the extension's `KmsPort` uses.
@@ -90,12 +90,21 @@ pub const MULTISIG_FEE_OVERHEAD: starknet_wallet_core::send::fees::Overhead = {
     }
 };
 
+/// `INVOKE_LIMITS.calls` (`wallet-protocol/src/transactions/invoke-limits.ts`): the most calls
+/// the extension accepts in one invoke. It bounds a dapp's request there; here every call batch.
+pub const MAX_INVOKE_CALLS: usize = 16;
+
+/// `INVOKE_LIMITS.calldataFelts` (the same file): the most calldata felts in one call.
+pub const MAX_CALL_CALLDATA_FELTS: usize = 4_096;
+
 /// Bramble's send numbers, for `starknet_wallet_core::send::plan::Plan`.
 pub const SEND_POLICY: starknet_wallet_core::send::plan::Policy =
     starknet_wallet_core::send::plan::Policy {
         fee_margin_percent: FEE_MARGIN_PERCENT,
         reviewed_fee_headroom: REVIEWED_FEE_HEADROOM,
         confirmation_delays_ms: &CONFIRMATION_DELAYS_MS,
+        max_invoke_calls: MAX_INVOKE_CALLS,
+        max_call_calldata_felts: MAX_CALL_CALLDATA_FELTS,
     };
 
 /// Bramble's portfolio choices, for `starknet_wallet_core::portfolio`'s stores: the schema tag of
@@ -116,6 +125,29 @@ pub const HISTORY_POLICY: starknet_wallet_core::history::HistoryPolicy =
         untracked_token_name: "Untracked token",
         preconfirmed_hint: "Pre-confirmed, not final yet. Bramble tells you if it doesn't settle.",
     };
+
+/// Bramble's allowance numbers, for `starknet_wallet_core::allowances`: the discovery bounds of
+/// `transactions/src/allowances/allowance-scan.ts` (`OWNER_EVENT_PAGES`, `LOG_EVENT_PAGES`,
+/// `EVENT_CHUNK_SIZE`, `MAX_SPENDERS_PER_TOKEN`, `LEGACY_BLOCK_WINDOW`, `LEGACY_WINDOWS`,
+/// `MAX_TRACKED_PAIRS`), and the retention caps and storage key of `allowance-store.ts`
+/// (`ALLOWANCE_LIMITS`, `ALLOWANCE_STORE_KEY`), so the extension's stored log reads unchanged.
+pub const ALLOWANCE_POLICY: starknet_wallet_core::allowances::AllowancePolicy =
+    starknet_wallet_core::allowances::AllowancePolicy {
+        owner_event_pages: 5,
+        log_event_pages: 3,
+        event_chunk_size: 100,
+        max_spenders_per_token: 50,
+        legacy_block_window: 200_000,
+        legacy_windows: 3,
+        max_tracked_pairs: 60,
+        entries_per_scope: 50,
+        entries_total: 200,
+        store_key: "bramble:allowances",
+    };
+
+// `allowance-store-budget.test.ts` "the per-scope cap leaves room for several coexisting scopes",
+// checked when the crate builds.
+const _: () = assert!(ALLOWANCE_POLICY.entries_per_scope * 4 <= ALLOWANCE_POLICY.entries_total);
 
 /// Every failure the core reports across the FFI boundary.
 #[derive(Debug, thiserror::Error, uniffi::Error)]
