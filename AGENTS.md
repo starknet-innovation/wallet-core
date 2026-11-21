@@ -88,6 +88,10 @@ Grep first; extend in place rather than adding a sibling.
 - The v13 vault's records as written are `bramble-core`'s `vault_wire.rs`, the extension's
   validator over them `vault_rules.rs` (`is_account_id`, `is_wallet_origin`, `chain_id`), its JSON
   budget `vault_budget.rs`; what mobile does not operate is `VaultPayload::kept`, never `accounts`.
+  A v14 vault's `accountProvenance` (`Origin`, `Provenance`, `note_origin`) is
+  `vault_provenance.rs`; every account mobile adds goes through `account_store::push_active`,
+  which records its origin; the schema a new vault is written at is
+  `vault_v13::NEW_VAULT_SCHEMA`.
 - JSON-RPC bodies and reply judging live in `rpc.rs` and `send/{rpc_bodies,judge}.rs`; v3
   transaction hashes in `send/sign.rs`; fee bounds in `send/fees.rs`; u256 in `send/u256.rs`.
 - Starknet ID names (name → address: grammar, `useEncoded`, the `domain_to_address` body and its
@@ -123,7 +127,22 @@ Grep first; extend in place rather than adding a sibling.
   it only through `PlanHost`, and its numbers through `Policy` (Bramble's: `SEND_POLICY`). A
   single-signer call batch is `send::invoke::Invoke` (`Kind::Invoke`), its checks
   `invoke::check`; every `__execute__` calldata is `calls::execute_calldata`, and the
-  ordinary-call review both batches share is `multisig_review::summarise_calls`.
+  ordinary-call review both batches share is `multisig_review::summarise_calls`. A batch's
+  annotation flags (`verifyCalls`) are `send::review_flags` (`RiskFlag`, `ReviewContext`), over
+  `call_decode::decode_call`'s `CallKind`; the full review is `Invoke::reviewed` (`Invoke::new`
+  under-warns and is crate-only), the plan's card reads its flags through `Plan::risk_flags()`, and a batch's activity text is `Invoke::with_activity_summary` or
+  `with_dapp_origin`.
+- AVNU swaps are `crates/wallet-core/src/swap/`: the quote (`quote.rs`: `PendingQuote`,
+  `SwapQuote`, the value check), the build and its reply judge (`build.rs`: `PendingBuild`), the
+  build policy and floor (`policy.rs`: `build_policy`, `reviewed_min_buy_amount`) and the frozen
+  preparation (`prepare.rs`: `SwapPreparation`, `SwapActivity`); Bramble's deployments and
+  numbers are `bramble-core`'s `swap::SWAP_POLICY`.
+- Native staking lives in `crates/wallet-core/src/staking/`: the pinned chain read
+  (`read::StakingRead`, decoders and `verify_staking_pool` in `decode`), Starkscan's directory
+  and positions (`directory`, `positions`, the shared `coverage` rule), the rows (`view`), the
+  calls and sentences (`calls`, `review`), and the prepared action (`prepare`, built through
+  `send::invoke::Invoke::new`). Bramble's numbers are `bramble-core`'s
+  `staking::STAKING_POLICY`.
 - Network and token records (`NetworkInfo`, `TokenInfo`, `TokenRegistry`, borrowed together as
   `Catalogs`) live in `crates/wallet-core/src/catalog.rs`; the core bundles none, the wallet
   passes its own in. A network's catalog spelling (`SN_MAIN`) is `NetworkId::catalog_id`. A
@@ -148,7 +167,11 @@ Grep first; extend in place rather than adding a sibling.
   over `host::Storage` with its deltas and revoke settling (`store::AllowanceLog`), the
   `Approval` decoder, merge and listing rules (`discovery.rs`), the external scan
   (`scan::ExternalAllowanceScan`) and the tracked reads and their `allowance` call
-  (`tracked.rs`). Bramble's numbers are `ALLOWANCE_POLICY` in `bramble-core`'s `lib.rs`.
+  (`tracked.rs`). Allowance writes and the revoke are `allowances::calls` (`AllowanceOwner`,
+  `record_submitted`, `approved_asset_kind`, `standing_allowance_totals`) and
+  `allowances::revoke` (`RevokeTarget`, `revoke_outcomes`); a submitted batch's approvals reach
+  the log only through `record_submitted`. Bramble's numbers are `ALLOWANCE_POLICY` in
+  `bramble-core`'s `lib.rs`.
 - Activity lives in `crates/wallet-core/src/history/` and `activity/`: the row type
   (`history::activity::ActivityEntry`, `ActivityKind`), the Starkscan lane (`starkscan.rs`), the
   RPC history scan (`events::HistoryScan`), the read cadence (`activity_book::ActivityBook`), row
