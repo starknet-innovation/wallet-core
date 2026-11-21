@@ -180,6 +180,21 @@ fn the_container_and_the_payload_agree_on_the_schema() {
     assert!(open_vault(&dir.path().to_string_lossy(), PASSWORD).is_err());
 }
 
+/// An earlier build's container (versions 2 to 5) is refused as outdated, not as corrupt, even
+/// around a payload mobile reads: the user is told to reset, not that the vault is damaged.
+#[test]
+fn an_earlier_builds_container_is_outdated() {
+    for version in [2, 5] {
+        let (dir, _clock, core) = core();
+        let path = dir.path().to_string_lossy().to_string();
+        seal_container_vault(&path, PASSWORD, version, &full().to_string()).unwrap();
+        assert!(matches!(
+            core.unlock(PASSWORD.into()),
+            Err(CoreError::Storage { reason }) if reason.contains("earlier test build")
+        ));
+    }
+}
+
 /// The largest G4 at 14 the budget admits, filled with imported phrases.
 fn at_capacity() -> Value {
     let with_seeds = |count: usize| {
