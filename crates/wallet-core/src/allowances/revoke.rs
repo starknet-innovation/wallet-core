@@ -162,7 +162,9 @@ impl RevokeTarget {
     /// The revoke as a reviewed batch for the plan, from the same `account` it was resolved for.
     /// The contract must be one `known` trusts as a token, or one `readings` (the confirmation
     /// read's) answered for this pair, whatever amount it reported; a watched collection is
-    /// refused again here. `policy`, `trusted` and `primitives` are `Invoke::new`'s.
+    /// refused again here. `known` must be this account's own network's lists: nothing here can
+    /// tell, and another network's trusted token would skip the confirmation read. `policy`,
+    /// `trusted` and `primitives` are `Invoke::new`'s.
     pub fn invoke(
         &self,
         account: &Account,
