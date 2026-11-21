@@ -279,8 +279,11 @@ Features, smallest and least dependent first:
   platform: mobile has no injected provider, and #990 leaves WalletConnect open.
 - **P16 Ledger.** The device protocol and session as sans-IO APDU exchanges:
   `packages/platform/ledger-protocol/` (1,096) and `background/ledger/` (847). The transport is
-  the app's (the extension's is `ledger-browser`: Web Bluetooth, WebUSB, WebHID). Last: #990
-  has the extension offering it to trusted testers only, and its tests need a device.
+  the app's (the extension's is `ledger-browser`: Web Bluetooth, WebUSB, WebHID). The
+  extension ships it to every user (#990's "trusted testers" is wrong), so a Ledger user cannot
+  use mobile at all until this lands. It is last only because its transport is an open question
+  and its tests need a device; it needs P7 alone, so it can start as soon as that question is
+  answered.
 
 Bramble's alone, with nothing needed here: Android's token management, its multisig stepper,
 participant picker and shared-account home, the analytics consent and diagnostics screens, and
