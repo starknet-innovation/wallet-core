@@ -18,6 +18,7 @@ use super::explorer::explorer_transaction_url;
 use super::time::{format_utc_clock, format_utc_date, utc_day_key};
 use super::HistoryPolicy;
 use crate::catalog::Catalogs;
+use crate::js::felt::same_felt;
 use crate::js::num::{js_trim, short_label};
 use crate::portfolio::model::TokenConfig;
 use crate::portfolio::tokens::{starknet_glyph, token_glyph, TokenGlyph};
@@ -131,8 +132,31 @@ fn trimmed(value: Option<&str>) -> Option<&str> {
     value.map(js_trim).filter(|s| !s.is_empty())
 }
 
-/// `activityRowModel`: the tracked token is the one tracked token with the entry's symbol on its
-/// network (a symbol two tracked tokens share is ambiguous and matches none).
+/// `activityTrackedToken`: the one tracked token on the entry's network with its symbol and,
+/// when the row recorded its token's address, at that address (`sameFelt`, so an address that is
+/// not a felt matches none). A likely-spam token recorded under a tracked symbol must not be
+/// priced or shown as the tracked one (Sherlock 249); a symbol two tracked tokens share, with no
+/// address to tell them apart, matches none.
+pub fn activity_tracked_token<'a>(
+    entry: &ActivityEntry,
+    tracked: &'a [TokenConfig],
+) -> Option<&'a TokenConfig> {
+    let symbol = trimmed(entry.token.as_deref())?.to_lowercase();
+    let mut matches = tracked.iter().filter(|t| {
+        t.network == entry.network
+            && t.symbol.to_lowercase() == symbol
+            && entry
+                .token_address
+                .as_deref()
+                .is_none_or(|address| same_felt(&t.address, address))
+    });
+    match (matches.next(), matches.next()) {
+        (Some(token), None) => Some(token),
+        _ => None,
+    }
+}
+
+/// `activityRowModel`, its token resolved by `activity_tracked_token`.
 pub fn activity_row_model(entry: &ActivityEntry, tracked: &[TokenConfig]) -> ActivityRowModel {
     let look = appearance(entry);
     let symbol = trimmed(entry.token.as_deref());
@@ -140,15 +164,7 @@ pub fn activity_row_model(entry: &ActivityEntry, tracked: &[TokenConfig]) -> Act
         (Some(symbol), Some(raw)) => Some(format!("{} {symbol}", compact_activity_amount(raw))),
         _ => None,
     };
-    let matches: Vec<&TokenConfig> = symbol.map_or(Vec::new(), |symbol| {
-        tracked
-            .iter()
-            .filter(|t| {
-                t.network == entry.network && t.symbol.to_lowercase() == symbol.to_lowercase()
-            })
-            .collect()
-    });
-    let token = (matches.len() == 1).then(|| matches[0]);
+    let token = activity_tracked_token(entry, tracked);
     let role = match look.direction {
         Some(ActivityDirection::In) => "sender",
         Some(ActivityDirection::Out) => "recipient",
@@ -305,4 +321,92 @@ pub fn activity_groups(
         }
     }
     groups.into_iter().map(|(_, g)| g).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::history::activity::ActivityKind;
+    use crate::NetworkId;
+
+    // `sidepanel-activity-same-symbol.test.ts` (Bramble `a01b240c`): two tracked tokens share
+    // the symbol USDC.
+    const USDC_A: &str = "0xa11ce";
+    const USDC_B: &str = "0xb0b";
+
+    fn usdc(address: &str) -> TokenConfig {
+        TokenConfig {
+            id: format!("SN_MAIN:USDC:{address}"),
+            network: NetworkId::Mainnet,
+            address: address.into(),
+            symbol: "USDC".into(),
+            name: "USD Coin".into(),
+            decimals: 6,
+        }
+    }
+
+    fn send(hash: &str, token_address: Option<&str>) -> ActivityEntry {
+        ActivityEntry {
+            account_id: "SN_MAIN:0x1234".into(),
+            amount: Some("1".into()),
+            counterparty: None,
+            direction: None,
+            failure_notice: None,
+            fee_paid: None,
+            finalized_on_l1: None,
+            hash: hash.into(),
+            kind: ActivityKind::Transfer,
+            network: NetworkId::Mainnet,
+            not_found_count: None,
+            origin: None,
+            status: TxStatus::Accepted,
+            submitted_at: 1_752_501_900_000,
+            submitted_price: None,
+            summary: "Send 1 USDC".into(),
+            token: Some("USDC".into()),
+            token_address: token_address.map(str::to_string),
+        }
+    }
+
+    fn address(entry: &ActivityEntry, tracked: &[TokenConfig]) -> Option<String> {
+        activity_tracked_token(entry, tracked).map(|t| t.address.clone())
+    }
+
+    // same-symbol test: "a recorded address prices its own token, but never under another
+    // symbol".
+    #[test]
+    fn a_recorded_address_resolves_only_its_own_token() {
+        let tracked = [usdc(USDC_A), usdc(USDC_B)];
+        assert_eq!(
+            address(&send("0x5", Some(USDC_B)), &tracked).as_deref(),
+            Some(USDC_B)
+        );
+        // A likely-spam token recorded under the untracked symbol (Sherlock 249).
+        let spam = ActivityEntry {
+            token: Some("TOKEN".into()),
+            ..send("0x6", Some(USDC_B))
+        };
+        assert_eq!(address(&spam, &tracked), None);
+        // The shared symbol alone names neither token.
+        assert_eq!(address(&send("0x7", None), &tracked), None);
+    }
+
+    // Not in the extension's tests: the other contract under a tracked symbol, the address in
+    // another spelling, and an address that is not a felt.
+    #[test]
+    fn another_contract_under_a_tracked_symbol_resolves_to_nothing() {
+        let tracked = [usdc(USDC_A)];
+        assert_eq!(
+            address(&send("0x8", None), &tracked).as_deref(),
+            Some(USDC_A)
+        );
+        assert_eq!(address(&send("0x9", Some(USDC_B)), &tracked), None);
+        let padded = send("0xa", Some("0x00000A11CE"));
+        assert_eq!(address(&padded, &tracked).as_deref(), Some(USDC_A));
+        assert_eq!(address(&send("0xb", Some("not-a-felt")), &tracked), None);
+        assert_eq!(
+            activity_row_model(&send("0x9", Some(USDC_B)), &tracked).token_address,
+            None
+        );
+    }
 }
