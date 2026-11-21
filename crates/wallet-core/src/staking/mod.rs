@@ -6,8 +6,12 @@
 //! - `read`: the chain reads for one account, pinned to one accepted block (`staking-reads.ts`).
 //! - `coverage`, `directory`, `positions`: Starkscan's validator directory and an address's
 //!   positions, as requests and strict judges.
-//! - `calls`: the calls an action builds and the line it is recorded under.
+//! - `calls`, `review`: the calls an action builds and the sentences it is reviewed and recorded
+//!   under.
 //! - `view`: the rows a host shows (`staking-row-view.ts`, the overview and "Your stakes").
+//! - `prepare`: an action, from the person's input and a verified reading to a reviewed
+//!   `send::invoke::Invoke`, frozen until one confirm claims it (`staking-action.ts`,
+//!   `staking-preparations.ts`, `staking-inputs.ts`).
 //!
 //! Trust boundary, as in the extension: the staking contract comes only from the wallet's own
 //! `StakingNetwork`; a staker address (from the directory or pasted) is a candidate until the
@@ -20,7 +24,9 @@ pub mod coverage;
 pub mod decode;
 pub mod directory;
 pub mod positions;
+pub mod prepare;
 pub mod read;
+pub mod review;
 pub mod view;
 
 #[cfg(test)]
@@ -33,6 +39,10 @@ mod directory_ops_tests;
 mod directory_tests;
 #[cfg(test)]
 mod positions_tests;
+#[cfg(test)]
+mod preparations_tests;
+#[cfg(test)]
+mod prepare_tests;
 #[cfg(test)]
 mod read_tests;
 #[cfg(test)]
@@ -186,7 +196,9 @@ mod tests {
             include_str!("decode.rs"),
             include_str!("directory.rs"),
             include_str!("positions.rs"),
+            include_str!("prepare.rs"),
             include_str!("read.rs"),
+            include_str!("review.rs"),
             include_str!("view.rs"),
         ];
         for source in sources {

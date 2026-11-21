@@ -1,8 +1,10 @@
-//! `staking-calls.test.ts`: exact-amount approvals, each action allowed only in the state the
-//! pool accepts it in, and the line an action is recorded under.
+//! `staking-calls.test.ts` and `staking-review.test.ts`: exact-amount approvals, each action
+//! allowed only in the state the pool accepts it in, and the sentences an action is reviewed
+//! and recorded under.
 
 use super::calls::*;
 use super::decode::{PoolMember, VerifiedPool};
+use super::review::review_sentence;
 use super::StakingRefusal;
 use crate::send::calls::Call;
 use crate::send::u256::U256;
@@ -226,5 +228,78 @@ fn activity_summaries_name_the_verb_the_activity_classifier_reads() {
     assert_eq!(
         summary(StakingAction::Withdraw, None),
         "Withdraw unstaked STRK from Val"
+    );
+}
+
+fn rewarded_to(reward: Felt) -> PoolMember {
+    PoolMember {
+        amount: 1,
+        reward_address: reward,
+        unclaimed_rewards: 1,
+        ..member()
+    }
+}
+
+fn sentence(action: StakingAction, amount: Option<&str>, member: Option<&PoolMember>) -> String {
+    review_sentence(&account(), action, amount, member, "STRK", "Val")
+}
+
+#[test]
+fn the_review_states_the_exact_approval_and_the_unstake_wait() {
+    assert_eq!(
+        sentence(StakingAction::Stake, Some("5"), None),
+        "Stake 5 STRK with Val. This approves exactly 5 STRK for its pool."
+    );
+    let own = rewarded_to(account());
+    assert_eq!(
+        sentence(StakingAction::Unstake, Some("5"), Some(&own)),
+        "Unstake 5 STRK from Val. It earns no rewards until you withdraw it."
+    );
+}
+
+#[test]
+fn a_claim_names_strk_whatever_the_staked_token() {
+    let own = rewarded_to(account());
+    assert_eq!(
+        review_sentence(
+            &account(),
+            StakingAction::Claim,
+            None,
+            Some(&own),
+            "WBTC",
+            "Val"
+        ),
+        "Claim your STRK rewards from Val."
+    );
+}
+
+#[test]
+fn the_review_names_a_reward_address_that_is_not_this_account() {
+    let elsewhere = rewarded_to(
+        crate::felt::parse("0x0000beef00000000000000000000000000000000000000000000000000000001")
+            .unwrap(),
+    );
+    assert_eq!(
+        sentence(StakingAction::Claim, None, Some(&elsewhere)),
+        "Claim your STRK rewards from Val. Rewards are paid to 0xbeef…0001, not this account."
+    );
+    assert!(sentence(StakingAction::Stake, Some("5"), Some(&elsewhere))
+        .ends_with("Rewards are paid to 0xbeef…0001, not this account."));
+    assert_eq!(
+        sentence(StakingAction::Withdraw, None, Some(&elsewhere)),
+        "Withdraw your unstaked STRK from Val."
+    );
+    assert_eq!(
+        sentence(StakingAction::Unstake, Some("1"), Some(&elsewhere)),
+        "Unstake 1 STRK from Val. It earns no rewards until you withdraw it."
+    );
+    let own = rewarded_to(account());
+    assert_eq!(
+        sentence(StakingAction::Claim, None, Some(&own)),
+        "Claim your STRK rewards from Val."
+    );
+    assert_eq!(
+        sentence(StakingAction::CancelUnstake, None, Some(&own)),
+        "Cancel your unstake and keep the STRK staked with Val."
     );
 }
