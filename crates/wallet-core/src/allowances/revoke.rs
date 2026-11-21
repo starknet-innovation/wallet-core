@@ -63,8 +63,9 @@ pub enum RevokeRefusal {
 /// `allowanceTarget`: the token and spender an id names, only when it is exactly
 /// `<account_id>:<token>:<spender>` with both non-zero felts, so another account's id or a
 /// malformed one names nothing. Lets a revoke reach an allowance found on chain that the log
-/// never held.
-pub fn allowance_target(id: &str, account_id: &str) -> Option<(Felt, Felt)> {
+/// never held. Crate-only: it parses without the id's length cap, which `RevokeTarget::resolve`
+/// applies first.
+pub(crate) fn allowance_target(id: &str, account_id: &str) -> Option<(Felt, Felt)> {
     let rest = id.strip_prefix(account_id)?.strip_prefix(':')?;
     // A third part leaves a `:` in the spender, which no felt spelling admits.
     let (token, spender) = rest.split_once(':')?;
