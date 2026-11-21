@@ -1,7 +1,7 @@
 //! The Activity feed's filter, amount sort and per-counterparty summary
 //! (`wallet_core::history::{filter, party}`, the extension's `portfolio/activity-filter.ts`): the
 //! UniFFI shapes and the exports. The host keeps the filter the person chose; the core says which
-//! values the controls offer, which rows a filter keeps, and what
+//! values the controls offer, which chosen values went stale, which rows a filter keeps, and what
 //! the summary above them reads.
 
 use wallet_core::history::filter as port;
@@ -104,6 +104,16 @@ pub fn filter_activity(
     contacts: Vec<ActivityContact>,
 ) -> Vec<ActivityEntry> {
     port::filter_activity(entries, &filter, &tracked, &contacts)
+}
+
+/// `reconcileActivityFilter`: the filter with every axis whose value `options` (from the current
+/// feed) no longer offers reset to all; call it before rendering the controls and the rows.
+#[uniffi::export]
+pub fn reconcile_activity_filter(
+    filter: ActivityFilter,
+    options: ActivityFilterOptions,
+) -> ActivityFilter {
+    port::reconcile_activity_filter(filter, &options)
 }
 
 /// `activityPartySummary` over the rows `filter_activity` returned for `filter`: `None` unless

@@ -203,6 +203,23 @@ fn by_amount(
     }
 }
 
+/// `reconcileActivityFilter`: an axis whose value the feed no longer offers is reset to all, so a
+/// filter never hides every row behind a value its control cannot show; the query and the sort
+/// pass through.
+pub fn reconcile_activity_filter(
+    filter: ActivityFilter,
+    options: &ActivityFilterOptions,
+) -> ActivityFilter {
+    ActivityFilter {
+        action: filter.action.filter(|a| options.actions.contains(a)),
+        status: filter.status.filter(|s| options.statuses.contains(s)),
+        token: filter
+            .token
+            .filter(|t| options.tokens.iter().any(|option| option.key == *t)),
+        ..filter
+    }
+}
+
 /// The rows `filter` keeps (`activityRowMatches`), in the feed's order or, for the amount sort,
 /// by `activityAmountComparator`.
 pub fn filter_activity(
@@ -235,3 +252,7 @@ pub fn filter_activity(
 #[cfg(test)]
 #[path = "filter_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "filter_reconcile_tests.rs"]
+mod reconcile_tests;

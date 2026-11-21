@@ -134,8 +134,9 @@ pub use history::events::{HistoryScan, ScanStep};
 pub use history::explorer::{activity_account_id, explorer_transaction_url};
 pub use history::filter::{
     activity_filter_options, activity_party_summary, activity_party_summary_parts, filter_activity,
-    ActivityContact, ActivityFilter, ActivityFilterOptions, ActivityPartySummary,
-    ActivityPartySummaryParts, ActivitySort, ActivityTokenOption, ActivityTokenTotal,
+    reconcile_activity_filter, ActivityContact, ActivityFilter, ActivityFilterOptions,
+    ActivityPartySummary, ActivityPartySummaryParts, ActivitySort, ActivityTokenOption,
+    ActivityTokenTotal,
 };
 pub use portfolio::fiat::{
     compact_amount, fiat_value_text, format_fiat, portfolio_amount, portfolio_hero, token_row_fiat,

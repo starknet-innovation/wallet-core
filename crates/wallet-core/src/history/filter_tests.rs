@@ -27,7 +27,7 @@ fn strk() -> TokenConfig {
     }
 }
 
-fn sent() -> ActivityEntry {
+pub(super) fn sent() -> ActivityEntry {
     ActivityEntry {
         account_id: ACCOUNT_ID.into(),
         amount: Some("1.5".into()),
@@ -50,7 +50,7 @@ fn sent() -> ActivityEntry {
     }
 }
 
-fn received() -> ActivityEntry {
+pub(super) fn received() -> ActivityEntry {
     ActivityEntry {
         amount: Some("2".into()),
         hash: "0x2".into(),
@@ -61,7 +61,7 @@ fn received() -> ActivityEntry {
     }
 }
 
-fn swapped() -> ActivityEntry {
+pub(super) fn swapped() -> ActivityEntry {
     ActivityEntry {
         amount: Some("5".into()),
         counterparty: None,
