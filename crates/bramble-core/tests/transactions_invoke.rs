@@ -19,7 +19,7 @@ use starknet_wallet_core::send::multisig_review::CallReviewError;
 use starknet_wallet_core::send::plan::{
     Account, Authorization, Invoke, InvokeRefusal, Kind, PendingKind, Plan, Policy,
 };
-use starknet_wallet_core::send::review_flags::ReviewContext;
+use starknet_wallet_core::send::review_flags::{ReviewContext, RiskFlag};
 use starknet_wallet_core::send::types::{
     FeeAffordability, SendError, SendFailureCode as Code, SendStep, StepReply,
 };
@@ -185,6 +185,25 @@ fn a_multicall_signs_and_submits_every_call() {
     assert_eq!(records.len(), 1);
     assert_eq!(records[0].kind, PendingKind::Invoke);
     assert_eq!(records[0].summary, shown.summary);
+}
+
+#[test]
+fn the_plan_shows_the_flags_of_the_batch_it_signs() {
+    // An unlimited approval on STRK and a payment through an untracked contract: the card beside
+    // the plan's review lists both, from the batch the plan holds.
+    let host = Host::new();
+    let mut node = Node::sepolia(true);
+    let unlimited = call(STRK, "approve", vec![f(ACCOUNT_1), Felt::ONE, Felt::ONE]);
+    let mut plan = batch_plan(&host, vec![unlimited, two_calls().remove(1)]);
+    review(&mut plan, &host, &mut node);
+    assert!(plan.current_review().unwrap().flags.is_empty());
+    assert_eq!(
+        plan.risk_flags(),
+        [
+            &RiskFlag::UnlimitedApproval,
+            &RiskFlag::UnknownContract { contract: f(ETH) }
+        ]
+    );
 }
 
 #[test]

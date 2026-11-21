@@ -11,6 +11,7 @@
 use super::fees::{Bounds, FeeQuote, TransactionFee};
 pub use super::invoke::{Invoke, InvokeRefusal};
 use super::judge::{self, Observation, TxStatus};
+use super::review_flags::RiskFlag;
 pub use super::types::{
     Account, ArgentClass, Authorization, Kind, Policy, Token, Transfer, TransferRefusal,
 };
@@ -216,6 +217,17 @@ impl Plan {
     /// The review the last `Review` step announced; `None` before the first review.
     pub fn current_review(&self) -> Option<&TransferReview> {
         self.review.as_ref()
+    }
+
+    /// The flags to show beside `current_review`: a batch's `Invoke::flags`, read from the batch
+    /// this plan signs, so the card confirmed and the calls signed are one object; empty for any
+    /// other kind (a transfer's are `TransferReview::flags`). Kept off `TransferReview`, whose
+    /// UniFFI record would otherwise export `RiskFlag`.
+    pub fn risk_flags(&self) -> Vec<&RiskFlag> {
+        match &self.kind {
+            Kind::Invoke(invoke) => invoke.flags(),
+            _ => Vec::new(),
+        }
     }
 
     /// How many hashes this plan has had signed, so a test can prove a refusal reached no signer.
