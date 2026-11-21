@@ -188,6 +188,10 @@ impl SwapQuote {
     /// than the sell side, priced from the wallet's own feed (`prices`, looked up by each token's
     /// stored address), so an aggregator cannot hide a loss behind its own USD figures. `None`
     /// without a feed, from a stale one, or without a positive finite price for both tokens.
+    ///
+    /// This is the only check on the price that does not come from AVNU: the build's floor is
+    /// derived from AVNU's own quoted buy amount. So `None` means the swap's value is AVNU's word
+    /// alone, and the host must show it as unverified, never as a fair price.
     pub fn value_delta_percent(&self, prices: Option<&PriceView>) -> Option<f64> {
         let view = prices.filter(|view| !view.stale)?;
         let price = |side: &Side| {
