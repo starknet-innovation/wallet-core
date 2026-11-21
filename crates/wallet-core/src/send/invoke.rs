@@ -203,7 +203,9 @@ impl Invoke {
     }
 
     /// Names the activity row's text, as a swap or a stake does; cut as the activity log cuts it.
-    /// An empty text leaves the review's line.
+    /// An empty text leaves the review's line. The text is the wallet's own, never one a dapp's
+    /// message carried (`activitySummary` is background-authored only in the extension): the row
+    /// is what the person later reads as what they signed, and nothing checks it against the calls.
     #[must_use]
     pub fn with_activity_summary(mut self, summary: &str) -> Self {
         self.activity_summary = (!summary.is_empty()).then(|| clamp_activity_summary(summary));
@@ -211,7 +213,8 @@ impl Invoke {
     }
 
     /// The activity text of a dapp's batch: "<origin> submitted N call(s)", N this batch's own
-    /// count and the origin as `activityOrigin` cuts it.
+    /// count and the origin as `activityOrigin` cuts it. `origin` is the one the wallet saw the
+    /// request come from, never a name the dapp gave itself.
     #[must_use]
     pub fn with_dapp_origin(self, origin: &str) -> Self {
         let count = self.calls.len();
