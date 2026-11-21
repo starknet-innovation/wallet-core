@@ -1,7 +1,11 @@
-//! The vault payload: the extension's schema v13 (`packages/platform/vault/src/schema/`), sealed
-//! in mobile's DEK container (`container.rs`), whose `version` is the schema version.
+//! The vault payload: the extension's schema v13 (`packages/platform/vault/src/schema/`) or v14
+//! (`release/v0.10.11`: v13 and `accountProvenance`), sealed in mobile's DEK container
+//! (`container.rs`), whose `version` is the schema version. A vault is written back at the schema
+//! it was read at (the released extension reads only 13, so mobile does not migrate), and a new
+//! one at `NEW_VAULT_SCHEMA`. A v14 vault's provenance is kept, and maintained as the extension's
+//! service maintains it (`vault_provenance`).
 //!
-//! Reading accepts every vault the extension's v13 validator accepts (`vault_rules`,
+//! Reading accepts every vault the extension's v13 or v14 validator accepts (`vault_rules`,
 //! `vault_budget`), with one exception: a vault with no phrase (a Ledger-only or key-only wallet)
 //! is refused, since this wallet has nothing to run without one. Mobile operates the records it
 //! holds keys for: phrase-derived accounts (`starknet-bip44` on either of its two ladders, Ready's
@@ -21,9 +25,9 @@
 //! extension's schema requires, and must equal the derived one. An imported account's sealed key
 //! is the only copy, so it is held in the session (`VaultPayload::imported_keys`) and signs.
 //!
-//! There is no migration. Mobile's earlier vault versions 1 to 5 were developer builds holding
-//! no funds (`docs/PLAN.md`, Vault switch): any of them fails closed with `outdated()`, after the
-//! password is proven, and the user resets the wallet.
+//! There is no migration, from 13 to 14 or from anything older. Mobile's earlier vault versions
+//! 1 to 5 were developer builds holding no funds (`docs/PLAN.md`, Vault switch): any of them fails
+//! closed with `outdated()`, after the password is proven, and the user resets the wallet.
 
 use std::io;
 
@@ -37,9 +41,13 @@ use crate::kms::Ladder;
 use crate::vault_wire::{Account, Derivation, Kept, SigningKey, Vault};
 use crate::{felt, vault, vault_budget, vault_rules, CoreError};
 
-/// The extension's `CURRENT_SCHEMA_VERSION`: the payload's `schemaVersion` and the container's
-/// `version`.
-pub(crate) const SCHEMA_VERSION: u32 = 13;
+/// The schema a new vault is written at (Bramble's choice): 13, the one the released extension
+/// (v0.10.10) reads, until v0.10.11, whose `CURRENT_SCHEMA_VERSION` is 14, is released.
+pub(crate) const NEW_VAULT_SCHEMA: u32 = 13;
+/// The extension's schema 14, which adds `accountProvenance`; the newest one mobile reads.
+pub(crate) const PROVENANCE_SCHEMA: u32 = 14;
+/// The schemas mobile reads, as the payload's `schemaVersion` and the container's `version`.
+const READABLE_SCHEMAS: [u32; 2] = [13, PROVENANCE_SCHEMA];
 
 fn invalid() -> CoreError {
     storage("vault payload is invalid")
@@ -121,7 +129,7 @@ impl io::Write for Counter {
     }
 }
 
-/// Serialises `payload` as a v13 vault: mobile's records, each phrase account's signing key
+/// Serialises `payload` at its schema: mobile's records, each phrase account's signing key
 /// derived for the call only and each imported key the session holds, with everything kept put
 /// back where it was. Refuses a vault the extension would refuse, including one past its budget.
 /// Run `account_store::check_consistent` first.
@@ -163,6 +171,7 @@ pub(crate) fn encode(payload: &VaultPayload) -> Result<Zeroizing<Vec<u8>>, CoreE
     });
     let vault = Vault {
         accounts,
+        account_provenance: payload.account_provenance.clone(),
         account_secrets: kept.account_secrets.clone(),
         active_account_id: payload.active_account_id.clone(),
         imported_seeds: kept.imported_seeds.clone(),
@@ -170,7 +179,7 @@ pub(crate) fn encode(payload: &VaultPayload) -> Result<Zeroizing<Vec<u8>>, CoreE
         multisig_strk20_key_conflicts: kept.multisig_strk20_key_conflicts.clone(),
         multisig_strk20_viewing_keys: kept.multisig_strk20_viewing_keys.clone(),
         origin_grants: kept.origin_grants.clone(),
-        schema_version: SCHEMA_VERSION,
+        schema_version: payload.schema_version,
         shadow_account_scopes: kept.shadow_account_scopes.clone(),
         signing_keys,
     };
@@ -188,8 +197,8 @@ pub(crate) fn encode(payload: &VaultPayload) -> Result<Zeroizing<Vec<u8>>, CoreE
     Ok(json)
 }
 
-/// Parses and validates a decrypted v13 payload in full. Labels, groups and the backup flag are
-/// not in the vault; the caller loads them (`public_store::load_preferences`).
+/// Parses and validates a decrypted v13 or v14 payload in full. Labels, groups and the backup
+/// flag are not in the vault; the caller loads them (`public_store::load_preferences`).
 pub(crate) fn decode(plaintext: &[u8]) -> Result<VaultPayload, CoreError> {
     // The size budget first: it is linear, and it bounds what the rules then scan.
     if !vault_budget::within(plaintext) {
@@ -233,6 +242,8 @@ pub(crate) fn decode(plaintext: &[u8]) -> Result<VaultPayload, CoreError> {
     kept.signing_keys = kept_keys;
     let mut payload = VaultPayload::opened(mnemonic, accounts, vault.active_account_id.take());
     payload.kept = kept;
+    payload.schema_version = vault.schema_version;
+    payload.account_provenance = vault.account_provenance.take();
     // An imported account's key is the one it sealed: canonical, a usable scalar
     // (`isSigningKeyRef`).
     for record in &payload.accounts {
@@ -296,12 +307,16 @@ pub(crate) struct Opened {
     pub container: VaultFile,
 }
 
-/// Opens a container's payload with its (already proven) DEK.
+/// Opens a container's payload with its (already proven) DEK. The payload's schema must be the
+/// container's.
 pub(crate) fn open_container(file: VaultFile, dek: Dek) -> Result<Opened, CoreError> {
-    if file.version != SCHEMA_VERSION {
+    if !READABLE_SCHEMAS.contains(&file.version) {
         return Err(outdated());
     }
     let payload = decode(&file.open_payload(&dek)?)?;
+    if payload.schema_version != file.version {
+        return Err(invalid());
+    }
     Ok(Opened {
         payload,
         dek,

@@ -440,7 +440,7 @@ Foundations, which the features need, and Ledger, which needs only the first:
   transfer, STRK20, dapp); and, for a dapp's invoke only, `refuseOnAccountSelfCall` ("Dapps
   cannot call the wallet account contract itself") and `readProviderInvokeCall`'s bounds and
   grammar (`INVOKE_LIMITS`: 16 calls, 4,096 felts a call, entrypoints
-  `^[A-Za-z_][A-Za-z0-9_]*$` of at most 64). `send::invoke::Invoke::new` is the only way to
+  `^[A-Za-z_][A-Za-z0-9_]*$` of at most 64). `send::invoke::Invoke::reviewed` is the only way to
   build a batch: it applies all of them to every batch (the core cannot tell who built one),
   reviews it with `multisig_review::summarise_calls` (the ordinary-call half of the multisig
   review, now shared), and compiles the calldata; refusals are `InvokeRefusal`, with the
@@ -452,7 +452,7 @@ Foundations, which the features need, and Ledger, which needs only the first:
   A pending record is
   `PendingKind::Invoke`, mobile's row `ActivityKind::Invoke`, summarised as the review is.
   Departures: the self-call refusal, the bounds and the grammar apply to every batch, not only a
-  dapp's; a poisoned payee refuses at `Invoke::new`, where the dapp path lets the flag ride the
+  dapp's; a poisoned payee refuses at `Invoke::reviewed`, where the dapp path lets the flag ride the
   approval card and refuses at execution (Sherlock 140: an instant refusal tells the site whom
   the person trusts), so P16 must not relay that refusal to the site before the person acts; the
   trusted set is fixed when the batch is built, where the extension re-reads it at execution
@@ -479,7 +479,7 @@ Foundations, which the features need, and Ledger, which needs only the first:
   approval queue's summary bound (P16). `RiskFlag` is not the transfer's `ReviewFlag`; the two
   meet at export. Not ported, as
   for the transfer: the `fast` speed, a SNIP-36 proof (P15) and the approval queue's review
-  budget (P16). As for a multisig, Krusty 3.1.0 has no selector, so `Invoke::new` takes
+  budget (P16). As for a multisig, Krusty 3.1.0 has no selector, so `Invoke::reviewed` takes
   `multisig_invoke::StarkPrimitives`, and nothing
   outside the tests can build a batch until krusty-kms#257. Evidence: every transfer capture
   (OpenZeppelin, Ready, Braavos) driven as a one-call batch puts the same requests on the wire

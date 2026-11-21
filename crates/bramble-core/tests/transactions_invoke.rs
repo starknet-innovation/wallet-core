@@ -19,6 +19,7 @@ use starknet_wallet_core::send::multisig_review::CallReviewError;
 use starknet_wallet_core::send::plan::{
     Account, Authorization, Invoke, InvokeRefusal, Kind, PendingKind, Plan, Policy,
 };
+use starknet_wallet_core::send::review_flags::{ReviewContext, RiskFlag};
 use starknet_wallet_core::send::types::{
     FeeAffordability, SendError, SendFailureCode as Code, SendStep, StepReply,
 };
@@ -38,16 +39,19 @@ fn strk() -> TokenInfo {
 
 fn invoke(account: &Account, calls: Vec<Call>, trusted: &[Felt]) -> Result<Invoke, InvokeRefusal> {
     let tokens = [strk()];
-    let known = Known {
-        tokens: &tokens,
-        nft_contracts: &[],
+    let context = ReviewContext {
+        known: Known {
+            tokens: &tokens,
+            nft_contracts: &[],
+        },
+        trusted,
+        ..ReviewContext::default()
     };
-    Invoke::new(
+    Invoke::reviewed(
         account,
         calls,
         &bramble_core::SEND_POLICY,
-        &known,
-        trusted,
+        &context,
         &TestPrimitives::new(),
     )
 }
@@ -181,6 +185,53 @@ fn a_multicall_signs_and_submits_every_call() {
     assert_eq!(records.len(), 1);
     assert_eq!(records[0].kind, PendingKind::Invoke);
     assert_eq!(records[0].summary, shown.summary);
+}
+
+#[test]
+fn the_plan_shows_the_flags_of_the_batch_it_signs() {
+    // An unlimited approval on STRK and a payment through an untracked contract: the card beside
+    // the plan's review lists both, from the batch the plan holds.
+    let host = Host::new();
+    let mut node = Node::sepolia(true);
+    let unlimited = call(STRK, "approve", vec![f(ACCOUNT_1), Felt::ONE, Felt::ONE]);
+    let mut plan = batch_plan(&host, vec![unlimited, two_calls().remove(1)]);
+    review(&mut plan, &host, &mut node);
+    assert!(plan.current_review().unwrap().flags.is_empty());
+    assert_eq!(
+        plan.risk_flags(),
+        [
+            &RiskFlag::UnlimitedApproval,
+            &RiskFlag::UnknownContract { contract: f(ETH) }
+        ]
+    );
+}
+
+#[test]
+fn the_builders_activity_text_is_what_the_row_records() {
+    // provider-ops.ts: a dapp's batch is recorded as "<origin> submitted N calls", while the
+    // review still shows the calls.
+    let host = Host::new();
+    let mut node = Node::sepolia(true);
+    let account = oz_account(&host);
+    let batch = invoke(&account, two_calls(), &[])
+        .unwrap()
+        .with_dapp_origin("https://app.example");
+    let mut plan = Plan::new(
+        account,
+        Kind::Invoke(Box::new(batch)),
+        bramble_core::SEND_POLICY,
+    );
+    review(&mut plan, &host, &mut node);
+    let shown = plan.current_review().unwrap().clone();
+    assert!(shown.summary.ends_with("(+1 more)"));
+    let step = plan.advance(&host, StepReply::Confirm).unwrap();
+    let write = run_until(&mut plan, &host, &mut node, step, |_, is_write| is_write);
+    let (id, method, params, _) = parts(&write);
+    let accepted = node.reply(&method, &params, Some(latest_hash(&host)));
+    plan.advance(&host, reply(id, &accepted)).unwrap();
+    let records = host.records.borrow();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].summary, "https://app.example submitted 2 calls");
 }
 
 #[test]

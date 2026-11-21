@@ -151,28 +151,12 @@ impl<'de> Deserialize<'de> for Ordered {
     }
 }
 
-fn from_hex(digits: &str) -> Option<U256> {
-    if digits.is_empty() || digits.len() > 64 || !digits.bytes().all(|b| b.is_ascii_hexdigit()) {
-        return None;
-    }
-    let split = digits.len().saturating_sub(32);
-    let (high, low) = digits.split_at(split);
-    Some(U256 {
-        high: if high.is_empty() {
-            0
-        } else {
-            u128::from_str_radix(high, 16).ok()?
-        },
-        low: u128::from_str_radix(low, 16).ok()?,
-    })
-}
-
 /// `BigInt(value)` for a non-negative service value, over the fixed grammar above.
 pub fn js_bigint(value: &Ordered) -> Option<U256> {
     match value {
         Ordered::Int(n) => Some(U256::from_u128(u128::from(*n))),
         Ordered::Str(text) => match text.strip_prefix("0x").or_else(|| text.strip_prefix("0X")) {
-            Some(digits) => from_hex(digits.trim_start_matches('0')).or_else(|| {
+            Some(digits) => U256::from_hex(digits.trim_start_matches('0')).or_else(|| {
                 (!digits.is_empty() && digits.bytes().all(|b| b == b'0')).then_some(U256::ZERO)
             }),
             None => U256::from_decimal(text.trim_start_matches('0')).or_else(|| {

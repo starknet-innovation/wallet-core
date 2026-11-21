@@ -17,6 +17,8 @@
 //!
 //! ERC-20 allowance discovery and the allowance log (`allowances`) follow the same rules: sans-IO
 //! reads over caller-given tokens, the log over the host's storage, the wallet's numbers passed in.
+//! So does native staking (`staking`): pinned chain reads, Starkscan's directory and positions,
+//! and actions built into a reviewed `send::invoke::Invoke` for the plan to sign.
 
 #![forbid(unsafe_code)]
 // A panic in a wallet is a crash: library code returns errors (unit tests may unwrap: clippy.toml).
@@ -39,7 +41,9 @@ pub mod privacy;
 pub mod rpc;
 mod scrub;
 pub mod send;
+pub mod staking;
 pub mod stark_name;
+pub mod swap;
 
 pub use kms::{
     account_key, account_keypair, account_public_key, derive_argent_legacy_keypair,
