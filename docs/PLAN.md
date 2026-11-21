@@ -71,8 +71,8 @@ v13 payload.
 | 2.6 Catalogs | done (#49) | done (M12, Bramble #928) |
 | 2.7 Swap | done (#50), behind the `mobile` feature | done (M13, Bramble #929), at `v0.3.0`: `mobile/core` is a shell over this crate |
 | Vault switch | done (V1 #58) | G4 done (Bramble #947); M14 done (Bramble #980): mobile pins `v0.4.0` |
-| [Mobile parity](#mobile-parity) | P6 done (#65), P2 done (#68); P1's mechanism done (P1a #70, P1b #71, P1c #72), not exported until Krusty exports a selector and signature verification; P3 done (#80), not shippable until Bramble's imported-key v13 fixture lands; P4 done (#78), no fixture yet (needs a Bramble generator); P5 not started | not started |
-| [Parity](#parity) P7–P16 | not started; next, after P5 and `0.5.0` | not started |
+| [Mobile parity](#mobile-parity) | P6 done (#65), P2 done (#68); P1's mechanism done (P1a #70, P1b #71, P1c #72), not exported until Krusty exports a selector and signature verification; P3 done (#80), not shippable until Bramble's imported-key v13 fixture lands; P4 done (#78), no fixture yet (needs a Bramble generator); P5 done (#83), no fixture yet | not started |
+| [Parity](#parity) P7–P16 | P7's first half done (#87): every v13 collection is read and what mobile does not operate is kept unused; schema 14 remains. P9's mechanism done (#84), not exported: it waits on Krusty's selector (krusty-kms#257) and on the review's annotation flags. P10 done (#86). P12's read side done (#85), not exported; its revoke waits on P9. None has a fixture yet (G7). P8, P11 and P13–P16 not started | not started |
 | 3 Extension | not started, and waits for parity; `js/package.json` is private | n/a |
 
 `v0.1.0` is tagged at `35abc8b` (GitHub release only) and was what M2 and M3 pinned. `v0.2.0`
@@ -95,20 +95,22 @@ against `feature/mobile-wallet`, where `mobile/core` and the generators live (`m
 The rest are PRs here. Phase 2's PRs (M1–M14, G1–G4, A1, A2, F1–F3, V1, K1 and the ports) are
 all merged; each is described under its step in [Phases](#phases).
 
-In order (#77–#81 merged 2026-11-21). The first four finish [Mobile parity](#mobile-parity);
+In order (#77–#81 merged 2026-11-21). The first three finish [Mobile parity](#mobile-parity);
 the rest are [Parity](#parity), where each step is described. P1's export waits on Krusty, so it
-does not hold the tag or the steps after it.
+does not hold the tag or the steps after it. #83–#87 (2026-11-21) landed P5 and the core halves
+of P7, P9, P10 and P12 together, at the product owner's request: five steps ahead of mobile,
+where [Process](#process) says one, and each on unit tests ported from the extension's own, with
+its generator owed to G7.
 
 | PR | Repo, base | Needs | What it is |
 | --- | --- | --- | --- |
-| P5 Stark names | here | a generator | now wanted, as every extension feature is. The extension resolves a typed name to an address only (`domain_to_address`, `packages/platform/starknet/src/rpc/stark-name.ts`), so P5 is that one direction; the address → name half its paragraph below describes has no oracle and is dropped |
-| `0.5.0`, then M15 | here; Bramble, `feature/mobile-wallet` | the row above | the tag, and mobile taking it: the relay loops #77 changes, and the screens for P2–P6 |
-| G7 | Bramble, `feature/mobile-wallet` | — | the generators P1, P3 and P4 landed without: an imported-key vault, the RPC override rules, the multisig import cases and the call summaries beyond an ERC-20 transfer |
+| `0.5.0`, then M15 | here; Bramble, `feature/mobile-wallet` | — | the tag, and mobile taking it: the relay loops #77 changes, the screens for P2–P6 and P10 (activity filter, counterparty summary and CSV export), and Stark-name lookup in the send form (P5) |
+| G7 | Bramble, `feature/mobile-wallet` | — | the generators P1, P3 and P4 landed without: an imported-key vault, the RPC override rules, the multisig import cases and the call summaries beyond an ERC-20 transfer. And the ones #83–#87 landed without: Stark-name normalisation, calldata and judging (P5); G4 extended to a v13 vault with every collection filled (P7); a multicall and a refused batch through `submitInvokeTransaction` (P9); the CSV, filter and counterparty summary over one feed (P10); `Approval` decoding, a scan with legacy windows, the merge, eviction and settling (P12) |
 | P1 export | here, then Bramble | krusty-kms#257 (open) | whenever Krusty ships it: the bump that exports a selector and signature verification, an implementation of `StarkPrimitives` over it, P1's FFI surface, and its screens in the tag after |
-| P7 Vault: all of v13, then v14 | here | a generator | first of the new steps; Ledger, STRK20 and dapp connect (P8, P15, P16) store into collections V1 refuses |
-| P8 Ledger | here | P7, and the transport question | moved up 2026-11-21: every extension user has it, and a Ledger user cannot use mobile without it |
-| P9 Call batches | here | a generator | the plan signs only a transfer or a deployment today; P11–P13 and P16 submit calls |
-| P10–P16 | here, each with its generator and its mobile PR | P7, P9 | activity export, swap, allowances, staking, gasless, STRK20 submission, dapp connect |
+| P7 Vault: schema 14 | here | a generator, and the product owner's answers | the second half: `accountProvenance` (`release/v0.10.11`). The first half (#87) left questions open: whether kept accounts are listed, what an active kept account means, and whether a record that fails mobile's stronger rules is kept unused rather than refusing the vault |
+| P8 Ledger | here | the transport question | moved up 2026-11-21: every extension user has it, and a Ledger user cannot use mobile without it. #87 reads and keeps a Ledger account; P8 makes it usable |
+| P9 flags and export | here | krusty-kms#257 (open), a generator | the mechanism is in (#84), with no export. Owed before one: the review's annotation flags (`verify.ts`: unknown contract, unlimited and operator approvals, a swap's foreign beneficiary, an undecoded swap) and a selector from Krusty, as for P1 |
+| P11, P13–P16, and the rest of P12 | here, each with its generator and its mobile PR | P9's export | swap, staking, gasless, STRK20 submission, dapp connect; for allowances (read side in, #85) the revoke, recording submitted approvals, and the UniFFI export |
 | Extension Krusty 3 | Bramble, `main` | — | the extension still pins `@starknetfoundation/krusty-kms-wasm` `0.11.0`, which predates the fix (Krusty 3.0 changed the derivation; 2.0.0 and earlier kept the leading zero bytes), so its keys and mobile's part for affected phrases. Its users have funds, so it follows Krusty's [migration guide](https://github.com/starknet-innovation/krusty-kms/blob/v3.0.0/docs/migration-3.0.md): keep the old key for any existing account whose public key differs. Needed before Phase 3, where the extension takes this crate's Krusty |
 
 ### Mobile parity
