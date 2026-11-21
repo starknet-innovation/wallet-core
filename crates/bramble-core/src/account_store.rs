@@ -5,7 +5,8 @@
 //! `vault_v13` reads and writes the sealed form, the extension's schema v13 or v14, and keeps what
 //! mobile does not operate (`kept`) out of `accounts`, so nothing that lists, selects or signs
 //! reaches it; only its ids (`holds`) and public addresses (`own_addresses`) are read beyond the
-//! vault codec. A v14 vault's `accountProvenance` is held whole (`vault_provenance`).
+//! vault codec. A v14 vault's `accountProvenance` is held whole and kept up to date
+//! (`vault_provenance`).
 //!
 //! Nothing stored is trusted blindly. `validate` checks every field, and re-derives every record
 //! from its key (the phrase's, or an imported account's sealed one) and compares it with what was
@@ -25,7 +26,7 @@ use crate::files::storage;
 use crate::groups::StoredGroup;
 use crate::kms::Ladder;
 use crate::networks::NetworkId;
-use crate::vault_provenance::Provenance;
+use crate::vault_provenance::{Origin, Provenance};
 use crate::vault_v13::NEW_VAULT_SCHEMA;
 use crate::vault_wire::Kept;
 use crate::{felt, kms, CoreError};
@@ -155,6 +156,7 @@ pub(crate) struct VaultPayload {
 /// The non-secret state a mutation may change, captured so a failed write can be rolled back.
 pub(crate) struct PublicState {
     accounts: Vec<StoredAccount>,
+    account_provenance: Option<Provenance>,
     active_account_id: Option<String>,
     backup_pending: bool,
     groups: Vec<StoredGroup>,
@@ -182,8 +184,7 @@ impl VaultPayload {
                 None,
                 network,
             )?;
-            payload.active_account_id = Some(record.id.clone());
-            payload.accounts.push(record);
+            push_active(&mut payload, record, None, Some(Origin::Created))?;
         }
         Ok(payload)
     }
@@ -323,6 +324,7 @@ impl VaultPayload {
     pub(crate) fn snapshot(&self) -> PublicState {
         PublicState {
             accounts: self.accounts.clone(),
+            account_provenance: self.account_provenance.clone(),
             active_account_id: self.active_account_id.clone(),
             backup_pending: self.backup_pending,
             groups: self.groups.clone(),
@@ -332,7 +334,8 @@ impl VaultPayload {
         }
     }
 
-    /// Whether the sealed part (accounts, active account) moved since `before`.
+    /// Whether the sealed part (accounts, active account) moved since `before`. An origin is only
+    /// ever recorded beside a new account.
     pub(crate) fn vault_changed(&self, before: &PublicState) -> bool {
         self.accounts != before.accounts || self.active_account_id != before.active_account_id
     }
@@ -349,6 +352,7 @@ impl VaultPayload {
 
     pub(crate) fn restore(&mut self, state: PublicState) {
         self.accounts = state.accounts;
+        self.account_provenance = state.account_provenance;
         self.active_account_id = state.active_account_id;
         self.backup_pending = state.backup_pending;
         self.groups = state.groups;
@@ -360,6 +364,32 @@ impl VaultPayload {
             .retain(|id, _| accounts.iter().any(|record| &record.id == id));
         self.rpc_overrides = state.rpc_overrides;
     }
+}
+
+/// Adds `record` as the active account, with `key` sealed under it when it is imported and, at
+/// 14, `origin` recorded for it (`VaultPayload::note_origin`).
+pub(crate) fn push_active(
+    payload: &mut VaultPayload,
+    record: StoredAccount,
+    key: Option<Box<SecretFelt>>,
+    origin: Option<Origin>,
+) -> Result<(), CoreError> {
+    let refuse = |reason: &str| CoreError::InvalidInput {
+        reason: reason.into(),
+    };
+    if payload.holds(&record.id) {
+        return Err(refuse("account already exists"));
+    }
+    if payload.record_count() >= MAX_ACCOUNT_RECORDS {
+        return Err(refuse("account limit reached"));
+    }
+    if let Some(key) = key {
+        payload.imported_keys.insert(record.id.clone(), key);
+    }
+    payload.note_origin(&record.id, origin);
+    payload.active_account_id = Some(record.id.clone());
+    payload.accounts.push(record);
+    Ok(())
 }
 
 /// Places an already-derived public key under a family, class, and salt on one network.

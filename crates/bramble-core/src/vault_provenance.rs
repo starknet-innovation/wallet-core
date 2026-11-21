@@ -14,7 +14,8 @@ use std::fmt;
 use serde::de::{Deserializer, Error, MapAccess, Visitor};
 use serde::{Deserialize, Serialize};
 
-use crate::account_store::MAX_ACCOUNT_RECORDS;
+use crate::account_store::{VaultPayload, MAX_ACCOUNT_RECORDS};
+use crate::vault_v13::PROVENANCE_SCHEMA;
 use crate::vault_wire::Account;
 
 /// `AccountProvenance`.
@@ -67,6 +68,29 @@ pub(crate) fn is_valid(provenance: Option<&Provenance>, accounts: &[Account]) ->
     };
     let held: HashSet<&str> = accounts.iter().map(|account| account.id.as_str()).collect();
     entries.keys().all(|id| held.contains(id.as_str()))
+}
+
+impl VaultPayload {
+    /// Records how `account_id`, just added, entered the vault, as the extension's service does
+    /// at 14 (`created` for an account derived here, `imported` for a pasted key, the source's
+    /// origin for a projection onto another network, nothing when that is unknown). A v13 vault
+    /// records nothing.
+    pub(crate) fn note_origin(&mut self, account_id: &str, origin: Option<Origin>) {
+        let Some(origin) = origin else { return };
+        if self.schema_version >= PROVENANCE_SCHEMA {
+            self.account_provenance
+                .get_or_insert_with(Provenance::default)
+                .0
+                .insert(account_id.into(), origin);
+        }
+    }
+
+    /// The origin the vault records for `account_id`, if any.
+    pub(crate) fn origin_of(&self, account_id: &str) -> Option<Origin> {
+        self.account_provenance
+            .as_ref()
+            .and_then(|Provenance(entries)| entries.get(account_id).copied())
+    }
 }
 
 #[cfg(test)]
