@@ -104,6 +104,10 @@ fn the_v14_validator_refuses_what_the_extension_refuses() {
             Box::new(|p| p["accountProvenance"][&main] = "Created".into()),
         ),
         (
+            "an origin in serde's map form",
+            Box::new(|p| p["accountProvenance"][&main] = json!({ "created": null })),
+        ),
+        (
             "a null origin",
             Box::new(|p| p["accountProvenance"][&main] = Value::Null),
         ),

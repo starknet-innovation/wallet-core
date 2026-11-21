@@ -19,11 +19,36 @@ use crate::vault_v13::PROVENANCE_SCHEMA;
 use crate::vault_wire::Account;
 
 /// `AccountProvenance`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum Origin {
     Created,
     Imported,
+}
+
+/// Only the strings `created` and `imported`, as `validAccountProvenance` compares them. A
+/// derived enum would also take serde's map form (`{"created":null}`), which the extension
+/// refuses.
+impl<'de> Deserialize<'de> for Origin {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct Label;
+        impl Visitor<'_> for Label {
+            type Value = Origin;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("\"created\" or \"imported\"")
+            }
+
+            fn visit_str<E: Error>(self, value: &str) -> Result<Origin, E> {
+                match value {
+                    "created" => Ok(Origin::Created),
+                    "imported" => Ok(Origin::Imported),
+                    _ => Err(E::custom("unknown account origin")),
+                }
+            }
+        }
+        deserializer.deserialize_str(Label)
+    }
 }
 
 /// The vault's `accountProvenance`, by account id. Public data only.
@@ -121,6 +146,7 @@ mod tests {
             r#"{"SN_MAIN:0x1":"Created"}"#,
             r#"{"SN_MAIN:0x1":null}"#,
             r#"{"SN_MAIN:0x1":1}"#,
+            r#"{"SN_MAIN:0x1":{"created":null}}"#,
         ] {
             assert!(
                 serde_json::from_str::<Provenance>(refused).is_err(),
