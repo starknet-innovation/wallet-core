@@ -126,8 +126,8 @@ pub use wallet_accounts::AccountRecord;
 
 // Portfolio and activity (mobile/docs/portfolio-activity.md).
 pub use history::activity::{
-    activity_fee_text, activity_value_text, ActivityEntry, ActivityOrigin, FailureNotice,
-    SubmittedPrice, TransactionFee, TransferDirection,
+    activity_csv, activity_csv_file_name, activity_fee_text, activity_value_text, ActivityEntry,
+    ActivityOrigin, FailureNotice, SubmittedPrice, TransactionFee, TransferDirection,
 };
 pub use history::activity_book::{ActivityBook, ActivityView};
 pub use history::appearance::{
@@ -136,6 +136,12 @@ pub use history::appearance::{
 };
 pub use history::events::{HistoryScan, ScanStep};
 pub use history::explorer::{activity_account_id, explorer_transaction_url};
+pub use history::filter::{
+    activity_filter_options, activity_party_summary, activity_party_summary_parts, filter_activity,
+    reconcile_activity_filter, ActivityContact, ActivityFilter, ActivityFilterOptions,
+    ActivityPartySummary, ActivityPartySummaryParts, ActivitySort, ActivityTokenOption,
+    ActivityTokenTotal,
+};
 pub use portfolio::fiat::{
     compact_amount, fiat_value_text, format_fiat, portfolio_amount, portfolio_hero, token_row_fiat,
     token_sparkline, ChangeBadge, FiatDelta, PortfolioHero, Sparkline, SparklinePoint,

@@ -65,6 +65,20 @@ pub fn format_utc_clock(epoch_ms: Option<f64>) -> Option<String> {
     parts(epoch_ms).map(|(_, _, _, h, min)| format!("{h:02}:{min:02} UTC"))
 }
 
+/// `toUtcDateTime` (`activity-csv.ts`): `2023-11-14 22:13:20`, milliseconds dropped, for any
+/// time value (the epoch included), unlike the display formatters above.
+pub fn format_utc_date_time(epoch_ms: u64) -> String {
+    let seconds = epoch_ms / 1000;
+    let (year, month, day) = civil_from_days((seconds / 86_400) as i64);
+    let in_day = seconds % 86_400;
+    format!(
+        "{year:04}-{month:02}-{day:02} {:02}:{:02}:{:02}",
+        in_day / 3600,
+        in_day / 60 % 60,
+        in_day % 60
+    )
+}
+
 /// `utcDayKey`.
 pub fn utc_day_key(epoch_ms: f64) -> i64 {
     (epoch_ms / DAY_MS).floor() as i64

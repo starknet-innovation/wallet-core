@@ -401,6 +401,32 @@ Features, smallest and least dependent first:
 - **P10 Activity filter and CSV export.** `transactions/src/activity/activity-csv.ts`, and the
   filter in `wallet-ui`'s `portfolio/activity-filter.ts`. Small, and no longer left to the apps:
   two apps would write it twice.
+  As built (core half, against Bramble `a01b240c`): `activity::csv::activity_to_csv` is
+  `activityToCsv` cell for cell (the header, every cell quoted, the formula guard of
+  MCW-V09-123 on every cell, the rebuilt transfer summary, `\n` between rows and none after);
+  the value column shares `activity::detail::submitted_value` with the expanded row, so the two
+  price the same rows. `history::filter` is the feed's filter, amount sort and stale-axis
+  reset (`ActivityFilter`, `activityFilterOptions`, `activityTokenKey`, `activitySearchIndex`,
+  `activityRowMatches`, `activityAmountComparator`, `reconcileActivityFilter`), and
+  `history::party` the summary above a search that names one counterparty
+  (`activityPartySummary`, `activityPartySummaryParts`, with unbounded `bigint` totals): the
+  extension writes each row's facts onto its DOM node and filters and summarises the nodes,
+  the core reads the same facts off the `ActivityEntry` through `activity_row_model`.
+  `bramble-core` exports `activity_csv` (the text; the host writes and shares the file),
+  `activity_csv_file_name` (`bramble-activity.csv`, Bramble's), `activity_filter_options`,
+  `reconcile_activity_filter`, `filter_activity`, `activity_party_summary` (none while the
+  search is blank, as in `activity-ui.ts`) and `activity_party_summary_parts`.
+  Found on the way: `activity_row_model` resolved a row's tracked token by symbol alone, where
+  `activityTrackedToken` also requires the recorded token address to be that token's
+  (Sherlock 249); `activity_tracked_token` now follows it, so a spam contract recorded under a
+  tracked symbol no longer takes the tracked token's logo or decimals. The golden row fixture
+  passes unchanged. Departures: an axis's `all` is `None`; the explorer link comes from the
+  caller's network catalog. Left out: `activityContacts` (it reads preferences; the host
+  passes the contacts a search resolves) and `activityExportToast` (screen copy). The
+  extension's export is one account's whole feed, unfiltered. Unit-tested only: the
+  extension's own cases for these files are ported with their expected strings, plus the
+  branches they leave out; a Bramble generator writing the CSV, the filtered rows and the
+  summary over one feed is still owed.
 - **P11 Token swap.** The AVNU quote and build as sans-IO bodies and reply judges, like the price
   book's: `transactions/src/swap/` (420), `wallet-model/src/swap/` (319) and the background's
   `transactions/swap-{inputs,preparations,build-policy,value-check,ops}.ts`. Needs P9.
