@@ -31,6 +31,12 @@ pub fn utf16_len(value: &str) -> usize {
     value.encode_utf16().count()
 }
 
+/// `left < right` on strings: UTF-16 code-unit order, which differs from `str`'s byte order
+/// above U+FFFF.
+pub fn utf16_cmp(left: &str, right: &str) -> std::cmp::Ordering {
+    left.encode_utf16().cmp(right.encode_utf16())
+}
+
 /// `string.slice(start, end)` over UTF-16 code units, with an end past the string clamped.
 pub fn utf16_slice(value: &str, start: usize, end: usize) -> String {
     let units: Vec<u16> = value.encode_utf16().collect();
