@@ -113,6 +113,26 @@ fn canonical_non_zero(value: &str) -> Option<String> {
     canonical_felt(value).filter(|felt| is_non_zero_felt(felt))
 }
 
+// The distinct spenders, in first-seen order, stopping one past `cap`: that is enough to know
+// the cap was passed. A node that ignores `chunk_size` can send a page of hundreds of thousands,
+// so nothing here grows with the input, which is what keeps the scan linear.
+pub(super) fn distinct_spenders<'a>(
+    spenders: impl Iterator<Item = &'a String>,
+    cap: usize,
+) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut distinct = Vec::new();
+    for spender in spenders {
+        if distinct.len() > cap {
+            break;
+        }
+        if seen.insert(spender) {
+            distinct.push(spender.clone());
+        }
+    }
+    distinct
+}
+
 impl ExternalAllowanceScan {
     /// A scan of `owner`'s approvals on `tokens` (each kept only when a non-zero felt). An owner
     /// that is not one, or no token, finishes at once: empty and complete.
@@ -361,19 +381,8 @@ impl ExternalAllowanceScan {
 
     // `discoverSpenders`: the distinct spenders of both reads, at most the cap.
     fn start_reads(&mut self, log_complete: bool) {
-        // A node that ignores `chunk_size` can send a page of hundreds of thousands: linear, and
-        // one past the cap is enough to know the cap was passed.
         let cap = self.policy.max_spenders_per_token;
-        let mut seen = HashSet::new();
-        let mut spenders: Vec<String> = Vec::new();
-        for spender in self.state.owned.iter().chain(&self.state.log) {
-            if spenders.len() > cap {
-                break;
-            }
-            if seen.insert(spender) {
-                spenders.push(spender.clone());
-            }
-        }
+        let mut spenders = distinct_spenders(self.state.owned.iter().chain(&self.state.log), cap);
         self.state.token_complete =
             !self.state.owned_truncated && log_complete && spenders.len() <= cap;
         spenders.truncate(cap);
