@@ -347,3 +347,31 @@ fn multisig_viewing_keys() {
         p
     }));
 }
+
+/// Not the extension's case: a vault past the size budget is refused before the rules run. Forty
+/// thousand Ledger records under one grant cost the rules' scans quadratic time (about 5 s in a
+/// debug build, against 0.1 s); the budget refuses any array past 4,096 entries at once.
+#[test]
+fn the_budget_refuses_before_the_rules_run() {
+    let mut payload = full();
+    let ledger = payload["accounts"][2].clone();
+    assert_eq!(ledger["derivation"]["kind"], "ledger");
+    let ids: Vec<String> = (1..=40_000u32)
+        .map(|i| format!("SN_SEPOLIA:0x{i:x}"))
+        .collect();
+    let accounts = payload["accounts"].as_array_mut().unwrap();
+    for id in &ids {
+        let mut record = ledger.clone();
+        record["address"] = id.split_once(':').unwrap().1.into();
+        record["id"] = id.as_str().into();
+        accounts.push(record);
+    }
+    payload["originGrants"] = json!([{ "accountIds": ids, "origin": ORIGIN }]);
+    let started = std::time::Instant::now();
+    assert!(!opens(&payload));
+    assert!(
+        started.elapsed().as_millis() < 2_000,
+        "{:?}",
+        started.elapsed()
+    );
+}

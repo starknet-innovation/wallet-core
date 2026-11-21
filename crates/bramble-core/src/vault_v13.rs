@@ -191,9 +191,13 @@ pub(crate) fn encode(payload: &VaultPayload) -> Result<Zeroizing<Vec<u8>>, CoreE
 /// Parses and validates a decrypted v13 payload in full. Labels, groups and the backup flag are
 /// not in the vault; the caller loads them (`public_store::load_preferences`).
 pub(crate) fn decode(plaintext: &[u8]) -> Result<VaultPayload, CoreError> {
+    // The size budget first: it is linear, and it bounds what the rules then scan.
+    if !vault_budget::within(plaintext) {
+        return Err(invalid());
+    }
     let mut vault: Vault = serde_json::from_slice(plaintext).map_err(|_| invalid())?;
     // The extension's rules over the whole vault, then mobile's: a phrase to run on.
-    if !vault_rules::is_valid(&vault) || !vault_budget::within(plaintext) {
+    if !vault_rules::is_valid(&vault) {
         return Err(invalid());
     }
     let mnemonic = vault.mnemonic.take().ok_or_else(invalid)?;
