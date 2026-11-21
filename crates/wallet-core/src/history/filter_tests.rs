@@ -86,7 +86,7 @@ fn ada() -> Vec<ActivityContact> {
     vec![contact(CONTACT, "Ada")]
 }
 
-fn with_token(entry: ActivityEntry, symbol: &str) -> ActivityEntry {
+pub(super) fn with_token(entry: ActivityEntry, symbol: &str) -> ActivityEntry {
     ActivityEntry {
         token: Some(symbol.into()),
         ..entry
@@ -105,14 +105,10 @@ fn query(text: &str) -> ActivityFilter {
     }
 }
 
-// `compareActivityByAmount` / `activityAmountComparator(pricing)` on two rows.
-fn compare(left: ActivityEntry, right: ActivityEntry, tracked: &[TokenConfig]) -> Ordering {
-    let key =
-        |entry: &ActivityEntry| token_key(entry, activity_row_model(entry, tracked).token_address);
-    by_amount(&(key(&left), left), &(key(&right), right))
-}
-
-fn by_amount_hashes(entries: Vec<ActivityEntry>, tracked: &[TokenConfig]) -> Vec<String> {
+pub(super) fn by_amount_hashes(
+    entries: Vec<ActivityEntry>,
+    tracked: &[TokenConfig],
+) -> Vec<String> {
     let filter = ActivityFilter {
         sort: ActivitySort::Amount,
         ..ActivityFilter::default()
@@ -272,54 +268,6 @@ fn an_absent_fact_matches_only_the_all_axis() {
     };
     assert!(!keeps(swapped(), token));
     assert!(!keeps(swapped(), query("ada")));
-}
-
-// compareActivityByAmount: "orders one token's rows by recorded amount descending, then newest
-// first".
-#[test]
-fn one_tokens_rows_order_by_amount_then_newest() {
-    let ordered = by_amount_hashes(vec![sent(), with_token(swapped(), "STRK"), received()], &[]);
-    assert_eq!(ordered, ["0x3", "0x2", "0x1"]);
-    let tied = ActivityEntry {
-        amount: Some("1.5".into()),
-        ..received()
-    };
-    assert_eq!(compare(tied, sent(), &[]), Ordering::Less);
-}
-
-// compareActivityByAmount: "groups by token so a raw amount is never compared across tokens".
-#[test]
-fn rows_group_by_token_before_amount() {
-    let row = |symbol, amount: &str, hash: &str| ActivityEntry {
-        amount: Some(amount.into()),
-        hash: hash.into(),
-        ..with_token(sent(), symbol)
-    };
-    let rows = vec![row("USDC", "2", "0xf"), row("ETH", "1", "0xe"), sent()];
-    // ETH, STRK, USDC: 2 USDC never outranks 1 ETH.
-    assert_eq!(by_amount_hashes(rows, &[]), ["0xe", "0x1", "0xf"]);
-}
-
-// compareActivityByAmount: "sorts a token-less row, and a row with no numeric amount, last".
-#[test]
-fn token_less_and_amountless_rows_sort_last() {
-    let undated = ActivityEntry {
-        amount: None,
-        hash: "0x0".into(),
-        summary: "Send 1 STRK".into(),
-        ..sent()
-    };
-    assert_eq!(compare(undated.clone(), sent(), &[]), Ordering::Greater);
-    assert_eq!(compare(sent(), undated.clone(), &[]), Ordering::Less);
-    // Two rows with no amount, in one token, keep the feed's newest-first order.
-    let newer = ActivityEntry {
-        submitted_at: undated.submitted_at + 1000,
-        ..undated.clone()
-    };
-    assert_eq!(compare(undated, newer, &[]), Ordering::Greater);
-    // A row with no token at all sorts after every token-bearing row.
-    assert_eq!(compare(swapped(), sent(), &[]), Ordering::Greater);
-    assert_eq!(compare(sent(), swapped(), &[]), Ordering::Less);
 }
 
 // token and counterparty identity: "a tracked token is keyed, offered and sorted by its address,

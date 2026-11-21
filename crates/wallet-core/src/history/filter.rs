@@ -8,6 +8,7 @@
 //! wallet assembles from its address book and its labelled accounts.
 
 use std::cmp::Ordering;
+use std::collections::HashMap;
 
 use super::activity::{ActivityEntry, TxStatus};
 use super::appearance::activity_row_model;
@@ -170,12 +171,17 @@ fn numeric_amount(amount: Option<&str>) -> Option<f64> {
     (!trimmed.is_empty() && value.is_finite()).then_some(value)
 }
 
-// `activityAmountComparator` over rows paired with their token keys: grouped by token (by symbol,
-// then key; a token-less row last), each token's rows by amount descending, then newest first;
-// a row with no numeric amount last within its token.
+// A row paired with its token key and that key's group symbol.
+type Keyed = (String, String, ActivityEntry);
+
+// `activityAmountComparator` over keyed rows: grouped by token (by symbol, then key; a token-less
+// row last), each token's rows by amount descending, then newest first; a row with no numeric
+// amount last within its token. The extension groups by each row's own symbol, which is no order
+// when one address is recorded under two symbols (`USDC`, `USDC.e`): Rust's sort panics on that,
+// so each key groups under one symbol, its first row's, as the token control labels it.
 fn by_amount(
-    (left_key, left): &(String, ActivityEntry),
-    (right_key, right): &(String, ActivityEntry),
+    (left_key, left_symbol, left): &Keyed,
+    (right_key, right_symbol, right): &Keyed,
 ) -> Ordering {
     if left_key != right_key {
         if left_key.is_empty() {
@@ -184,9 +190,7 @@ fn by_amount(
         if right_key.is_empty() {
             return Ordering::Less;
         }
-        let symbol = |entry| trimmed_token(entry).to_lowercase();
-        return utf16_cmp(&symbol(left), &symbol(right))
-            .then_with(|| utf16_cmp(left_key, right_key));
+        return utf16_cmp(left_symbol, right_symbol).then_with(|| utf16_cmp(left_key, right_key));
     }
     let newest_first = right.submitted_at.cmp(&left.submitted_at);
     match (
@@ -229,7 +233,7 @@ pub fn filter_activity(
     contacts: &[ActivityContact],
 ) -> Vec<ActivityEntry> {
     let query = js_trim(&filter.query).to_lowercase();
-    let mut rows: Vec<(String, ActivityEntry)> = entries
+    let rows: Vec<(String, ActivityEntry)> = entries
         .into_iter()
         .filter_map(|entry| {
             let model = activity_row_model(&entry, tracked);
@@ -243,10 +247,24 @@ pub fn filter_activity(
             keep.then_some((key, entry))
         })
         .collect();
-    if filter.sort == ActivitySort::Amount {
-        rows.sort_by(by_amount);
+    if filter.sort != ActivitySort::Amount {
+        return rows.into_iter().map(|(_, entry)| entry).collect();
     }
-    rows.into_iter().map(|(_, entry)| entry).collect()
+    let mut symbols: HashMap<String, String> = HashMap::new();
+    for (key, entry) in &rows {
+        symbols
+            .entry(key.clone())
+            .or_insert_with(|| trimmed_token(entry).to_lowercase());
+    }
+    let mut keyed: Vec<Keyed> = rows
+        .into_iter()
+        .map(|(key, entry)| {
+            let symbol = symbols.get(&key).cloned().unwrap_or_default();
+            (key, symbol, entry)
+        })
+        .collect();
+    keyed.sort_by(by_amount);
+    keyed.into_iter().map(|(_, _, entry)| entry).collect()
 }
 
 #[cfg(test)]
@@ -256,3 +274,7 @@ mod tests;
 #[cfg(test)]
 #[path = "filter_reconcile_tests.rs"]
 mod reconcile_tests;
+
+#[cfg(test)]
+#[path = "filter_sort_tests.rs"]
+mod sort_tests;
