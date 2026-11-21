@@ -102,7 +102,7 @@ steps after it.
 | PR | Repo, base | Needs | What it is |
 | --- | --- | --- | --- |
 | #77–#81 | here | — | open, checks green: mobile relay paging (#77), P4 custom RPC (#78), P1 import checks (#79), P3 private-key import (#80), the PBKDF2 timing (#81, plan only). #78 and #80 both edit `account_store.rs`, #77 and #78 `nostr_relay.rs`, so each rebases after the one before it |
-| P5 Stark names | here | — | now wanted, as every extension feature is |
+| P5 Stark names | here | a generator | now wanted, as every extension feature is. The extension resolves a typed name to an address only (`domain_to_address`, `packages/platform/starknet/src/rpc/stark-name.ts`), so P5 is that one direction; the address → name half its paragraph below describes has no oracle and is dropped |
 | `0.5.0`, then M15 | here; Bramble, `feature/mobile-wallet` | the two rows above | the tag, and mobile taking it: the relay loops #77 changes, and the screens for P2–P6 |
 | G7 | Bramble, `feature/mobile-wallet` | — | the generators P1, P3 and P4 landed without: an imported-key vault, the RPC override rules, the multisig import cases and the call summaries beyond an ERC-20 transfer |
 | P1 export | here, then Bramble | krusty-kms#257 (open) | whenever Krusty ships it: the bump that exports a selector and signature verification, an implementation of `StarkPrimitives` over it, P1's FFI surface, and its screens in the tag after |
@@ -236,11 +236,11 @@ Foundations, which the features need, and Ledger, which needs only the first:
   holding anything else, so a backup from an extension with a dapp grant, a Ledger account, a
   shadow account or a multisig viewing key does not open on mobile, and P8, P15 and P16 have
   nowhere to store. Port the rest of the extension's validators
-  (`packages/platform/vault/src/schema/`, 1,106 lines), so the reader accepts every v13 vault the extension accepts and writes back
-  unchanged what it does not use. Then follow v0.10.11's schema 14. #990 says that step changes
-  only the number; it does not: on `release/v0.10.11` it adds account provenance
-  (`schema-provenance.ts`, with a migration). Oracle: G4 extended to a vault with every
-  collection filled, then the same at 14.
+  (`packages/platform/vault/src/schema/`, 1,106 lines), so the reader accepts every v13 vault
+  the extension accepts and writes back unchanged what it does not use. Then follow v0.10.11's
+  schema 14. #990 says that step changes only the number; it does not: on `release/v0.10.11`
+  it adds account provenance (`schema-provenance.ts`, with a migration). Oracle: G4 extended to
+  a vault with every collection filled, then the same at 14.
 - **P8 Ledger.** Straight after the vault step: the extension ships it to every user (#990's
   "trusted testers" is wrong), so a Ledger user cannot use mobile at all until this lands. The
   device protocol and session as sans-IO APDU exchanges: `packages/platform/ledger-protocol/`
@@ -1264,7 +1264,7 @@ Added 2026-11-09 after reviewing the first day's work. Items marked *proposed* a
   behind mobile's build (Phase 2).
 - What makes a STRK20 proof on a phone (P15). The extension proves through a vendored JavaScript
   SDK; whether that prover has a Rust build, or the apps must run it some other way, is not
-  known. Settle before P15 is designed; P7–P14 do not wait on it.
+  known. Settle before P15 is designed; no other step waits on it.
 - What carries a dapp's requests on mobile (P16): WalletConnect, as #990 assumes, or something
   else. It decides which of the extension's provider rules the core can share unchanged.
 - Whether Ledger on mobile is Bluetooth only, and whether iOS can reach the device at all the way
