@@ -1,11 +1,13 @@
-//! `Invoke::new` against the extension's own cases, each named with its source. The plan's
+//! `Invoke::reviewed` against the extension's own cases, each named with its source. The plan's
 //! handling of a batch is in `bramble-core`'s `tests/transactions_invoke.rs`.
 
 use super::*;
 use crate::catalog::TokenInfo;
 use crate::kms::NetworkId;
+use crate::send::call_decode::Known;
 use crate::send::calls::{transfer_execute_calldata, TRANSFER_SELECTOR};
 use crate::send::fees::Headroom;
+use crate::send::review_flags::{ReviewContext, RiskFlag};
 use crate::send::types::Authorization;
 use crate::send::u256::U256;
 
@@ -75,18 +77,16 @@ const POLICY: Policy = Policy {
 
 fn invoke(calls: Vec<Call>) -> Result<Invoke, InvokeRefusal> {
     let tokens = [eth()];
-    let known = Known {
-        tokens: &tokens,
-        nft_contracts: &[],
+    let trusted = [felt(CONTACT)];
+    let context = ReviewContext {
+        known: Known {
+            tokens: &tokens,
+            nft_contracts: &[],
+        },
+        trusted: &trusted,
+        ..ReviewContext::default()
     };
-    Invoke::new(
-        &account(),
-        calls,
-        &POLICY,
-        &known,
-        &[felt(CONTACT)],
-        &Keccak,
-    )
+    Invoke::reviewed(&account(), calls, &POLICY, &context, &Keccak)
 }
 
 #[test]
@@ -286,5 +286,161 @@ fn every_call_names_a_contract_and_a_grammatical_entrypoint() {
     assert_eq!(
         invoke(vec![call("0x0", "transfer", &[])]),
         Err(InvokeRefusal::InvalidCall)
+    );
+}
+
+const UNKNOWN: &str = "0x6b17d1f2e12c4247f8bce6e563a40f2275d5e88540f0e9899d9ecfeeb8e0aff";
+const MAX_U128: &str = "0xffffffffffffffffffffffffffffffff";
+
+/// A transfer to the contact, then an unlimited approve on an unknown contract.
+fn transfer_then_approve() -> Vec<Call> {
+    vec![
+        call(ETH, "transfer", &[CONTACT, "0x1", "0x0"]),
+        call(UNKNOWN, "approve", &["0x999", MAX_U128, MAX_U128]),
+        call(UNKNOWN, "approve", &["0x998", MAX_U128, MAX_U128]),
+    ]
+}
+
+#[test]
+fn every_call_keeps_its_summary_kind_and_flags() {
+    let batch = invoke(transfer_then_approve()).unwrap();
+    // The multisig-shaped line is unchanged.
+    assert_eq!(
+        batch.summary(),
+        "Send 0.000000000000000001 ETH to 0x777a…bbcc (+2 more)"
+    );
+    let calls = batch.calls();
+    assert_eq!(calls.len(), 3);
+    assert_eq!(calls[0].kind, CallKind::Transfer);
+    assert_eq!(
+        calls[0].summary,
+        "Send 0.000000000000000001 ETH to 0x777a…bbcc"
+    );
+    assert!(calls[0].flags.is_empty());
+    assert_eq!(calls[1].kind, CallKind::Approve);
+    assert_eq!(
+        calls[1].summary,
+        "Authorize 0x999…x999 for amount or NFT #115792089237316195423570985008687907853269984665640564039457584007913129639935 on unknown contract 0x6b17…0aff"
+    );
+    let unknown = RiskFlag::UnknownContract {
+        contract: felt(UNKNOWN),
+    };
+    assert_eq!(
+        calls[1].flags,
+        [unknown.clone(), RiskFlag::UnlimitedApproval]
+    );
+    assert_eq!(calls[2].flags, calls[1].flags);
+    // The card's list: each line once, in call order (`dedupeFlags`).
+    assert_eq!(batch.flags(), [&unknown, &RiskFlag::UnlimitedApproval]);
+}
+
+#[test]
+fn the_whole_context_reaches_the_flags() {
+    // `Invoke::reviewed` with a pinned contract (`knownContracts`) and the caller's token list.
+    let tokens = [eth()];
+    let pinned = [felt(UNKNOWN)];
+    let contracts = [felt(CONTACT)];
+    let context = ReviewContext {
+        known: Known {
+            tokens: &tokens,
+            nft_contracts: &[],
+        },
+        trusted: &[],
+        known_contracts: &pinned,
+        token_contracts: &contracts,
+        standing: &[],
+    };
+    let batch = Invoke::reviewed(
+        &account(),
+        transfer_then_approve(),
+        &POLICY,
+        &context,
+        &Keccak,
+    )
+    .unwrap();
+    assert_eq!(
+        batch.flags(),
+        [
+            &RiskFlag::TokenContractRecipient,
+            &RiskFlag::UnlimitedApproval
+        ]
+    );
+    // The refusals still come first: a poisoned payee is refused, not flagged.
+    let trusted = [felt(CONTACT)];
+    let poisoned = vec![call(
+        ETH,
+        "transfer",
+        &[
+            "0x777aa7890abcdef9999999999999999999999999999999999999990aabbcc",
+            "0x1",
+            "0x0",
+        ],
+    )];
+    let context = ReviewContext {
+        trusted: &trusted,
+        ..context
+    };
+    assert_eq!(
+        Invoke::reviewed(&account(), poisoned, &POLICY, &context, &Keccak),
+        Err(InvokeRefusal::Review(CallReviewError::PoisonedRecipient))
+    );
+}
+
+#[test]
+fn the_activity_text_is_the_builders_or_the_review_line() {
+    let batch = invoke(transfer_then_approve()).unwrap();
+    assert_eq!(batch.activity_summary(), batch.summary());
+    // swap-ops.ts's line, kept as given.
+    let swap = "Swap 5 USDC for ~0.001 ETH via avnu";
+    assert_eq!(
+        batch.clone().with_activity_summary(swap).activity_summary(),
+        swap
+    );
+    // An empty text leaves the review line.
+    assert_eq!(
+        batch.clone().with_activity_summary("").activity_summary(),
+        batch.summary()
+    );
+    // `clampActivitySummary`: 200 UTF-16 units kept, 201 cut to 199 and an ellipsis.
+    let exact = "a".repeat(199) + "é";
+    assert_eq!(
+        batch
+            .clone()
+            .with_activity_summary(&exact)
+            .activity_summary(),
+        exact
+    );
+    let long = "a".repeat(199) + "😀";
+    assert_eq!(
+        batch
+            .clone()
+            .with_activity_summary(&long)
+            .activity_summary(),
+        "a".repeat(199) + "…"
+    );
+}
+
+#[test]
+fn a_dapps_batch_names_its_origin_and_its_own_count() {
+    // provider-ops.ts: "<activityOrigin(origin)> submitted N call(s)".
+    let three = invoke(transfer_then_approve()).unwrap();
+    assert_eq!(
+        three
+            .with_dapp_origin("https://app.avnu.fi")
+            .activity_summary(),
+        "https://app.avnu.fi submitted 3 calls"
+    );
+    let one = invoke(vec![call(ETH, "transfer", &[CONTACT, "0x1", "0x0"])]).unwrap();
+    // `activityOrigin`: 80 units kept; a longer origin keeps its last 79 behind an ellipsis.
+    let at_bound = format!("https://{}", "a".repeat(72));
+    assert_eq!(
+        one.clone().with_dapp_origin(&at_bound).activity_summary(),
+        format!("{at_bound} submitted 1 call")
+    );
+    let past = format!("https://app.example.com.{}.evil.io", "b".repeat(70));
+    let kept: String = past.chars().skip(past.chars().count() - 79).collect();
+    assert_eq!(
+        one.with_dapp_origin(&past).activity_summary(),
+        format!("…{kept} submitted 1 call")
     );
 }

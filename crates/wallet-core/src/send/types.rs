@@ -367,7 +367,7 @@ impl Transfer {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Kind {
     Transfer(Box<Transfer>),
-    /// A reviewed batch of calls, submitted as a transfer is (`Invoke::new`).
+    /// A reviewed batch of calls, submitted as a transfer is (`Invoke::reviewed`).
     Invoke(Box<Invoke>),
     /// The standalone Deploy account flow.
     Deployment,

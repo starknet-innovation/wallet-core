@@ -21,6 +21,9 @@ pub const AVNU_MULTI_ROUTE_SWAP: &str = "multi_route_swap";
 pub const AVNU_BENEFICIARY_FELT_INDEX: usize = 8;
 
 const APPROVE: [&str; 3] = ["approve", "increaseAllowance", "increase_allowance"];
+/// The duals that lower an allowance (`isDecreaseAllowanceEntrypoint`): never a grant, but the
+/// unlimited-approval rule subtracts them from its running total.
+pub const DECREASE_ALLOWANCE: [&str; 2] = ["decreaseAllowance", "decrease_allowance"];
 const OPERATOR_APPROVAL: [&str; 2] = ["setApprovalForAll", "set_approval_for_all"];
 const PLAIN_TRANSFER_FROM: [&str; 2] = ["transferFrom", "transfer_from"];
 const SAFE_TRANSFER_FROM: [&str; 2] = ["safeTransferFrom", "safe_transfer_from"];
@@ -36,6 +39,7 @@ pub struct Known<'a> {
 }
 
 impl Known<'_> {
+    /// `tokenFor`: the trusted token at `contract`.
     pub(crate) fn token(&self, contract: &Felt) -> Option<&TokenInfo> {
         let contract = felt::canonical(contract);
         self.tokens
@@ -43,12 +47,38 @@ impl Known<'_> {
             .find(|token| same_felt(&token.address, &contract))
     }
 
+    /// `isWatchedNftContract`.
     pub(crate) fn watches_nft(&self, contract: &Felt) -> bool {
         let contract = felt::canonical(contract);
         self.nft_contracts
             .iter()
             .any(|watched| same_felt(watched, &contract))
     }
+}
+
+/// `DecodedCallKind`: what a call does, in the terms the review explains. Each grant has its own
+/// kind, so no risk rule infers authority from a summary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CallKind {
+    /// Grants or raises an ERC-20 allowance (or an approve on a contract the wallet cannot place).
+    Approve,
+    /// Grants transfer rights over one item of a watched collection.
+    NftApproval,
+    /// Grants (or revokes) transfer rights over a whole collection.
+    OperatorApproval,
+    /// An AVNU route whose payee and floor were decoded.
+    Swap,
+    /// Moves value.
+    Transfer,
+    /// A call the wallet cannot describe.
+    Unknown,
+}
+
+/// `DecodedCall`, without the contract and entrypoint the caller already holds.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DecodedCall {
+    pub kind: CallKind,
+    pub summary: String,
 }
 
 /// `recipientFeltIndex`: which felt carries the address a call pays, from the selector alone.
@@ -230,21 +260,54 @@ fn avnu_swap(calldata: &[Felt], known: &Known) -> Option<String> {
     ))
 }
 
-/// `decodeCall(...).summary`: the review line for one call.
-pub fn call_summary(contract: &Felt, entrypoint: &str, calldata: &[Felt], known: &Known) -> String {
+/// `decodeCall`: the kind and review line for one call. A selector it does not know, or calldata
+/// that does not fit the shape, is `Unknown` with the opaque line.
+pub fn decode_call(
+    contract: &Felt,
+    entrypoint: &str,
+    calldata: &[Felt],
+    known: &Known,
+) -> DecodedCall {
     let decoded = match entrypoint {
-        "transfer" => transfer_or_approve(contract, entrypoint, calldata, known),
-        AVNU_MULTI_ROUTE_SWAP => avnu_swap(calldata, known),
-        _ if APPROVE.contains(&entrypoint) => {
-            transfer_or_approve(contract, entrypoint, calldata, known)
+        "transfer" => transfer_or_approve(contract, entrypoint, calldata, known)
+            .map(|summary| (CallKind::Transfer, summary)),
+        AVNU_MULTI_ROUTE_SWAP => {
+            avnu_swap(calldata, known).map(|summary| (CallKind::Swap, summary))
         }
-        _ if OPERATOR_APPROVAL.contains(&entrypoint) => operator_approval(contract, calldata),
-        _ if PLAIN_TRANSFER_FROM.contains(&entrypoint) => transfer_from(contract, calldata, known),
-        _ if SAFE_TRANSFER_FROM.contains(&entrypoint) => safe_transfer(calldata),
-        _ if BATCH_TRANSFER_FROM.contains(&entrypoint) => batch_transfer(contract, calldata),
+        _ if APPROVE.contains(&entrypoint) => {
+            let kind = if known.watches_nft(contract) {
+                CallKind::NftApproval
+            } else {
+                CallKind::Approve
+            };
+            transfer_or_approve(contract, entrypoint, calldata, known)
+                .map(|summary| (kind, summary))
+        }
+        _ if OPERATOR_APPROVAL.contains(&entrypoint) => operator_approval(contract, calldata)
+            .map(|summary| (CallKind::OperatorApproval, summary)),
+        _ if PLAIN_TRANSFER_FROM.contains(&entrypoint) => {
+            transfer_from(contract, calldata, known).map(|summary| (CallKind::Transfer, summary))
+        }
+        _ if SAFE_TRANSFER_FROM.contains(&entrypoint) => {
+            safe_transfer(calldata).map(|summary| (CallKind::Transfer, summary))
+        }
+        _ if BATCH_TRANSFER_FROM.contains(&entrypoint) => {
+            batch_transfer(contract, calldata).map(|summary| (CallKind::Transfer, summary))
+        }
         _ => None,
     };
-    decoded.unwrap_or_else(|| format!("Call {entrypoint} on {}", short(contract)))
+    let (kind, summary) = decoded.unwrap_or_else(|| {
+        (
+            CallKind::Unknown,
+            format!("Call {entrypoint} on {}", short(contract)),
+        )
+    });
+    DecodedCall { kind, summary }
+}
+
+/// `decodeCall(...).summary`: the review line for one call.
+pub fn call_summary(contract: &Felt, entrypoint: &str, calldata: &[Felt], known: &Known) -> String {
+    decode_call(contract, entrypoint, calldata, known).summary
 }
 
 #[cfg(test)]

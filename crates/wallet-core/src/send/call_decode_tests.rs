@@ -210,3 +210,61 @@ fn recipients_come_from_the_selector_alone() {
         None
     );
 }
+
+fn kind(entrypoint: &str, calldata: &[u64], known: &Known) -> CallKind {
+    decode_call(&Felt::from(CONTRACT), entrypoint, &felts(calldata), known).kind
+}
+
+#[test]
+fn every_decoder_names_its_kind() {
+    // `verify.test.ts` and `verify-nft-transfer.test.ts`: each decode's `kind`.
+    let none = Known::default();
+    let watched = [format!("0x{CONTRACT:x}")];
+    let nft = Known {
+        tokens: &[],
+        nft_contracts: &watched,
+    };
+    assert_eq!(kind("transfer", &[0x77, 1, 0], &none), CallKind::Transfer);
+    assert_eq!(kind("approve", &[0x77, 1, 0], &none), CallKind::Approve);
+    assert_eq!(
+        kind("increase_allowance", &[0x77, 1, 0], &none),
+        CallKind::Approve
+    );
+    assert_eq!(kind("approve", &[0x77, 1, 0], &nft), CallKind::NftApproval);
+    assert_eq!(
+        kind("set_approval_for_all", &[0x77, 1], &none),
+        CallKind::OperatorApproval
+    );
+    assert_eq!(
+        kind("transfer_from", &[1, 2, 5, 0], &none),
+        CallKind::Transfer
+    );
+    assert_eq!(
+        kind("safe_transfer_from", &[1, 2, 342, 0, 1, 0, 0], &none),
+        CallKind::Transfer
+    );
+    assert_eq!(
+        kind(
+            "safe_batch_transfer_from",
+            &[1, 2, 1, 7, 0, 1, 1, 0, 0],
+            &none
+        ),
+        CallKind::Transfer
+    );
+    // A known selector whose calldata does not fit, a non-canonical uint256 and an unknown
+    // selector are all opaque (`verify.test.ts`, `verify-fallback.test.ts`).
+    assert_eq!(
+        kind("transfer", &[1, 2, 0, 0xdead], &none),
+        CallKind::Unknown
+    );
+    assert_eq!(kind("multi_route_swap", &[1, 2], &none), CallKind::Unknown);
+    assert_eq!(kind("upgrade", &[1], &none), CallKind::Unknown);
+    let wide = decode_call(
+        &Felt::from(CONTRACT),
+        "approve",
+        &[Felt::from(0x999u64), Felt::TWO.pow(251u32), Felt::ZERO],
+        &none,
+    );
+    assert_eq!(wide.kind, CallKind::Unknown);
+    assert_eq!(wide.summary, opaque("approve"));
+}

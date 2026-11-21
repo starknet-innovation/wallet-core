@@ -28,6 +28,7 @@ mod plan_deploy;
 pub mod plan_probe;
 mod plan_review;
 mod plan_submit;
+pub mod review_flags;
 pub mod rpc_bodies;
 pub mod sign;
 pub mod types;
