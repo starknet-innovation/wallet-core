@@ -117,7 +117,10 @@ pub fn normalize_relay_url(raw: &str) -> Result<Option<String>, CoreError> {
     if trimmed.is_empty() {
         return Ok(None);
     }
-    if trimmed.len() >= 5 && trimmed[..5].eq_ignore_ascii_case("ws://") {
+    if trimmed
+        .get(..5)
+        .is_some_and(|scheme| scheme.eq_ignore_ascii_case("ws://"))
+    {
         return Err(CoreError::InvalidInput {
             reason: "mobile relays must use wss".into(),
         });

@@ -4,6 +4,8 @@
 //! the core that needs a chain's tokens, explorer or curated registry takes these records as an
 //! argument.
 
+use std::fmt;
+
 use crate::NetworkId;
 
 /// An ERC-20 a network's wallet home queries by default.
@@ -16,8 +18,10 @@ pub struct TokenInfo {
 }
 
 /// Public network metadata. RPC endpoints are tried in order; the host verifies
-/// `starknet_chainId` against `chain_id` before trusting any response.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// `starknet_chainId` against `chain_id` before trusting any response. A wallet's own endpoint
+/// may carry an API key, so `Debug` leaves `rpc_urls` out; redact failure text with
+/// `nostr::relay_url::redact_endpoints`.
+#[derive(Clone, PartialEq, Eq)]
 pub struct NetworkInfo {
     pub network: NetworkId,
     pub chain_id: String,
@@ -25,6 +29,18 @@ pub struct NetworkInfo {
     pub name: String,
     pub rpc_urls: Vec<String>,
     pub tokens: Vec<TokenInfo>,
+}
+
+impl fmt::Debug for NetworkInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("NetworkInfo")
+            .field("network", &self.network)
+            .field("chain_id", &self.chain_id)
+            .field("explorer_base_url", &self.explorer_base_url)
+            .field("name", &self.name)
+            .field("tokens", &self.tokens)
+            .finish_non_exhaustive()
+    }
 }
 
 /// One curated registry token (`knownTokensForNetwork`'s source), on the network its

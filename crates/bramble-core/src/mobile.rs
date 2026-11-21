@@ -52,6 +52,7 @@ mod records;
 mod recovery;
 mod recovery_scan;
 pub(crate) use wallet_core::rpc;
+mod rpc_override;
 mod rpc_request;
 mod security;
 mod send;
@@ -155,7 +156,8 @@ pub use portfolio::wire::{
     rpc_limits, HttpHeader, HttpMethod, HttpOutcome, HttpRequest, RpcLimits, RpcReply,
 };
 
-/// The bundled networks.
+/// The bundled networks, with only the bundled endpoints. An unlocked wallet's endpoints, its RPC
+/// overrides first, are `WalletCore::networks`; the host reads those.
 #[uniffi::export]
 pub fn supported_networks() -> Vec<NetworkInfo> {
     networks::all().to_vec()
