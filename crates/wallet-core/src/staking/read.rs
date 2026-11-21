@@ -82,21 +82,29 @@ pub struct PoolReading {
 
 /// A finished read, bound to the account and network it was read for. `facts` is `None` when
 /// the staking contract's answers were malformed, or it pays rewards in anything but `rewards`;
-/// then nothing else was read.
+/// then nothing else was read. Only `StakingRead::finish` makes one: a host cannot name a pool.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StakingReading {
-    pub network: NetworkId,
-    pub account: Felt,
-    pub staking_contract: Felt,
-    pub rewards: TokenInfo,
-    pub facts: Option<StakingFacts>,
-    pub pools: Vec<PoolReading>,
+    pub(crate) network: NetworkId,
+    pub(crate) account: Felt,
+    pub(crate) staking_contract: Felt,
+    pub(crate) rewards: TokenInfo,
+    pub(crate) facts: Option<StakingFacts>,
+    pub(crate) pools: Vec<PoolReading>,
 }
 
 impl StakingReading {
     /// Whether this reading was made for `account` on `network`.
     pub fn is_for(&self, account: &Felt, network: NetworkId) -> bool {
         self.account == *account && self.network == network
+    }
+
+    pub fn facts(&self) -> Option<&StakingFacts> {
+        self.facts.as_ref()
+    }
+
+    pub fn pools(&self) -> &[PoolReading] {
+        &self.pools
     }
 }
 

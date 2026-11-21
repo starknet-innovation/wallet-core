@@ -195,12 +195,31 @@ pub struct StakingPoolReads {
 /// A pool the wallet verified for a validator and token. `accepting` is false while the
 /// validator is leaving or was removed from the pool: members can still claim, exit and
 /// withdraw, but no new stake is built into it.
+/// Only `verify_staking_pool` makes one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct VerifiedPool {
-    pub accepting: bool,
-    pub commission: u16,
-    pub delegated: u128,
-    pub pool: Felt,
+    pub(crate) accepting: bool,
+    pub(crate) commission: u16,
+    pub(crate) delegated: u128,
+    pub(crate) pool: Felt,
+}
+
+impl VerifiedPool {
+    pub fn accepting(&self) -> bool {
+        self.accepting
+    }
+
+    pub fn commission(&self) -> u16 {
+        self.commission
+    }
+
+    pub fn delegated(&self) -> u128 {
+        self.delegated
+    }
+
+    pub fn pool(&self) -> Felt {
+        self.pool
+    }
 }
 
 /// `verifyStakingPool`: a pool is accepted only when the staking contract lists it as `staker`'s
