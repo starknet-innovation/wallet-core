@@ -6,6 +6,7 @@ use crate::catalog::TokenInfo;
 use crate::kms::NetworkId;
 use crate::send::calls::{transfer_execute_calldata, TRANSFER_SELECTOR};
 use crate::send::fees::Headroom;
+use crate::send::review_flags::{ReviewContext, RiskFlag};
 use crate::send::types::Authorization;
 use crate::send::u256::U256;
 
@@ -286,5 +287,102 @@ fn every_call_names_a_contract_and_a_grammatical_entrypoint() {
     assert_eq!(
         invoke(vec![call("0x0", "transfer", &[])]),
         Err(InvokeRefusal::InvalidCall)
+    );
+}
+
+const UNKNOWN: &str = "0x6b17d1f2e12c4247f8bce6e563a40f2275d5e88540f0e9899d9ecfeeb8e0aff";
+const MAX_U128: &str = "0xffffffffffffffffffffffffffffffff";
+
+/// A transfer to the contact, then an unlimited approve on an unknown contract.
+fn transfer_then_approve() -> Vec<Call> {
+    vec![
+        call(ETH, "transfer", &[CONTACT, "0x1", "0x0"]),
+        call(UNKNOWN, "approve", &["0x999", MAX_U128, MAX_U128]),
+        call(UNKNOWN, "approve", &["0x998", MAX_U128, MAX_U128]),
+    ]
+}
+
+#[test]
+fn every_call_keeps_its_summary_kind_and_flags() {
+    let batch = invoke(transfer_then_approve()).unwrap();
+    // The multisig-shaped line is unchanged.
+    assert_eq!(
+        batch.summary(),
+        "Send 0.000000000000000001 ETH to 0x777a…bbcc (+2 more)"
+    );
+    let calls = batch.calls();
+    assert_eq!(calls.len(), 3);
+    assert_eq!(calls[0].kind, CallKind::Transfer);
+    assert_eq!(
+        calls[0].summary,
+        "Send 0.000000000000000001 ETH to 0x777a…bbcc"
+    );
+    assert!(calls[0].flags.is_empty());
+    assert_eq!(calls[1].kind, CallKind::Approve);
+    assert_eq!(
+        calls[1].summary,
+        "Authorize 0x999…x999 for amount or NFT #115792089237316195423570985008687907853269984665640564039457584007913129639935 on unknown contract 0x6b17…0aff"
+    );
+    let unknown = RiskFlag::UnknownContract {
+        contract: felt(UNKNOWN),
+    };
+    assert_eq!(
+        calls[1].flags,
+        [unknown.clone(), RiskFlag::UnlimitedApproval]
+    );
+    assert_eq!(calls[2].flags, calls[1].flags);
+    // The card's list: each line once, in call order (`dedupeFlags`).
+    assert_eq!(batch.flags(), [&unknown, &RiskFlag::UnlimitedApproval]);
+}
+
+#[test]
+fn the_whole_context_reaches_the_flags() {
+    // `Invoke::reviewed` with a pinned contract (`knownContracts`) and the caller's token list.
+    let tokens = [eth()];
+    let pinned = [felt(UNKNOWN)];
+    let contracts = [felt(CONTACT)];
+    let context = ReviewContext {
+        known: Known {
+            tokens: &tokens,
+            nft_contracts: &[],
+        },
+        trusted: &[],
+        known_contracts: &pinned,
+        token_contracts: &contracts,
+        standing: &[],
+    };
+    let batch = Invoke::reviewed(
+        &account(),
+        transfer_then_approve(),
+        &POLICY,
+        &context,
+        &Keccak,
+    )
+    .unwrap();
+    assert_eq!(
+        batch.flags(),
+        [
+            &RiskFlag::TokenContractRecipient,
+            &RiskFlag::UnlimitedApproval
+        ]
+    );
+    // The refusals still come first: a poisoned payee is refused, not flagged.
+    let trusted = [felt(CONTACT)];
+    let poisoned = vec![call(
+        ETH,
+        "transfer",
+        &[
+            "0x777aa7890abcdef9999999999999999999999999999999999999990aabbcc",
+            "0x1",
+            "0x0",
+        ],
+    )];
+    let context = ReviewContext {
+        trusted: &trusted,
+        ..context
+    };
+    assert_eq!(
+        Invoke::reviewed(&account(), poisoned, &POLICY, &context, &Keccak),
+        Err(InvokeRefusal::Review(CallReviewError::PoisonedRecipient))
     );
 }

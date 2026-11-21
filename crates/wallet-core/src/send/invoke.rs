@@ -8,13 +8,17 @@
 //! plan signs the `__execute__` calldata derived here, from the calls the review read, and holds
 //! the batch to `check` again before it reads anything.
 //!
+//! Besides the line, the review keeps every call's `decodeCall` kind and summary and the annotation
+//! flags `verifyCalls` raises on it (`review_flags`).
+//!
 //! Krusty 3.1.0 has no selector (`starknet_keccak` of an entrypoint name), so, as for a multisig,
 //! the caller lends one through `multisig_invoke::StarkPrimitives`.
 
-use super::call_decode::Known;
+use super::call_decode::{decode_call, CallKind, Known};
 use super::calls::{execute_calldata, Call};
 use super::multisig_invoke::StarkPrimitives;
-use super::multisig_review::{summarise_calls, CallReviewError};
+use super::multisig_review::{batch_line, refuse_poisoned, CallReviewError};
+use super::review_flags::{call_flags, dedupe, ReviewContext, RiskFlag};
 use super::types::{Account, Policy};
 use crate::history::activity::MAX_SUMMARY_LENGTH;
 use crate::{Felt, NetworkId};
@@ -45,8 +49,8 @@ pub enum InvokeRefusal {
     Review(#[from] CallReviewError),
 }
 
-/// One reviewed batch. Built only by `Invoke::new`, so the calldata the plan signs is always the
-/// calls the review described.
+/// One reviewed batch. Built only by `Invoke::new` or `Invoke::reviewed`, so the calldata the plan
+/// signs is always the calls the review described.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Invoke {
     pub(crate) network: NetworkId,
@@ -54,6 +58,16 @@ pub struct Invoke {
     pub(crate) calls: Vec<Call>,
     pub(crate) calldata: Vec<Felt>,
     pub(crate) summary: String,
+    pub(crate) reviewed: Vec<ReviewedCall>,
+}
+
+/// One call as the review shows it: `decodeCall`'s kind and summary, and the flags `verifyCalls`
+/// raises on it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReviewedCall {
+    pub kind: CallKind,
+    pub summary: String,
+    pub flags: Vec<RiskFlag>,
 }
 
 /// `readProviderInvokeCall`'s entrypoint grammar: `^[A-Za-z_][A-Za-z0-9_]*$`, at most 64.
@@ -97,7 +111,8 @@ impl Invoke {
     /// batch (the plan's must be the same one, or the plan refuses it); `known` is the wallet's
     /// trusted tokens and watched collections on the account's network, for the summary;
     /// `trusted` every other address the person recognises there (as for `Transfer::new`), for
-    /// the poisoned-payee refusal.
+    /// the poisoned-payee refusal. The flags are read without pinned contracts, extra token contracts or
+    /// standing allowances; `Invoke::reviewed` takes them.
     pub fn new(
         account: &Account,
         calls: Vec<Call>,
@@ -106,29 +121,74 @@ impl Invoke {
         trusted: &[Felt],
         primitives: &dyn StarkPrimitives,
     ) -> Result<Self, InvokeRefusal> {
-        check(&account.address, &calls, policy)?;
-        let summary = summarise_calls(
-            &account.address,
-            &calls,
-            known,
+        let context = ReviewContext {
+            known: *known,
             trusted,
-            MAX_SUMMARY_LENGTH,
-            "",
-        )?;
+            ..ReviewContext::default()
+        };
+        Self::reviewed(account, calls, policy, &context, primitives)
+    }
+
+    /// `Invoke::new` with the whole of the wallet's review context (`verifyCalls` with its
+    /// `knownContracts` and `standing`).
+    pub fn reviewed(
+        account: &Account,
+        calls: Vec<Call>,
+        policy: &Policy,
+        context: &ReviewContext,
+        primitives: &dyn StarkPrimitives,
+    ) -> Result<Self, InvokeRefusal> {
+        check(&account.address, &calls, policy)?;
+        refuse_poisoned(&account.address, &calls, context.trusted)?;
+        let decoded: Vec<_> = calls
+            .iter()
+            .map(|call| {
+                decode_call(
+                    &call.contract_address,
+                    &call.entrypoint,
+                    &call.calldata,
+                    &context.known,
+                )
+            })
+            .collect();
+        let flags = call_flags(&calls, &decoded, account, context);
+        let summaries: Vec<&str> = decoded.iter().map(|call| call.summary.as_str()).collect();
+        let summary = batch_line(&summaries, MAX_SUMMARY_LENGTH, "");
         let calldata = execute_calldata(&calls, |entrypoint| primitives.selector(entrypoint))
             .ok_or(InvokeRefusal::InvalidCall)?;
+        let reviewed = decoded
+            .into_iter()
+            .zip(flags)
+            .map(|(call, flags)| ReviewedCall {
+                kind: call.kind,
+                summary: call.summary,
+                flags,
+            })
+            .collect();
         Ok(Self {
             network: account.network,
             sender: account.address,
             calls,
             calldata,
             summary,
+            reviewed,
         })
     }
 
     /// The review's line: the first call's summary and a count of the rest.
     pub fn summary(&self) -> &str {
         &self.summary
+    }
+
+    /// Every call as the review shows it, in batch order.
+    pub fn calls(&self) -> &[ReviewedCall] {
+        &self.reviewed
+    }
+
+    /// The batch's flags as the extension's card lists them: every call's, in order, each line
+    /// once (`dedupeFlags`).
+    pub fn flags(&self) -> Vec<&RiskFlag> {
+        dedupe(self.reviewed.iter().flat_map(|call| call.flags.iter()))
     }
 }
 

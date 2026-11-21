@@ -21,6 +21,9 @@ pub const AVNU_MULTI_ROUTE_SWAP: &str = "multi_route_swap";
 pub const AVNU_BENEFICIARY_FELT_INDEX: usize = 8;
 
 const APPROVE: [&str; 3] = ["approve", "increaseAllowance", "increase_allowance"];
+/// The duals that lower an allowance (`isDecreaseAllowanceEntrypoint`): never a grant, but the
+/// unlimited-approval rule subtracts them from its running total.
+pub const DECREASE_ALLOWANCE: [&str; 2] = ["decreaseAllowance", "decrease_allowance"];
 const OPERATOR_APPROVAL: [&str; 2] = ["setApprovalForAll", "set_approval_for_all"];
 const PLAIN_TRANSFER_FROM: [&str; 2] = ["transferFrom", "transfer_from"];
 const SAFE_TRANSFER_FROM: [&str; 2] = ["safeTransferFrom", "safe_transfer_from"];
