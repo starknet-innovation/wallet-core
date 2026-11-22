@@ -2,7 +2,7 @@
 //! (`avnu.test.ts`, `swap-ops.test.ts`, `swap-route-binding.test.ts`), one guard per case.
 
 use super::super::fixtures::*;
-use super::super::{BuildPolicyError, SwapActivity};
+use super::super::BuildPolicyError;
 use super::*;
 use crate::send::invoke::InvokeRefusal;
 use crate::NetworkId;
@@ -219,15 +219,7 @@ fn the_honest_build_prepares_with_its_review_and_activity() {
         preparation.min_buy_amount(),
         U256::from_u128(MIN_BUY_AMOUNT)
     );
-    let activity = SwapActivity {
-        summary: "Swap 0.01 ETH for ~12.5 STRK via avnu".into(),
-        amount: "0.01".into(),
-        symbol: "ETH".into(),
-        token_address: felt(ETH),
-    };
-    assert_eq!(preparation.activity(), &activity);
-    let (invoke, recorded) = preparation.into_invoke(&account()).unwrap();
-    assert_eq!(recorded, activity);
+    let invoke = preparation.into_invoke(&account()).unwrap();
     assert_eq!(invoke.calls, vec![approve_router(), route_call()]);
 }
 
@@ -247,6 +239,51 @@ fn a_preparation_is_released_only_to_its_own_account_and_network() {
             Err(SwapRefusal::PreparationChanged)
         );
     }
+}
+
+#[test]
+fn a_prepared_swap_hands_the_plan_its_router_approval_and_its_asset() {
+    use crate::allowances::calls::{AllowanceChange, ChangeKind};
+    use crate::allowances::record::AllowanceInput;
+    use crate::history::explorer::activity_account_id;
+    use crate::send::invoke::ActivityAsset;
+    use crate::send::plan::PendingKind;
+
+    let invoke = judge(&honest()).unwrap().into_invoke(&account()).unwrap();
+    let canonical = |value: &str| crate::felt::canonical(&felt(value));
+    let approval = AllowanceChange {
+        kind: ChangeKind::Set,
+        input: AllowanceInput {
+            account_id: activity_account_id(NetworkId::Mainnet, canonical(ACCOUNT)).unwrap(),
+            network: NetworkId::Mainnet,
+            token: canonical(ETH),
+            spender: canonical(ROUTER),
+            amount: U256::from_u128(SELL_AMOUNT),
+            lower_bound: false,
+        },
+    };
+    let asset = ActivityAsset {
+        amount: Some("0.01".into()),
+        symbol: "ETH".into(),
+        token_address: felt(ETH),
+    };
+    assert_eq!(
+        invoke.pending_kind(),
+        PendingKind::Invoke {
+            asset: Some(asset),
+            allowances: vec![approval],
+        }
+    );
+}
+
+#[test]
+fn the_activity_row_is_the_swap_line_not_the_review_line() {
+    let invoke = judge(&honest()).unwrap().into_invoke(&account()).unwrap();
+    assert_eq!(
+        invoke.activity_summary(),
+        "Swap 0.01 ETH for ~12.5 STRK via avnu"
+    );
+    assert_ne!(invoke.activity_summary(), invoke.summary());
 }
 
 #[test]

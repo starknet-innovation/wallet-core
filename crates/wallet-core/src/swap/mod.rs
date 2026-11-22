@@ -24,7 +24,7 @@ mod quote;
 
 pub use build::PendingBuild;
 pub use policy::{reviewed_min_buy_amount, BuildPolicyError};
-pub use prepare::{SwapActivity, SwapPreparation};
+pub use prepare::SwapPreparation;
 pub use quote::{PendingQuote, SwapQuote};
 
 use crate::js::json::{self, JsValue};
