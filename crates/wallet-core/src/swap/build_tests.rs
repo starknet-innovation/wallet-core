@@ -14,7 +14,11 @@ fn prepared(slippage: Option<f64>) -> Result<(PendingBuild, HttpRequest), SwapRe
 fn judge_with(status: u16, body: &str, send: &Policy) -> Result<SwapPreparation, SwapRefusal> {
     let tokens = tokens();
     let (build, _) = prepared(None).unwrap();
-    build.judge(&outcome(status, body), &known(&tokens), &[], send, &Keccak)
+    let context = ReviewContext {
+        known: known(&tokens),
+        ..ReviewContext::default()
+    };
+    build.judge(&outcome(status, body), &context, send, &Keccak)
 }
 
 fn judge(body: &str) -> Result<SwapPreparation, SwapRefusal> {
@@ -243,4 +247,58 @@ fn a_preparation_is_released_only_to_its_own_account_and_network() {
             Err(SwapRefusal::PreparationChanged)
         );
     }
+}
+
+#[test]
+fn the_pinned_router_raises_no_unknown_contract_flag() {
+    assert!(judge(&honest()).unwrap().flags().is_empty());
+    // The same batch reviewed without the pin reads the router as an unknown contract.
+    let tokens = tokens();
+    let unpinned = ReviewContext {
+        known: known(&tokens),
+        ..ReviewContext::default()
+    };
+    let calls = vec![approve_router(), route_call()];
+    let invoke = Invoke::reviewed(&account(), calls, &SEND_POLICY, &unpinned, &Keccak).unwrap();
+    let codes: Vec<_> = invoke.flags().iter().map(|flag| flag.code()).collect();
+    assert_eq!(codes, ["unknown-contract"]);
+}
+
+/// The batch review's poisoned-payee refusal is unreachable from a build: the policy refuses every
+/// transfer-family call, and the route's payee must be the account itself, which no lookalike is.
+/// So a payee mimicking a trusted address is refused there, before the review.
+#[test]
+fn a_payee_that_mimics_a_trusted_address_is_refused() {
+    use crate::send::calls::is_lookalike_address;
+    let mimic = "0x1234000000000000000000000000000000000000000000000000000000bcde";
+    assert!(is_lookalike_address(&felt(mimic), &felt(ACCOUNT)));
+    let tokens = tokens();
+    let trusted = [felt(ACCOUNT)];
+    let context = ReviewContext {
+        known: known(&tokens),
+        trusted: &trusted,
+        ..ReviewContext::default()
+    };
+    let judge = |calls: &[Call]| {
+        let (build, _) = prepared(None).unwrap();
+        build.judge(
+            &outcome(200, &build_reply(calls)),
+            &context,
+            &SEND_POLICY,
+            &Keccak,
+        )
+    };
+    let route = Route {
+        beneficiary: felt(mimic),
+        ..Route::honest()
+    };
+    assert_eq!(
+        judge(&[approve_router(), route.call()]).map(|_| ()),
+        Err(SwapRefusal::Policy(BuildPolicyError::BeneficiaryMismatch))
+    );
+    let transfer = call(ETH, "transfer", &[mimic, "0x1", "0x0"]);
+    assert_eq!(
+        judge(&[approve_router(), route_call(), transfer]).map(|_| ()),
+        Err(SwapRefusal::Policy(BuildPolicyError::DirectTransfer))
+    );
 }

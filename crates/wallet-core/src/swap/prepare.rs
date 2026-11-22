@@ -6,9 +6,10 @@ use super::{PendingBuild, SwapRefusal};
 use crate::felt;
 use crate::js::num::short_label;
 use crate::send::avnu_route::AvnuRoute;
-use crate::send::call_decode::{call_summary, Known, AVNU_MULTI_ROUTE_SWAP};
+use crate::send::call_decode::AVNU_MULTI_ROUTE_SWAP;
 use crate::send::calls::format_token_amount;
 use crate::send::invoke::Invoke;
+use crate::send::review_flags::RiskFlag;
 use crate::send::types::Account;
 use crate::send::u256::U256;
 use crate::{Felt, NetworkId};
@@ -40,12 +41,7 @@ pub struct SwapPreparation {
 }
 
 impl SwapPreparation {
-    pub(super) fn new(
-        build: PendingBuild,
-        invoke: Invoke,
-        route: &AvnuRoute,
-        known: &Known,
-    ) -> Self {
+    pub(super) fn new(build: PendingBuild, invoke: Invoke, route: &AvnuRoute) -> Self {
         let request = &build.quote.request;
         let (sell, buy) = (&request.sell.token, &request.buy.token);
         let min_buy_text = format_token_amount(&route.min_buy_amount, buy.decimals);
@@ -61,16 +57,12 @@ impl SwapPreparation {
         let summaries = invoke
             .calls
             .iter()
-            .map(|call| {
+            .zip(invoke.calls())
+            .map(|(call, reviewed)| {
                 if call.entrypoint == AVNU_MULTI_ROUTE_SWAP {
                     route_line.clone()
                 } else {
-                    call_summary(
-                        &call.contract_address,
-                        &call.entrypoint,
-                        &call.calldata,
-                        known,
-                    )
+                    reviewed.summary.clone()
                 }
             })
             .collect();
@@ -111,6 +103,11 @@ impl SwapPreparation {
 
     pub fn min_buy_amount_text(&self) -> &str {
         &self.min_buy_text
+    }
+
+    /// The review's flags (`report.flags`), as the batch review raised them.
+    pub fn flags(&self) -> Vec<&RiskFlag> {
+        self.invoke.flags()
     }
 
     /// The activity row to record for the hash the plan signs.
