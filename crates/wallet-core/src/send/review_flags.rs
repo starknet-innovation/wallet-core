@@ -21,9 +21,9 @@ use super::call_decode::{
 use super::calls::{short_label, Call};
 use super::types::Account;
 use super::u256::U256;
+use crate::allowances::calls::{standing_allowance_totals, AllowanceOwner};
 use crate::allowances::record::{is_unlimited, AllowanceRecord};
 use crate::felt;
-use crate::history::explorer::{activity_account_id, canonical_account_id};
 
 /// `RiskFlag`: one warning, with the extension's `code` and `message`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -117,29 +117,15 @@ fn short(value: &Felt) -> String {
 /// at all, by over-warning, the direction this annotation may err in.
 type Total = Option<U256>;
 
-/// `standingAllowanceTotals` for `actor`: its records on its network, for a trusted token; the
-/// last record of each pair wins, as `Map.set` does. A watched collection's records may be seeded
-/// too, unlike the extension's, but are never read: an approve on a watched collection is an
-/// `NftApproval`, which moves no total.
+/// `standingAllowanceTotals` under `allowanceOwner(actor)`, each amount a `Total`.
 fn standing_totals(actor: &Account, context: &ReviewContext) -> HashMap<(Felt, Felt), Total> {
-    let mut totals = HashMap::new();
-    let Ok(own) = activity_account_id(actor.network, felt::canonical(&actor.address)) else {
-        return totals;
+    let Some(owner) = AllowanceOwner::of(actor.network, &actor.address) else {
+        return HashMap::new();
     };
-    for record in context.standing {
-        let (Some(token), Some(spender)) =
-            (felt::parse(&record.token), felt::parse(&record.spender))
-        else {
-            continue;
-        };
-        if record.network == actor.network
-            && canonical_account_id(&record.account_id).as_ref() == Some(&own)
-            && context.known.token(&token).is_some()
-        {
-            totals.insert((token, spender), Some(record.amount));
-        }
-    }
-    totals
+    standing_allowance_totals(context.standing, &owner, &context.known)
+        .into_iter()
+        .map(|(pair, amount)| (pair, Some(amount)))
+        .collect()
 }
 
 /// `unlimitedApprovalCallIndexes`: whether each call is a grant whose running total for its

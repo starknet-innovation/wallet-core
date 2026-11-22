@@ -291,7 +291,8 @@ fn standing_totals_seed_only_the_owners_trusted_tokens() {
         stored(ACCOUNT, NetworkId::Mainnet, COLLECTION, amount("1")),
         stored(ACCOUNT, NetworkId::Mainnet, UNKNOWN, amount("1")),
     ];
-    let wide = Lists::new(&[TOKEN, "0x99", "0x98", UNKNOWN], &[COLLECTION]);
+    // A watched collection is not seeded even when it is also a trusted token.
+    let wide = Lists::new(&[TOKEN, "0x99", "0x98", UNKNOWN, COLLECTION], &[COLLECTION]);
     let mut totals: Vec<_> = standing_allowance_totals(&records, &owner(), &wide.known())
         .into_iter()
         .collect();

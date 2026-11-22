@@ -17,7 +17,7 @@ use super::record::{AllowanceInput, AllowanceRecord};
 use super::retention::Ranking;
 use super::store::{AllowanceDelta, AllowanceLog, DeltaDirection};
 use crate::felt;
-use crate::history::explorer::activity_account_id;
+use crate::history::explorer::{activity_account_id, canonical_account_id};
 use crate::send::call_decode::{uint256_at, Known};
 use crate::send::calls::Call;
 use crate::send::u256::U256;
@@ -189,8 +189,11 @@ pub fn record_changes(
 }
 
 /// `standingAllowanceTotals`: `owner`'s logged amounts by (token, spender), for the reviewer's
-/// unlimited-approval rule. Only trusted tokens are seeded, so an item id is never added to an
-/// amount; a lower bound is seeded at its bound. Every record is one this wallet wrote.
+/// unlimited-approval rule; the last record of a pair wins, as `Map.set` does. Only contracts
+/// `approved_asset_kind` calls fungible are seeded, so an item id is never added to an amount; a
+/// lower bound is seeded at its bound. Every record is one this wallet wrote. The account id is
+/// compared canonically: a loaded record's already is (`record` validates it), and a seed can
+/// only raise a warning, never hide one.
 pub fn standing_allowance_totals(
     records: &[AllowanceRecord],
     owner: &AllowanceOwner,
@@ -198,7 +201,10 @@ pub fn standing_allowance_totals(
 ) -> HashMap<(Felt, Felt), U256> {
     records
         .iter()
-        .filter(|r| r.account_id == owner.account_id && r.network == owner.network)
+        .filter(|r| {
+            r.network == owner.network
+                && canonical_account_id(&r.account_id).as_deref() == Some(&owner.account_id)
+        })
         .filter_map(|r| {
             let token = felt::parse(&r.token)?;
             let spender = felt::parse(&r.spender)?;
