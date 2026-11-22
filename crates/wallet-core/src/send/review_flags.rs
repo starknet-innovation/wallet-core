@@ -15,8 +15,8 @@ use std::fmt;
 use starknet_types_core::felt::Felt;
 
 use super::call_decode::{
-    recipient_for_flags, uint256_at, CallKind, DecodedCall, Known, AVNU_MULTI_ROUTE_SWAP,
-    DECREASE_ALLOWANCE,
+    recipient_for_flags, uint256_at, CallKind, DecodedCall, Known, APPROVE_SET,
+    AVNU_MULTI_ROUTE_SWAP, DECREASE_ALLOWANCE,
 };
 use super::calls::{short_label, Call};
 use super::types::Account;
@@ -156,7 +156,7 @@ fn unlimited_approvals(
                 )
             } else if decoded.kind != CallKind::Approve {
                 return false;
-            } else if call.entrypoint == "approve" {
+            } else if call.entrypoint == APPROVE_SET {
                 (true, Some(amount))
             } else {
                 (true, here.and_then(|here| here.checked_add(amount)))

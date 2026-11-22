@@ -18,7 +18,7 @@ use super::retention::Ranking;
 use super::store::{AllowanceDelta, AllowanceLog, DeltaDirection};
 use crate::felt;
 use crate::history::explorer::{activity_account_id, canonical_account_id};
-use crate::send::call_decode::{uint256_at, Known};
+use crate::send::call_decode::{uint256_at, Known, APPROVE, APPROVE_SET, DECREASE_ALLOWANCE};
 use crate::send::calls::Call;
 use crate::send::u256::U256;
 use crate::NetworkId;
@@ -76,14 +76,17 @@ pub struct AllowanceChange {
 }
 
 // `changeKind`, matched exactly (no case folding): the entrypoint is untrusted text, and an
-// unknown one decodes as nothing. The grant spellings are `call_decode`'s `APPROVE`; a test holds
-// the two lists together.
+// unknown one decodes as nothing. The spellings are `call_decode`'s, the reviewer's own, so the
+// two never disagree on what grants spend.
 fn change_kind(entrypoint: &str) -> Option<ChangeKind> {
-    match entrypoint {
-        "approve" => Some(ChangeKind::Set),
-        "increaseAllowance" | "increase_allowance" => Some(ChangeKind::Increase),
-        "decreaseAllowance" | "decrease_allowance" => Some(ChangeKind::Decrease),
-        _ => None,
+    if entrypoint == APPROVE_SET {
+        Some(ChangeKind::Set)
+    } else if APPROVE.contains(&entrypoint) {
+        Some(ChangeKind::Increase)
+    } else if DECREASE_ALLOWANCE.contains(&entrypoint) {
+        Some(ChangeKind::Decrease)
+    } else {
+        None
     }
 }
 

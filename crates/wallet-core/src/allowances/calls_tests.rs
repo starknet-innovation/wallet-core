@@ -5,7 +5,7 @@
 use super::calls::*;
 use super::record::AllowanceRecord;
 use crate::catalog::TokenInfo;
-use crate::send::call_decode::{call_summary, Known};
+use crate::send::call_decode::Known;
 use crate::send::calls::Call;
 use crate::send::u256::U256;
 use crate::{Felt, NetworkId};
@@ -147,23 +147,6 @@ fn ignores_non_allowance_case_variant_and_malformed_calls() {
     let mut wide = grant(TOKEN, "approve", "0x5", 1, 0);
     wide.calldata[2] = f("0x100000000000000000000000000000000");
     assert_eq!(decode_allowance_call(&wide), None);
-}
-
-#[test]
-fn every_grant_spelling_is_one_the_reviewer_summarises_as_a_grant() {
-    // The bookkeeping and `call_decode`'s vocabulary must agree on what grants spend.
-    let lists = Lists::standard();
-    for entrypoint in ["approve", "increaseAllowance", "increase_allowance"] {
-        let call = grant(TOKEN, entrypoint, "0x5", 1, 0);
-        assert!(decode_allowance_call(&call).is_some());
-        let summary = call_summary(
-            &call.contract_address,
-            entrypoint,
-            &call.calldata,
-            &lists.known(),
-        );
-        assert!(summary.starts_with("Allow "), "{entrypoint}: {summary}");
-    }
 }
 
 #[test]
