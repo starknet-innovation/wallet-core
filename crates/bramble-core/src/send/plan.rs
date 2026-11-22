@@ -171,6 +171,43 @@ impl TransferPlan {
     }
 }
 
+/// What a pending record's row names: its kind, amount, counterparty, token symbol, token
+/// address, and whether it moves value out. Only a public send does (`transfer-ops.ts`); a
+/// batch's row names a token without a direction, as the extension's swap and staking rows do.
+fn row(kind: PendingKind) -> (ActivityKind, Text, Text, Text, Text, bool) {
+    match kind {
+        PendingKind::Transfer {
+            amount,
+            recipient,
+            symbol,
+            token_address,
+        } => (
+            ActivityKind::Transfer,
+            Some(amount),
+            Some(felt::canonical(&recipient)),
+            Some(symbol),
+            Some(felt::canonical(&token_address)),
+            true,
+        ),
+        // No export builds a call batch yet. The one that does files `allowances` in the
+        // allowance log before this row is written (`allowances::calls::record_changes`).
+        PendingKind::Invoke { asset, .. } => match asset {
+            Some(asset) => (
+                ActivityKind::Invoke,
+                asset.amount,
+                None,
+                Some(asset.symbol),
+                Some(felt::canonical(&asset.token_address)),
+                false,
+            ),
+            None => (ActivityKind::Invoke, None, None, None, None, false),
+        },
+        PendingKind::Deployment => (ActivityKind::Deploy, None, None, None, None, false),
+    }
+}
+
+type Text = Option<String>;
+
 /// The wallet behind the plan. Every call re-reads the wallet through the weak reference; a
 /// dropped wallet is a moved session.
 impl PlanHost for TransferPlan {
@@ -198,36 +235,7 @@ impl PlanHost for TransferPlan {
         let Some(core) = self.core.upgrade() else {
             return;
         };
-        // A public send this wallet made moves value out (`transfer-ops.ts`); a batch's row
-        // names a token without a direction, as the extension's swap and staking rows do.
-        let outgoing = matches!(record.kind, PendingKind::Transfer { .. });
-        let (kind, amount, counterparty, token, token_address) = match record.kind {
-            PendingKind::Transfer {
-                amount,
-                recipient,
-                symbol,
-                token_address,
-            } => (
-                ActivityKind::Transfer,
-                Some(amount),
-                Some(felt::canonical(&recipient)),
-                Some(symbol),
-                Some(felt::canonical(&token_address)),
-            ),
-            // No export builds a call batch yet. The one that does files `allowances` in the
-            // allowance log before this row is written (`allowances::calls::record_changes`).
-            PendingKind::Invoke { asset, .. } => match asset {
-                Some(asset) => (
-                    ActivityKind::Invoke,
-                    asset.amount,
-                    None,
-                    Some(asset.symbol),
-                    Some(felt::canonical(&asset.token_address)),
-                ),
-                None => (ActivityKind::Invoke, None, None, None, None),
-            },
-            PendingKind::Deployment => (ActivityKind::Deploy, None, None, None, None),
-        };
+        let (kind, amount, counterparty, token, token_address, outgoing) = row(record.kind);
         let mut entry = Entry {
             account_id: self.account_id.clone(),
             amount,
@@ -276,5 +284,55 @@ impl PlanHost for TransferPlan {
 
     fn explorer_url(&self, hash: &str) -> Option<String> {
         crate::history::explorer::explorer_transaction_url(self.network, hash.into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wallet_core::send::plan::ActivityAsset;
+
+    #[test]
+    fn a_batchs_row_names_its_token_without_a_direction_and_a_send_moves_value_out() {
+        let token = Felt::from(0x51u8);
+        let swap = PendingKind::Invoke {
+            asset: Some(ActivityAsset {
+                amount: Some("0.01".into()),
+                symbol: "ETH".into(),
+                token_address: token,
+            }),
+            allowances: Vec::new(),
+        };
+        let address = Some(felt::canonical(&token));
+        assert_eq!(
+            row(swap),
+            (
+                ActivityKind::Invoke,
+                Some("0.01".into()),
+                None,
+                Some("ETH".into()),
+                address.clone(),
+                false
+            )
+        );
+        let send = PendingKind::Transfer {
+            amount: "1.5".into(),
+            recipient: Felt::from(0x7u8),
+            symbol: "STRK".into(),
+            token_address: token,
+        };
+        let (kind, .., sent_token, outgoing) = row(send);
+        assert_eq!(
+            (kind, sent_token, outgoing),
+            (ActivityKind::Transfer, address, true)
+        );
+        let bare = PendingKind::Invoke {
+            asset: None,
+            allowances: Vec::new(),
+        };
+        assert_eq!(
+            row(bare),
+            (ActivityKind::Invoke, None, None, None, None, false)
+        );
     }
 }
