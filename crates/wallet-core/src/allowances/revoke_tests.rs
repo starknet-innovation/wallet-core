@@ -13,6 +13,7 @@ use crate::send::calls::Call;
 use crate::send::fees::Headroom;
 use crate::send::invoke::{Invoke, InvokeRefusal};
 use crate::send::multisig_invoke::StarkPrimitives;
+use crate::send::review_flags::ReviewContext;
 use crate::send::types::{Account, Authorization, Policy};
 use crate::{Felt, NetworkId};
 
@@ -80,7 +81,15 @@ pub(super) fn build(
     known: &Known,
     readings: &[AllowanceReading],
 ) -> Result<Invoke, RevokeRefusal> {
-    target.invoke(&account(), known, readings, &POLICY, &[], &Keccak)
+    target.invoke(&account(), &context(known), readings, &POLICY, &Keccak)
+}
+
+/// What the wallet knows on the account's network: here only its trusted lists.
+pub(super) fn context<'a>(known: &Known<'a>) -> ReviewContext<'a> {
+    ReviewContext {
+        known: *known,
+        ..ReviewContext::default()
+    }
 }
 
 pub(super) fn reading(id: &str, value: &str) -> AllowanceReading {
@@ -260,6 +269,31 @@ fn an_unconfirmed_contract_needs_the_chain_to_answer_for_the_pair() {
 }
 
 #[test]
+fn a_revoke_is_reviewed_without_the_hosts_pinned_contracts() {
+    // `verifyCalls([call], trusted)`: a token known only from the read is an unknown contract,
+    // even one the host pinned for another flow.
+    let lists = Lists::standard();
+    let row = stored(ACCOUNT, NetworkId::Mainnet, UNKNOWN, amount("5"));
+    let target = resolve(&row.id, std::slice::from_ref(&row), &lists.known()).unwrap();
+    let pinned = [f(UNKNOWN)];
+    let context = ReviewContext {
+        known_contracts: &pinned,
+        ..context(&lists.known())
+    };
+    let invoke = target
+        .invoke(
+            &account(),
+            &context,
+            &[reading(&row.id, "5")],
+            &POLICY,
+            &Keccak,
+        )
+        .unwrap();
+    let codes: Vec<_> = invoke.flags().iter().map(|flag| flag.code()).collect();
+    assert_eq!(codes, ["unknown-contract"]);
+}
+
+#[test]
 fn a_target_is_built_only_for_the_account_and_network_it_was_resolved_for() {
     let lists = Lists::standard();
     let known = lists.known();
@@ -271,7 +305,7 @@ fn a_target_is_built_only_for_the_account_and_network_it_was_resolved_for() {
         account_on(NetworkId::Mainnet, other),
     ] {
         assert_eq!(
-            target.invoke(&account, &known, &[], &POLICY, &[], &Keccak),
+            target.invoke(&account, &context(&known), &[], &POLICY, &Keccak),
             Err(RevokeRefusal::OtherAccount)
         );
     }
@@ -292,7 +326,7 @@ fn the_batch_review_still_applies() {
         ..POLICY
     };
     assert_eq!(
-        target.invoke(&account(), &lists.known(), &[], &strict, &[], &Keccak),
+        target.invoke(&account(), &context(&lists.known()), &[], &strict, &Keccak),
         Err(RevokeRefusal::Invoke(InvokeRefusal::TooManyCalls))
     );
 }
