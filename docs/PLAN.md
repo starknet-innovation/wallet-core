@@ -87,9 +87,13 @@ goes from `0.2.2` to `0.4.0`. `v0.4.0` breaks three things, none migrated becaus
 users: the vault is the extension's v13 payload and older vaults are refused (#58),
 `importWallet` takes no BIP-39 passphrase (#58), and Ready (Argent X) legacy keys change for about
 0.4% of phrases (#59; 3,949 of 1,000,000 random phrases measured).
-`v0.5.0` carries #61–#96: Mobile parity P1–P6 and the core halves of P7 and P9–P13. It removes
-no export. The one change mobile must adopt with the bump is #77's `RelayStep::NextPage`; P1,
-P9 and P11–P13 are not exported, and P7 still writes schema 13.
+`v0.5.0` carries #61–#96 (#74 was closed unmerged): Mobile parity P2–P6, and the core halves
+of P1, P7 and P9–P13, which are not exported; new vaults are still schema 13. Mobile adopts
+three changes with the bump: `RelayStep` gains `NextPage` (#77), which each app's relay loop
+must handle; `explorerFallbackAllowed` moves from `TokenPreferences` to the wallet and takes the
+preferences (#78), so an RPC override turns the fallback off; and `AccountRecord` gains
+`hidden` and `imported` (#65, #80) with no defaults. `ActivityEntry`'s new fields default to
+nil.
 
 ### Next PRs
 
