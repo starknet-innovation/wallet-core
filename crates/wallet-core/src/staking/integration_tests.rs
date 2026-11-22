@@ -150,14 +150,15 @@ fn the_verified_pool_is_pinned_for_the_review() {
             contract: f(STAKING_POOL)
         }]
     );
-    // A pin the caller already holds is kept beside the pool's: here the untrusted token's.
+    // The pool is the one pin (`knownContracts: [pool]`): a contract the caller pinned for
+    // another flow, here the untrusted token, is not vouched for.
     let token = [f(STRK)];
     let pinned = ReviewContext {
         known_contracts: &token,
         ..trusting(&[])
     };
     let stake = prepared(&mut chain(), StakingAction::Stake, Some("5"), &pinned);
-    assert_eq!(codes(&stake.invoke), Vec::<&str>::new());
+    assert_eq!(codes(&stake.invoke), ["unknown-contract"]);
 }
 
 #[test]

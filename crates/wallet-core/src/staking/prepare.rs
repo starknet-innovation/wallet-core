@@ -5,11 +5,12 @@
 //! the token is a tracked token the staking contract accepts; the pool is verified on chain at
 //! one pinned block (`read`). The calls are built from those facts alone, reviewed as every
 //! batch is (`send::invoke::Invoke::reviewed`, which refuses a poisoned payee) with the verified
-//! pool pinned (`assetsFor`'s `knownContracts: [pool]`), and frozen with the sentence the person
-//! confirms. The invoke names its own activity row (`recordStakingSubmission`'s summary, amount
-//! and token) and carries the stake's exact-amount approval for the allowance log. Confirm: the preparation is claimed once and must still be for
-//! the active account and network; the host then hands its `invoke` to `send::plan::Plan`, which
-//! estimates, signs and submits. Nothing here signs.
+//! pool the one pinned contract (`assetsFor`'s `knownContracts: [pool]`), and frozen with the
+//! sentence the person confirms. The invoke names its own activity row
+//! (`recordStakingSubmission`'s summary, amount and token) and carries the stake's exact-amount
+//! approval for the allowance log. Confirm: the preparation is claimed once and must still be
+//! for the active account and network; the host then hands its `invoke` to `send::plan::Plan`,
+//! which estimates, signs and submits. Nothing here signs.
 
 use std::collections::VecDeque;
 
@@ -114,8 +115,9 @@ pub struct PrepareContext<'a> {
     pub token: &'a TokenConfig,
     pub now: u64,
     pub policy: &'a Policy,
-    /// What the wallet knows on the account's network (`verificationContext`); `prepare` adds
-    /// the verified pool to its `known_contracts`.
+    /// What the wallet knows on the account's network (`verificationContext`). Its
+    /// `known_contracts` are not read: `prepare` pins the verified pool alone, as the extension
+    /// does, so a contract pinned for another flow is not vouched for here.
     pub review: &'a ReviewContext<'a>,
     pub primitives: &'a dyn StarkPrimitives,
 }
@@ -201,15 +203,8 @@ pub fn prepare(
         symbol,
         token_address,
     };
-    let pinned: Vec<Felt> = context
-        .review
-        .known_contracts
-        .iter()
-        .copied()
-        .chain([verified.pool])
-        .collect();
     let review = ReviewContext {
-        known_contracts: &pinned,
+        known_contracts: std::slice::from_ref(&verified.pool),
         ..*context.review
     };
     let invoke = Invoke::reviewed(account, calls, context.policy, &review, context.primitives)?
