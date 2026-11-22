@@ -14,11 +14,12 @@ use crate::send::calls::Call;
 use crate::send::fees::Headroom;
 use crate::send::invoke::InvokeRefusal;
 use crate::send::multisig_invoke::StarkPrimitives;
+use crate::send::review_flags::ReviewContext;
 use crate::send::types::{Account, Authorization, Policy};
 use crate::{Felt, NetworkId};
 
 /// Test-only: the selector is sha3's Keccak (a dev-dependency); nothing here verifies.
-struct Keccak;
+pub(super) struct Keccak;
 
 impl StarkPrimitives for Keccak {
     fn selector(&self, entrypoint: &str) -> Option<Felt> {
@@ -34,7 +35,7 @@ impl StarkPrimitives for Keccak {
 }
 
 /// Bramble's `SEND_POLICY` numbers.
-const SEND: Policy = Policy {
+pub(super) const SEND: Policy = Policy {
     fee_margin_percent: 50,
     reviewed_fee_headroom: Headroom {
         numerator: 3,
@@ -45,7 +46,7 @@ const SEND: Policy = Policy {
     max_call_calldata_felts: 4_096,
 };
 
-fn account() -> Account {
+pub(super) fn account() -> Account {
     Account {
         network: NetworkId::Mainnet,
         address: f(ACCOUNT),
@@ -58,17 +59,44 @@ fn account() -> Account {
 const VALIDATOR: &str =
     "validator 0x5a200000000000000000000000000000000000000000000000000000000beef";
 
-/// Reads and prepares one action from `input` against `chain`, as `prepareStakingResponse`.
+/// A wallet that knows nothing on the network: no token, contact or pinned contract.
+const NOTHING_KNOWN: ReviewContext<'static> = ReviewContext {
+    known: Known {
+        tokens: &[],
+        nft_contracts: &[],
+    },
+    trusted: &[],
+    known_contracts: &[],
+    token_contracts: &[],
+    standing: &[],
+};
+
 fn act_with(
     chain: &mut Chain,
     input: &PrepareInput,
     token: &TokenConfig,
     policy: &Policy,
 ) -> Result<StakingPreparation, StakingRefusal> {
+    act_in(chain, input, token, policy, &NOTHING_KNOWN)
+}
+
+/// Reads and prepares one action from `input` against `chain`, as `prepareStakingResponse`,
+/// reviewed with what the wallet knows in `review`.
+pub(super) fn act_in(
+    chain: &mut Chain,
+    input: &PrepareInput,
+    token: &TokenConfig,
+    policy: &Policy,
+    review: &ReviewContext,
+) -> Result<StakingPreparation, StakingRefusal> {
     let account = account();
     let read = input.read(&NETWORK, &strk_info(), &account, token)?;
     let reading = run(read, chain);
-    prepare(input, reading.as_ref(), &context(&account, token, policy))
+    let context = PrepareContext {
+        review,
+        ..context(&account, token, policy)
+    };
+    prepare(input, reading.as_ref(), &context)
 }
 
 fn context<'a>(
@@ -82,11 +110,7 @@ fn context<'a>(
         token,
         now: NOW,
         policy,
-        known: &Known {
-            tokens: &[],
-            nft_contracts: &[],
-        },
-        trusted: &[],
+        review: &NOTHING_KNOWN,
         primitives: &Keccak,
     }
 }

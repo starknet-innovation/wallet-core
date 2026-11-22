@@ -4,8 +4,9 @@
 //! Prepare: the staker is the person's pick (from the directory or pasted) and only a candidate;
 //! the token is a tracked token the staking contract accepts; the pool is verified on chain at
 //! one pinned block (`read`). The calls are built from those facts alone, reviewed as every
-//! batch is (`send::invoke::Invoke::new`, which refuses a poisoned payee), and frozen with the
-//! sentence the person confirms. Confirm: the preparation is claimed once and must still be for
+//! batch is (`send::invoke::Invoke::reviewed`, which refuses a poisoned payee) with the verified
+//! pool pinned (`assetsFor`'s `knownContracts: [pool]`), and frozen with the sentence the person
+//! confirms. The invoke carries the stake's exact-amount approval for the allowance log. Confirm: the preparation is claimed once and must still be for
 //! the active account and network; the host then hands its `invoke` to `send::plan::Plan`, which
 //! estimates, signs and submits. Nothing here signs.
 
@@ -19,10 +20,10 @@ use crate::catalog::TokenInfo;
 use crate::js::felt::canonical_felt;
 use crate::js::num::short_label;
 use crate::portfolio::model::TokenConfig;
-use crate::send::call_decode::Known;
 use crate::send::calls::parse_token_amount;
 use crate::send::invoke::Invoke;
 use crate::send::multisig_invoke::StarkPrimitives;
+use crate::send::review_flags::ReviewContext;
 use crate::send::types::{Account, Policy};
 use crate::{felt, Felt, NetworkId};
 
@@ -104,7 +105,7 @@ fn action_pair(
 }
 
 /// What `prepare` needs besides the input and the reading: the acting account and tracked
-/// token, the wallet's staking policy, the clock (Unix seconds) and `Invoke::new`'s arguments.
+/// token, the wallet's staking policy, the clock (Unix seconds) and `Invoke::reviewed`'s arguments.
 pub struct PrepareContext<'a> {
     pub account: &'a Account,
     /// The one source of the staking contract a reading must have been made against.
@@ -112,8 +113,9 @@ pub struct PrepareContext<'a> {
     pub token: &'a TokenConfig,
     pub now: u64,
     pub policy: &'a Policy,
-    pub known: &'a Known<'a>,
-    pub trusted: &'a [Felt],
+    /// What the wallet knows on the account's network (`verificationContext`); `prepare` adds
+    /// the verified pool to its `known_contracts`.
+    pub review: &'a ReviewContext<'a>,
     pub primitives: &'a dyn StarkPrimitives,
 }
 
@@ -181,18 +183,35 @@ pub fn prepare(
         pool: verified,
         token: pair.token,
     })?;
-    let invoke = Invoke::new(
-        account,
-        calls,
-        context.policy,
-        context.known,
-        context.trusted,
-        context.primitives,
-    )?;
     let staker = felt::canonical(&input.staker);
     let amount = input.amount.as_deref();
-    let claim = input.action == StakingAction::Claim;
+    let summary = activity_summary(
+        input.action,
+        amount,
+        &token.symbol,
+        &format!("validator {}", short_label(&staker)),
+    );
+    // A claim pays the rewards token whatever the staked one. Only stake and unstake carry an
+    // amount (`PrepareInput::new`).
     let rewards = &reading.rewards;
+    let (symbol, token_address) = if input.action == StakingAction::Claim {
+        let address = canonical_felt(&rewards.address).and_then(|a| felt::parse(&a));
+        (rewards.symbol.clone(), address.unwrap_or(pair.token))
+    } else {
+        (token.symbol.clone(), pair.token)
+    };
+    let pinned: Vec<Felt> = context
+        .review
+        .known_contracts
+        .iter()
+        .copied()
+        .chain([verified.pool])
+        .collect();
+    let review = ReviewContext {
+        known_contracts: &pinned,
+        ..*context.review
+    };
+    let invoke = Invoke::reviewed(account, calls, context.policy, &review, context.primitives)?;
     Ok(StakingPreparation {
         action: input.action,
         amount: input.amount.clone(),
@@ -205,25 +224,9 @@ pub fn prepare(
             &token.symbol,
             &format!("validator {staker}"),
         ),
-        summary: activity_summary(
-            input.action,
-            amount,
-            &token.symbol,
-            &format!("validator {}", short_label(&staker)),
-        ),
-        // A claim pays the rewards token whatever the staked one.
-        symbol: if claim {
-            rewards.symbol.clone()
-        } else {
-            token.symbol.clone()
-        },
-        token_address: if claim {
-            canonical_felt(&rewards.address)
-                .and_then(|a| felt::parse(&a))
-                .unwrap_or(pair.token)
-        } else {
-            pair.token
-        },
+        summary,
+        symbol,
+        token_address,
         invoke,
     })
 }

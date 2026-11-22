@@ -38,6 +38,8 @@ mod directory_ops_tests;
 #[cfg(test)]
 mod directory_tests;
 #[cfg(test)]
+mod integration_tests;
+#[cfg(test)]
 mod positions_tests;
 #[cfg(test)]
 mod preparations_tests;
