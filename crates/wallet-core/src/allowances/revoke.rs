@@ -2,10 +2,11 @@
 //! `handleRevokeAllowance`, `isRevokableErc20` and `revokeOutcomes` in `allowance-ops.ts`): which
 //! allowance an id names for the active account, the checks before anything is sent, the
 //! `approve(spender, 0)` call as a reviewed `send::invoke::Invoke`, and the outcomes that settle a
-//! submitted revoke. Nothing here signs or submits: the plan does, and the wallet files the batch
-//! with `calls::record_submitted` once it has a hash, which marks a tracked grant `revoking` under
-//! that hash (`store`). The next listing settles it (`AllowanceLog::settle_revocations`) on a zero
-//! reading or on the outcome `revoke_outcomes` reads from the wallet's own activity rows.
+//! submitted revoke. Nothing here signs or submits: the plan does, and the wallet files the
+//! allowance changes the plan's pending record carries with `calls::record_changes` under its
+//! hash, which marks a tracked grant `revoking` under that hash (`store`). The next listing
+//! settles it (`AllowanceLog::settle_revocations`) on a zero reading or on the outcome
+//! `revoke_outcomes` reads from the wallet's own activity rows.
 //!
 //! The revoke is ERC-20 only. `approve(spender, 0)` on an ERC-721 approves item #0 rather than
 //! revoking anything, so it is built only for a contract the wallet can call fungible: one this
@@ -25,11 +26,13 @@ use crate::history::activity::{ActivityEntry, ActivityOrigin};
 use crate::js::felt::canonical_felt;
 use crate::js::num::utf16_len;
 use crate::send::call_decode::Known;
-use crate::send::calls::Call;
+use crate::send::calls::{erc20_approve, Call};
 use crate::send::invoke::{Invoke, InvokeRefusal};
 use crate::send::judge::TxStatus;
 use crate::send::multisig_invoke::StarkPrimitives;
+use crate::send::review_flags::ReviewContext;
 use crate::send::types::{Account, Policy};
+use crate::send::u256::U256;
 use crate::NetworkId;
 
 /// `readRevokeAllowanceInput`'s `MAX_ID_LENGTH`: a bound of the id grammar (a full-length id is
@@ -149,31 +152,29 @@ impl RevokeTarget {
         })
     }
 
-    /// `buildErc20ApproveCall(token, spender, 0)`: `approve(spender, 0)`, the uint256 as two
-    /// zero limbs.
+    /// `buildErc20ApproveCall(token, spender, 0)`: `approve(spender, 0)`.
     pub fn call(&self) -> Call {
-        Call {
-            contract_address: self.token,
-            entrypoint: "approve".into(),
-            calldata: vec![self.spender, Felt::ZERO, Felt::ZERO],
-        }
+        erc20_approve(self.token, self.spender, U256::ZERO)
     }
 
     /// The revoke as a reviewed batch for the plan, from the same `account` it was resolved for.
-    /// The contract must be one `known` trusts as a token, or one `readings` (the confirmation
-    /// read's) answered for this pair, whatever amount it reported; a watched collection is
-    /// refused again here. `known` must be this account's own network's lists: nothing here can
-    /// tell, and another network's trusted token would skip the confirmation read. `policy`,
-    /// `trusted` and `primitives` are `Invoke::new`'s.
+    /// The contract must be one `context.known` trusts as a token, or one `readings` (the
+    /// confirmation read's) answered for this pair, whatever amount it reported; a watched
+    /// collection is refused again here. `context` must be this account's own network's: nothing
+    /// here can tell, and another network's trusted token would skip the confirmation read.
+    /// `policy`, `context` and `primitives` are `Invoke::reviewed`'s, but the review reads the
+    /// context as the extension's `verifyCalls([call], trusted)` does, with no pinned contracts: a
+    /// token known only from the read stays an unknown contract. (Its standing allowances change
+    /// nothing: a zero `approve` replaces the total.)
     pub fn invoke(
         &self,
         account: &Account,
-        known: &Known,
+        context: &ReviewContext,
         readings: &[AllowanceReading],
         policy: &Policy,
-        trusted: &[Felt],
         primitives: &dyn StarkPrimitives,
     ) -> Result<Invoke, RevokeRefusal> {
+        let known = &context.known;
         if AllowanceOwner::of(account.network, &account.address).as_ref() != Some(&self.owner)
             || account.address != self.address
         {
@@ -184,12 +185,15 @@ impl RevokeTarget {
         if !fungible && !readings.iter().any(|reading| reading.id == self.id) {
             return Err(RevokeRefusal::UnconfirmedToken);
         }
-        Ok(Invoke::new(
+        let context = ReviewContext {
+            known_contracts: &[],
+            ..*context
+        };
+        Ok(Invoke::reviewed(
             account,
             vec![self.call()],
             policy,
-            known,
-            trusted,
+            &context,
             primitives,
         )?)
     }

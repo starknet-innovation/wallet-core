@@ -7,15 +7,11 @@
 
 use crate::send::avnu_route::{self, AvnuRoute};
 use crate::send::call_decode::{
-    call_summary, recipient_felt_index, uint256_at, Known, AVNU_MULTI_ROUTE_SWAP,
+    decode_call, uint256_at, CallKind, Known, APPROVE, APPROVE_SET, AVNU_MULTI_ROUTE_SWAP,
 };
 use crate::send::calls::Call;
 use crate::send::u256::U256;
 use crate::Felt;
-
-/// `APPROVE_ENTRYPOINTS` (`verify-selectors.ts`): the selectors that grant an ERC-20 allowance.
-/// `send::call_decode` holds the same list privately for its summaries.
-pub const APPROVE_ENTRYPOINTS: [&str; 3] = ["approve", "increaseAllowance", "increase_allowance"];
 
 /// `integrator_fee_amount_bps` in the pinned `multi_route_swap` layout (`avnu-route.ts`).
 const INTEGRATOR_FEE_BPS_INDEX: usize = 9;
@@ -78,22 +74,20 @@ pub(super) struct Intent {
 }
 
 fn is_approve(call: &Call) -> bool {
-    APPROVE_ENTRYPOINTS.contains(&call.entrypoint.as_str())
+    APPROVE.contains(&call.entrypoint.as_str())
 }
 
-/// The verifier's `kind === "transfer"`: a transfer-family selector whose calldata decodes. The
-/// decoder's opaque line is the only one starting `Call `, and a transfer's shape does not depend
-/// on the wallet's known tokens.
+/// The verifier's `kind === "transfer"`, read from the decoder itself. Whether a call decodes as a
+/// transfer does not depend on the wallet's known tokens (they change only its line).
 fn is_decoded_transfer(call: &Call) -> bool {
-    call.entrypoint != AVNU_MULTI_ROUTE_SWAP
-        && recipient_felt_index(&call.entrypoint).is_some()
-        && !call_summary(
-            &call.contract_address,
-            &call.entrypoint,
-            &call.calldata,
-            &Known::default(),
-        )
-        .starts_with("Call ")
+    decode_call(
+        &call.contract_address,
+        &call.entrypoint,
+        &call.calldata,
+        &Known::default(),
+    )
+    .kind
+        == CallKind::Transfer
 }
 
 /// `approvalCallPolicyError`: an approval only as `approve`, on the sell token, for exactly the
@@ -102,7 +96,7 @@ fn approval_error(call: &Call, intent: &Intent) -> Option<BuildPolicyError> {
     if !is_approve(call) {
         return None;
     }
-    if call.entrypoint != "approve" {
+    if call.entrypoint != APPROVE_SET {
         return Some(BuildPolicyError::AdditiveAllowance);
     }
     if call.contract_address != intent.sell_token {

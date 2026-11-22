@@ -406,7 +406,7 @@ impl Plan {
                 t.summary.clone(),
             ),
             (Kind::Invoke(invoke), true) => {
-                (PendingKind::Invoke, invoke.activity_summary().to_string())
+                (invoke.pending_kind(), invoke.activity_summary().to_string())
             }
             _ => (PendingKind::Deployment, DEPLOY_SUMMARY.to_string()),
         };

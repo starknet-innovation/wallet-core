@@ -1,28 +1,18 @@
 //! The frozen preparation (`swap-preparations.ts`, `swapPrepareResponse`'s review lines and
-//! `swapExecuteResponse`'s binding and activity row): the reviewed batch, the lines the review
-//! shows, the minimum the route enforces, and what the activity log records once it is sent.
+//! `swapExecuteResponse`'s binding and activity row): the reviewed batch, which names its own
+//! activity row, the lines and flags the review shows, and the minimum the route enforces.
 
 use super::{PendingBuild, SwapRefusal};
 use crate::felt;
 use crate::js::num::short_label;
 use crate::send::avnu_route::AvnuRoute;
-use crate::send::call_decode::{call_summary, Known, AVNU_MULTI_ROUTE_SWAP};
+use crate::send::call_decode::AVNU_MULTI_ROUTE_SWAP;
 use crate::send::calls::format_token_amount;
-use crate::send::invoke::Invoke;
+use crate::send::invoke::{ActivityAsset, Invoke};
+use crate::send::review_flags::RiskFlag;
 use crate::send::types::Account;
 use crate::send::u256::U256;
 use crate::{Felt, NetworkId};
-
-/// The activity row a sent swap records (`recordSubmittedActivity`, kind `invoke`): the summary,
-/// the amount sold as typed, and the sold token by symbol and address (`activityToken`), so a
-/// row never names the token by a symbol another contract may share.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SwapActivity {
-    pub summary: String,
-    pub amount: String,
-    pub symbol: String,
-    pub token_address: Felt,
-}
 
 /// A reviewed swap, ready for `send::plan::Plan`: built only by `PendingBuild::judge`, released
 /// only to the account and network it was prepared for, and consumed when released, so one
@@ -36,16 +26,13 @@ pub struct SwapPreparation {
     summaries: Vec<String>,
     min_buy_amount: U256,
     min_buy_text: String,
-    activity: SwapActivity,
 }
 
 impl SwapPreparation {
-    pub(super) fn new(
-        build: PendingBuild,
-        invoke: Invoke,
-        route: &AvnuRoute,
-        known: &Known,
-    ) -> Self {
+    /// The batch names the swap's activity row (`recordSubmittedActivity`, kind `invoke`): the
+    /// summary, the amount sold as typed, and the sold token by symbol and address
+    /// (`activityToken`), so a row never names the token by a symbol another contract may share.
+    pub(super) fn new(build: PendingBuild, invoke: Invoke, route: &AvnuRoute) -> Self {
         let request = &build.quote.request;
         let (sell, buy) = (&request.sell.token, &request.buy.token);
         let min_buy_text = format_token_amount(&route.min_buy_amount, buy.decimals);
@@ -61,31 +48,28 @@ impl SwapPreparation {
         let summaries = invoke
             .calls
             .iter()
-            .map(|call| {
+            .zip(invoke.calls())
+            .map(|(call, reviewed)| {
                 if call.entrypoint == AVNU_MULTI_ROUTE_SWAP {
                     route_line.clone()
                 } else {
-                    call_summary(
-                        &call.contract_address,
-                        &call.entrypoint,
-                        &call.calldata,
-                        known,
-                    )
+                    reviewed.summary.clone()
                 }
             })
             .collect();
-        let activity = SwapActivity {
-            summary: format!(
+        let invoke = invoke
+            .with_activity_summary(&format!(
                 "Swap {} {} for ~{} {} via avnu",
                 request.sell_text,
                 sell.symbol,
                 build.quote.buy_amount_text(),
                 buy.symbol
-            ),
-            amount: request.sell_text.clone(),
-            symbol: sell.symbol.clone(),
-            token_address: request.sell.address,
-        };
+            ))
+            .with_activity_asset(ActivityAsset {
+                amount: Some(request.sell_text.clone()),
+                symbol: sell.symbol.clone(),
+                token_address: request.sell.address,
+            });
         Self {
             network: build.account.network,
             account: build.account.address,
@@ -93,7 +77,6 @@ impl SwapPreparation {
             summaries,
             min_buy_amount: route.min_buy_amount,
             min_buy_text,
-            activity,
         }
     }
 
@@ -113,17 +96,17 @@ impl SwapPreparation {
         &self.min_buy_text
     }
 
-    /// The activity row to record for the hash the plan signs.
-    pub fn activity(&self) -> &SwapActivity {
-        &self.activity
+    /// The review's flags (`report.flags`), as the batch review raised them.
+    pub fn flags(&self) -> Vec<&RiskFlag> {
+        self.invoke.flags()
     }
 
     /// Releases the batch to `account`, the one it was prepared for on the same network
-    /// ("swap preparation changed" otherwise), with the activity row to record.
-    pub fn into_invoke(self, account: &Account) -> Result<(Invoke, SwapActivity), SwapRefusal> {
+    /// ("swap preparation changed" otherwise). It carries its own activity row.
+    pub fn into_invoke(self, account: &Account) -> Result<Invoke, SwapRefusal> {
         if account.network != self.network || account.address != self.account {
             return Err(SwapRefusal::PreparationChanged);
         }
-        Ok((self.invoke, self.activity))
+        Ok(self.invoke)
     }
 }

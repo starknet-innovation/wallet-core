@@ -17,12 +17,14 @@
 //! Krusty 3.1.0 has no selector (`starknet_keccak` of an entrypoint name), so, as for a multisig,
 //! the caller lends one through `multisig_invoke::StarkPrimitives`.
 
-use super::call_decode::{decode_call, CallKind, Known};
+use super::call_decode::{decode_call, CallKind};
 use super::calls::{execute_calldata, Call};
 use super::multisig_invoke::StarkPrimitives;
 use super::multisig_review::{batch_line, refuse_poisoned, CallReviewError};
+use super::plan::PendingKind;
 use super::review_flags::{call_flags, dedupe, ReviewContext, RiskFlag};
 use super::types::{Account, Policy};
+use crate::allowances::calls::{allowance_changes, AllowanceChange, AllowanceOwner};
 use crate::history::activity::MAX_SUMMARY_LENGTH;
 use crate::js::num::utf16_slice;
 use crate::{Felt, NetworkId};
@@ -67,6 +69,19 @@ pub struct Invoke {
     pub(crate) summary: String,
     pub(crate) reviewed: Vec<ReviewedCall>,
     pub(crate) activity_summary: Option<String>,
+    pub(crate) activity_asset: Option<ActivityAsset>,
+    pub(crate) allowances: Vec<AllowanceChange>,
+}
+
+/// The amount and token an activity row names beside its text (`recordSubmittedActivity`'s
+/// `amount` and `activityToken`): what a swap sells, what a stake moves. The token is named by
+/// address as well as symbol, so a row never rests on a symbol another contract may share.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActivityAsset {
+    /// The amount as the person entered it; `None` for an action that names none (a claim).
+    pub amount: Option<String>,
+    pub symbol: String,
+    pub token_address: Felt,
 }
 
 /// One call as the review shows it: `decodeCall`'s kind and summary, and the flags `verifyCalls`
@@ -135,30 +150,6 @@ pub(crate) fn check(sender: &Felt, calls: &[Call], policy: &Policy) -> Result<()
 }
 
 impl Invoke {
-    /// `reviewed` with only the trusted tokens and addresses, for the crate's own builders until
-    /// the integration PR moves them onto `reviewed`. It under-warns: a router reads as an unknown
-    /// contract, STRK as no token unless tracked, and no allowance is seeded. Never exported.
-    #[allow(
-        dead_code,
-        reason = "the revoke, swap and staking builders call it once they merge, when `expect` \
-                  would fail"
-    )]
-    pub(crate) fn new(
-        account: &Account,
-        calls: Vec<Call>,
-        policy: &Policy,
-        known: &Known,
-        trusted: &[Felt],
-        primitives: &dyn StarkPrimitives,
-    ) -> Result<Self, InvokeRefusal> {
-        let context = ReviewContext {
-            known: *known,
-            trusted,
-            ..ReviewContext::default()
-        };
-        Self::reviewed(account, calls, policy, &context, primitives)
-    }
-
     /// Checks and reviews `calls` from `account` and derives their calldata. `policy` bounds the
     /// batch (the plan's must be the same one, or the plan refuses it); `context` is everything
     /// the wallet knows on the account's network (`verifyCalls` with its `knownContracts` and
@@ -200,6 +191,11 @@ impl Invoke {
                 flags,
             })
             .collect();
+        // What the batch grants, read with the lists the review read (`allowanceChangesFromCalls`
+        // under `allowanceOwner(account)`), so the plan's pending record carries it to the log.
+        let allowances = AllowanceOwner::of(account.network, &account.address)
+            .map(|owner| allowance_changes(&calls, &owner, &context.known))
+            .unwrap_or_default();
         Ok(Self {
             network: account.network,
             sender: account.address,
@@ -208,6 +204,8 @@ impl Invoke {
             summary,
             reviewed,
             activity_summary: None,
+            activity_asset: None,
+            allowances,
         })
     }
 
@@ -237,6 +235,14 @@ impl Invoke {
         self
     }
 
+    /// Names the amount and token of the activity row, for the crate's own builders (a swap, a
+    /// stake): a dapp's batch names neither.
+    #[must_use]
+    pub(crate) fn with_activity_asset(mut self, asset: ActivityAsset) -> Self {
+        self.activity_asset = Some(asset);
+        self
+    }
+
     /// The activity text of a dapp's batch: "<origin> submitted N call(s)", N this batch's own
     /// count and the origin as `activityOrigin` cuts it. `origin` is the one the wallet saw the
     /// request come from, never a name the dapp gave itself.
@@ -251,6 +257,21 @@ impl Invoke {
     /// What the activity row records: the builder's text, or the review's line.
     pub fn activity_summary(&self) -> &str {
         self.activity_summary.as_deref().unwrap_or(&self.summary)
+    }
+
+    /// What the plan's pending record says of this batch: the row's amount and token, when its
+    /// builder named them, and the allowance changes to file under the signed hash.
+    pub(crate) fn pending_kind(&self) -> PendingKind {
+        PendingKind::Invoke {
+            asset: self.activity_asset.clone(),
+            allowances: self.allowances.clone(),
+        }
+    }
+
+    /// Every ERC-20 allowance change the batch carries (`allowanceChangesFromCalls`), owned by
+    /// its sender: what the plan's pending record hands the host to file.
+    pub fn allowance_changes(&self) -> &[AllowanceChange] {
+        &self.allowances
     }
 }
 

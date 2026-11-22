@@ -111,6 +111,16 @@ pub struct Call {
     pub calldata: Vec<Felt>,
 }
 
+/// `buildErc20ApproveCall(token, spender, amount)`: `approve(spender, amount)`, the uint256 as
+/// its two limbs. A zero amount is the revoke.
+pub fn erc20_approve(token: Felt, spender: Felt, amount: U256) -> Call {
+    Call {
+        contract_address: token,
+        entrypoint: super::call_decode::APPROVE_SET.into(),
+        calldata: vec![spender, Felt::from(amount.low), Felt::from(amount.high)],
+    }
+}
+
 /// `transaction.getExecuteCalldata(calls, "1")`: the account `__execute__` calldata, the count
 /// then each call's contract, selector, calldata length and calldata. Every family this wallet
 /// signs for takes this one encoding (the extension builds every account with `cairoVersion:

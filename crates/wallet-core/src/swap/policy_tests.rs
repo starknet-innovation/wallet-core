@@ -149,6 +149,12 @@ fn a_direct_transfer_anywhere_in_the_build_is_refused() {
         judge(&[approve_router(), route_call(), transfer_from]),
         Err(E::DirectTransfer)
     );
+    // Only a transfer the decoder reads is one; a malformed one falls to the route allowlist.
+    let malformed = call(ROUTER, "transfer", &[ATTACKER, &hex(SELL_AMOUNT)]);
+    assert_eq!(
+        judge(&[approve_router(), route_call(), malformed]),
+        Err(E::NotSwapEntrypoint)
+    );
 }
 
 #[test]

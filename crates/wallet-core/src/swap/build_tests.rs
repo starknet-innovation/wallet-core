@@ -2,7 +2,7 @@
 //! (`avnu.test.ts`, `swap-ops.test.ts`, `swap-route-binding.test.ts`), one guard per case.
 
 use super::super::fixtures::*;
-use super::super::{BuildPolicyError, SwapActivity};
+use super::super::BuildPolicyError;
 use super::*;
 use crate::send::invoke::InvokeRefusal;
 use crate::NetworkId;
@@ -14,7 +14,11 @@ fn prepared(slippage: Option<f64>) -> Result<(PendingBuild, HttpRequest), SwapRe
 fn judge_with(status: u16, body: &str, send: &Policy) -> Result<SwapPreparation, SwapRefusal> {
     let tokens = tokens();
     let (build, _) = prepared(None).unwrap();
-    build.judge(&outcome(status, body), &known(&tokens), &[], send, &Keccak)
+    let context = ReviewContext {
+        known: known(&tokens),
+        ..ReviewContext::default()
+    };
+    build.judge(&outcome(status, body), &context, send, &Keccak)
 }
 
 fn judge(body: &str) -> Result<SwapPreparation, SwapRefusal> {
@@ -215,15 +219,7 @@ fn the_honest_build_prepares_with_its_review_and_activity() {
         preparation.min_buy_amount(),
         U256::from_u128(MIN_BUY_AMOUNT)
     );
-    let activity = SwapActivity {
-        summary: "Swap 0.01 ETH for ~12.5 STRK via avnu".into(),
-        amount: "0.01".into(),
-        symbol: "ETH".into(),
-        token_address: felt(ETH),
-    };
-    assert_eq!(preparation.activity(), &activity);
-    let (invoke, recorded) = preparation.into_invoke(&account()).unwrap();
-    assert_eq!(recorded, activity);
+    let invoke = preparation.into_invoke(&account()).unwrap();
     assert_eq!(invoke.calls, vec![approve_router(), route_call()]);
 }
 
@@ -243,4 +239,103 @@ fn a_preparation_is_released_only_to_its_own_account_and_network() {
             Err(SwapRefusal::PreparationChanged)
         );
     }
+}
+
+#[test]
+fn a_prepared_swap_hands_the_plan_its_router_approval_and_its_asset() {
+    use crate::allowances::calls::{AllowanceChange, ChangeKind};
+    use crate::allowances::record::AllowanceInput;
+    use crate::history::explorer::activity_account_id;
+    use crate::send::invoke::ActivityAsset;
+    use crate::send::plan::PendingKind;
+
+    let invoke = judge(&honest()).unwrap().into_invoke(&account()).unwrap();
+    let canonical = |value: &str| crate::felt::canonical(&felt(value));
+    let approval = AllowanceChange {
+        kind: ChangeKind::Set,
+        input: AllowanceInput {
+            account_id: activity_account_id(NetworkId::Mainnet, canonical(ACCOUNT)).unwrap(),
+            network: NetworkId::Mainnet,
+            token: canonical(ETH),
+            spender: canonical(ROUTER),
+            amount: U256::from_u128(SELL_AMOUNT),
+            lower_bound: false,
+        },
+    };
+    let asset = ActivityAsset {
+        amount: Some("0.01".into()),
+        symbol: "ETH".into(),
+        token_address: felt(ETH),
+    };
+    assert_eq!(
+        invoke.pending_kind(),
+        PendingKind::Invoke {
+            asset: Some(asset),
+            allowances: vec![approval],
+        }
+    );
+}
+
+#[test]
+fn the_activity_row_is_the_swap_line_not_the_review_line() {
+    let invoke = judge(&honest()).unwrap().into_invoke(&account()).unwrap();
+    assert_eq!(
+        invoke.activity_summary(),
+        "Swap 0.01 ETH for ~12.5 STRK via avnu"
+    );
+    assert_ne!(invoke.activity_summary(), invoke.summary());
+}
+
+#[test]
+fn the_pinned_router_raises_no_unknown_contract_flag() {
+    assert!(judge(&honest()).unwrap().flags().is_empty());
+    // The same batch reviewed without the pin reads the router as an unknown contract.
+    let tokens = tokens();
+    let unpinned = ReviewContext {
+        known: known(&tokens),
+        ..ReviewContext::default()
+    };
+    let calls = vec![approve_router(), route_call()];
+    let invoke = Invoke::reviewed(&account(), calls, &SEND_POLICY, &unpinned, &Keccak).unwrap();
+    let codes: Vec<_> = invoke.flags().iter().map(|flag| flag.code()).collect();
+    assert_eq!(codes, ["unknown-contract"]);
+}
+
+/// The batch review's poisoned-payee refusal is unreachable from a build: the policy refuses every
+/// transfer-family call, and the route's payee must be the account itself, which no lookalike is.
+/// So a payee mimicking a trusted address is refused there, before the review.
+#[test]
+fn a_payee_that_mimics_a_trusted_address_is_refused() {
+    use crate::send::calls::is_lookalike_address;
+    let mimic = "0x1234000000000000000000000000000000000000000000000000000000bcde";
+    assert!(is_lookalike_address(&felt(mimic), &felt(ACCOUNT)));
+    let tokens = tokens();
+    let trusted = [felt(ACCOUNT)];
+    let context = ReviewContext {
+        known: known(&tokens),
+        trusted: &trusted,
+        ..ReviewContext::default()
+    };
+    let judge = |calls: &[Call]| {
+        let (build, _) = prepared(None).unwrap();
+        build.judge(
+            &outcome(200, &build_reply(calls)),
+            &context,
+            &SEND_POLICY,
+            &Keccak,
+        )
+    };
+    let route = Route {
+        beneficiary: felt(mimic),
+        ..Route::honest()
+    };
+    assert_eq!(
+        judge(&[approve_router(), route.call()]).map(|_| ()),
+        Err(SwapRefusal::Policy(BuildPolicyError::BeneficiaryMismatch))
+    );
+    let transfer = call(ETH, "transfer", &[mimic, "0x1", "0x0"]);
+    assert_eq!(
+        judge(&[approve_router(), route_call(), transfer]).map(|_| ()),
+        Err(SwapRefusal::Policy(BuildPolicyError::DirectTransfer))
+    );
 }

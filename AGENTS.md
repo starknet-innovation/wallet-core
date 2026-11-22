@@ -129,19 +129,22 @@ Grep first; extend in place rather than adding a sibling.
   `invoke::check`; every `__execute__` calldata is `calls::execute_calldata`, and the
   ordinary-call review both batches share is `multisig_review::summarise_calls`. A batch's
   annotation flags (`verifyCalls`) are `send::review_flags` (`RiskFlag`, `ReviewContext`), over
-  `call_decode::decode_call`'s `CallKind`; the full review is `Invoke::reviewed` (`Invoke::new`
-  under-warns and is crate-only), the plan's card reads its flags through `Plan::risk_flags()`, and a batch's activity text is `Invoke::with_activity_summary` or
-  `with_dapp_origin`.
+  `call_decode::decode_call`'s `CallKind`; the full review is `Invoke::reviewed`, the only
+  constructor; the plan's card reads its flags through `Plan::risk_flags()`, and a batch's
+  activity text is `Invoke::with_activity_summary` or `with_dapp_origin`. A batch's allowance
+  changes and its row's amount and token (`ActivityAsset`) reach the host in the plan's pending
+  record (`PendingKind::Invoke`). The approve spellings are `call_decode::{APPROVE,
+  APPROVE_SET, DECREASE_ALLOWANCE}` and the approve call is `send::calls::erc20_approve`.
 - AVNU swaps are `crates/wallet-core/src/swap/`: the quote (`quote.rs`: `PendingQuote`,
   `SwapQuote`, the value check), the build and its reply judge (`build.rs`: `PendingBuild`), the
   build policy and floor (`policy.rs`: `build_policy`, `reviewed_min_buy_amount`) and the frozen
-  preparation (`prepare.rs`: `SwapPreparation`, `SwapActivity`); Bramble's deployments and
+  preparation (`prepare.rs`: `SwapPreparation`); Bramble's deployments and
   numbers are `bramble-core`'s `swap::SWAP_POLICY`.
 - Native staking lives in `crates/wallet-core/src/staking/`: the pinned chain read
   (`read::StakingRead`, decoders and `verify_staking_pool` in `decode`), Starkscan's directory
   and positions (`directory`, `positions`, the shared `coverage` rule), the rows (`view`), the
   calls and sentences (`calls`, `review`), and the prepared action (`prepare`, built through
-  `send::invoke::Invoke::new`). Bramble's numbers are `bramble-core`'s
+  `send::invoke::Invoke::reviewed`). Bramble's numbers are `bramble-core`'s
   `staking::STAKING_POLICY`.
 - Network and token records (`NetworkInfo`, `TokenInfo`, `TokenRegistry`, borrowed together as
   `Catalogs`) live in `crates/wallet-core/src/catalog.rs`; the core bundles none, the wallet
@@ -168,9 +171,10 @@ Grep first; extend in place rather than adding a sibling.
   `Approval` decoder, merge and listing rules (`discovery.rs`), the external scan
   (`scan::ExternalAllowanceScan`) and the tracked reads and their `allowance` call
   (`tracked.rs`). Allowance writes and the revoke are `allowances::calls` (`AllowanceOwner`,
-  `record_submitted`, `approved_asset_kind`, `standing_allowance_totals`) and
+  `record_submitted`, `record_changes`, `approved_asset_kind`, `standing_allowance_totals`) and
   `allowances::revoke` (`RevokeTarget`, `revoke_outcomes`); a submitted batch's approvals reach
-  the log only through `record_submitted`. Bramble's numbers are `ALLOWANCE_POLICY` in
+  the log only through `record_changes`, from the plan's pending record, or `record_submitted`
+  for calls no plan carried. Bramble's numbers are `ALLOWANCE_POLICY` in
   `bramble-core`'s `lib.rs`.
 - Activity lives in `crates/wallet-core/src/history/` and `activity/`: the row type
   (`history::activity::ActivityEntry`, `ActivityKind`), the Starkscan lane (`starkscan.rs`), the

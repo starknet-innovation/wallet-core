@@ -2,9 +2,10 @@
 // submitted revoke's outcome, read from the wallet's own activity rows, and how the next listing
 // settles the record on it and on readings.
 
-use super::calls::record_submitted;
+use super::calls::{record_changes, record_submitted, AllowanceChange, ChangeKind};
 use super::calls_tests::*;
 use super::discovery::AllowanceReading;
+use super::record::AllowanceInput;
 use super::retention::Ranking;
 use super::revoke::*;
 use super::revoke_tests::{build, reading, resolve, LONG_SPENDER};
@@ -12,6 +13,7 @@ use super::store::{AllowanceLog, RevokeOutcome, RevokeStatus};
 use super::TEST_POLICY;
 use crate::history::activity::{ActivityEntry, ActivityKind, ActivityOrigin, TxStatus};
 use crate::host::testing::Memory;
+use crate::send::plan::PendingKind;
 use crate::send::u256::U256;
 use crate::NetworkId;
 
@@ -46,7 +48,7 @@ fn outcomes(log: &AllowanceLog, entries: &[ActivityEntry]) -> Vec<RevokeOutcome>
 }
 
 // Grants through a submitted batch, then revokes the grant as the manager does: resolve, build,
-// and file the batch under the revoke's hash.
+// and file the changes the plan's pending record carries under the revoke's hash.
 fn grant_then_revoke(storage: &Memory) -> (AllowanceLog<'_>, String) {
     let lists = Lists::standard();
     let mut log = AllowanceLog::new(storage, TEST_POLICY);
@@ -63,14 +65,10 @@ fn grant_then_revoke(storage: &Memory) -> (AllowanceLog<'_>, String) {
     let id = log.list().unwrap()[0].id.clone();
     let target = resolve(&id, &log.list().unwrap(), &lists.known()).unwrap();
     let invoke = build(&target, &lists.known(), &[]).unwrap();
-    record_submitted(
-        &mut log,
-        &invoke.calls,
-        &owner(),
-        &lists.known(),
-        REVOKE_HASH,
-        &ranking,
-    );
+    let PendingKind::Invoke { allowances, .. } = invoke.pending_kind() else {
+        panic!("a revoke is a call batch");
+    };
+    record_changes(&mut log, &allowances, REVOKE_HASH, &ranking);
     (log, id)
 }
 
@@ -80,6 +78,31 @@ fn shape(log: &AllowanceLog) -> Vec<(U256, bool, Option<String>)> {
         .into_iter()
         .map(|r| (r.amount, r.revoking, r.revoke_hash))
         .collect()
+}
+
+#[test]
+fn a_revoke_carries_exactly_the_zero_approve_for_its_pair() {
+    let lists = Lists::standard();
+    let id = format!("{ACCOUNT}:{CANONICAL_TOKEN}:{LONG_SPENDER}");
+    let target = resolve(&id, &[], &lists.known()).unwrap();
+    let invoke = build(&target, &lists.known(), &[]).unwrap();
+    assert_eq!(
+        invoke.pending_kind(),
+        PendingKind::Invoke {
+            asset: None,
+            allowances: vec![AllowanceChange {
+                kind: ChangeKind::Set,
+                input: AllowanceInput {
+                    account_id: ACCOUNT.into(),
+                    network: NetworkId::Mainnet,
+                    token: CANONICAL_TOKEN.into(),
+                    spender: LONG_SPENDER.into(),
+                    amount: U256::ZERO,
+                    lower_bound: false,
+                },
+            }],
+        }
+    );
 }
 
 #[test]

@@ -17,8 +17,8 @@ use super::record::{AllowanceInput, AllowanceRecord};
 use super::retention::Ranking;
 use super::store::{AllowanceDelta, AllowanceLog, DeltaDirection};
 use crate::felt;
-use crate::history::explorer::activity_account_id;
-use crate::send::call_decode::{uint256_at, Known};
+use crate::history::explorer::{activity_account_id, canonical_account_id};
+use crate::send::call_decode::{uint256_at, Known, APPROVE, APPROVE_SET, DECREASE_ALLOWANCE};
 use crate::send::calls::Call;
 use crate::send::u256::U256;
 use crate::NetworkId;
@@ -76,14 +76,17 @@ pub struct AllowanceChange {
 }
 
 // `changeKind`, matched exactly (no case folding): the entrypoint is untrusted text, and an
-// unknown one decodes as nothing. The grant spellings are `call_decode`'s `APPROVE`; a test holds
-// the two lists together.
+// unknown one decodes as nothing. The spellings are `call_decode`'s, the reviewer's own, so the
+// two never disagree on what grants spend.
 fn change_kind(entrypoint: &str) -> Option<ChangeKind> {
-    match entrypoint {
-        "approve" => Some(ChangeKind::Set),
-        "increaseAllowance" | "increase_allowance" => Some(ChangeKind::Increase),
-        "decreaseAllowance" | "decrease_allowance" => Some(ChangeKind::Decrease),
-        _ => None,
+    if entrypoint == APPROVE_SET {
+        Some(ChangeKind::Set)
+    } else if APPROVE.contains(&entrypoint) {
+        Some(ChangeKind::Increase)
+    } else if DECREASE_ALLOWANCE.contains(&entrypoint) {
+        Some(ChangeKind::Decrease)
+    } else {
+        None
     }
 }
 
@@ -154,10 +157,26 @@ pub fn record_submitted(
     transaction_hash: &str,
     ranking: &Ranking,
 ) {
-    for AllowanceChange { kind, input } in allowance_changes(calls, owner, known) {
+    record_changes(
+        log,
+        &allowance_changes(calls, owner, known),
+        transaction_hash,
+        ranking,
+    );
+}
+
+/// `record_submitted` for changes already read: what a plan's pending record carries for a batch
+/// (`send::plan::PendingKind::Invoke`), filed under the hash the plan signed.
+pub fn record_changes(
+    log: &mut AllowanceLog,
+    changes: &[AllowanceChange],
+    transaction_hash: &str,
+    ranking: &Ranking,
+) {
+    for AllowanceChange { kind, input } in changes {
         let direction = match kind {
             ChangeKind::Set => {
-                let _ = log.record(&input, Some(transaction_hash), ranking);
+                let _ = log.record(input, Some(transaction_hash), ranking);
                 continue;
             }
             ChangeKind::Increase => DeltaDirection::Add,
@@ -165,7 +184,7 @@ pub fn record_submitted(
         };
         let delta = AllowanceDelta {
             direction,
-            input,
+            input: input.clone(),
             transaction_hash: Some(transaction_hash.to_string()),
         };
         let _ = log.apply_delta(&delta, ranking);
@@ -173,8 +192,11 @@ pub fn record_submitted(
 }
 
 /// `standingAllowanceTotals`: `owner`'s logged amounts by (token, spender), for the reviewer's
-/// unlimited-approval rule. Only trusted tokens are seeded, so an item id is never added to an
-/// amount; a lower bound is seeded at its bound. Every record is one this wallet wrote.
+/// unlimited-approval rule; the last record of a pair wins, as `Map.set` does. Only contracts
+/// `approved_asset_kind` calls fungible are seeded, so an item id is never added to an amount; a
+/// lower bound is seeded at its bound. Every record is one this wallet wrote. The account id is
+/// compared canonically: a loaded record's already is (`record` validates it), and a seed can
+/// only raise a warning, never hide one.
 pub fn standing_allowance_totals(
     records: &[AllowanceRecord],
     owner: &AllowanceOwner,
@@ -182,7 +204,10 @@ pub fn standing_allowance_totals(
 ) -> HashMap<(Felt, Felt), U256> {
     records
         .iter()
-        .filter(|r| r.account_id == owner.account_id && r.network == owner.network)
+        .filter(|r| {
+            r.network == owner.network
+                && canonical_account_id(&r.account_id).as_deref() == Some(&owner.account_id)
+        })
         .filter_map(|r| {
             let token = felt::parse(&r.token)?;
             let spender = felt::parse(&r.spender)?;

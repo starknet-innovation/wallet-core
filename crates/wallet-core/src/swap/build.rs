@@ -1,6 +1,6 @@
 //! The build: `readSwapPrepareInput`'s quote id and slippage rules, the reviewed floor,
 //! `buildCalls`' request and reply judge (`readCall`), then the build policy and
-//! `send::invoke::Invoke::new` (`swapPrepareResponse`).
+//! `send::invoke::Invoke::reviewed` (`swapPrepareResponse`).
 
 use super::policy::{build_policy, reviewed_min_buy_amount, Intent};
 use super::{felt_value, read_json, SwapPreparation, SwapQuote, SwapRefusal, SWAP_BODY_LIMIT};
@@ -8,11 +8,11 @@ use crate::felt;
 use crate::js::json::JsValue;
 use crate::js::num::number_to_string;
 use crate::portfolio::wire::{HttpHeader, HttpMethod, HttpOutcome, HttpRequest, HTTP_DEADLINE_MS};
-use crate::send::call_decode::Known;
 use crate::send::calls::Call;
 // `isEntrypoint` (`avnu.ts`, `^[a-zA-Z_][a-zA-Z0-9_]{0,63}$`) is the invoke grammar.
 use crate::send::invoke::{is_entrypoint, Invoke};
 use crate::send::multisig_invoke::StarkPrimitives;
+use crate::send::review_flags::ReviewContext;
 use crate::send::types::{Account, Policy};
 use crate::send::u256::U256;
 use crate::Felt;
@@ -90,13 +90,14 @@ impl SwapQuote {
 
 impl PendingBuild {
     /// Judges the build reply: the envelope for this network, every call in its grammar, the
-    /// build policy against the bound intent, then the batch review (`Invoke::new` under
-    /// `send_policy`, with the wallet's `known` tokens and `trusted` addresses on this network).
+    /// build policy against the bound intent, then the batch review (`Invoke::reviewed` under
+    /// `send_policy`, with everything the wallet knows on this network). The review's
+    /// `known_contracts` are this build's pinned router alone, as the extension's
+    /// (`knownContracts: [routerAddress]`): the policy admits no other contract to pin.
     pub fn judge(
         self,
         outcome: &HttpOutcome,
-        known: &Known,
-        trusted: &[Felt],
+        context: &ReviewContext,
         send_policy: &Policy,
         primitives: &dyn StarkPrimitives,
     ) -> Result<SwapPreparation, SwapRefusal> {
@@ -116,15 +117,12 @@ impl PendingBuild {
                 max_fee_bps: request.policy.max_integrator_fee_bps,
             },
         )?;
-        let invoke = Invoke::new(
-            &self.account,
-            calls,
-            send_policy,
-            known,
-            trusted,
-            primitives,
-        )?;
-        Ok(SwapPreparation::new(self, invoke, &route, known))
+        let context = ReviewContext {
+            known_contracts: std::slice::from_ref(&self.router),
+            ..*context
+        };
+        let invoke = Invoke::reviewed(&self.account, calls, send_policy, &context, primitives)?;
+        Ok(SwapPreparation::new(self, invoke, &route))
     }
 
     /// The build envelope: an object whose `chainId` is this network's and whose `calls` hold
