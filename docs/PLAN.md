@@ -87,6 +87,9 @@ goes from `0.2.2` to `0.4.0`. `v0.4.0` breaks three things, none migrated becaus
 users: the vault is the extension's v13 payload and older vaults are refused (#58),
 `importWallet` takes no BIP-39 passphrase (#58), and Ready (Argent X) legacy keys change for about
 0.4% of phrases (#59; 3,949 of 1,000,000 random phrases measured).
+`v0.5.0` carries #61–#96: Mobile parity P1–P6 and the core halves of P7 and P9–P13. It removes
+no export. The one change mobile must adopt with the bump is #77's `RelayStep::NextPage`; P1,
+P9 and P11–P13 are not exported, and P7 still writes schema 13.
 
 ### Next PRs
 
@@ -106,7 +109,7 @@ integration PR (#96).
 
 | PR | Repo, base | Needs | What it is |
 | --- | --- | --- | --- |
-| `0.5.0`, then M15 | here; Bramble, `feature/mobile-wallet` | — | the tag, and mobile taking it: the relay loops #77 changes, the screens for P2–P6 and P10 (activity filter, counterparty summary and CSV export), and Stark-name lookup in the send form (P5) |
+| M15 | Bramble, `feature/mobile-wallet` | — | mobile taking `v0.5.0`: the relay loops #77 changes, the screens for P2–P6 and P10 (activity filter, counterparty summary and CSV export), and Stark-name lookup in the send form (P5) |
 | G7 | Bramble, `feature/mobile-wallet` | — | the generators P1, P3 and P4 landed without: an imported-key vault, the RPC override rules, the multisig import cases and the call summaries beyond an ERC-20 transfer. And the ones #83–#87 landed without: Stark-name normalisation, calldata and judging (P5); G4 extended to a v13 vault with every collection filled (P7); a multicall and a refused batch through `submitInvokeTransaction` (P9); the CSV, filter and counterparty summary over one feed (P10); `Approval` decoding, a scan with legacy windows, the merge, eviction and settling (P12). And the ones #89–#93 landed without: G4 at schema 14 with an `accountProvenance`, sealed by the v0.10.11 store (P7); `verifyCalls` over batches that raise each flag (P9); a quote, a build and the refused builds through the real swap handler (P11); the revoke call and its settling (P12); a live directory page, a positions answer, a pinned read and each action's calls (P13) |
 | P1 export | here, then Bramble | krusty-kms#257 (open) | whenever Krusty ships it: the bump that exports a selector and signature verification, an implementation of `StarkPrimitives` over it, P1's FFI surface, and its screens in the tag after |
 | P7 Vault: migrate to 14 | here | v0.10.11 on the extension's `main`, a generator, and the product owner's answers | the reader takes 13 and 14 (#87, #92) and writes each back as read. Left: `NEW_VAULT_SCHEMA` to 14 and raising a v13 vault on unlock, as the extension's migration does. Open questions: whether to migrate before v0.10.11 ships; whether a vault holding a pre-Krusty-3 Ready key should open (the extension keeps signing it; mobile refuses the vault); and #87's (whether kept accounts are listed, what an active kept account means, and whether a record that fails mobile's stronger rules is kept unused rather than refusing the vault) |
