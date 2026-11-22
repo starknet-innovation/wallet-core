@@ -72,7 +72,7 @@ v13 payload.
 | 2.7 Swap | done (#50), behind the `mobile` feature | done (M13, Bramble #929), at `v0.3.0`: `mobile/core` is a shell over this crate |
 | Vault switch | done (V1 #58) | G4 done (Bramble #947); M14 done (Bramble #980): mobile pins `v0.4.0` |
 | [Mobile parity](#mobile-parity) | P6 done (#65), P2 done (#68); P1's mechanism done (P1a #70, P1b #71, P1c #72), not exported until Krusty exports a selector and signature verification; P3 done (#80), not shippable until Bramble's imported-key v13 fixture lands; P4 done (#78), no fixture yet (needs a Bramble generator); P5 done (#83), no fixture yet | not started |
-| [Parity](#parity) P7–P16 | P7 done for reading (#87, #92): every v13 and v14 collection is read and what mobile does not operate is kept unused; the 13→14 migration waits on v0.10.11 reaching the extension's `main`. P9's mechanism done (#84) with its review flags, per-call summaries and caller's activity text (#91), not exported: it waits on Krusty's selector (krusty-kms#257). P10 done (#86). P11's core half done (#90), P12's done (#85, #89) and P13's done (#93), none exported: each waits on P9's export; the four are joined (#96). None has a fixture yet (G7). P8 and P14–P16 not started | not started |
+| [Parity](#parity) P7–P16 | P7 done for reading (#87, #92): every v13 and v14 collection is read, every vault the extension opens opens here, and what mobile does not operate is kept unused and listed; the 13→14 migration waits on v0.10.11 reaching the extension's `main`. P9's mechanism done (#84) with its review flags, per-call summaries and caller's activity text (#91), not exported: it waits on Krusty's selector (krusty-kms#257). P10 done (#86). P11's core half done (#90), P12's done (#85, #89) and P13's done (#93), none exported: each waits on P9's export; the four are joined (#96). None has a fixture yet (G7). P8 and P14–P16 not started | not started |
 | 3 Extension | not started, and waits for parity; `js/package.json` is private | n/a |
 
 `v0.1.0` is tagged at `35abc8b` (GitHub release only) and was what M2 and M3 pinned. `v0.2.0`
@@ -116,7 +116,7 @@ integration PR (#96).
 | M15 | Bramble, `feature/mobile-wallet` | — | mobile taking `v0.5.0`: the relay loops #77 changes, the screens for P2–P6 and P10 (activity filter, counterparty summary and CSV export), and Stark-name lookup in the send form (P5) |
 | G7 | Bramble, `feature/mobile-wallet` | — | the generators P1, P3 and P4 landed without: an imported-key vault, the RPC override rules, the multisig import cases and the call summaries beyond an ERC-20 transfer. And the ones #83–#87 landed without: Stark-name normalisation, calldata and judging (P5); G4 extended to a v13 vault with every collection filled (P7); a multicall and a refused batch through `submitInvokeTransaction` (P9); the CSV, filter and counterparty summary over one feed (P10); `Approval` decoding, a scan with legacy windows, the merge, eviction and settling (P12). And the ones #89–#93 landed without: G4 at schema 14 with an `accountProvenance`, sealed by the v0.10.11 store (P7); `verifyCalls` over batches that raise each flag (P9); a quote, a build and the refused builds through the real swap handler (P11); the revoke call and its settling (P12); a live directory page, a positions answer, a pinned read and each action's calls (P13) |
 | P1 export | here, then Bramble | krusty-kms#257 (open) | whenever Krusty ships it: the bump that exports a selector and signature verification, an implementation of `StarkPrimitives` over it, P1's FFI surface, and its screens in the tag after |
-| P7 Vault: migrate to 14 | here | v0.10.11 on the extension's `main`, a generator, and the product owner's answers | the reader takes 13 and 14 (#87, #92) and writes each back as read. Left: `NEW_VAULT_SCHEMA` to 14 and raising a v13 vault on unlock, as the extension's migration does. Open questions: whether to migrate before v0.10.11 ships; whether a vault holding a pre-Krusty-3 Ready key should open (the extension keeps signing it; mobile refuses the vault); and #87's (whether kept accounts are listed, what an active kept account means, and whether a record that fails mobile's stronger rules is kept unused rather than refusing the vault) |
+| P7 Vault: migrate to 14 | here | v0.10.11 on the extension's `main`, a generator, and the product owner's answers | the reader takes 13 and 14 (#87, #92) and writes each back as read. Left: `NEW_VAULT_SCHEMA` to 14 and raising a v13 vault on unlock, as the extension's migration does. Waits on v0.10.11 shipping, so a backup mobile raises to 14 still opens in the released extension. The other questions are settled: mobile opens every vault the extension opens, see P7 |
 | P8 Ledger | here | the transport question | moved up 2026-11-21: every extension user has it, and a Ledger user cannot use mobile without it. #87 reads and keeps a Ledger account; P8 makes it usable |
 | P9 export | here | krusty-kms#257 (open), a generator | the mechanism (#84) and its review (#91: the flags, a summary per call, the caller's activity text) are in, with no export. Owed before one: a selector from Krusty, as for P1; a host that files the pending record's allowance changes (`allowances::calls::record_changes`) before it writes the row, which Bramble's does not yet; and fee affordability with an amount for a batch, which the invoke kind cannot yet answer |
 | P11, P12 and P13 exports | here, each with its generator and its mobile PR | P9's export | the core halves are in (#90, #85 and #89, #93) and joined to the review and the allowance log (#96), unexported; each export arrives with its screens |
@@ -349,7 +349,8 @@ Foundations, which the features need, and Ledger, which needs only the first:
   schema 14. #990 says that step changes only the number; it does not: on `release/v0.10.11`
   it adds account provenance (`schema-provenance.ts`, with a migration). Oracle: G4 extended to
   a vault with every collection filled, then the same at 14.
-  As built, first half (v13): the reader accepts the vaults the extension's v13 validator
+  As built, first half (v13; its stronger rules no longer refuse a vault but keep a record, see
+  "Matched to the extension" below): the reader accepts the vaults the extension's v13 validator
   accepts, except those it refuses whole for one of mobile's stronger rules: a vault with no
   phrase (`mnemonic: null`: a Ledger-only or key-only wallet; mobile has no phrase-less wallet);
   a phrase record off mobile's three ladders (both index fields stepped), past a `u32` index or at
@@ -382,13 +383,10 @@ Foundations, which the features need, and Ledger, which needs only the first:
   characters), a number to a plain integer literal (`1.0` and `1e0` are refused), and serde
   refuses repeated keys and lone surrogates that `JSON.parse` takes. One gap the other way: an
   origin with an `xn--` label that is not valid punycode passes the hand grammar where the
-  extension's URL parser refuses it. Open for the product owner: whether a record of a kind mobile
-  operates that breaks one of its stronger rules should be kept unused rather than refuse the
-  vault (today a backup holding one address-picked import does not open on mobile at all);
-  whether phrase-less backups should open; kept records are not listed at all (rather than listed
-  as unusable); a vault whose active account is a kept one opens with no active account until one
-  is picked or the network switch picks one; and a vault holding a phrase and only kept records
-  opens as waiting for discovery ("Find your accounts"). Unit-tested only
+  extension's URL parser refuses it. A vault whose active account is a kept one opens with no
+  active account until one is picked or the network switch picks one, and a vault holding a
+  phrase and only kept records opens as waiting for discovery ("Find your accounts"); the product
+  owner kept both (2026-11-22). Unit-tested only
   (`tests/vault_v13_kept.rs`, `vault_v13_rules.rs`, `vault_v13_accounts.rs`,
   `vault_v13_poisoning.rs`: the extension's own validator cases, moved onto G4's payload in test
   code): G4 holds none of these, so before a release relies on it Bramble needs G4 extended with
@@ -412,13 +410,26 @@ Foundations, which the features need, and Ledger, which needs only the first:
   for a restore from the phrase; every other entry, a kept record's included, is written back
   unchanged, and a failed write rolls the map back. Unit-tested only (`tests/vault_v14.rs`,
   `vault_v14_writes.rs`), over G4's payload in test code; a v14 G4 sealed by the extension's
-  own store is owed by a Bramble generator. Found, not fixed: v0.10.11 moves the extension to
-  Krusty 3.1.0 and keeps signing an `argentx-bip44` account whose stored key came from the
-  pre-3.0 derivation (`ready-key-drift.ts`; about 1 phrase in 256), with a warning, while
-  mobile re-derives every such record and refuses the whole vault on a mismatch, so that
-  person's backup does not open on mobile. It needs a product decision and belongs with the
-  "Extension Krusty 3" row. Left for P16: per-account origin revocation
+  own store is owed by a Bramble generator. Left for P16: per-account origin revocation
   (`withoutOriginAccess`).
+  Matched to the extension (product owner, 2026-11-22: mobile opens every vault the extension
+  opens): mobile's stronger rules decide which records mobile operates, never whether the vault
+  opens. `vault_admit` re-derives each record mobile could operate; one that does not re-derive
+  (a picked address, a key or y-coordinate that does not match, a coordinate, class or index
+  mobile does not derive) or that comes past `MAX_ACCOUNT_RECORDS` (128, the bound on unlock
+  work; the extension's only bound is its budget) is kept, as a Ledger record is, and
+  `unusable_accounts` lists every kept record with its reason (`UnusableReason`: Ledger, an
+  imported phrase, another network, not derived here), so the host shows it as not usable on
+  this device rather than missing. The provenance map is bounded by the budget's array length
+  (4,096) instead of 128. A Ready record whose sealed key an earlier Krusty derived
+  (`ready-key-drift.ts`: Krusty 2.0 and earlier kept the ETH key's leading zero bytes, about 1
+  phrase in 256) is operated with that sealed key, as v0.10.11 keeps signing with it, when the
+  record is what the key places; the key is held in the session beside imported keys
+  (`VaultPayload::held_keys`), the network switch seals a copy under the projection as
+  `deriveNetworkAccount` does, and `AccountRecord::pre_fix_ready_key` tells the host to warn as
+  the extension does. Only Ready's records are held this way; any other record whose sealed key
+  is not the phrase's is kept. Still refused: a vault with no phrase (until P8), and the
+  stricter grammar above. Unit-tested (`tests/vault_match.rs`), over vaults built in test code.
 - **P8 Ledger.** Straight after the vault step: the extension ships it to every user (#990's
   "trusted testers" is wrong), so a Ledger user cannot use mobile at all until this lands. The
   device protocol and session as sans-IO APDU exchanges: `packages/platform/ledger-protocol/`

@@ -335,7 +335,7 @@ fn preferences_drop_unknown_accounts_and_refuse_anything_else_invalid() {
 }
 
 #[test]
-fn a_tampered_or_malformed_vault_fails_closed() {
+fn a_vault_the_extension_refuses_fails_closed() {
     let (dir, clock, core) = pending();
     let argent = class_of("argent 0.4.0");
     let accounts = vec![oz(0), own(AccountFamily::Argent, 1, Some(&argent))];
@@ -386,10 +386,6 @@ fn a_tampered_or_malformed_vault_fails_closed() {
         "family swapped",
     );
     reject(
-        &|p| p["accounts"][0]["publicKeyY"] = other.into(),
-        "a y-coordinate that does not re-derive",
-    );
-    reject(
         &|p| {
             p["accounts"][0]
                 .as_object_mut()
@@ -408,10 +404,6 @@ fn a_tampered_or_malformed_vault_fails_closed() {
     );
     reject(&|p| p["activeAccountId"] = Value::Null, "no active account");
     reject(&|p| p["mnemonic"] = Value::Null, "no phrase");
-    reject(
-        &|p| p["signingKeys"][0]["privateKey"] = "0x1".into(),
-        "a signing key the phrase does not derive",
-    );
     reject(
         &|p| {
             let key = p["signingKeys"][0]["privateKey"]
@@ -453,6 +445,25 @@ fn a_tampered_or_malformed_vault_fails_closed() {
         "a malformed Ledger derivation",
     );
     reject(&|p| p["extra"] = 1.into(), "unknown field");
+    // A record that breaks only mobile's own rule (it does not re-derive from the phrase) is
+    // kept unused rather than refusing the vault (`vault_match.rs`).
+    let kept = |mutate: &dyn Fn(&mut Value), why: &str| {
+        let mut payload = good.clone();
+        mutate(&mut payload);
+        unlock(&payload, 13).unwrap_or_else(|_| panic!("{why}"));
+        let core = open(dir.path(), &clock);
+        core.unlock(PASSWORD.into()).unwrap();
+        assert_eq!(core.unusable_accounts().unwrap().len(), 1, "{why}");
+        assert_eq!(core.all_account_records().unwrap().len(), 1, "{why}");
+    };
+    kept(
+        &|p| p["accounts"][0]["publicKeyY"] = other.into(),
+        "a y-coordinate that does not re-derive",
+    );
+    kept(
+        &|p| p["signingKeys"][0]["privateKey"] = "0x1".into(),
+        "a signing key the phrase does not derive",
+    );
     reject(&|p| p["schemaVersion"] = 12.into(), "another schema");
     // A v13 payload in an earlier build's container is refused too.
     assert!(matches!(unlock(&good, 5), Err(CoreError::Storage { .. })));

@@ -16,7 +16,8 @@ use serde::de::{DeserializeSeed, Deserializer, IgnoredAny, MapAccess, SeqAccess,
 
 use crate::account_names::utf16_len;
 
-const MAX_ARRAY_LENGTH: usize = 4_096;
+/// The longest array the budget admits, `accounts` included.
+pub(crate) const MAX_ARRAY_LENGTH: usize = 4_096;
 const MAX_BYTES: usize = 1024 * 1024;
 const MAX_DEPTH: usize = 32;
 const MAX_NODES: usize = 50_000;

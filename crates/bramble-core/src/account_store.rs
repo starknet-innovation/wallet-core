@@ -8,10 +8,10 @@
 //! vault codec. A v14 vault's `accountProvenance` is held whole and kept up to date
 //! (`vault_provenance`).
 //!
-//! Nothing stored is trusted blindly. `validate` checks every field, and re-derives every record
-//! from its key (the phrase's, or an imported account's sealed one) and compares it with what was
-//! stored, so a tampered or corrupted record fails closed rather than redirecting Receive or Copy
-//! to another address.
+//! Nothing stored is operated blindly. On open, `vault_admit` re-derives every record from its
+//! key (the phrase's, or the one the vault sealed for it) and compares it with what was stored; a
+//! record that does not match is kept unused, as a record of a kind mobile cannot operate is, so
+//! it never signs and Receive or Copy never shows its address as a usable account.
 
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
@@ -21,7 +21,7 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::account_address::family_address;
 use crate::account_catalog::{catalog, AccountFamily};
-pub(crate) use crate::account_validate::{check_consistent, validate};
+pub(crate) use crate::account_validate::check_consistent;
 use crate::files::storage;
 use crate::groups::StoredGroup;
 use crate::kms::Ladder;
@@ -31,7 +31,8 @@ use crate::vault_v13::NEW_VAULT_SCHEMA;
 use crate::vault_wire::Kept;
 use crate::{felt, kms, CoreError};
 
-/// Records one vault may hold across networks (mobile policy; bounds vault size and unlock work).
+/// Records mobile operates across networks (mobile policy; bounds unlock work, since each is
+/// re-derived on open). A vault may hold more, as the extension's may: the rest are kept unused.
 pub(crate) const MAX_ACCOUNT_RECORDS: usize = 128;
 /// Highest account index (`RECOVERY_SCAN_LIMITS.maxIndex`, Krusty's unhardened bound).
 pub(crate) const MAX_ACCOUNT_INDEX: u32 = 0x7fff_ffff;
@@ -48,7 +49,7 @@ pub(crate) enum KeySource {
     /// Derived from the phrase at the record's index on this ladder, in each call that needs it.
     Phrase(Ladder),
     /// A raw key the user imported (the extension's `imported-raw-key`): sealed in the vault and
-    /// held in the session (`VaultPayload::imported_keys`). The record's index is 0 and unused.
+    /// held in the session (`VaultPayload::held_keys`). The record's index is 0 and unused.
     Imported,
 }
 
@@ -128,10 +129,12 @@ pub(crate) struct VaultPayload {
     /// Accounts the host's lists leave out (the extension's `hiddenAccountIds`, a preference).
     #[zeroize(skip)]
     pub hidden_account_ids: Vec<String>,
-    /// Each imported account's key, by account id, as the vault's `signingKeys` holds them.
-    /// Boxed so the map moves pointers, never a key; `SecretFelt` zeroizes itself on drop.
+    /// Each key mobile holds rather than derives, by account id, as the vault's `signingKeys`
+    /// holds them: an imported account's, and a Ready account's that an earlier Krusty derived
+    /// (the extension's pre-fix Ready key, which it keeps signing with; `vault_admit`). Boxed so
+    /// the map moves pointers, never a key; `SecretFelt` zeroizes itself on drop.
     #[zeroize(skip)]
-    pub imported_keys: BTreeMap<String, Box<SecretFelt>>,
+    pub held_keys: BTreeMap<String, Box<SecretFelt>>,
     /// What the vault holds that mobile does not operate, written back unchanged. Its secret
     /// records zeroize themselves.
     #[zeroize(skip)]
@@ -202,7 +205,7 @@ impl VaultPayload {
             backup_pending: false,
             groups: Vec::new(),
             hidden_account_ids: Vec::new(),
-            imported_keys: BTreeMap::new(),
+            held_keys: BTreeMap::new(),
             kept: Kept::default(),
             labels: BTreeMap::new(),
             mnemonic,
@@ -222,9 +225,17 @@ impl VaultPayload {
         kms::public_key(&self.mnemonic, None, path, index)
     }
 
-    /// `record`'s key, for the caller to use and drop: derived from the phrase, or a copy of the
-    /// imported key, whose public key Krusty computes here. Every account key goes through here.
+    /// `record`'s key, for the caller to use and drop: a copy of the key the session holds for it
+    /// (an imported or a pre-fix Ready key), whose public key Krusty computes here, else derived
+    /// from the phrase. Every account key goes through here.
     pub(crate) fn signing_key(&self, record: &StoredAccount) -> Result<DerivedKey, CoreError> {
+        if let Some(key) = self.held_keys.get(&record.id) {
+            let pair = StarkXOnlyKeypair {
+                public_key_x: wallet_core::stark_public_key(key)?,
+                private_key: SecretFelt::clone(key),
+            };
+            return Ok((pair, None));
+        }
         match record.key {
             KeySource::Phrase(ladder) => Ok(wallet_core::account_keypair(
                 &self.mnemonic,
@@ -232,23 +243,19 @@ impl VaultPayload {
                 ladder,
                 record.account_index,
             )?),
-            KeySource::Imported => {
-                let key = self
-                    .imported_keys
-                    .get(&record.id)
-                    .ok_or_else(invalid_payload)?;
-                let pair = StarkXOnlyKeypair {
-                    public_key_x: wallet_core::stark_public_key(key)?,
-                    private_key: SecretFelt::clone(key),
-                };
-                Ok((pair, None))
-            }
+            KeySource::Imported => Err(invalid_payload()),
         }
     }
 
+    /// Whether `record` signs with a Ready key an earlier Krusty derived: one Argent X would not
+    /// find again from the phrase, so the host warns before a restore elsewhere is relied on.
+    pub(crate) fn is_pre_fix_ready(&self, record: &StoredAccount) -> bool {
+        record.key == KeySource::Phrase(Ladder::ArgentX) && self.held_keys.contains_key(&record.id)
+    }
+
     /// `source`'s key placed on `network` (the extension's `deriveNetworkAccount`): the same
-    /// family, class and salt, and for an imported account a copy of its key to seal under the
-    /// new record.
+    /// family, class and salt, and for a held key (imported, or pre-fix Ready) a copy of it to
+    /// seal under the new record, as the extension copies the source's stored key.
     pub(crate) fn project(
         &self,
         source: &StoredAccount,
@@ -267,7 +274,10 @@ impl VaultPayload {
             &public_key,
             network,
         )?;
-        let sealed = (source.key == KeySource::Imported).then(|| Box::new(pair.private_key));
+        let sealed = self
+            .held_keys
+            .contains_key(&source.id)
+            .then(|| Box::new(pair.private_key));
         Ok((record, sealed))
     }
 
@@ -360,7 +370,7 @@ impl VaultPayload {
         self.labels = state.labels;
         // A key sealed for a record the rollback removed goes with it.
         let accounts = &self.accounts;
-        self.imported_keys
+        self.held_keys
             .retain(|id, _| accounts.iter().any(|record| &record.id == id));
         self.rpc_overrides = state.rpc_overrides;
     }
@@ -380,11 +390,11 @@ pub(crate) fn push_active(
     if payload.holds(&record.id) {
         return Err(refuse("account already exists"));
     }
-    if payload.record_count() >= MAX_ACCOUNT_RECORDS {
+    if payload.accounts.len() >= MAX_ACCOUNT_RECORDS {
         return Err(refuse("account limit reached"));
     }
     if let Some(key) = key {
-        payload.imported_keys.insert(record.id.clone(), key);
+        payload.held_keys.insert(record.id.clone(), key);
     }
     payload.note_origin(&record.id, origin);
     payload.active_account_id = Some(record.id.clone());

@@ -7,39 +7,41 @@
 //!
 //! Reading accepts every vault the extension's v13 or v14 validator accepts (`vault_rules`,
 //! `vault_budget`), with one exception: a vault with no phrase (a Ledger-only or key-only wallet)
-//! is refused, since this wallet has nothing to run without one. Mobile operates the records it
-//! holds keys for: phrase-derived accounts (`starknet-bip44` on either of its two ladders, Ready's
-//! `argentx-bip44`) and accounts imported from a raw key (`imported-raw-key`, PLAN.md P3), on the
-//! networks it has. Those are checked against mobile's stronger rule too, which re-derives every
-//! record from its key (`account_store`): a phrase account's record, public key and sealed key
-//! from the phrase, an imported account's public key and address from the key it sealed. A record
-//! of that kind that does not re-derive is refused.
+//! is refused, since this wallet has nothing to run without one (until P8). Mobile operates the
+//! records it can sign for: phrase-derived accounts (`starknet-bip44` on either of its two
+//! ladders, Ready's `argentx-bip44`) and accounts imported from a raw key (`imported-raw-key`,
+//! PLAN.md P3), on the networks it has, up to `MAX_ACCOUNT_RECORDS`, each only when it re-derives
+//! from its key (`vault_admit`). A record that does not is kept, never a reason to refuse.
 //!
 //! Everything else the vault holds (a Ledger account, an account derived from an imported phrase,
-//! one on the extension's devnet, their sealed keys, origin grants, imported phrases, Ledger
-//! viewing keys, shadow-account scopes, multisig viewing keys and conflict marks) is kept unused
-//! (`vault_wire::Kept`) and written back as it was read: the same records, in the same order. Only
-//! object key order and string escapes can differ, which no reader of the vault sees.
+//! one on the extension's devnet, a record mobile does not re-derive, their sealed keys, origin
+//! grants, imported phrases, Ledger viewing keys, shadow-account scopes, multisig viewing keys and
+//! conflict marks) is kept unused (`vault_wire::Kept`, listed by `unusable_accounts`) and written
+//! back as it was read: the same records, in the same order. Only object key order and string
+//! escapes can differ, which no reader of the vault sees.
 //!
 //! Signing still derives each phrase account's key per call; its sealed key is what the
-//! extension's schema requires, and must equal the derived one. An imported account's sealed key
-//! is the only copy, so it is held in the session (`VaultPayload::imported_keys`) and signs.
+//! extension's schema requires, and must equal the derived one. An imported account's sealed key,
+//! and a pre-fix Ready account's, is the only copy, so it is held in the session
+//! (`VaultPayload::held_keys`) and signs.
 //!
 //! There is no migration, from 13 to 14 or from anything older. Mobile's earlier vault versions
 //! 1 to 5 were developer builds holding no funds (`docs/PLAN.md`, Vault switch): any of them fails
 //! closed with `outdated()`, after the password is proven, and the user resets the wallet.
 
+use std::collections::BTreeMap;
 use std::io;
 
 use zeroize::Zeroizing;
 
 use crate::account_catalog::AccountFamily;
-use crate::account_store::{self, KeySource, StoredAccount, VaultPayload};
+use crate::account_store::{self, KeySource, StoredAccount, VaultPayload, MAX_ACCOUNT_RECORDS};
 use crate::container::{Dek, StoredVault, VaultFile, V1_SCOPE};
 use crate::files::storage;
 use crate::kms::Ladder;
+use crate::vault_admit::{self, Admission};
 use crate::vault_wire::{Account, Derivation, Kept, SigningKey, Vault};
-use crate::{felt, vault, vault_budget, vault_rules, CoreError};
+use crate::{kms, vault, vault_budget, vault_rules, CoreError};
 
 /// The schema a new vault is written at (Bramble's choice): 13, the one the released extension
 /// (v0.10.10) reads, until v0.10.11, whose `CURRENT_SCHEMA_VERSION` is 14, is released.
@@ -224,62 +226,48 @@ pub(crate) fn decode(plaintext: &[u8]) -> Result<VaultPayload, CoreError> {
         shadow_account_scopes: std::mem::take(&mut vault.shadow_account_scopes),
         ..Kept::default()
     };
-    let mut accounts = Vec::with_capacity(vault.accounts.len());
-    let mut wire = Vec::with_capacity(vault.accounts.len());
+    if !kms::validate_mnemonic(&mnemonic) {
+        return Err(invalid());
+    }
+    // Each record mobile could operate is admitted or kept (`vault_admit`); every other record
+    // is kept. Only the first `MAX_ACCOUNT_RECORDS` are re-derived, which bounds unlock work.
+    let mut accounts = Vec::with_capacity(vault.accounts.len().min(MAX_ACCOUNT_RECORDS));
+    let mut held_keys = BTreeMap::new();
     for account in std::mem::take(&mut vault.accounts) {
-        if vault_rules::is_operable(&account) {
-            accounts.push(stored(&account).ok_or_else(invalid)?);
-            wire.push(account);
-        } else {
-            kept.accounts.push((accounts.len(), account));
+        let candidate = (vault_rules::is_operable(&account)
+            && accounts.len() < MAX_ACCOUNT_RECORDS)
+            .then(|| stored(&account))
+            .flatten();
+        let admission = match &candidate {
+            Some(record) => vault_admit::admit(
+                &mnemonic,
+                record,
+                &vault.signing_keys,
+                account.public_key_y.as_ref(),
+            )?,
+            None => Admission::Kept,
+        };
+        match (candidate, admission) {
+            (Some(record), Admission::Derived) => accounts.push(record),
+            (Some(record), Admission::Held(key)) => {
+                held_keys.insert(record.id.clone(), key);
+                accounts.push(record);
+            }
+            _ => kept.accounts.push((accounts.len(), account)),
         }
     }
     // Each kept record's key goes with it; the extension's bindings already hold one key per
-    // record but a Ledger one.
-    let (kept_keys, own_keys): (Vec<_>, Vec<_>) = std::mem::take(&mut vault.signing_keys)
+    // record but a Ledger one. An operated record's key is derived or held, never read again.
+    kept.signing_keys = std::mem::take(&mut vault.signing_keys)
         .into_iter()
-        .partition(|key| kept.account_ids().any(|id| id == key.account_id));
-    kept.signing_keys = kept_keys;
+        .filter(|key| kept.account_ids().any(|id| id == key.account_id))
+        .collect();
     let mut payload = VaultPayload::opened(mnemonic, accounts, vault.active_account_id.take());
     payload.kept = kept;
+    payload.held_keys = held_keys;
     payload.schema_version = vault.schema_version;
     payload.account_provenance = vault.account_provenance.take();
-    // An imported account's key is the one it sealed: canonical, a usable scalar
-    // (`isSigningKeyRef`).
-    for record in &payload.accounts {
-        if record.key != KeySource::Imported {
-            continue;
-        }
-        let sealed = own_keys
-            .iter()
-            .find(|sealed| sealed.account_id == record.id)
-            .and_then(|sealed| felt::parse_sealed_private_key(&sealed.private_key))
-            .ok_or_else(invalid)?;
-        payload
-            .imported_keys
-            .insert(record.id.clone(), Box::new(sealed));
-    }
-    // Mobile's rules (grammar, references, every record re-derived from its key), and beside
-    // each record what the vault sealed: a phrase account's key and y-coordinate must be the
-    // derived ones; an imported account carries no y-coordinate.
-    account_store::validate(&payload, |record, (pair, public_key_y)| {
-        let mut sealed = own_keys
-            .iter()
-            .filter(|sealed| sealed.account_id == record.id);
-        let (Some(sealed), None) = (sealed.next(), sealed.next()) else {
-            return false;
-        };
-        let wire_y = wire
-            .iter()
-            .find(|account| account.id == record.id)
-            .map(|account| &account.public_key_y);
-        // Equal to the derived canonical text, which also holds it canonical and in range. An
-        // imported key was read from this very text above.
-        let key_matches = record.key == KeySource::Imported || {
-            *sealed.private_key == *pair.private_key.expose_secret_hex()
-        };
-        key_matches && wire_y == Some(public_key_y)
-    })?;
+    account_store::check_consistent(&payload)?;
     Ok(payload)
 }
 

@@ -14,7 +14,8 @@ use std::fmt;
 use serde::de::{Deserializer, Error, MapAccess, Visitor};
 use serde::{Deserialize, Serialize};
 
-use crate::account_store::{VaultPayload, MAX_ACCOUNT_RECORDS};
+use crate::account_store::VaultPayload;
+use crate::vault_budget::MAX_ARRAY_LENGTH;
 use crate::vault_v13::PROVENANCE_SCHEMA;
 use crate::vault_wire::Account;
 
@@ -57,7 +58,8 @@ impl<'de> Deserialize<'de> for Origin {
 pub(crate) struct Provenance(BTreeMap<String, Origin>);
 
 /// An object of `Origin`s, refused at its first repeated key (which `JSON.parse` would take, the
-/// last one winning) and past `MAX_ACCOUNT_RECORDS` entries, which no vault mobile opens can name.
+/// last one winning) and past `MAX_ARRAY_LENGTH` entries: each names an account, and the budget
+/// admits no more accounts than that.
 impl<'de> Deserialize<'de> for Provenance {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         struct Entries;
@@ -71,7 +73,7 @@ impl<'de> Deserialize<'de> for Provenance {
             fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Provenance, A::Error> {
                 let mut entries = BTreeMap::new();
                 while let Some((id, origin)) = map.next_entry::<String, Origin>()? {
-                    if entries.len() == MAX_ACCOUNT_RECORDS {
+                    if entries.len() == MAX_ARRAY_LENGTH {
                         return Err(A::Error::custom("too many account origins"));
                     }
                     if entries.insert(id, origin).is_some() {
@@ -166,7 +168,7 @@ mod tests {
     /// The parse stops at the record cap: no vault mobile opens holds more accounts to name.
     #[test]
     fn the_parse_stops_at_the_record_cap() {
-        assert!(serde_json::from_str::<Provenance>(&entries(MAX_ACCOUNT_RECORDS)).is_ok());
-        assert!(serde_json::from_str::<Provenance>(&entries(MAX_ACCOUNT_RECORDS + 1)).is_err());
+        assert!(serde_json::from_str::<Provenance>(&entries(MAX_ARRAY_LENGTH)).is_ok());
+        assert!(serde_json::from_str::<Provenance>(&entries(MAX_ARRAY_LENGTH + 1)).is_err());
     }
 }

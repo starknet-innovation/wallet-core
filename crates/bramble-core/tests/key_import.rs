@@ -325,7 +325,7 @@ fn an_imported_record_of_another_family_opens_when_its_sealed_key_derives_it() {
 }
 
 #[test]
-fn a_vault_whose_imported_record_does_not_match_its_sealed_key_fails_closed() {
+fn an_imported_record_its_sealed_key_does_not_place_is_kept() {
     let (dir, clock, core) = imported();
     let key = key_of(LEGAL, 0);
     let record = core
@@ -362,14 +362,32 @@ fn a_vault_whose_imported_record_does_not_match_its_sealed_key_fails_closed() {
         assert!(!format!("{error} {error:?}").contains(&digits), "{why}");
     };
     reject(
-        &|p| p["accounts"][account]["publicKeyX"] = phrase_account["publicKeyX"].clone(),
-        "a public key the sealed key does not derive",
-    );
-    reject(
         &|p| p["accounts"][account]["address"] = phrase_account["address"].clone(),
         "an address the sealed key does not derive",
     );
-    reject(
+    // A record its sealed key does not place breaks only mobile's own rule: it opens with the
+    // record kept unused, never signed with, and the key is still never echoed.
+    let kept = |mutate: &dyn Fn(&mut Value), why: &str| {
+        let mut payload = good.clone();
+        mutate(&mut payload);
+        unlock(&payload).unwrap_or_else(|_| panic!("{why}"));
+        let core = open(dir.path(), &clock);
+        core.unlock(PASSWORD.into()).unwrap();
+        let unusable = core.unusable_accounts().unwrap();
+        assert_eq!(unusable.len(), 1, "{why}");
+        assert_eq!(unusable[0].id, record.id, "{why}");
+        assert!(!format!("{unusable:?}").contains(&digits), "{why}");
+        assert!(
+            core.sign_hash_for_account(record.id.clone(), "0x1".into())
+                .is_err(),
+            "{why}"
+        );
+    };
+    kept(
+        &|p| p["accounts"][account]["publicKeyX"] = phrase_account["publicKeyX"].clone(),
+        "a public key the sealed key does not derive",
+    );
+    kept(
         &|p| p["signingKeys"][sealed]["privateKey"] = other_key.as_str().into(),
         "another valid key sealed under the record",
     );
