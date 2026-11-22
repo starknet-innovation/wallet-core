@@ -9,7 +9,7 @@
 //! `plan_probe`, the submit path in `plan_submit` and the deployment in `plan_deploy`.
 
 use super::fees::{Bounds, FeeQuote, TransactionFee};
-pub use super::invoke::{Invoke, InvokeRefusal};
+pub use super::invoke::{ActivityAsset, Invoke, InvokeRefusal};
 use super::judge::{self, Observation, TxStatus};
 use super::review_flags::RiskFlag;
 pub use super::types::{
@@ -18,6 +18,7 @@ pub use super::types::{
 use super::types::{
     RpcPurpose, SendError, SendFailure, SendFailureCode, SendStep, StepReply, TransferReview,
 };
+use crate::allowances::calls::AllowanceChange;
 use crate::kms::StarkSignature;
 use crate::{felt, Felt};
 
@@ -42,8 +43,16 @@ pub enum PendingKind {
         symbol: String,
         token_address: Felt,
     },
-    /// A call batch; the record's summary is its review's.
-    Invoke,
+    /// A call batch; the record's summary is its review's, or the text its builder named.
+    Invoke {
+        /// The amount and token the batch's builder named for the row (a swap, a stake).
+        asset: Option<ActivityAsset>,
+        /// Every allowance the batch changes. The host files them under the record's hash
+        /// (`allowances::calls::record_changes`) before it writes the row, as the extension
+        /// does for any hash that may be on chain: a row that fails to write must not lose a
+        /// grant from the list a person revokes from.
+        allowances: Vec<AllowanceChange>,
+    },
     Deployment,
 }
 

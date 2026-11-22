@@ -366,7 +366,7 @@ pub fn run_with(
             assert_eq!(*recipient, f(scenario["recipient"].as_str().unwrap()));
         }
         // The same transfer as a one-call batch (`transactions_invoke.rs`): its review's line.
-        (PendingKind::Invoke, "transfer") => {
+        (PendingKind::Invoke { .. }, "transfer") => {
             assert_eq!(record.summary, "Send 1.5 STRK to 0x3fa7…41a3");
         }
         (PendingKind::Deployment, "deployment") => {

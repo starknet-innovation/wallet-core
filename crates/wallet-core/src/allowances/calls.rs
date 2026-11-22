@@ -154,10 +154,26 @@ pub fn record_submitted(
     transaction_hash: &str,
     ranking: &Ranking,
 ) {
-    for AllowanceChange { kind, input } in allowance_changes(calls, owner, known) {
+    record_changes(
+        log,
+        &allowance_changes(calls, owner, known),
+        transaction_hash,
+        ranking,
+    );
+}
+
+/// `record_submitted` for changes already read: what a plan's pending record carries for a batch
+/// (`send::plan::PendingKind::Invoke`), filed under the hash the plan signed.
+pub fn record_changes(
+    log: &mut AllowanceLog,
+    changes: &[AllowanceChange],
+    transaction_hash: &str,
+    ranking: &Ranking,
+) {
+    for AllowanceChange { kind, input } in changes {
         let direction = match kind {
             ChangeKind::Set => {
-                let _ = log.record(&input, Some(transaction_hash), ranking);
+                let _ = log.record(input, Some(transaction_hash), ranking);
                 continue;
             }
             ChangeKind::Increase => DeltaDirection::Add,
@@ -165,7 +181,7 @@ pub fn record_submitted(
         };
         let delta = AllowanceDelta {
             direction,
-            input,
+            input: input.clone(),
             transaction_hash: Some(transaction_hash.to_string()),
         };
         let _ = log.apply_delta(&delta, ranking);

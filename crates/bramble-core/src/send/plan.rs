@@ -198,6 +198,9 @@ impl PlanHost for TransferPlan {
         let Some(core) = self.core.upgrade() else {
             return;
         };
+        // A public send this wallet made moves value out (`transfer-ops.ts`); a batch's row
+        // names a token without a direction, as the extension's swap and staking rows do.
+        let outgoing = matches!(record.kind, PendingKind::Transfer { .. });
         let (kind, amount, counterparty, token, token_address) = match record.kind {
             PendingKind::Transfer {
                 amount,
@@ -211,18 +214,25 @@ impl PlanHost for TransferPlan {
                 Some(symbol),
                 Some(felt::canonical(&token_address)),
             ),
-            // No export builds a call batch yet; its row is the extension's dapp invoke's.
-            PendingKind::Invoke => (ActivityKind::Invoke, None, None, None, None),
+            // No export builds a call batch yet. The one that does files `allowances` in the
+            // allowance log before this row is written (`allowances::calls::record_changes`).
+            PendingKind::Invoke { asset, .. } => match asset {
+                Some(asset) => (
+                    ActivityKind::Invoke,
+                    asset.amount,
+                    None,
+                    Some(asset.symbol),
+                    Some(felt::canonical(&asset.token_address)),
+                ),
+                None => (ActivityKind::Invoke, None, None, None, None),
+            },
             PendingKind::Deployment => (ActivityKind::Deploy, None, None, None, None),
         };
         let mut entry = Entry {
             account_id: self.account_id.clone(),
             amount,
             counterparty,
-            // A public send this wallet made moves value out (`wallet-ops.ts`).
-            direction: token
-                .as_ref()
-                .map(|_| direction_text(TransferDirection::Out).into()),
+            direction: outgoing.then(|| direction_text(TransferDirection::Out).into()),
             failure_notice: None,
             fee_paid: None,
             finalized_on_l1: None,

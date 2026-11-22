@@ -11,6 +11,7 @@ use multisig_support::TestPrimitives;
 use plan_support::node::*;
 use plan_support::*;
 use serde_json::{json, Value};
+use starknet_wallet_core::allowances::calls::ChangeKind;
 use starknet_wallet_core::catalog::TokenInfo;
 use starknet_wallet_core::send::call_decode::Known;
 use starknet_wallet_core::send::calls::Call;
@@ -23,6 +24,7 @@ use starknet_wallet_core::send::review_flags::{ReviewContext, RiskFlag};
 use starknet_wallet_core::send::types::{
     FeeAffordability, SendError, SendFailureCode as Code, SendStep, StepReply,
 };
+use starknet_wallet_core::send::u256::U256;
 use starknet_wallet_core::{felt, Felt, NetworkId};
 
 /// 1.5 STRK in base units.
@@ -183,7 +185,25 @@ fn a_multicall_signs_and_submits_every_call() {
     assert_eq!(plan.signatures_made(), 1);
     let records = host.records.borrow();
     assert_eq!(records.len(), 1);
-    assert_eq!(records[0].kind, PendingKind::Invoke);
+    // The record carries what the batch grants (the approve of 1 unit of STRK), for the host to
+    // file under this hash, and no row asset: no builder named one.
+    let PendingKind::Invoke { asset, allowances } = &records[0].kind else {
+        panic!("not an invoke record");
+    };
+    assert_eq!(*asset, None);
+    let [granted] = &allowances[..] else {
+        panic!("one allowance change expected");
+    };
+    assert_eq!(granted.kind, ChangeKind::Set);
+    assert_eq!(
+        (granted.input.token.as_str(), granted.input.spender.as_str()),
+        (
+            felt::canonical(&f(STRK)).as_str(),
+            felt::canonical(&f(ACCOUNT_1)).as_str()
+        )
+    );
+    assert_eq!(granted.input.amount, U256::from_u128(1));
+    assert_eq!(granted.input.network, NetworkId::Sepolia);
     assert_eq!(records[0].summary, shown.summary);
 }
 
@@ -248,7 +268,10 @@ fn an_undeployed_account_deploys_then_submits_the_batch() {
     };
     let records = host.records.borrow();
     let kinds: Vec<_> = records.iter().map(|record| record.kind.clone()).collect();
-    assert_eq!(kinds, vec![PendingKind::Deployment, PendingKind::Invoke]);
+    assert!(matches!(
+        kinds[..],
+        [PendingKind::Deployment, PendingKind::Invoke { .. }]
+    ));
     assert_eq!(felt::canonical(&records[1].hash), hash);
     assert_eq!(plan.signatures_made(), 2);
 }
