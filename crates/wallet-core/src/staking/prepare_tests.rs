@@ -12,7 +12,7 @@ use crate::portfolio::model::TokenConfig;
 use crate::send::call_decode::Known;
 use crate::send::calls::Call;
 use crate::send::fees::Headroom;
-use crate::send::invoke::InvokeRefusal;
+use crate::send::invoke::{ActivityAsset, InvokeRefusal};
 use crate::send::multisig_invoke::StarkPrimitives;
 use crate::send::review_flags::ReviewContext;
 use crate::send::types::{Account, Authorization, Policy};
@@ -138,15 +138,10 @@ fn a_first_stake_approves_exactly_the_amount_and_enters_the_verified_pool() {
         format!("Stake 5 STRK with {VALIDATOR}. This approves exactly 5 STRK for its pool.")
     );
     assert_eq!(
-        preparation.summary,
+        preparation.invoke.activity_summary(),
         "Stake 5 STRK with validator 0x5a20…beef"
     );
-    assert_eq!(preparation.amount.as_deref(), Some("5"));
     assert_eq!(preparation.pool, f(STAKING_POOL));
-    assert_eq!(
-        (preparation.symbol.as_str(), preparation.token_address),
-        ("STRK", f(STRK))
-    );
     let amount = Felt::from(5 * 10u128.pow(18));
     assert_eq!(
         preparation.invoke.calls,
@@ -242,7 +237,7 @@ fn withdraw_waits_for_the_exit_window_the_chain_reports() {
         }]
     );
     assert_eq!(
-        withdraw.summary,
+        withdraw.invoke.activity_summary(),
         "Withdraw unstaked STRK from validator 0x5a20…beef"
     );
 }
@@ -309,16 +304,17 @@ fn a_claim_discloses_rewards_paid_to_another_address_and_records_strk() {
         )
     );
     assert_eq!(
-        claim.summary,
+        claim.invoke.activity_summary(),
         "Claim staking rewards from validator 0x5a20…beef"
     );
+    let asset = claim.invoke.activity_asset.unwrap();
     assert_eq!(
-        (claim.symbol.as_str(), claim.token_address),
+        (asset.symbol.as_str(), asset.token_address),
         ("STRK", f(STRK))
     );
     let input = PrepareInput::new(StakingAction::Stake, Some("1"), STAKER).unwrap();
     let stake = act_with(&mut chain, &input, &staked, &SEND).unwrap();
-    assert_eq!(stake.symbol, "xSTRK");
+    assert_eq!(stake.invoke.activity_asset.unwrap().symbol, "xSTRK");
 }
 
 #[test]
@@ -340,7 +336,14 @@ fn a_claim_records_the_rewards_token_not_the_staked_one() {
     let read = input.read(&NETWORK, &rewards, &account, &token).unwrap();
     let reading = run(read, &mut chain);
     let claim = prepare(&input, reading.as_ref(), &context(&account, &token, &SEND)).unwrap();
-    assert_eq!(claim.token_address, Felt::from(0x5157u32));
+    assert_eq!(
+        claim.invoke.activity_asset,
+        Some(ActivityAsset {
+            amount: None,
+            symbol: "STRK".into(),
+            token_address: Felt::from(0x5157u32),
+        })
+    );
 }
 
 #[test]

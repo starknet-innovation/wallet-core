@@ -6,7 +6,8 @@
 //! one pinned block (`read`). The calls are built from those facts alone, reviewed as every
 //! batch is (`send::invoke::Invoke::reviewed`, which refuses a poisoned payee) with the verified
 //! pool pinned (`assetsFor`'s `knownContracts: [pool]`), and frozen with the sentence the person
-//! confirms. The invoke carries the stake's exact-amount approval for the allowance log. Confirm: the preparation is claimed once and must still be for
+//! confirms. The invoke names its own activity row (`recordStakingSubmission`'s summary, amount
+//! and token) and carries the stake's exact-amount approval for the allowance log. Confirm: the preparation is claimed once and must still be for
 //! the active account and network; the host then hands its `invoke` to `send::plan::Plan`, which
 //! estimates, signs and submits. Nothing here signs.
 
@@ -21,7 +22,7 @@ use crate::js::felt::canonical_felt;
 use crate::js::num::short_label;
 use crate::portfolio::model::TokenConfig;
 use crate::send::calls::parse_token_amount;
-use crate::send::invoke::Invoke;
+use crate::send::invoke::{ActivityAsset, Invoke};
 use crate::send::multisig_invoke::StarkPrimitives;
 use crate::send::review_flags::ReviewContext;
 use crate::send::types::{Account, Policy};
@@ -124,17 +125,12 @@ pub struct PrepareContext<'a> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StakingPreparation {
     pub action: StakingAction,
-    /// The amount the person entered, for the activity row.
-    pub amount: Option<String>,
     /// The verified pool.
     pub pool: Felt,
     /// What the calls do, in the signing wording.
     pub review: String,
-    /// The activity summary (`stakingActivitySummary`).
-    pub summary: String,
-    /// The activity row's token: the rewards token for a claim, the staked one otherwise.
-    pub symbol: String,
-    pub token_address: Felt,
+    /// The reviewed calls, naming their activity row (`stakingActivitySummary`, the amount
+    /// entered, and the rewards token for a claim or the staked one otherwise).
     pub invoke: Invoke,
 }
 
@@ -200,6 +196,11 @@ pub fn prepare(
     } else {
         (token.symbol.clone(), pair.token)
     };
+    let asset = ActivityAsset {
+        amount: input.amount.clone(),
+        symbol,
+        token_address,
+    };
     let pinned: Vec<Felt> = context
         .review
         .known_contracts
@@ -211,10 +212,11 @@ pub fn prepare(
         known_contracts: &pinned,
         ..*context.review
     };
-    let invoke = Invoke::reviewed(account, calls, context.policy, &review, context.primitives)?;
+    let invoke = Invoke::reviewed(account, calls, context.policy, &review, context.primitives)?
+        .with_activity_summary(&summary)
+        .with_activity_asset(asset);
     Ok(StakingPreparation {
         action: input.action,
-        amount: input.amount.clone(),
         pool: verified.pool,
         review: review_sentence(
             &account.address,
@@ -224,9 +226,6 @@ pub fn prepare(
             &token.symbol,
             &format!("validator {staker}"),
         ),
-        summary,
-        symbol,
-        token_address,
         invoke,
     })
 }
