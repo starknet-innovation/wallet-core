@@ -18,6 +18,7 @@ extern crate starknet_wallet_core as wallet_core;
 use catalogs::{accounts as account_catalog, multisig as multisig_constants, networks};
 
 mod account_address;
+mod account_kept;
 mod account_names;
 mod account_store;
 mod account_validate;
@@ -61,6 +62,7 @@ mod send;
 mod stark_name;
 mod ui;
 mod vault;
+mod vault_admit;
 mod vault_budget;
 mod vault_provenance;
 mod vault_rules;
@@ -73,6 +75,7 @@ pub use account_catalog::{
     account_classes, account_family_name, copy_feedback, group_icons, recovery_limits,
     AccountClassInfo, AccountFamily, CopyFeedback, RecoveryLimits,
 };
+pub use account_kept::{UnusableAccount, UnusableReason};
 pub use account_names::{
     account_display_name, account_label, account_preview_label, friendly_account_name,
     is_account_label,

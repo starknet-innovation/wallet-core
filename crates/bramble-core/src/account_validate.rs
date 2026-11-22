@@ -1,6 +1,6 @@
-//! Checks on an unlocked vault's payload: each record's field grammar, the structural invariants
-//! across records and preferences, and the re-derivation of every record from its key. Used on
-//! open (`validate`) and before every write (`check_consistent`).
+//! Checks on an unlocked vault's payload: each record's field grammar (`is_well_formed`, which
+//! `vault_admit` applies to each record before it re-derives it) and the structural invariants
+//! across records and preferences (`check_consistent`, on open and before every write).
 
 use std::collections::HashSet;
 
@@ -9,9 +9,10 @@ use wallet_core::Felt;
 use crate::account_catalog::AccountFamily;
 use crate::account_names::{is_label, js_trim};
 use crate::account_store::{
-    invalid_payload, ladder_fits, record_at, DerivedKey, KeySource, StoredAccount, VaultPayload,
-    MAX_ACCOUNT_INDEX, MAX_ACCOUNT_RECORDS,
+    invalid_payload, ladder_fits, KeySource, StoredAccount, VaultPayload, MAX_ACCOUNT_INDEX,
+    MAX_ACCOUNT_RECORDS,
 };
+use crate::kms::Ladder;
 use crate::networks::NetworkId;
 use crate::{felt, groups, kms, rpc_override, CoreError};
 
@@ -21,8 +22,8 @@ fn is_canonical_felt(value: &str, non_zero: bool) -> bool {
         .is_some_and(|parsed| felt::canonical(&parsed) == value)
 }
 
-// Field grammar of one record, before any derivation.
-fn is_well_formed(record: &StoredAccount) -> bool {
+/// Field grammar of one record, before any derivation.
+pub(crate) fn is_well_formed(record: &StoredAccount) -> bool {
     let (Some(family), Some(network)) = (
         AccountFamily::from_wire(&record.family),
         NetworkId::from_catalog_id(&record.network),
@@ -56,17 +57,21 @@ fn is_consistent(payload: &VaultPayload) -> bool {
         .copied()
         .chain(payload.kept.account_ids())
         .collect();
-    let imported = payload
+    // A held key belongs to an operated imported or Ready record, and every imported one has one.
+    let held = |record: &StoredAccount| payload.held_keys.contains_key(&record.id);
+    let holders = payload
         .accounts
         .iter()
-        .filter(|record| record.key == KeySource::Imported);
+        .filter(|record| held(record))
+        .count();
     kms::validate_mnemonic(&payload.mnemonic)
-        // One sealed key per imported record and none spare (ids are unique).
-        && imported.clone().count() == payload.imported_keys.len()
-        && imported
-            .clone()
-            .all(|record| payload.imported_keys.contains_key(&record.id))
-        && payload.record_count() <= MAX_ACCOUNT_RECORDS
+        && holders == payload.held_keys.len()
+        && payload.accounts.iter().all(|record| match record.key {
+            KeySource::Imported => held(record),
+            KeySource::Phrase(Ladder::ArgentX) => true,
+            KeySource::Phrase(_) => !held(record),
+        })
+        && payload.accounts.len() <= MAX_ACCOUNT_RECORDS
         && all.len() == payload.record_count()
         && payload.accounts.iter().all(is_well_formed)
         && match &payload.active_account_id {
@@ -97,49 +102,9 @@ fn is_consistent(payload: &VaultPayload) -> bool {
             .all(|network| NetworkId::from_catalog_id(network).is_some())
 }
 
-// Re-derives every record from its key (the phrase's, or the imported one the vault sealed), one
-// key per record, each also shown to `sealed`; any difference is tampering or corruption.
-fn rederives(
-    payload: &VaultPayload,
-    sealed: &mut dyn FnMut(&StoredAccount, &DerivedKey) -> bool,
-) -> Result<bool, CoreError> {
-    for record in &payload.accounts {
-        let key = payload.signing_key(record)?;
-        let Some(public_key) = felt::parse_non_zero(&key.0.public_key_x) else {
-            return Ok(false);
-        };
-        let family = record.family();
-        let class_hash = (family != AccountFamily::OpenZeppelin).then(|| record.class_felt());
-        let expected = record_at(
-            family,
-            record.key,
-            record.account_index,
-            class_hash.as_ref(),
-            record.salt_felt().as_ref(),
-            &public_key,
-            record.network(),
-        );
-        if expected.ok().as_ref() != Some(record) || !sealed(record, &key) {
-            return Ok(false);
-        }
-    }
-    Ok(true)
-}
-
-/// Checks a payload in full, re-deriving every record; `sealed` also checks what the vault
-/// sealed beside each record against its derived key. Used on open.
-pub(crate) fn validate(
-    payload: &VaultPayload,
-    mut sealed: impl FnMut(&StoredAccount, &DerivedKey) -> bool,
-) -> Result<(), CoreError> {
-    if !is_consistent(payload) || !rederives(payload, &mut sealed)? {
-        return Err(invalid_payload());
-    }
-    Ok(())
-}
-
-/// Checks every structural invariant without re-deriving. Used before every write, whose new
-/// records were derived by this core in the same call.
+/// Checks every structural invariant without re-deriving: on open, after `vault_admit` has
+/// re-derived each operated record, and before every write, whose new records were derived by
+/// this core in the same call.
 pub(crate) fn check_consistent(payload: &VaultPayload) -> Result<(), CoreError> {
     if is_consistent(payload) {
         Ok(())

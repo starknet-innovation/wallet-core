@@ -2,7 +2,7 @@
 //! (`handleImportAccount` in `background/routing/account-creation-handlers.ts`, over
 //! `importRawKeyAccount` in `vault/src/service/service-creation.ts`). It is the one export through
 //! which a private key enters mobile's build, and it goes one way: the key is sealed in the vault
-//! and held in the session (`VaultPayload::imported_keys`), and only the account's public record
+//! and held in the session (`VaultPayload::held_keys`), and only the account's public record
 //! comes back. Nothing on the mobile surface returns it.
 //!
 //! Only what the extension does for an OpenZeppelin import is here: Bramble's class, no salt,

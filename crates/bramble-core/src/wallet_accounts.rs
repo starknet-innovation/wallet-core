@@ -10,7 +10,7 @@
 //! Signing: every signature the core makes for an account passes `signing_record`, which refuses
 //! a vault still waiting for discovery and an unknown id; what a record may sign is decided on
 //! chain by the send plan. The key is the record's (`VaultPayload::signing_key`): derived from
-//! the phrase, or an imported account's sealed one (`key_import.rs`).
+//! the phrase, or the one the vault sealed for an imported or pre-fix Ready account.
 
 use std::collections::HashSet;
 
@@ -59,6 +59,11 @@ pub struct AccountRecord {
     /// Imported from a raw private key (`import_private_key`): its key is not the phrase's, so
     /// the phrase does not recover it, and `account_index` means nothing (it is 0).
     pub imported: bool,
+    /// Signs with a Ready key an earlier Krusty derived (Krusty 2.0 and earlier; about 1 phrase in
+    /// 256): Argent X and a fresh restore do not find this account from the phrase, so the host
+    /// warns, as the extension does. The vault still holds and signs with its key.
+    #[uniffi(default = false)]
+    pub pre_fix_ready_key: bool,
 }
 
 fn invalid(reason: &str) -> CoreError {
@@ -92,6 +97,7 @@ pub(crate) fn render(payload: &VaultPayload, record: &StoredAccount) -> AccountR
         active: payload.active_account_id.as_deref() == Some(record.id.as_str()),
         hidden: payload.hidden_account_ids.contains(&record.id),
         imported: record.key == KeySource::Imported,
+        pre_fix_ready_key: payload.is_pre_fix_ready(record),
     }
 }
 

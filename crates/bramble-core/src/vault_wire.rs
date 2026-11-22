@@ -203,11 +203,13 @@ pub(crate) struct Vault {
 }
 
 /// Everything a v13 vault holds that mobile does not operate, kept exactly as read so that every
-/// write puts it back: the account records mobile holds no usable key for (a Ledger account, one
-/// derived from an imported phrase, one on the extension's devnet), their sealed keys, and the
+/// write puts it back: the account records mobile does not operate (a Ledger account, one
+/// derived from an imported phrase, one on the extension's devnet, one that does not re-derive
+/// from its key or past the records mobile operates; `vault_admit`), their sealed keys, and the
 /// collections mobile has no use for. `vault_v13` reads and writes it; outside it, only ids
-/// (`account_ids`, so no new record takes one) and public addresses (`addresses_on`, for the
-/// address-poisoning check) leave it, so no list, selection or signing path can reach a record.
+/// (`account_ids`, so no new record takes one), public addresses (`addresses_on`, for the
+/// address-poisoning check) and each record's id, network and address for the host's list of
+/// unusable accounts (`account_kept`) leave it, so no selection or signing path reaches one.
 #[derive(Clone, Default)]
 pub(crate) struct Kept {
     /// Each record with the number of mobile's records the vault listed before it.

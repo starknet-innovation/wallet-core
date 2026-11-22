@@ -190,11 +190,11 @@ fn is_account(account: &Account) -> bool {
         && account.id == format!("{}:{}", account.network_id, account.address)
 }
 
-fn is_ledger(account: &Account) -> bool {
+pub(crate) fn is_ledger(account: &Account) -> bool {
     matches!(account.derivation, Derivation::Ledger { .. })
 }
 
-fn seed_id(account: &Account) -> Option<&str> {
+pub(crate) fn seed_id(account: &Account) -> Option<&str> {
     match &account.derivation {
         Derivation::StarknetBip44 { seed_id, .. } | Derivation::ArgentxBip44 { seed_id, .. } => {
             seed_id.as_deref()
