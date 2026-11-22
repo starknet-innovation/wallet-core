@@ -20,7 +20,11 @@ use crate::js::felt::same_felt;
 pub const AVNU_MULTI_ROUTE_SWAP: &str = "multi_route_swap";
 pub const AVNU_BENEFICIARY_FELT_INDEX: usize = 8;
 
-const APPROVE: [&str; 3] = ["approve", "increaseAllowance", "increase_allowance"];
+/// The spelling that sets an allowance; the other grants add to the one standing.
+pub const APPROVE_SET: &str = "approve";
+/// `APPROVE_ENTRYPOINTS` (`verify-selectors.ts`): the selectors that grant an ERC-20 allowance.
+/// The one list: the swap's build policy and the allowance log read it from here.
+pub const APPROVE: [&str; 3] = [APPROVE_SET, "increaseAllowance", "increase_allowance"];
 /// The duals that lower an allowance (`isDecreaseAllowanceEntrypoint`): never a grant, but the
 /// unlimited-approval rule subtracts them from its running total.
 pub const DECREASE_ALLOWANCE: [&str; 2] = ["decreaseAllowance", "decrease_allowance"];
@@ -234,7 +238,11 @@ fn transfer_or_approve(
             short(contract)
         )
     } else {
-        let extra = if entrypoint == "approve" { "" } else { " more" };
+        let extra = if entrypoint == APPROVE_SET {
+            ""
+        } else {
+            " more"
+        };
         format!(
             "Allow {party} to spend {}{extra}",
             amount_label(&amount, token)
