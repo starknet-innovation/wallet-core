@@ -7,7 +7,7 @@
 use super::decode::{PoolMember, VerifiedPool};
 use super::StakingRefusal;
 use crate::js::num::js_trim;
-use crate::send::calls::Call;
+use crate::send::calls::{erc20_approve, Call};
 use crate::send::u256::U256;
 use crate::Felt;
 
@@ -95,12 +95,7 @@ fn build_stake(input: &BuildInput) -> Result<Vec<Call>, StakingRefusal> {
         "enter_delegation_pool"
     };
     Ok(vec![
-        // `buildErc20ApproveCall(token, pool, amount)`: spender, then the u256 limbs.
-        Call {
-            contract_address: input.token,
-            entrypoint: "approve".into(),
-            calldata: vec![input.pool.pool, Felt::from(amount), Felt::ZERO],
-        },
+        erc20_approve(input.token, input.pool.pool, U256::from_u128(amount)),
         pool_call(
             &input.pool.pool,
             entrypoint,
