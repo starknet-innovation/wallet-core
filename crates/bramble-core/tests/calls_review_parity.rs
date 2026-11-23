@@ -211,7 +211,14 @@ fn every_batch_is_flagged_and_refused_as_the_extension_does() {
             token_contracts: &token_contracts,
             standing: &standing,
         };
-        let result = reviewed(&account, calls(&case["calls"]), &review);
+        let batch_calls = calls(&case["calls"]);
+        let result = reviewed(&account, batch_calls.clone(), &review);
+        let expected: Vec<(CallKind, &str)> = case["decoded"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|call| (kind(text(&call["kind"])), text(&call["summary"])))
+            .collect();
         if let Some(refusal) = case["refusal"].as_str() {
             assert_eq!(
                 result,
@@ -219,6 +226,25 @@ fn every_batch_is_flagged_and_refused_as_the_extension_does() {
                 "{name}"
             );
             assert_eq!(result.unwrap_err().to_string(), refusal, "{name}");
+            // A refused batch has no `Invoke`, so its decode is read call by call with the same
+            // `known`. Its co-flags (`flags`) are left unasserted: the core computes them only
+            // inside `Invoke::reviewed` (`review_flags::call_flags` is crate-private).
+            let decoded: Vec<_> = batch_calls
+                .iter()
+                .map(|call| {
+                    decode_call(
+                        &call.contract_address,
+                        &call.entrypoint,
+                        &call.calldata,
+                        &review.known,
+                    )
+                })
+                .collect();
+            let decoded: Vec<(CallKind, &str)> = decoded
+                .iter()
+                .map(|call| (call.kind, call.summary.as_str()))
+                .collect();
+            assert_eq!(decoded, expected, "{name}");
             continue;
         }
         let batch = result.unwrap_or_else(|refusal| panic!("{name}: {refusal}"));
@@ -226,12 +252,6 @@ fn every_batch_is_flagged_and_refused_as_the_extension_does() {
             .calls()
             .iter()
             .map(|call| (call.kind, call.summary.as_str()))
-            .collect();
-        let expected: Vec<(CallKind, &str)> = case["decoded"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|call| (kind(text(&call["kind"])), text(&call["summary"])))
             .collect();
         assert_eq!(decoded, expected, "{name}");
         let flags: Vec<(&str, String)> = batch
@@ -341,16 +361,20 @@ fn what_the_invoke_path_refuses_up_front_is_refused() {
         match case["error"].as_str() {
             // `submitInvokeTransaction` and `refuseOnAccountSelfCall` refuse in words.
             Some(sentence) => assert_eq!(refusal.to_string(), sentence, "{name}"),
-            // `providerInvokeRequest` answers null: a bound or the grammar.
-            None => assert!(
-                matches!(
-                    refusal,
-                    InvokeRefusal::TooManyCalls
-                        | InvokeRefusal::CalldataTooLong
-                        | InvokeRefusal::InvalidCall
-                ),
-                "{name}: {refusal:?}"
-            ),
+            // `providerInvokeRequest` answers null: the core names which bound or rule.
+            None => {
+                let expected = match name {
+                    "one call too many" => InvokeRefusal::TooManyCalls,
+                    "calldata one felt too long" => InvokeRefusal::CalldataTooLong,
+                    "an entrypoint one character too long"
+                    | "an entrypoint starting with a digit"
+                    | "an entrypoint with a hyphen"
+                    | "an empty entrypoint"
+                    | "a zero contract" => InvokeRefusal::InvalidCall,
+                    other => panic!("unmapped refusal {other}"),
+                };
+                assert_eq!(refusal, expected, "{name}");
+            }
         }
     }
 }
