@@ -369,6 +369,9 @@ pub fn run_with(
         (PendingKind::Invoke { .. }, "transfer") => {
             assert_eq!(record.summary, "Send 1.5 STRK to 0x3fa7…41a3");
         }
+        // A batch (`calls_review_parity.rs`): `submitInvokeTransaction` records no row; its
+        // caller's text is the review's line, which that test does not pin.
+        (PendingKind::Invoke { .. }, "invoke") => {}
         (PendingKind::Deployment, "deployment") => {
             assert_eq!(record.summary, "Deploy account contract");
         }
