@@ -81,6 +81,9 @@ pub use account_names::{
     account_display_name, account_label, account_preview_label, friendly_account_name,
     is_account_label,
 };
+pub use allowances::{
+    AllowanceList, AllowanceListing, AllowanceNotice, AllowanceSource, AllowanceView,
+};
 pub use argent_multisig::{ArgentMultisigConfig, ArgentMultisigPrediction};
 pub use avatar::{AccountAvatar, AvatarPaint, AvatarPart, AvatarShape};
 pub use biometric::BiometricDomain;

@@ -11,8 +11,9 @@ use std::path::Path;
 use std::sync::Arc;
 
 use bramble_core::{
-    CallKind, FeeAffordability, RevokeError, RiskFlagCode, RpcReply, RpcRequest, ScanStep,
-    SendStep, StepReply, TokenPreferences, TransferPlan, WalletCore,
+    AllowanceNotice, AllowanceSource, CallKind, FeeAffordability, NetworkId, RevokeError,
+    RiskFlagCode, RpcReply, RpcRequest, ScanStep, SendStep, StepReply, TokenPreferences,
+    TransferPlan, TxStatus, WalletCore,
 };
 use send_support::*;
 use serde_json::{json, Value};
@@ -37,10 +38,21 @@ fn prefs() -> Arc<TokenPreferences> {
     TokenPreferences::new(None)
 }
 
+/// A log holding one grant of `amount` STRK units to `SPENDER` by each of `owners` (the test's
+/// own data).
+fn seed_all(dir: &Path, owners: &[&str], amount: &str) {
+    let records: Vec<Value> = owners
+        .iter()
+        .map(|owner| {
+            json!({"accountId": owner, "amount": amount, "id": id(owner, STRK_ID),
+                "networkId": "SN_SEPOLIA", "spender": SPENDER, "token": STRK_ID})
+        })
+        .collect();
+    std::fs::write(dir.join(FILE), Value::Array(records).to_string()).unwrap();
+}
+
 fn seed(dir: &Path, owner: &str, amount: &str) {
-    let record = json!([{"accountId": owner, "amount": amount, "id": id(owner, STRK_ID),
-        "networkId": "SN_SEPOLIA", "spender": SPENDER, "token": STRK_ID}]);
-    std::fs::write(dir.join(FILE), record.to_string()).unwrap();
+    seed_all(dir, &[owner], amount);
 }
 
 fn log(dir: &Path) -> Vec<Value> {
@@ -71,6 +83,28 @@ fn method(request: &RpcRequest) -> String {
     body["method"].as_str().unwrap().to_string()
 }
 
+/// A node with no `Approval` event, at block 0, answering every `allowance` read with `amount`.
+fn chain(request: &RpcRequest, amount: &str) -> Value {
+    match method(request).as_str() {
+        "starknet_getEvents" => json!({"result": {"events": []}}),
+        "starknet_blockNumber" => json!({"result": 0}),
+        "starknet_call" => json!({"result": [amount, "0x0"]}),
+        other => panic!("unexpected {other}"),
+    }
+}
+
+fn list(core: &WalletCore, allowance: &str) -> bramble_core::AllowanceList {
+    let listing = core.allowance_listing(account(), prefs()).unwrap();
+    loop {
+        let calls = listing.next_calls();
+        let Some(request) = calls.first() else {
+            return listing.finish().unwrap();
+        };
+        let answer = chain(request, allowance);
+        assert_eq!(listing.accept(reply(request, answer)), ScanStep::Continue);
+    }
+}
+
 /// The revoke's plan, run to its review.
 fn reviewed_revoke(core: &Arc<WalletCore>, node: &mut Node, id: &str) -> Arc<TransferPlan> {
     let revoke = core
@@ -82,6 +116,34 @@ fn reviewed_revoke(core: &Arc<WalletCore>, node: &mut Node, id: &str) -> Arc<Tra
     let first = plan.advance(StepReply::Start).unwrap();
     assert_eq!(run_until(&plan, core, node, first, never), SendStep::Review);
     plan
+}
+
+/// Submits the revoke of the seeded grant and lets the chain settle it at `status`.
+fn submit_revoke(core: &Arc<WalletCore>, dir: &Path, status: Value) -> String {
+    let mut node = sepolia(true);
+    node.status = status;
+    let plan = reviewed_revoke(core, &mut node, &id(&account(), STRK_ID));
+    let step = plan.advance(StepReply::Confirm).unwrap();
+    let SendStep::Broadcast { hash } = run_until(&plan, core, &mut node, step, never) else {
+        panic!("no broadcast");
+    };
+    // Filed under the signed hash, marked until the chain confirms it.
+    let filed = log(dir);
+    assert_eq!(filed.len(), 1);
+    assert_eq!(
+        (
+            &filed[0]["revoking"],
+            &filed[0]["revokeHash"],
+            &filed[0]["amount"]
+        ),
+        (&json!(true), &json!(hash), &json!("1000"))
+    );
+    let step = plan.advance(StepReply::Proceed).unwrap();
+    assert!(matches!(
+        run_until(&plan, core, &mut node, step, never),
+        SendStep::Finished { .. }
+    ));
+    hash
 }
 
 #[test]
@@ -105,6 +167,57 @@ fn the_revoke_is_reviewed_as_one_approve_and_its_fee_against_the_balance() {
     );
     assert_eq!(review.summary, calls[0].summary);
     assert!(plan.risk_flags().is_empty(), "{:?}", plan.risk_flags());
+}
+
+#[test]
+fn a_submitted_revoke_settles_on_a_zero_reading() {
+    let (dir, core) = wallet();
+    seed(dir.path(), &account(), "1000");
+    let hash = submit_revoke(
+        &core,
+        dir.path(),
+        json!({"execution_status": "SUCCEEDED",
+        "finality_status": "ACCEPTED_ON_L2"}),
+    );
+    let row = &core.activity(account()).unwrap()[0];
+    assert_eq!(
+        (row.hash.as_str(), row.status),
+        (hash.as_str(), TxStatus::Accepted)
+    );
+    let listed = list(&core, "0x0");
+    assert!(listed.allowances.is_empty(), "{listed:?}");
+    assert!(listed.notices.is_empty());
+    assert!(
+        log(dir.path()).is_empty(),
+        "the zero reading dropped the record"
+    );
+}
+
+// A reverted revoke clears its mark on its own outcome, read from the wallet's activity row,
+// though the chain still reports the grant.
+#[test]
+fn a_reverted_revoke_clears_its_mark_on_its_own_outcome() {
+    let (dir, core) = wallet();
+    seed(dir.path(), &account(), "1000");
+    submit_revoke(
+        &core,
+        dir.path(),
+        json!({"execution_status": "REVERTED",
+        "finality_status": "ACCEPTED_ON_L2"}),
+    );
+    let listed = list(&core, "0x3e8");
+    assert_eq!(listed.allowances.len(), 1);
+    let row = &listed.allowances[0];
+    assert_eq!(
+        (
+            row.source,
+            row.revoking,
+            row.amount.as_str(),
+            row.unconfirmed_token
+        ),
+        (AllowanceSource::Wallet, false, "1000", false)
+    );
+    assert_eq!(log(dir.path())[0].get("revoking"), None);
 }
 
 // The log is what keeps a residual grant visible and revokable, so it is filed before the row
@@ -226,4 +339,34 @@ fn a_lock_voids_a_prepared_revoke() {
     assert_eq!(failure.code, bramble_core::SendFailureCode::Locked);
     assert_eq!(plan.signatures_made(), 0);
     assert_eq!(log(dir.path())[0].get("revoking"), None);
+}
+
+#[test]
+fn a_listing_without_an_endpoint_says_its_scan_is_incomplete() {
+    let (dir, core) = wallet();
+    // Another account's grant is neither listed nor read.
+    seed_all(
+        dir.path(),
+        &[&account(), &format!("SN_SEPOLIA:{ACCOUNT_1}")],
+        "1000",
+    );
+    let listing = core.allowance_listing(account(), prefs()).unwrap();
+    assert_eq!(method(&listing.next_calls()[0]), "starknet_getEvents");
+    assert!(listing.finish().is_err(), "not before its reads");
+    listing.give_up();
+    // One tracked read, this account's grant; the stored amount stands with no answer.
+    let read = listing.next_calls().remove(0);
+    assert_eq!(method(&read), "starknet_call");
+    assert!(read.body.contains(ACCOUNT_0) && !read.body.contains(ACCOUNT_1));
+    listing.give_up();
+    assert!(listing.next_calls().is_empty());
+    let listed = listing.finish().unwrap();
+    assert_eq!(listed.notices, [AllowanceNotice::ScanIncomplete]);
+    assert_eq!(listed.allowances.len(), 1);
+    let row = &listed.allowances[0];
+    assert_eq!(
+        (row.amount.as_str(), row.source, row.account_id.as_str()),
+        ("1000", AllowanceSource::Wallet, account().as_str())
+    );
+    assert_eq!(row.network, NetworkId::Sepolia);
 }
