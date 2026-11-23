@@ -70,6 +70,17 @@ fn is_cleartext(url: &str) -> bool {
     url.trim_start().starts_with("http://")
 }
 
+/// What a set can change: every override, `id`'s endpoint order and its explorer fallback.
+fn settings(core: &WalletCore, id: NetworkId) -> (Value, Value, bool) {
+    let listed = core.networks().unwrap();
+    let info = listed.iter().find(|info| info.network == id).unwrap();
+    (
+        overrides(core),
+        json!(info.rpc_urls),
+        core.explorer_fallback_allowed(id, TokenPreferences::new(None)),
+    )
+}
+
 #[test]
 fn typed_endpoints_are_stored_or_refused_as_the_extension_does() {
     let (_dir, _clock, core) = imported();
@@ -86,12 +97,16 @@ fn typed_endpoints_are_stored_or_refused_as_the_extension_does() {
                     .unwrap();
             }
         }
+        let held = settings(&core, id);
         let saved = core.set_rpc_override(id, rpc_url.into());
+        // A refusal stores nothing.
+        let unchanged = || assert_eq!(settings(&core, id), held, "{name}: refused yet changed");
         if name == "an empty fragment" {
             // Left out: `isServiceUrl` refuses a fragment by `url.hash === ""`, which a bare `#`
             // passes, so the extension stores `https://rpc.example/#` against its own rule. The
             // core refuses it; reported rather than mirrored.
             assert!(saved.is_err(), "{name}");
+            unchanged();
             continue;
         }
         if is_cleartext(rpc_url) {
@@ -100,12 +115,14 @@ fn typed_endpoints_are_stored_or_refused_as_the_extension_does() {
                 matches!(&saved, Err(CoreError::InvalidInput { reason }) if reason == "mobile RPC endpoints must use https"),
                 "{name}"
             );
+            unchanged();
             continue;
         }
         match &saved {
             Ok(_) => assert!(case["error"].is_null(), "{name}: stored"),
             Err(CoreError::InvalidInput { reason }) => {
-                assert_eq!(Some(reason.as_str()), case["error"].as_str(), "{name}")
+                assert_eq!(Some(reason.as_str()), case["error"].as_str(), "{name}");
+                unchanged();
             }
             Err(other) => panic!("{name}: {other:?}"),
         }
