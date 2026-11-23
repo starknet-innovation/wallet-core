@@ -5,10 +5,8 @@
 //! Ported from `packages/features/transactions/tests/routing/fee-funds.test.ts` and
 //! `background-invoke-approval.test.ts` ("the verdict rides the fee review").
 
-mod multisig_support;
 mod plan_support;
 
-use multisig_support::TestPrimitives;
 use plan_support::node::*;
 use plan_support::*;
 use starknet_wallet_core::catalog::TokenInfo;
@@ -44,8 +42,7 @@ fn review(node: &mut Node, amount: u128, balance: Option<U256>) -> TransferRevie
         calldata: vec![f(ACCOUNT_1), Felt::from(amount), Felt::ZERO],
     }];
     let policy = bramble_core::SEND_POLICY;
-    let mut batch =
-        Invoke::reviewed(&account, calls, &policy, &context, &TestPrimitives::new()).unwrap();
+    let mut batch = Invoke::reviewed(&account, calls, &policy, &context).unwrap();
     if let Some(balance) = balance {
         batch = batch.with_fee_balance(balance);
     }
