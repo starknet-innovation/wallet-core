@@ -63,6 +63,7 @@ enum Phase {
         next: usize,
         times: Vec<(u64, Option<f64>)>,
     },
+    RestartRequired,
     Done(Vec<ActivityEntry>),
 }
 
@@ -79,6 +80,7 @@ struct Scan {
     ranked: Vec<(DecodedTransfer, usize)>,
     outstanding: Vec<(u64, u64)>,
     next_id: u64,
+    first_id: u64,
 }
 
 /// One account's on-chain history scan on one network. A wallet that shares one across threads
@@ -92,7 +94,7 @@ pub struct HistoryScan {
     scan: Scan,
 }
 
-fn fresh_scan() -> Scan {
+fn fresh_scan(first_id: u64) -> Scan {
     Scan {
         phase: Phase::Latest,
         latest: 0,
@@ -102,14 +104,15 @@ fn fresh_scan() -> Scan {
         buffer: Vec::new(),
         ranked: Vec::new(),
         outstanding: Vec::new(),
-        next_id: 1,
+        next_id: first_id,
+        first_id,
     }
 }
 
 impl HistoryScan {
     // Runs `step` over the scan state beside the scan's fixed inputs.
     fn with_scan<T>(&mut self, step: impl FnOnce(&Self, &mut Scan) -> T) -> T {
-        let mut scan = std::mem::replace(&mut self.scan, fresh_scan());
+        let mut scan = std::mem::replace(&mut self.scan, fresh_scan(1));
         let out = step(self, &mut scan);
         self.scan = scan;
         out
@@ -288,7 +291,7 @@ impl HistoryScan {
             account,
             network,
             tokens,
-            scan: fresh_scan(),
+            scan: fresh_scan(1),
         };
         if this.tokens.is_empty() {
             this.scan.phase = Phase::Done(Vec::new());
@@ -297,7 +300,7 @@ impl HistoryScan {
     }
 
     /// The calls to send now (events one at a time, timestamps up to four at once); empty when
-    /// the scan is waiting for replies or done.
+    /// the scan is waiting for replies, needs a restart, or is done.
     pub fn next_calls(&mut self) -> Vec<RpcRequest> {
         self.with_scan(Self::next_calls_in)
     }
@@ -341,7 +344,7 @@ impl HistoryScan {
                     *next += calls.len();
                 }
             }
-            Phase::Done(_) => {}
+            Phase::RestartRequired | Phase::Done(_) => {}
         }
         calls
     }
@@ -349,7 +352,15 @@ impl HistoryScan {
     /// Judges one reply. A node error skips that token, dropping the rows its earlier reads found
     /// (or leaves that block undated).
     pub fn accept(&mut self, reply: RpcReply) -> ScanStep {
-        self.with_scan(|this, scan| this.accept_in(scan, reply))
+        if (1..self.scan.first_id).contains(&reply.id) {
+            return ScanStep::Continue;
+        }
+        let result = self.with_scan(|this, scan| this.accept_in(scan, reply));
+        if result == ScanStep::Transport && !matches!(self.scan.phase, Phase::Done(_)) {
+            self.scan.phase = Phase::RestartRequired;
+            self.scan.outstanding.clear();
+        }
+        result
     }
 
     fn accept_in(&self, scan: &mut Scan, reply: RpcReply) -> ScanStep {
@@ -411,14 +422,14 @@ impl HistoryScan {
                 }
                 self.finish_if_dated(scan);
             }
-            Phase::Done(_) => return ScanStep::Transport,
+            Phase::RestartRequired | Phase::Done(_) => return ScanStep::Transport,
         }
         ScanStep::Continue
     }
 
     /// Discards all progress so the scan replays from `starknet_blockNumber` on another endpoint.
     pub fn restart(&mut self) {
-        self.scan = fresh_scan();
+        self.scan = fresh_scan(self.scan.next_id);
         if self.tokens.is_empty() {
             self.scan.phase = Phase::Done(Vec::new());
         }
@@ -430,5 +441,46 @@ impl HistoryScan {
             Phase::Done(entries) => Ok(entries.clone()),
             _ => Err(Error::rpc("history scan is not finished")),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn history_scan_ignores_a_late_reply_after_restart() {
+        let network = NetworkId::Sepolia;
+        let token = TokenConfig {
+            id: "token".into(),
+            network,
+            address: "0xcd".into(),
+            symbol: "T".into(),
+            name: "Token".into(),
+            decimals: 18,
+        };
+        let mut scan = HistoryScan::new("SN_SEPOLIA:0xab".into(), network, vec![token]).unwrap();
+        let old = scan.next_calls().remove(0);
+        assert_eq!(
+            scan.accept(RpcReply {
+                id: old.id,
+                status: 0,
+                body: None
+            }),
+            ScanStep::Transport
+        );
+        assert!(scan.next_calls().is_empty());
+        scan.restart();
+        let current = scan.next_calls().remove(0);
+        assert!(current.id > old.id);
+        let reply = |id| RpcReply {
+            id,
+            status: 200,
+            body: Some(json!({ "jsonrpc": "2.0", "id": id, "result": 100 }).to_string()),
+        };
+        assert_eq!(scan.accept(reply(old.id)), ScanStep::Continue);
+        assert!(scan.next_calls().is_empty());
+        assert_eq!(scan.accept(reply(current.id)), ScanStep::Continue);
+        assert_eq!(scan.next_calls().len(), 1);
     }
 }

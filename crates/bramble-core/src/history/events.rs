@@ -55,7 +55,8 @@ impl HistoryScan {
     }
 
     /// The calls to send now (events one at a time, timestamps up to four at once); empty when
-    /// the scan is waiting for replies or done.
+    /// the scan is waiting for replies, needs a restart, or is done. After `accept` returns
+    /// `ScanStep::Transport` nothing more is sent until `restart`.
     pub fn next_calls(&self) -> Vec<RpcRequest> {
         self.lock().next_calls()
     }
@@ -67,6 +68,7 @@ impl HistoryScan {
     }
 
     /// Discards all progress so the scan replays from `starknet_blockNumber` on another endpoint.
+    /// Required after `ScanStep::Transport`; the scan stops until it is called.
     pub fn restart(&self) {
         self.lock().restart();
     }
