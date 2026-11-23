@@ -156,7 +156,7 @@ step starts.
 | Extension Krusty 3 | Bramble, `main` | — | the extension still pins `@starknetfoundation/krusty-kms-wasm` `0.11.0`, which predates the fix (Krusty 3.0 changed the derivation; 2.0.0 and earlier kept the leading zero bytes), so its keys and mobile's part for affected phrases. Its users have funds, so it follows Krusty's [migration guide](https://github.com/starknet-innovation/krusty-kms/blob/v3.0.0/docs/migration-3.0.md): keep the old key for any existing account whose public key differs. Needed before Phase 3, where the extension takes this crate's Krusty |
 | P7 migrate | here | v0.10.11 on the extension's `main`, G7b | `NEW_VAULT_SCHEMA` to 14 and raising a v13 vault on unlock, as the extension's migration does. Until v0.10.11 ships, a backup mobile raised to 14 would not open in the released extension |
 | D2 | — | — | the dapp transport above; D1 and D3 are settled |
-| P15 spike | here | — | before P15 is designed: every secret the pinned SDK touches, how the extension keeps its keys out of the SDK ("protected signing", `strk20-approval-execution.ts`), and so what would cross into an embedded runtime on a phone; whether a hidden WebView runs the bundle with its `fetch`, WebCrypto and OHTTP unchanged on both platforms; and whether StarkWare plans a Rust client (its `crates/discovery-core` is Rust already) |
+| P15 spike | here | — | done 2026-11-23: see "P15 spike findings" under P15 in [Parity](#parity). The account key stays in Rust (the SDK only asks for a `CallSet` signature the core can compute and sign); the viewing key crosses into the runtime and on to StarkWare's prover and discovery service, as in the extension; a hidden WebView on both apps runs the pinned bundle unchanged behind a native fetch bridge; no StarkWare Rust client exists or is announced; the core's first P15 PR (the `PrivacyEngine` trait, `CallSet` signing, result judging) can start now |
 
 **Wave 1: when krusty-kms#257 ships.** In order; each export is one PR here and one tag.
 
@@ -729,9 +729,143 @@ Features, smallest and least dependent first:
   its own. Adds the sponsored and gasless activity rows P2 left out.
 - **P15 STRK20 submission.** Activate, shield, unshield and private send; then shadow accounts
   and multisig STRK20. The largest step: `packages/features/privacy/` (9,279) and
-  `background/privacy/` (5,872), over the read plan 2.4d ported. Blocked on one question (Open
-  questions): the extension proves through a vendored JavaScript SDK
-  (`scripts/vendor-privacy-sdk.ts`), and nothing here can make that proof yet.
+  `background/privacy/` (5,872), over the read plan 2.4d ported. The extension proves through a
+  vendored JavaScript SDK (`scripts/vendor-privacy-sdk.ts`); D3 settled that mobile embeds the
+  same pinned SDK (Road to parity), and the spike below says how.
+
+  **P15 spike findings (2026-11-23).** Read from Bramble `main` (`a01b240c`) and
+  `starkware-libs/starknet-privacy` at the extension's pin (`b40bf109`); nothing was built or run.
+  Paths are Bramble's (`privacy/src/` is `packages/features/privacy/src/`, `background/` is
+  `apps/extension/src/background/`) unless they start `sdk/` (upstream) or `crates/` (here).
+  - *Secrets.* The account private key never reaches the SDK. The SDK's one signing call is
+    `signer.signTransaction([{pool, "compile_actions", calldata}], ..)` while it builds the proof
+    invocation (`sdk/src/internal/proof-invocation-factory.ts:148-161`), and the extension's signer
+    ignores the transaction details and signs the SNIP-12 `CallSet` digest it recomputes itself from
+    the calls, chain and account (Poseidon over fixed type hashes;
+    `privacy/src/policy/call-set-signer.ts:41-91`; every other signer method throws, :93-107)
+    through the vault's Krusty boundary or, for a multisig, the threshold aggregate `signCallSet`
+    (`privacy/src/sdk/official-sdk-transfers.ts:17-49`). That is the "protected signing": the key
+    stays behind `signHash`. The STRK20 viewing key does reach the SDK, as hex, through
+    `viewingKeyProvider.getViewingKey` (Krusty's `deriveScopedStrk20ViewingKey`, derived lazily with
+    the unlock checked before and after, `background/privacy/strk20-account-context.ts:94-124`); the
+    SDK holds it as a `bigint` it cannot zero and sends it in plaintext to the discovery service
+    (`viewing_key` in `/v1/sync/*` bodies, `sdk/src/internal/indexer-discovery.ts:162-378`) and to
+    the prover inside `compile_actions` calldata `[user, viewing_key, actions]`
+    (`sdk/src/internal/proof-invocation-factory.ts:132-136`), which the extension accepts
+    (`privacy/src/sdk/official-sdk-preparation.ts:128-134`). OHTTP hides it from the relay, not from
+    the gateway. Note randomness and salts are made inside the SDK (`sdk/src/utils/crypto.ts:80-94`,
+    `getRandomValues`); channel keys and nullifiers are Poseidon of the viewing key
+    (`sdk/src/utils/hashes.ts`). The extension's boundary
+    (`background/privacy/strk20-approval-execution.ts:5-8`: "No SDK private-state operation,
+    protected signing, or proving happens before this boundary") re-resolves the account, grant and
+    network after consent, refuses Ledger accounts
+    (`background/privacy/strk20-op-context.ts:247-256`) and hands the side panel neither key nor
+    proof. On a phone, then: the account key and the signature stay in Rust; the viewing key, the
+    actions and the SDK's note set cross into the runtime, and the viewing key leaves the device in
+    any design.
+  - *SDK surface.* The extension calls `createPrivateTransfers({account: {address, signer},
+    viewingKeyProvider, discoveryProvider, provingProvider: {url, chainId, nodeUrl,
+    requestTimeoutMs, retry, ohttp?}, poolContractAddress, shadowAccountAnonymizerAddress?})`
+    (`privacy/src/sdk/official-sdk-transfers.ts:63-85`), and on its result `discoverNotes`,
+    `discoverRequirement` (`SetupRequirement`: Register, SetupChannel, SetupToken, Ready, of which
+    it reads only Register), `build({autoDiscover: refresh, autoSetup: true, autoSelectNotes:
+    "naive", ..})` with `register`, `with(token).deposit|transfer|withdraw`, `surplusTo`, `invoke`,
+    `shadowAccounts(scope).{partialCommitment, commitment, invoke}`, then
+    `createProofInvocation({provingBlockId})` and `executeWithInvocation`, which returns
+    `{callAndProof: {call: apply_actions, proof: {data, output, proofFacts}}, warnings}`
+    (`privacy/src/sdk/official-sdk-builder.ts`, `official-sdk-preparation.ts:101-164`). `Open` is an
+    amount symbol. `simulate` is never called (it would post the key-bearing `compile_actions` to
+    the user's node). The SDK submits nothing: the wallet sends `[approve(pool fee), apply_actions]`
+    from the account, or relays it through the paymaster. Two callbacks only: the signer and the
+    viewing key; `fetch`, the provider and storage are not injectable.
+  - *Network.* The SDK fetches by itself: the discovery service (also during `build`, for note
+    selection), the prover (`starknet_proveTransaction`,
+    `sdk/src/internal/proving-service.ts:210-290`), the RPC at `nodeUrl` for the pool's nonce
+    (`sdk/src/internal/proving-service-provider.ts:89-114`), and with OHTTP on, `GET
+    {gateway}/ohttp-keys` (trust on first use unless pinned) and the relay
+    (`sdk/src/internal/ohttp-client.ts:89-149`). OHTTP is off in production
+    (`privacy/src/config.ts:109-114`), and discovery, prover and paymaster all sit behind the
+    wallet's gateway `https://wallet.nodes.starknet.org/api/strk20/*`
+    (`privacy/src/config.ts:111-123`). The extension contacts itself: maturity and readiness reads,
+    the pool fee, registration and public key, `get_shadow_accounts`, the submission, and the
+    paymaster (quote, relay, sponsored shield and deploy, its SNIP-9 message signed by the wallet,
+    never the SDK signer). It cannot fence the SDK's own fetches beyond a global wrapper and its CSP
+    (`background/index.ts:230-234`). On mobile the wallet's half becomes sans-IO requests in the
+    core, as `Plan` already is, and the SDK's half stays in the runtime but goes out through a
+    native fetch bridge that admits only the route's discovery and prover origins and the network's
+    RPC: a fence the extension lacks.
+  - *Runtime.* The bundle is one ESM file (esbuild `es2020`, browser, starknet.js inside,
+    `sdk/scripts/build-browser.ts:25-36`), checked by sha256 `b3d4c41a…c9c5` and its source map by
+    `d89b6eeb…5e57` (`scripts/check-privacy-sdk.ts:34-42`), loaded statically by the MV3 worker
+    (`background/index.ts:30`). It needs `fetch`, `AbortSignal.timeout`, `setTimeout`,
+    `crypto.getRandomValues` and `BigInt`; no WebAssembly, workers or storage. With OHTTP on it also
+    needs `DecompressionStream` and WebCrypto X25519, HKDF and HMAC-SHA256 and AES-128-GCM
+    (`hpke@1.0.6` and `ohttp-ts@0.3.0` are pure WebCrypto; upstream's non-WebCrypto PRs #759 and
+    #767 closed unmerged). Bundle size is not recorded (source 344 KB before starknet.js).
+    *Recommended*: a hidden WebView on both apps (`WKWebView` with a non-persistent data store;
+    Android `WebView` through `WebViewAssetLoader`), loading the same digest-checked file from the
+    app's resources, never the network; a page whose CSP is `default-src 'none'` with only that
+    script; navigation refused; `fetch` replaced by the bridge above before the module loads;
+    requests and the viewing key passed over `WKScriptMessageHandlerWithReply` and `WebMessagePort`.
+    Reasons: the bundle runs as the extension runs it, OHTTP included, with no polyfill; iOS runs it
+    out of process (Android's renderer is sandboxed too), so the SDK's heap is never the app's;
+    nothing ships beyond the system engine. JavaScriptCore or a bundled Hermes or QuickJS would need
+    `fetch`, `AbortSignal` and `DecompressionStream` shims, and for OHTTP an X25519 HPKE in
+    JavaScript: wallet crypto outside Krusty, which this repo refuses. Costs: Android's WebView
+    updates apart from the app, so the app re-runs the extension's export-shape check
+    (`check-privacy-sdk.ts:156-213`) at start and fails closed; which OS versions give WebCrypto
+    X25519 is unconfirmed (it matters only once OHTTP is on). Bundled, never downloaded, code is
+    what App Store guideline 2.5.2 and Play's device-abuse policy ask (to confirm at review).
+  - *Overlap.* The core's read plan (`crates/wallet-core/src/privacy/`) already sends the SDK's
+    preflight and incoming discovery bodies byte for byte (`bodies.rs`) and folds its note
+    accumulation into totals (`notes.rs`), with the pool fee; it refuses OHTTP routes (`config.rs`).
+    Mobile keeps the core's read for balances and registration: it is ported, proved and bounded,
+    and holds no note. The SDK's own discovery stays inside `build`, which selects notes from it.
+    When OHTTP turns on, the core's read cannot follow without an OHTTP client of its own, so
+    balances would move into the engine; not needed while it is off.
+  - *Rust path.* No StarkWare Rust client: `crates/discovery-core` (hashes, note decryption, storage
+    slots) and `crates/discovery-service` (the axum indexer) are the server's; no roadmap, changelog
+    or issue mentions one (#956, a third party's Dart client asking for prover access, is
+    unanswered). A port needs Poseidon (here already, through `starknet-types-core`), the selector
+    (krusty-kms#257), Pedersen contract addresses for shadow accounts (Krusty's
+    `calculate_contract_address`), and for discovery decryption and the simulator Stark-curve ECDH
+    with point-from-x, which Krusty does not export; whether the client path needs ECDH at all is
+    unconfirmed (note encryption appears to run in Cairo, in `compile_actions`). OHTTP would need
+    HPKE X25519, also not in Krusty. Plus the action compiler and invocation builder, the bulk of
+    the port.
+  - *Licence and pin.* The repository is Apache-2.0 with no NOTICE; `sdk/package.json` says ISC (a
+    PR to align it, #933, closed unmerged). The bundle also carries MIT code (starknet.js, noble,
+    scure, hpke, ohttp-ts, zod), whose notices the apps must ship. To be confirmed by legal before
+    release. The pin is the version-bump commit after tag `PRIVACY-0.14.3-RC.8` (`fcc7c90`);
+    upstream is at `PRIVACY-0.14.4-RC.2` (2026-11-17, `f7fb72a`, 7 files in `sdk/src`), which moves
+    zod to 4 for an advisory 3.x has no fix for (unverified here). Mobile takes the extension's pin
+    and digests unchanged and moves only when the extension does.
+  - *The trait.* `wallet-core`'s `privacy::engine`, implemented by each app over its WebView; plain
+    records only, one job per proof: `fn invocation(&self, job: EngineJob) -> Result<SignRequest,
+    EngineError>` and `fn prove(&self, job: JobId, signature: Vec<Felt>) -> Result<EngineProof,
+    EngineError>`, plus `fn shadow_commitment(&self, scope, nonce: Option<Felt>) -> Result<Felt,
+    EngineError>` and `fn cancel(&self, job: JobId)`. `EngineJob` is the chain, pool, account, the
+    reviewed actions (`Register`, `Deposit`, `Transfer` with an amount or `Open`, `Withdraw`,
+    `SurplusTo`, `Invoke`, shadow `Invoke`), the proving block, the route's URLs, and the viewing
+    key in a zeroizing buffer, its one crossing. `SignRequest` is the calls the SDK asked to sign;
+    the core checks they are the pool's one `compile_actions`, recomputes the `CallSet` digest
+    (Poseidon here; the selector through `StarkPrimitives`) and signs with Krusty or gathers the
+    multisig aggregate, so no signing callback reaches the runtime (the app holds the SDK's signer
+    promise open between the two calls). `EngineProof` is the `apply_actions` call, `{data, output,
+    proof_facts}` and the warnings, which the core judges as `official-sdk-results.ts` does
+    (`USER_LINKAGE` a privacy leak, any other warning refused, bounds from `STRK20_LIMITS`). The
+    engine holds the viewing key and notes; the core holds the account key, the policy, the review,
+    the batch and its submission.
+  - *PRs.* Six, after a generator for each (CallSet digests, result judging, each action's batch):
+    (1) core: the trait, records and a test engine, the digest and signing, result judging, the
+    extension's rules around the SDK (re-resolve after consent, Ledger refused, foreign
+    registration, recipient policy, maturity, wait budgets), with Bramble's runtime host (WebView,
+    bridge, vendored bundle and its digests) beside it; (2) activate and (3) shield, whose
+    `[approve, apply_actions]` batch goes through `Plan` and so waits on X2; (4) private send and
+    unshield, relayed through the paymaster and its SNIP-9 message, so after P14; (5) shadow
+    accounts, whose scope is a dapp's origin, after P16; (6) multisig STRK20, after X1. Unknown
+    until built: the bundle's size, its cold start in a WebView, and whether proving's 180 s budget
+    survives an app in the background.
 - **P16 Dapp connect, approvals and anti-phishing.** The core takes request validation, grants
   (the vault's `originGrants`, P7), typed-data and invoke review (P9), add-chain and watch-asset,
   and the blocklist and phishing feed: `background/provider/` (2,453), `background/approvals/`
