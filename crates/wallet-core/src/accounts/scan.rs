@@ -68,11 +68,15 @@ pub fn judge_class_hash(body: &str, id: u64) -> Result<Option<Felt>, Error> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Pending {
-    ClassHash(usize),
+enum Detail {
     Balance(usize),
     Advisory(usize, Read),
-    Block,
+}
+
+enum Round {
+    ClassHashes(HashMap<u64, usize>),
+    Details(HashMap<u64, Detail>),
+    BlockTimestamp(u64),
 }
 
 struct Probe {
@@ -87,12 +91,7 @@ struct Batch {
     end: u32,
     manual: bool,
     probes: Vec<Probe>,
-    outstanding: HashMap<u64, Pending>,
-    /// The second round (balances and advisory reads) has been issued.
-    detailed: bool,
-    /// The third round (the latest block, only for a Braavos 2FA removal) has been considered.
-    timed: bool,
-    block_time: Option<u64>,
+    round: Round,
 }
 
 /// One scan's in-memory state, for one (fingerprint, network).
@@ -243,7 +242,7 @@ impl Scan {
         let mut requests = Vec::new();
         for (position, probe) in probes.iter().enumerate() {
             let id = self.allocate_id();
-            outstanding.insert(id, Pending::ClassHash(position));
+            outstanding.insert(id, position);
             requests.push(Request::new(
                 id,
                 class_hash_request(id, &probe.found.address),
@@ -253,10 +252,7 @@ impl Scan {
             end,
             manual: manual_index.is_some(),
             probes,
-            outstanding,
-            detailed: false,
-            timed: false,
-            block_time: None,
+            round: Round::ClassHashes(outstanding),
         });
         Ok(self.step(requests, &limits))
     }
@@ -265,22 +261,20 @@ impl Scan {
     /// advisory reads.
     fn detail_requests(
         &mut self,
-        batch: &mut Batch,
+        probes: &[Probe],
+        outstanding: &mut HashMap<u64, Detail>,
         config: &ScanConfig,
     ) -> Result<Vec<Request>, Error> {
         let pool_address = config.privacy_pool.unwrap_or(Felt::ZERO);
         let mut requests = Vec::new();
-        for position in 0..batch.probes.len() {
-            let probe = &batch.probes[position];
+        for (position, probe) in probes.iter().enumerate() {
             let address = probe.found.address;
             if let Some(live_class) = probe.gathered.live_class {
                 let family = probe.found.family;
                 let pool = config.privacy_pool.is_some();
                 for read in advisory::reads(family, &live_class, &config.authorizations, pool) {
                     let id = self.allocate_id();
-                    batch
-                        .outstanding
-                        .insert(id, Pending::Advisory(position, read));
+                    outstanding.insert(id, Detail::Advisory(position, read));
                     requests.push(advisory::request(id, read, &address, &pool_address));
                 }
                 continue;
@@ -289,7 +283,7 @@ impl Scan {
                 let id = self.allocate_id();
                 let account = felt::canonical(&address);
                 let body = rpc::balance_of_request(id, &felt::canonical(token), &account)?;
-                batch.outstanding.insert(id, Pending::Balance(position));
+                outstanding.insert(id, Detail::Balance(position));
                 requests.push(Request::new(id, body));
             }
         }
@@ -312,43 +306,67 @@ impl Scan {
         }
         let mut batch = self.batch.take().ok_or_else(no_scan)?;
         // On failure the batch is dropped, so `next` re-issues it from the same index.
-        judge(&mut batch, responses)?;
-        batch.outstanding.clear();
-        if !batch.detailed {
-            batch.detailed = true;
-            let requests = self.detail_requests(&mut batch, config)?;
-            if !requests.is_empty() {
-                self.batch = Some(batch);
-                return Ok(self.step(requests, &config.limits));
+        let block_time = match batch.round {
+            Round::ClassHashes(outstanding) => {
+                for (position, response) in matched(&outstanding, responses)? {
+                    let probe = &mut batch.probes[position];
+                    probe.gathered.live_class = judge_class_hash(&response.body, response.id)?;
+                    probe.found.deployed = probe.gathered.live_class.is_some();
+                }
+                let mut outstanding = HashMap::new();
+                let requests = self.detail_requests(&batch.probes, &mut outstanding, config)?;
+                if !requests.is_empty() {
+                    batch.round = Round::Details(outstanding);
+                    self.batch = Some(batch);
+                    return Ok(self.step(requests, &config.limits));
+                }
+                None
             }
-        }
-        // A block lists every transaction hash, so it is read only when a verdict needs its time
-        // (`braavosSignerVerdict` reads it only for a requested 2FA removal), as rarely as there.
-        if !batch.timed {
-            batch.timed = true;
-            let needed = batch.probes.iter().any(|probe| {
-                advisory::needs_block(
-                    probe.found.family,
-                    &probe.gathered,
-                    &probe.public_key,
-                    &config.authorizations,
-                )
-            });
-            if needed {
-                let id = self.allocate_id();
-                batch.outstanding.insert(id, Pending::Block);
-                let requests = vec![advisory::block_request(id)];
-                self.batch = Some(batch);
-                return Ok(self.step(requests, &config.limits));
+            Round::Details(outstanding) => {
+                for (detail, response) in matched(&outstanding, responses)? {
+                    let (body, id) = (&response.body, response.id);
+                    match detail {
+                        Detail::Balance(position) => {
+                            let balance = rpc::parse_balance_of(body, id).map_err(|_| paused())?;
+                            if balance != "0" {
+                                batch.probes[position].found.funded = true;
+                            }
+                        }
+                        Detail::Advisory(position, read) => {
+                            let answer = advisory::judge_call(body, id);
+                            batch.probes[position].gathered.reads.insert(read, answer);
+                        }
+                    }
+                }
+                // Only a Braavos 2FA removal can need the block's timestamp.
+                let needed = batch.probes.iter().any(|probe| {
+                    advisory::needs_block(
+                        probe.found.family,
+                        &probe.gathered,
+                        &probe.public_key,
+                        &config.authorizations,
+                    )
+                });
+                if needed {
+                    let id = self.allocate_id();
+                    batch.round = Round::BlockTimestamp(id);
+                    self.batch = Some(batch);
+                    return Ok(self.step(vec![advisory::block_request(id)], &config.limits));
+                }
+                None
             }
-        }
+            Round::BlockTimestamp(id) => match responses {
+                [response] if response.id == id => advisory::judge_block(&response.body, id),
+                _ => return Err(paused()),
+            },
+        };
         for probe in batch.probes.iter_mut().filter(|probe| probe.found.deployed) {
             let (found, gathered) = (&mut probe.found, &probe.gathered);
             advisory::settle(
                 found,
                 gathered,
                 &probe.public_key,
-                batch.block_time,
+                block_time,
                 phrase,
                 passphrase,
                 config,
@@ -376,45 +394,24 @@ impl Scan {
 }
 
 // Checks that `responses` answer exactly the outstanding ids, each once.
-fn matched(batch: &Batch, responses: &[Response]) -> Result<Vec<(Pending, String, u64)>, Error> {
-    if responses.len() != batch.outstanding.len() {
+fn matched<'a, T: Copy>(
+    outstanding: &HashMap<u64, T>,
+    responses: &'a [Response],
+) -> Result<Vec<(T, &'a Response)>, Error> {
+    if responses.len() != outstanding.len() {
         return Err(paused());
     }
     let mut seen = HashSet::new();
     responses
         .iter()
         .map(|response| {
-            let pending = batch.outstanding.get(&response.id).ok_or_else(paused)?;
+            let pending = outstanding.get(&response.id).ok_or_else(paused)?;
             if !seen.insert(response.id) {
                 return Err(paused());
             }
-            Ok((*pending, response.body.clone(), response.id))
+            Ok((*pending, response))
         })
         .collect()
-}
-
-fn judge(batch: &mut Batch, responses: &[Response]) -> Result<(), Error> {
-    for (pending, body, id) in matched(batch, responses)? {
-        match pending {
-            Pending::ClassHash(position) => {
-                let probe = &mut batch.probes[position];
-                probe.gathered.live_class = judge_class_hash(&body, id)?;
-                probe.found.deployed = probe.gathered.live_class.is_some();
-            }
-            Pending::Balance(position) => {
-                let balance = rpc::parse_balance_of(&body, id).map_err(|_| paused())?;
-                if balance != "0" {
-                    batch.probes[position].found.funded = true;
-                }
-            }
-            Pending::Advisory(position, read) => {
-                let felts = advisory::judge_call(&body, id);
-                batch.probes[position].gathered.reads.insert(read, felts);
-            }
-            Pending::Block => batch.block_time = advisory::judge_block(&body, id),
-        }
-    }
-    Ok(())
 }
 
 #[cfg(test)]
