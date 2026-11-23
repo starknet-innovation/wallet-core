@@ -14,7 +14,7 @@ const core = await import("../dist/index.js");
 await core.uniffiInitAsync(await readFile(new URL("../dist/generated/bramble_core.wasm", import.meta.url)));
 
 test("core info names the pinned Krusty release", () => {
-  assert.equal(core.coreInfo().krustyVersion, "3.1.0");
+  assert.equal(core.coreInfo().krustyVersion, "3.2.0");
 });
 
 test("accounts and signatures match the extension", () => {
