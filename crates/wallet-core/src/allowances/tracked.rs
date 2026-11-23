@@ -69,13 +69,21 @@ pub fn tracked_pairs(
         .collect()
 }
 
+#[derive(Debug, Clone, Copy)]
+enum ReadState {
+    Ready(usize),
+    Awaiting { index: usize, id: u64 },
+    RestartRequired,
+    Done,
+}
+
 /// The reads for one listing. A wallet that shares one across threads wraps it in its own lock.
 #[derive(Debug)]
 pub struct TrackedAllowanceRead {
     pairs: Vec<TrackedAllowancePair>,
-    next: usize,
+    state: ReadState,
     next_id: u64,
-    outstanding: Option<u64>,
+    first_id: u64,
     readings: Vec<AllowanceReading>,
 }
 
@@ -84,7 +92,7 @@ impl TrackedAllowanceRead {
     /// token or spender is not a non-zero felt; each is read in `canonicalFelt`'s spelling.
     pub fn new(pairs: &[TrackedAllowancePair], policy: AllowancePolicy) -> Self {
         let canonical = |value: &str| canonical_felt(value).filter(|felt| is_non_zero_felt(felt));
-        let pairs = pairs
+        let pairs: Vec<_> = pairs
             .iter()
             .take(policy.max_tracked_pairs)
             .filter_map(|pair| {
@@ -96,63 +104,79 @@ impl TrackedAllowanceRead {
                 })
             })
             .collect();
-        Self {
+        let mut read = Self {
             pairs,
-            next: 0,
+            state: ReadState::Done,
             next_id: 1,
-            outstanding: None,
+            first_id: 1,
             readings: Vec::new(),
-        }
+        };
+        read.restart();
+        read
     }
 
     /// Discards all progress so the reads replay on another endpoint.
     pub fn restart(&mut self) {
-        self.next = 0;
-        self.next_id = 1;
-        self.outstanding = None;
+        self.state = if self.pairs.is_empty() {
+            ReadState::Done
+        } else {
+            ReadState::Ready(0)
+        };
+        self.first_id = self.next_id;
         self.readings.clear();
     }
 
-    /// The call to send now (at most one); empty while waiting for a reply or when done.
+    /// The call to send now (at most one); empty while waiting, after failure, or when done.
     pub fn next_calls(&mut self) -> Vec<RpcRequest> {
-        let Some(pair) = self
-            .pairs
-            .get(self.next)
-            .filter(|_| self.outstanding.is_none())
-        else {
+        let ReadState::Ready(index) = self.state else {
             return Vec::new();
         };
+        let pair = &self.pairs[index];
         let id = self.next_id;
         self.next_id += 1;
-        self.outstanding = Some(id);
+        self.state = ReadState::Awaiting { index, id };
         vec![allowance_call(id, &pair.token, &pair.owner, &pair.spender)]
     }
 
-    /// Judges one reply: a reply for another call is a transport failure.
+    /// Judges one reply, ignoring replies from an earlier attempt.
     pub fn accept(&mut self, reply: RpcReply) -> ScanStep {
-        let Some(id) = self.outstanding.filter(|id| *id == reply.id) else {
+        if (1..self.first_id).contains(&reply.id) {
+            return ScanStep::Continue;
+        }
+        let ReadState::Awaiting { index, id } = self.state else {
             return ScanStep::Transport;
         };
-        self.outstanding = None;
+        if reply.id != id {
+            self.state = ReadState::RestartRequired;
+            return ScanStep::Transport;
+        }
         let amount = match classify(&reply, id) {
-            Reply::Transport | Reply::Result(JsValue::Null) => return ScanStep::Transport,
+            Reply::Transport | Reply::Result(JsValue::Null) => {
+                self.state = ReadState::RestartRequired;
+                return ScanStep::Transport;
+            }
             Reply::Semantic => None,
             Reply::Result(JsValue::Array(items)) => parse_allowance_amount(&items),
             Reply::Result(_) => None,
         };
         if let Some(amount) = amount {
             self.readings.push(AllowanceReading {
-                id: self.pairs[self.next].id.clone(),
+                id: self.pairs[index].id.clone(),
                 amount,
             });
         }
-        self.next += 1;
+        let next = index + 1;
+        self.state = if next == self.pairs.len() {
+            ReadState::Done
+        } else {
+            ReadState::Ready(next)
+        };
         ScanStep::Continue
     }
 
     /// The readings, in pair order, once every call has been answered.
     pub fn finish(&self) -> Result<Vec<AllowanceReading>, Error> {
-        if self.next < self.pairs.len() {
+        if !matches!(self.state, ReadState::Done) {
             return Err(Error::rpc("allowance reads are not finished"));
         }
         Ok(self.readings.clone())
