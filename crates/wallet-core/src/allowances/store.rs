@@ -151,6 +151,22 @@ fn applied_delta(tracked: Option<&AllowanceRecord>, delta: &AllowanceDelta) -> A
     }
 }
 
+enum Revocation<'a> {
+    Unmarked,
+    AwaitingOutcome(&'a str),
+    AwaitingZero,
+}
+
+impl<'a> From<&'a AllowanceRecord> for Revocation<'a> {
+    fn from(record: &'a AllowanceRecord) -> Self {
+        match (record.revoking, record.revoke_hash.as_deref()) {
+            (false, _) => Self::Unmarked,
+            (true, Some(hash)) => Self::AwaitingOutcome(hash),
+            (true, None) => Self::AwaitingZero,
+        }
+    }
+}
+
 // `settledEntry`: a zero reading drops a pending revoke or a zero lower bound; a failed revoke
 // clears its mark; an accepted one with a non-zero reading takes that reading as its exact
 // amount and keeps the mark (the outcome is spent). Nothing else changes a record.
@@ -160,15 +176,20 @@ fn settled_entry(
     non_zero: &HashMap<&str, U256>,
     outcomes: &HashMap<&str, RevokeStatus>,
 ) -> Option<AllowanceRecord> {
-    let zero_bound = stored.amount == U256::ZERO && stored.lower_bound;
-    if zeroed.contains(stored.id.as_str()) && (stored.revoking || zero_bound) {
-        return None;
+    let revocation = Revocation::from(stored);
+    if zeroed.contains(stored.id.as_str()) {
+        let remove = match revocation {
+            Revocation::Unmarked => stored.amount == U256::ZERO && stored.lower_bound,
+            Revocation::AwaitingOutcome(_) | Revocation::AwaitingZero => true,
+        };
+        if remove {
+            return None;
+        }
     }
-    let outcome = stored
-        .revoke_hash
-        .as_deref()
-        .filter(|_| stored.revoking)
-        .and_then(|hash| outcomes.get(hash));
+    let outcome = match revocation {
+        Revocation::AwaitingOutcome(hash) => outcomes.get(hash),
+        Revocation::Unmarked | Revocation::AwaitingZero => None,
+    };
     match (outcome, non_zero.get(stored.id.as_str())) {
         (Some(RevokeStatus::Failed), _) => Some(AllowanceRecord {
             revoking: false,
