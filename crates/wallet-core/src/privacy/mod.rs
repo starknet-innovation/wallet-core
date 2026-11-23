@@ -1,7 +1,7 @@
 //! STRK20 privacy, read-only: private balance discovery through the privacy service as a sans-IO
 //! plan (`plan`), and the extension's privacy gates for Home, Receive, token detail and the
 //! journey (`gates`, `home`). Nothing is submitted: registration, shielding, private sends and
-//! unshielding need an upstream privacy client that Krusty 3.1.0 does not provide (Bramble's
+//! unshielding need an upstream privacy client that Krusty 3.2.0 does not provide (Bramble's
 //! `mobile/docs/privacy.md` §1, §9), so `CAPABILITIES` is all false.
 //!
 //! The viewing key is never held here. The plan asks the wallet for it (`plan::PrivacyHost`)

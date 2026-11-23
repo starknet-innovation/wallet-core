@@ -13,7 +13,7 @@ categories = ["cryptography::cryptocurrencies"]
 
 [dependencies]
 # Wallet cryptography. Pinned exactly; `parallel` (rayon) only serves proof generation.
-krusty-kms = { version = "=3.1.0", default-features = false }
+krusty-kms = { version = "=3.2.0", default-features = false }
 krusty-kms-common = { version = "=3.0.0" }
 starknet-types-core = { version = "=0.2.4", features = ["hash", "curve"] }
 # Vault envelope: the extension's EncryptedEnvelope v3 (PBKDF2-SHA-256 -> AES-256-GCM).

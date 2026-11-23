@@ -64,7 +64,7 @@ pub use zeroize::Zeroizing;
 
 /// The Krusty KMS release compiled into this crate. `krusty_version_matches_the_lockfile` keeps
 /// it true.
-pub const KRUSTY_VERSION: &str = "3.1.0";
+pub const KRUSTY_VERSION: &str = "3.2.0";
 
 /// Every failure this crate reports.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
