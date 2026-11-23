@@ -24,6 +24,7 @@ mod account_store;
 mod account_validate;
 mod account_visibility;
 mod activity;
+mod allowances;
 mod argent_multisig;
 mod avatar;
 mod backup;
@@ -114,10 +115,11 @@ pub use recovery::{RecoveryCandidate, RecoverySelection};
 pub use recovery_scan::RecoveryScanStep;
 pub use rpc_request::{RpcRequest, RpcResponse};
 pub use send::plan::TransferPlan;
+pub use send::revoke::{AllowanceRevoke, RevokeError};
 pub use send::types::{
-    ActivityKind, DeploymentState, FeeAffordability, FeeAmount, FeeUnit, ReviewFlag, RpcPurpose,
-    SendAmountError, SendError, SendFailure, SendFailureCode, SendStep, StepReply, TransferRequest,
-    TransferReview, TxStatus,
+    ActivityKind, CallKind, DeploymentState, FeeAffordability, FeeAmount, FeeUnit, ReviewFlag,
+    ReviewedCall, RiskFlag, RiskFlagCode, RpcPurpose, SendAmountError, SendError, SendFailure,
+    SendFailureCode, SendStep, StepReply, TransferRequest, TransferReview, TxStatus,
 };
 pub use send::{
     activity_needs_observation, activity_observation_period_for, activity_observation_period_ms,

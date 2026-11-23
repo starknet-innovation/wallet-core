@@ -5,6 +5,7 @@
 //! material, so nothing a user typed or a node said can reach a log through an error.
 
 pub use wallet_core::history::activity::ActivityKind;
+pub use wallet_core::send::call_decode::CallKind;
 pub use wallet_core::send::calls::{ReviewFlag, SendAmountError};
 pub use wallet_core::send::fees::{FeeAmount, FeeUnit};
 pub use wallet_core::send::judge::TxStatus;
@@ -285,4 +286,67 @@ pub enum ActivityKind {
     Deploy,
     Invoke,
     Transfer,
+}
+
+/// What one call of a batch does (`DecodedCallKind`).
+#[uniffi::remote(Enum)]
+pub enum CallKind {
+    /// Grants, raises or (at zero) revokes an ERC-20 allowance.
+    Approve,
+    NftApproval,
+    OperatorApproval,
+    Swap,
+    Transfer,
+    /// A call the wallet cannot describe.
+    Unknown,
+}
+
+/// A batch review's annotation (`RiskFlagCode`); the transfer's are `ReviewFlag`. None blocks
+/// Confirm: a payee that mimics a trusted address refuses the batch before a plan exists.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum RiskFlagCode {
+    UnknownContract,
+    UnlimitedApproval,
+    OperatorApproval,
+    SelfTransfer,
+    TokenContractRecipient,
+    ForeignBeneficiary,
+    UndecodedSwap,
+}
+
+/// One reviewable risk with the extension's sentence (`RiskFlag`).
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct RiskFlag {
+    pub code: RiskFlagCode,
+    pub message: String,
+}
+
+impl From<&wallet_core::send::review_flags::RiskFlag> for RiskFlag {
+    fn from(flag: &wallet_core::send::review_flags::RiskFlag) -> Self {
+        use wallet_core::send::review_flags::RiskFlag as Core;
+        let code = match flag {
+            Core::UnknownContract { .. } => RiskFlagCode::UnknownContract,
+            Core::UnlimitedApproval => RiskFlagCode::UnlimitedApproval,
+            Core::OperatorApproval => RiskFlagCode::OperatorApproval,
+            Core::SelfTransfer => RiskFlagCode::SelfTransfer,
+            Core::TokenContractRecipient => RiskFlagCode::TokenContractRecipient,
+            Core::ForeignBeneficiary { .. } => RiskFlagCode::ForeignBeneficiary,
+            Core::UndecodedSwap => RiskFlagCode::UndecodedSwap,
+        };
+        Self {
+            code,
+            message: flag.message(),
+        }
+    }
+}
+
+/// One call of a batch as its review shows it (`DecodedCall`), with the flags raised on it.
+/// Output only: no export takes a call.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct ReviewedCall {
+    pub contract_address: String,
+    pub entrypoint: String,
+    pub kind: CallKind,
+    pub summary: String,
+    pub flags: Vec<RiskFlag>,
 }
