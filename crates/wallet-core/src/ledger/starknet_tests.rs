@@ -125,13 +125,18 @@ fn app_version_reads_three_bytes() {
         Ok(version(2, 4, 0))
     );
     assert_eq!(
-        parse_app_version(Ok(&reply(&[255, 1, 0, 7], 0x9000))),
+        parse_app_version(Ok(&reply(&[255, 1, 0], 0x9000))),
         Ok(version(255, 1, 0))
     );
-    // Too few bytes for a version (`isVersionPart` of `undefined`).
+    // Exactly three bytes (`docs/apdu.md`; `starknet-rust-signers`' `VERSION_SIZE`): too few, as
+    // `isVersionPart` of `undefined` refuses, and one too many, which the library would slice.
     let unexpected = Err(rejected(C::UnexpectedDeviceError, None));
     assert_eq!(parse_app_version(Ok(&reply(&[2, 4], 0x9000))), unexpected);
     assert_eq!(parse_app_version(Ok(&reply(&[], 0x9000))), unexpected);
+    assert_eq!(
+        parse_app_version(Ok(&reply(&[2, 4, 0, 7], 0x9000))),
+        unexpected
+    );
 }
 
 #[test]
@@ -203,10 +208,14 @@ fn public_key_keeps_x() {
     // A format byte, X = 0x…02, Y all 0xff (`client.test.ts`).
     let key = [vec![0x04], felt32(2), vec![0xff; 32]].concat();
     assert_eq!(parse_public_key(Ok(&reply(&key, 0x9000))), Ok(Felt::TWO));
-    // The library returns `data[1..65]`: a byte past it is not read.
-    let longer = [key.clone(), vec![0]].concat();
-    assert_eq!(parse_public_key(Ok(&reply(&longer, 0x9000))), Ok(Felt::TWO));
+    // The leading byte is not read: `docs/apdu.md`'s length byte (64) reads the same key.
+    let spec = [vec![64], felt32(2), vec![0xff; 32]].concat();
+    assert_eq!(parse_public_key(Ok(&reply(&spec, 0x9000))), Ok(Felt::TWO));
     let unexpected = Err(rejected(C::UnexpectedDeviceError, None));
+    // Exactly 65 bytes (`starknet-rust-signers`' `PUBLIC_KEY_SIZE`): a byte past it is refused,
+    // where the library would slice it off.
+    let longer = [key.clone(), vec![0]].concat();
+    assert_eq!(parse_public_key(Ok(&reply(&longer, 0x9000))), unexpected);
     // A key a byte short, and an X at or above the prime.
     assert_eq!(parse_public_key(Ok(&reply(&key[..64], 0x9000))), unexpected);
     let big = [vec![0x04], vec![0xff; 64]].concat();
@@ -244,17 +253,25 @@ fn signature_reads_r_and_s() {
     assert_eq!(parse_sign_path(Ok(&reply(&[], 0x9000))), Ok(()));
     assert_eq!(parse_signature(Ok(&reply(&data, 0x9000))), Ok(signature));
     // The recovery byte is never read.
-    assert_eq!(
-        parse_signature(Ok(&reply(&data[..65], 0x9000))),
-        Ok(signature)
-    );
+    let other_v = [vec![0x41], felt32(0x0a), felt32(0x0b), vec![1]].concat();
+    assert_eq!(parse_signature(Ok(&reply(&other_v, 0x9000))), Ok(signature));
     let unexpected = Err(rejected(C::UnexpectedDeviceError, None));
+    // Exactly 66 bytes led by the length byte 0x41 (`docs/apdu.md`; `starknet-rust-signers`
+    // checks the same): the recovery byte missing, a byte too many, another length byte.
+    assert_eq!(parse_signature(Ok(&reply(&data[..65], 0x9000))), unexpected);
+    let longer = [data.clone(), vec![0]].concat();
+    assert_eq!(parse_signature(Ok(&reply(&longer, 0x9000))), unexpected);
+    let other_length = [vec![0x40], felt32(0x0a), felt32(0x0b), vec![0]].concat();
+    assert_eq!(
+        parse_signature(Ok(&reply(&other_length, 0x9000))),
+        unexpected
+    );
     // `client.test.ts`: a one-byte r.
     assert_eq!(parse_signature(Ok(&reply(&[0x41, 1], 0x9000))), unexpected);
     assert_eq!(parse_signature(Ok(&reply(&data[..64], 0x9000))), unexpected);
     // r, then s, at or above the prime.
-    let high_r = [vec![0x41], vec![0xff; 32], felt32(0x0b)].concat();
-    let high_s = [vec![0x41], felt32(0x0a), vec![0xff; 32]].concat();
+    let high_r = [vec![0x41], vec![0xff; 32], felt32(0x0b), vec![0]].concat();
+    let high_s = [vec![0x41], felt32(0x0a), vec![0xff; 32], vec![0]].concat();
     assert_eq!(parse_signature(Ok(&reply(&high_r, 0x9000))), unexpected);
     assert_eq!(parse_signature(Ok(&reply(&high_s, 0x9000))), unexpected);
 }
