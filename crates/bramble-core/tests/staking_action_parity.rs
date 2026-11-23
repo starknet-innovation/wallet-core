@@ -92,7 +92,7 @@ fn each_action_is_prepared_as_the_extension_does() {
             account: &account,
             staking: &policy,
             token,
-            now: NOW,
+            now: now(&case),
             policy: &SEND_POLICY,
             review: &review,
             primitives: &primitives,
@@ -123,7 +123,7 @@ fn each_action_is_prepared_as_the_extension_does() {
             action,
             amount: amount.and_then(|a| parse_token_amount(a, token.decimals).ok()),
             member: member.as_ref(),
-            now: NOW,
+            now: now(&case),
             pool,
             token: reading.pools()[0].pair.token,
         })

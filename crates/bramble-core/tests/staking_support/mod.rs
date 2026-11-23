@@ -20,8 +20,14 @@ use starknet_wallet_core::{felt, Felt, NetworkId};
 
 /// The fixture chain's staking contract (`tests/support/staking-chain.ts`).
 pub const CONTRACT: &str = "0x5a1";
-/// The clock every case read, in Unix seconds.
+/// The context's clock, in Unix seconds; each case carries its own (`now`).
 pub const NOW: u64 = 1_800_000_000;
+
+/// The clock the extension ran `case` at.
+pub fn now(case: &Value) -> u64 {
+    case["now"].as_u64().unwrap()
+}
+
 /// The explorer lane's base every Starkscan request was made against.
 pub const BASE: &str = "https://starkscan.test/v1";
 

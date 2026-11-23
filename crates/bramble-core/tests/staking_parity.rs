@@ -173,7 +173,7 @@ fn the_overview_reads_and_shows_what_the_extension_does() {
         let pairs = overview_pairs(&staker, &tokens, MAINNET);
         let mut read = StakingRead::new(network, &rewards(), account, pairs).unwrap();
         let reading = run_read(&mut read, &case["rpc"], name);
-        let ours = match overview(reading.as_ref(), &tokens, &account, MAINNET, NOW) {
+        let ours = match overview(reading.as_ref(), &tokens, &account, MAINNET, now(&case)) {
             Ok(view) => json!({
                 "ok": true,
                 "staking": {
@@ -291,7 +291,14 @@ fn your_stakes_are_asked_for_read_and_shown_as_the_extension_does() {
                 let network = policy.network(MAINNET).unwrap();
                 let mut read = StakingRead::new(network, &rewards(), account, pairs).unwrap();
                 let reading = run_read(&mut read, &case["rpc"], name);
-                positions_view(reading.as_ref(), &tokens, &account, MAINNET, NOW, complete)
+                positions_view(
+                    reading.as_ref(),
+                    &tokens,
+                    &account,
+                    MAINNET,
+                    now(&case),
+                    complete,
+                )
             });
         let ours = match ours {
             Ok(view) => json!({
