@@ -19,7 +19,8 @@ use crate::js::num::{js_trim, utf16_slice};
 use crate::Error;
 use crate::NetworkId;
 
-/// `starknet_keccak("name")`, `("symbol")`, `("decimals")`; Keccak-checked in the tests.
+/// `starknet_keccak("name")`, `("symbol")`, `("decimals")`; checked by `kms::selector` in
+/// the tests.
 const NAME_SELECTOR: &str = "0x361458367e696363fbcc70777d07ebbd2394e89fd0adcaf147faccd1d294d60";
 const SYMBOL_SELECTOR: &str = "0x216b05c387bab9ac31918a3e61672f4618601f3c598a2f3f2710f37053e1ea4";
 const DECIMALS_SELECTOR: &str = "0x4c4fb1ab068f6039d5780c68dd0fa2f8742cceb3426d19667778ca7f3518a9";
@@ -320,19 +321,15 @@ pub fn discovery_judge(
 mod tests {
     use super::*;
 
-    fn keccak_selector(name: &str) -> String {
-        use sha3::{Digest, Keccak256};
-        let mut digest: [u8; 32] = Keccak256::digest(name.as_bytes()).into();
-        digest[0] &= 0x03;
-        let hex: String = digest.iter().map(|b| format!("{b:02x}")).collect();
-        format!("0x{}", hex.trim_start_matches('0'))
+    fn krusty_selector(name: &str) -> String {
+        crate::felt::canonical(&crate::selector(name))
     }
 
     #[test]
     fn selectors_are_starknet_keccak() {
-        assert_eq!(keccak_selector("name"), NAME_SELECTOR);
-        assert_eq!(keccak_selector("symbol"), SYMBOL_SELECTOR);
-        assert_eq!(keccak_selector("decimals"), DECIMALS_SELECTOR);
+        assert_eq!(krusty_selector("name"), NAME_SELECTOR);
+        assert_eq!(krusty_selector("symbol"), SYMBOL_SELECTOR);
+        assert_eq!(krusty_selector("decimals"), DECIMALS_SELECTOR);
     }
 
     fn strings(values: &[&str]) -> JsValue {

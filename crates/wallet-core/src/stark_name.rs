@@ -26,7 +26,7 @@ const MAX_LABEL_CHARS: usize = 48;
 const MAX_NAME_UNITS: usize = 128;
 /// `useEncoded`'s basic alphabet, by digit; `isStarkDomain` lets a label hold nothing else.
 const ALPHABET: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789-";
-/// `starknet_keccak("domain_to_address")`, checked against a Keccak implementation in the tests.
+/// `starknet_keccak("domain_to_address")`, checked against `kms::selector` in the tests.
 const DOMAIN_TO_ADDRESS_SELECTOR: &str =
     "0x2e269d930f6d7ab92b15ce8ff9f5e63709391617e3465fff79ba6baf278ce60";
 /// JSON-RPC `CONTRACT_NOT_FOUND`.

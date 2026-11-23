@@ -379,7 +379,8 @@ pub fn merge_activity(local: &[ActivityEntry], on_chain: &[ActivityEntry]) -> Ve
     merged
 }
 
-/// `TRANSFER_EVENT_KEY = hash.getSelectorFromName("Transfer")`; Keccak-checked in the tests.
+/// `TRANSFER_EVENT_KEY = hash.getSelectorFromName("Transfer")`; checked by `kms::selector`
+/// in the tests.
 pub const TRANSFER_EVENT_KEY: &str =
     "0x99cd8bde557814842a3121e8ddfd433a539b8c9f14bf31ebf108d12e6196e9";
 
@@ -438,12 +439,8 @@ mod tests {
 
     #[test]
     fn transfer_key_is_starknet_keccak() {
-        use sha3::{Digest, Keccak256};
-        let mut digest: [u8; 32] = Keccak256::digest(b"Transfer").into();
-        digest[0] &= 0x03;
-        let hex: String = digest.iter().map(|b| format!("{b:02x}")).collect();
         assert_eq!(
-            format!("0x{}", hex.trim_start_matches('0')),
+            crate::felt::canonical(&crate::selector("Transfer")),
             TRANSFER_EVENT_KEY
         );
     }

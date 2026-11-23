@@ -17,18 +17,14 @@ const OTHER_SPENDER: &str = "0x7feed";
 // 2^128.
 const UNLIMITED: U256 = U256 { high: 1, low: 0 };
 
-fn keccak_selector(name: &str) -> String {
-    use sha3::{Digest, Keccak256};
-    let mut digest: [u8; 32] = Keccak256::digest(name.as_bytes()).into();
-    digest[0] &= 0x03;
-    let hex: String = digest.iter().map(|b| format!("{b:02x}")).collect();
-    format!("0x{}", hex.trim_start_matches('0'))
+fn krusty_selector(name: &str) -> String {
+    crate::felt::canonical(&crate::kms::selector(name))
 }
 
 #[test]
 fn selectors_are_starknet_keccak() {
-    assert_eq!(keccak_selector("Approval"), APPROVAL_EVENT_KEY);
-    assert_eq!(keccak_selector("allowance"), ALLOWANCE_SELECTOR);
+    assert_eq!(krusty_selector("Approval"), APPROVAL_EVENT_KEY);
+    assert_eq!(krusty_selector("allowance"), ALLOWANCE_SELECTOR);
 }
 
 fn strings(values: &[&str]) -> Vec<JsValue> {

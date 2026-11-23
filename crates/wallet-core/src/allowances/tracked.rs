@@ -17,7 +17,7 @@ use crate::js::json::JsValue;
 use crate::portfolio::wire::{classify, rpc_call, Reply, RpcReply, RpcRequest};
 use crate::Error;
 
-/// `starknet_keccak("allowance")`; Keccak-checked in the tests.
+/// `starknet_keccak("allowance")`; checked against `kms::selector` in the tests.
 pub const ALLOWANCE_SELECTOR: &str =
     "0x1e888a1026b19c8c0b57c72d63ed1737106aa10034105b980ba117bd0c29fe1";
 

@@ -13,7 +13,7 @@ use zeroize::Zeroizing;
 use super::json::{write_str, Ordered};
 use crate::{felt, Felt, SecretFelt};
 
-/// `sn_keccak("get_fee_amount")`, checked against a Keccak implementation in the tests.
+/// `sn_keccak("get_fee_amount")`, checked against `kms::selector` in the tests.
 const GET_FEE_AMOUNT_SELECTOR: &str =
     "0x3d323cd692ad43935b81ce230c47bfc57f69656249c5a33fe5223c17dd32ed2";
 
@@ -135,12 +135,8 @@ mod tests {
 
     #[test]
     fn selector_is_starknet_keccak() {
-        use sha3::{Digest, Keccak256};
-        let mut digest: [u8; 32] = Keccak256::digest(b"get_fee_amount").into();
-        digest[0] &= 0x03;
-        let hex: String = digest.iter().map(|b| format!("{b:02x}")).collect();
         assert_eq!(
-            format!("0x{}", hex.trim_start_matches('0')),
+            crate::felt::canonical(&crate::selector("get_fee_amount")),
             GET_FEE_AMOUNT_SELECTOR
         );
     }

@@ -19,7 +19,6 @@ fn only(reading: &StakingReading) -> &PoolOutcome {
 
 #[test]
 fn selectors_are_starknet_keccak() {
-    use sha3::{Digest, Keccak256};
     for (name, expected) in [
         ("get_active_tokens", GET_ACTIVE_TOKENS),
         ("contract_parameters_v1", CONTRACT_PARAMETERS_V1),
@@ -27,9 +26,7 @@ fn selectors_are_starknet_keccak() {
         ("get_staker_info_v1", GET_STAKER_INFO_V1),
         ("get_pool_member_info_v1", GET_POOL_MEMBER_INFO_V1),
     ] {
-        let mut digest: [u8; 32] = Keccak256::digest(name.as_bytes()).into();
-        digest[0] &= 0x03;
-        assert_eq!(Felt::from_bytes_be(&digest), f(expected), "{name}");
+        assert_eq!(crate::kms::selector(name), f(expected), "{name}");
     }
 }
 

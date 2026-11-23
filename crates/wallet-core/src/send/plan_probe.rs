@@ -381,7 +381,6 @@ mod tests {
 
     #[test]
     fn selectors_are_starknet_keccak() {
-        use sha3::{Digest, Keccak256};
         for (name, expected) in [
             ("get_owner", GET_OWNER),
             ("get_owner_type", GET_OWNER_TYPE),
@@ -389,18 +388,16 @@ mod tests {
             ("get_signers", GET_SIGNERS),
             ("get_deferred_remove_signers", GET_DEFERRED_REMOVE_SIGNERS),
         ] {
-            let mut digest: [u8; 32] = Keccak256::digest(name.as_bytes()).into();
-            digest[0] &= 0x03;
-            assert_eq!(Felt::from_bytes_be(&digest), selector(expected), "{name}");
+            assert_eq!(crate::kms::selector(name), selector(expected), "{name}");
         }
     }
 
     #[test]
     fn get_public_key_is_starknet_keccak() {
-        use sha3::{Digest, Keccak256};
-        let mut digest: [u8; 32] = Keccak256::digest(b"get_public_key").into();
-        digest[0] &= 0x03;
-        assert_eq!(Felt::from_bytes_be(&digest), selector(GET_PUBLIC_KEY));
+        assert_eq!(
+            crate::kms::selector("get_public_key"),
+            selector(GET_PUBLIC_KEY)
+        );
     }
 
     #[test]
