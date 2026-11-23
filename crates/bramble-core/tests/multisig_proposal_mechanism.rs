@@ -43,7 +43,6 @@ fn propose_plan() -> ProposePlan {
         &current_config(&record),
         &class(),
         MULTISIG_FEE_OVERHEAD,
-        &TestPrimitives::new(),
     )
     .unwrap()
 }
@@ -84,7 +83,7 @@ fn ready_intent() -> SigningIntent {
 }
 
 fn valid(intent: &SigningIntent) -> bool {
-    intent.is_valid(&class(), summary_length(), &TestPrimitives::new())
+    intent.is_valid(&class(), summary_length())
 }
 
 fn submit_plan(intent: &SigningIntent) -> SubmitPlan {
@@ -93,7 +92,6 @@ fn submit_plan(intent: &SigningIntent) -> SubmitPlan {
         &current_config(&record(&sepolia())),
         &class(),
         summary_length(),
-        &TestPrimitives::new(),
     )
     .unwrap()
 }
@@ -265,16 +263,7 @@ fn a_proposal_refuses_an_unsafe_batch_without_a_review() {
     };
     let refusal = |calls: &[MultisigCall]| {
         let config = current_config(&record);
-        let primitives = TestPrimitives::new();
-        ProposePlan::new(
-            &record,
-            calls,
-            &config,
-            &class(),
-            MULTISIG_FEE_OVERHEAD,
-            &primitives,
-        )
-        .err()
+        ProposePlan::new(&record, calls, &config, &class(), MULTISIG_FEE_OVERHEAD).err()
     };
     let mut batch = calls.clone();
     batch.push(self_call("change_threshold"));
@@ -290,9 +279,8 @@ fn a_proposal_refuses_an_unsafe_batch_without_a_review() {
 fn submit_refuses_a_tampered_transaction_or_an_incomplete_signature() {
     let intent = ready_intent();
     let config = current_config(&record(&sepolia()));
-    let primitives = TestPrimitives::new();
     let submit = |candidate: &SigningIntent| {
-        SubmitPlan::new(candidate, &config, &class(), summary_length(), &primitives).err()
+        SubmitPlan::new(candidate, &config, &class(), summary_length()).err()
     };
     let refusal = |prepared: &PreparedInvoke, signatures: &[MultisigSignature]| {
         submit(&SigningIntent {

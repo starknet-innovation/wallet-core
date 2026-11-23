@@ -27,7 +27,7 @@ pub fn ready() -> SigningIntent {
 }
 
 pub fn parse(text: &str) -> Option<IntentPackage> {
-    IntentPackage::parse(text, &class(), summary_length(), &TestPrimitives::new())
+    IntentPackage::parse(text, &class(), summary_length())
 }
 
 /// What a co-signer sends: `intent` in a package, every field it holds kept.
@@ -53,9 +53,8 @@ pub fn local(ready: &SigningIntent) -> SigningIntent {
 pub fn import(local: &SigningIntent, text: &str) -> SigningIntent {
     let incoming = parse(text).unwrap().intent.locally_derived_imported();
     let merged = local.merge_imported(&incoming).unwrap();
-    let primitives = TestPrimitives::new();
-    assert!(merged.is_valid(&class(), summary_length(), &primitives));
-    assert!(local.can_replace(&merged, &class(), summary_length(), &primitives));
+    assert!(merged.is_valid(&class(), summary_length()));
+    assert!(local.can_replace(&merged, &class(), summary_length()));
     merged
 }
 
@@ -126,7 +125,6 @@ pub fn import_stored(
         known: &known,
         trusted: &[],
         summary_length: summary_length(),
-        primitives: &TestPrimitives::new(),
     };
     import_intent(package, read, nonce, &wallet)
 }

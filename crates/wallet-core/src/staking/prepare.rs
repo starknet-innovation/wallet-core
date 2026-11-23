@@ -24,7 +24,6 @@ use crate::js::num::short_label;
 use crate::portfolio::model::TokenConfig;
 use crate::send::calls::parse_token_amount;
 use crate::send::invoke::{ActivityAsset, Invoke};
-use crate::send::multisig_invoke::StarkPrimitives;
 use crate::send::review_flags::ReviewContext;
 use crate::send::types::{Account, Policy};
 use crate::{felt, Felt, NetworkId};
@@ -119,7 +118,6 @@ pub struct PrepareContext<'a> {
     /// `known_contracts` are not read: `prepare` pins the verified pool alone, as the extension
     /// does, so a contract pinned for another flow is not vouched for here.
     pub review: &'a ReviewContext<'a>,
-    pub primitives: &'a dyn StarkPrimitives,
 }
 
 /// `StakingPreparation`: a reviewed action, frozen until one confirm. `invoke` is bound to the
@@ -207,7 +205,7 @@ pub fn prepare(
         known_contracts: std::slice::from_ref(&verified.pool),
         ..*context.review
     };
-    let invoke = Invoke::reviewed(account, calls, context.policy, &review, context.primitives)?
+    let invoke = Invoke::reviewed(account, calls, context.policy, &review)?
         .with_activity_summary(&summary)
         .with_activity_asset(asset);
     Ok(StakingPreparation {

@@ -29,7 +29,6 @@ use crate::send::call_decode::Known;
 use crate::send::calls::{erc20_approve, Call};
 use crate::send::invoke::{Invoke, InvokeRefusal};
 use crate::send::judge::TxStatus;
-use crate::send::multisig_invoke::StarkPrimitives;
 use crate::send::review_flags::ReviewContext;
 use crate::send::types::{Account, Policy};
 use crate::send::u256::U256;
@@ -162,7 +161,7 @@ impl RevokeTarget {
     /// confirmation read's) answered for this pair, whatever amount it reported; a watched
     /// collection is refused again here. `context` must be this account's own network's: nothing
     /// here can tell, and another network's trusted token would skip the confirmation read.
-    /// `policy`, `context` and `primitives` are `Invoke::reviewed`'s, but the review reads the
+    /// `policy` and `context` are `Invoke::reviewed`'s, but the review reads the
     /// context as the extension's `verifyCalls([call], trusted)` does, with no pinned contracts: a
     /// token known only from the read stays an unknown contract. (Its standing allowances change
     /// nothing: a zero `approve` replaces the total.)
@@ -172,7 +171,6 @@ impl RevokeTarget {
         context: &ReviewContext,
         readings: &[AllowanceReading],
         policy: &Policy,
-        primitives: &dyn StarkPrimitives,
     ) -> Result<Invoke, RevokeRefusal> {
         let known = &context.known;
         if AllowanceOwner::of(account.network, &account.address).as_ref() != Some(&self.owner)
@@ -194,7 +192,6 @@ impl RevokeTarget {
             vec![self.call()],
             policy,
             &context,
-            primitives,
         )?)
     }
 }

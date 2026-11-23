@@ -76,7 +76,7 @@ fn a_submitted_export_imports_as_ready() {
     // Merged without the local derivation, the remote's broadcast hash would ride along on a
     // ready intent, which the validator refuses.
     let underived = local(&ready).merge_imported(&submitted).unwrap();
-    assert!(!underived.is_valid(&class(), summary_length(), &TestPrimitives::new()));
+    assert!(!underived.is_valid(&class(), summary_length()));
 }
 
 #[test]
@@ -123,15 +123,14 @@ fn a_merge_stops_at_the_threshold() {
         ..ready.clone()
     };
     let merged = local(&ready).merge_imported(&incoming).unwrap();
-    let primitives = TestPrimitives::new();
     assert_eq!(merged.state, IntentState::Ready);
     assert_eq!(merged.signatures.len(), 2);
     assert!(
         merged.signatures.contains(&ready.signatures[1]),
         "the local signer stays"
     );
-    assert!(merged.is_valid(&class(), summary_length(), &primitives));
-    assert!(local(&ready).can_replace(&merged, &class(), summary_length(), &primitives));
+    assert!(merged.is_valid(&class(), summary_length()));
+    assert!(local(&ready).can_replace(&merged, &class(), summary_length()));
 }
 
 #[test]
@@ -153,10 +152,8 @@ fn a_stored_intent_the_validator_refuses_is_never_replaced() {
     // can_replace validates only `next` in full; these stored intents differ from a valid one
     // only where the shortcut still looks: signature order and the lifecycle.
     let ready = ready();
-    let primitives = TestPrimitives::new();
-    let replaces = |current: &SigningIntent| {
-        current.can_replace(&ready, &class(), summary_length(), &primitives)
-    };
+    let replaces =
+        |current: &SigningIntent| current.can_replace(&ready, &class(), summary_length());
     assert!(replaces(&local(&ready)));
     let mut reversed = ready.clone();
     reversed.signatures.reverse();
@@ -171,7 +168,7 @@ fn a_stored_intent_the_validator_refuses_is_never_replaced() {
         ..ready.clone()
     };
     for current in [reversed, doubled, broadcast, full_but_collecting] {
-        assert!(!current.is_valid(&class(), summary_length(), &primitives));
+        assert!(!current.is_valid(&class(), summary_length()));
         assert!(!replaces(&current), "{current:?}");
     }
 }

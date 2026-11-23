@@ -13,14 +13,14 @@
 use serde::{Deserialize, Serialize};
 use starknet_types_core::felt::Felt;
 
-use super::multisig_invoke::{is_calls, MultisigSignature, PreparedInvoke, StarkPrimitives};
+use super::multisig_invoke::{is_calls, MultisigSignature, PreparedInvoke};
 use crate::accounts::multisig::{signer_guid, ArgentMultisigClass};
 use crate::accounts::multisig_records::{is_authority, not_null};
 use crate::felt;
 use crate::history::explorer::canonical_account_id;
 use crate::js::felt::{canonical_felt, same_felt};
 use crate::js::num::js_trim;
-use crate::kms::{utf16_length, NetworkId};
+use crate::kms::{stark_signature_is_valid, utf16_length, NetworkId};
 
 /// `ArgentMultisigConfigSnapshot`: the class and signer authority read fresh from the chain when
 /// the intent was proposed.
@@ -135,14 +135,11 @@ impl IntentPackage {
         text: &str,
         class: &ArgentMultisigClass,
         max_summary_length: usize,
-        primitives: &dyn StarkPrimitives,
     ) -> Option<Self> {
         let arrived: Arrived = serde_json::from_str(text).ok()?;
         (arrived.kind == INTENT_PACKAGE_KIND
             && arrived.version == INTENT_PACKAGE_VERSION
-            && arrived
-                .intent
-                .is_valid(class, max_summary_length, primitives))
+            && arrived.intent.is_valid(class, max_summary_length))
         .then_some(Self {
             intent: arrived.intent,
             kind: arrived.kind,
@@ -281,12 +278,7 @@ impl SigningIntent {
     /// re-validates (calldata and hash recomputed), the id, account and chain agree with it, the
     /// summary is trimmed and at most `max_summary_length` UTF-16 units, every signature is a
     /// snapshot member's over the hash in ascending GUID order, and the count fits the state.
-    pub fn is_valid(
-        &self,
-        class: &ArgentMultisigClass,
-        max_summary_length: usize,
-        primitives: &dyn StarkPrimitives,
-    ) -> bool {
+    pub fn is_valid(&self, class: &ArgentMultisigClass, max_summary_length: usize) -> bool {
         let snapshot = &self.config_snapshot;
         let summary_ok = (1..=max_summary_length).contains(&utf16_length(&self.summary))
             && js_trim(&self.summary) == self.summary;
@@ -294,12 +286,12 @@ impl SigningIntent {
             && canonical_account_id(&self.account_id).as_deref() == Some(self.account_id.as_str())
             && snapshot.class_hash == class.class_hash()
             && is_authority(&snapshot.signer_guids, snapshot.threshold, class)
-            && self.prepared.is_valid(primitives)
+            && self.prepared.is_valid()
             && summary_ok
             && intent_id(&self.account_id, &self.prepared.transaction_hash).as_ref()
                 == Some(&self.id)
             && self.scope_matches_prepared()
-            && self.signatures_valid(primitives)
+            && self.signatures_valid()
     }
 
     /// The parts of [`is_valid`](SigningIntent::is_valid) that are about state, not the hash:
@@ -322,7 +314,6 @@ impl SigningIntent {
         next: &SigningIntent,
         class: &ArgentMultisigClass,
         max_summary_length: usize,
-        primitives: &dyn StarkPrimitives,
     ) -> bool {
         use IntentState::{Accepted, Collecting, Ready, Rejected, Stale, Submitted};
         let allowed: &[IntentState] = match self.state {
@@ -345,7 +336,7 @@ impl SigningIntent {
                 .signatures
                 .iter()
                 .all(|signature| later.any(|held| held == signature))
-            && next.is_valid(class, max_summary_length, primitives)
+            && next.is_valid(class, max_summary_length)
     }
 
     /// `accountScopeMatchesPrepared`.
@@ -363,8 +354,9 @@ impl SigningIntent {
         })
     }
 
-    /// `areValidSignatures`.
-    fn signatures_valid(&self, primitives: &dyn StarkPrimitives) -> bool {
+    /// `areValidSignatures`, over the hash `is_valid` has just recomputed from the prepared
+    /// fields (`prepared.is_valid` runs first), never a hash the record merely carries.
+    fn signatures_valid(&self) -> bool {
         let snapshot = &self.config_snapshot;
         let Some(hash) = felt::parse(&self.prepared.transaction_hash) else {
             return false;
@@ -386,7 +378,7 @@ impl SigningIntent {
             };
             if !snapshot.signer_guids.contains(&felt::canonical(&guid))
                 || guid <= prior
-                || !primitives.verify(&hash, &key, &r, &s)
+                || !stark_signature_is_valid(&key, &hash, &r, &s)
             {
                 return false;
             }

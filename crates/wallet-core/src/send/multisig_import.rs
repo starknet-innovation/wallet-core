@@ -17,7 +17,6 @@ use starknet_types_core::felt::Felt;
 
 use super::call_decode::Known;
 use super::multisig_intent::{ConfigSnapshot, IntentPackage, SigningIntent};
-use super::multisig_invoke::StarkPrimitives;
 use super::multisig_review::{review_calls, CallReviewError};
 use crate::accounts::multisig::ArgentMultisigClass;
 use crate::accounts::multisig_read::MultisigAuthorityRead;
@@ -87,7 +86,6 @@ pub struct ImportContext<'a> {
     pub known: &'a Known<'a>,
     pub trusted: &'a [Felt],
     pub summary_length: usize,
-    pub primitives: &'a dyn StarkPrimitives,
 }
 
 /// `importIntent` from a parsed package to the intent to store. `read` is the record's
@@ -154,13 +152,13 @@ pub fn import_intent(
             .ok_or(ImportError::Conflict)?,
         None => incoming,
     };
-    let (length, primitives) = (wallet.summary_length, wallet.primitives);
-    if !next.is_valid(class, length, primitives) {
+    let length = wallet.summary_length;
+    if !next.is_valid(class, length) {
         return Err(ImportError::Invalid);
     }
     if wallet
         .stored
-        .is_some_and(|stored| !stored.can_replace(&next, class, length, primitives))
+        .is_some_and(|stored| !stored.can_replace(&next, class, length))
     {
         return Err(ImportError::Conflict);
     }

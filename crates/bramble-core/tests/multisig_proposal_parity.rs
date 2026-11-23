@@ -50,7 +50,6 @@ fn proposals_match_the_extension_on_both_networks() {
 
 fn run(network: &Value) {
     let name = network["networkId"].as_str().unwrap();
-    let primitives = TestPrimitives::new();
     let class = class();
     let record = record(network);
     let config = current_config(&record);
@@ -69,15 +68,8 @@ fn run(network: &Value) {
 
     // Propose: chain id, nonce, the validated estimate, then the frozen transaction.
     let calls: Vec<MultisigCall> = serde_json::from_value(proposal["calls"].clone()).unwrap();
-    let mut plan = ProposePlan::new(
-        &record,
-        &calls,
-        &config,
-        &class,
-        MULTISIG_FEE_OVERHEAD,
-        &primitives,
-    )
-    .unwrap();
+    let mut plan =
+        ProposePlan::new(&record, &calls, &config, &class, MULTISIG_FEE_OVERHEAD).unwrap();
     let first = plan.advance(StepReply::Start).unwrap();
     let last = drive(first, &exchanges(proposal, "prepare"), |reply| {
         plan.advance(reply).unwrap()
@@ -88,8 +80,8 @@ fn run(network: &Value) {
     let prepared = *prepared;
     let hash = proposal["transactionHash"].as_str().unwrap();
     assert_eq!(prepared.transaction_hash, hash, "{name}");
-    assert!(prepared.is_valid(&primitives), "{name}");
-    let fee = prepared.fee(&primitives).unwrap();
+    assert!(prepared.is_valid(), "{name}");
+    let fee = prepared.fee().unwrap();
     assert_eq!(
         (fee.spend.to_decimal(), fee.unit.code()),
         (
@@ -118,7 +110,7 @@ fn run(network: &Value) {
         let read: SigningIntent = serde_json::from_str(text).unwrap();
         assert_eq!(&read, intent, "{name}");
         assert_eq!(
-            intent.is_valid(&class, summary_length(), &primitives),
+            intent.is_valid(&class, summary_length()),
             stage["valid"].as_bool().unwrap(),
             "{name}"
         );
@@ -179,14 +171,7 @@ fn run(network: &Value) {
     assert_eq!(serialized, expected, "{name}");
 
     assert_eq!(intent.prepared, prepared, "{name}");
-    let mut submit = SubmitPlan::new(
-        &intent,
-        &submit_config,
-        &class,
-        summary_length(),
-        &primitives,
-    )
-    .unwrap();
+    let mut submit = SubmitPlan::new(&intent, &submit_config, &class, summary_length()).unwrap();
     let first = submit.advance(StepReply::Start, &|| true).unwrap();
     let last = drive(first, &exchanges(proposal, "submit"), |reply| {
         submit.advance(reply, &|| true).unwrap()

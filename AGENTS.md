@@ -116,7 +116,8 @@ Grep first; extend in place rather than adding a sibling.
   `send::multisig_invoke` (calls, execute calldata, the frozen `PreparedInvoke`, the threshold
   signature array), `send::multisig_invoke_plan` (`ProposePlan`, `SubmitPlan`) and
   `send::multisig_intent` (the signing intent, package, merge, validator). Selectors of
-  arbitrary entrypoints and signature verification reach them only through `StarkPrimitives`.
+  arbitrary entrypoints (`kms::selector`) and Stark signature verification
+  (`kms::stark_signature_is_valid`) come from Krusty through `kms.rs`, never a local copy.
   Importing a co-signer's package (chain authority and nonce, the wallet's own review, merge,
   store checks) is `send::multisig_import::import_intent`.
 - Signer changes are `accounts::multisig_change` (change, self-call, parser, next config,

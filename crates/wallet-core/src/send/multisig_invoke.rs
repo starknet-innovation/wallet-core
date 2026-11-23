@@ -5,10 +5,6 @@
 //! `PreparedArgentMultisigInvokeV3`), its validator and maximum fee, and the threshold signature
 //! a submission carries. The RPC sequence that prepares and submits one is
 //! `multisig_invoke_plan`; the shared intent around it is `multisig_intent`.
-//!
-//! Two primitives the path needs are not in Krusty 3.1.0: `starknet_keccak` of an entrypoint
-//! name (a call's selector) and Stark ECDSA verification. The caller lends them as
-//! [`StarkPrimitives`]; nothing here implements either, so without them nothing validates.
 
 use serde::{Deserialize, Serialize};
 use starknet_types_core::felt::Felt;
@@ -27,14 +23,6 @@ pub const MAX_CALLS: usize = 16;
 pub const MAX_CALL_CALLDATA_FELTS: usize = 256;
 pub const MAX_TOTAL_CALLDATA_FELTS: usize = 512;
 pub const MAX_EXECUTE_CALLDATA_FELTS: usize = 561;
-
-/// The two primitives Krusty 3.1.0 lacks, lent by the caller until it has them.
-pub trait StarkPrimitives {
-    /// `hash.getSelectorFromName`: `starknet_keccak(entrypoint)`.
-    fn selector(&self, entrypoint: &str) -> Option<Felt>;
-    /// `verifyStarkSignature`: `(r, s)` over `hash` under either point with x `public_key`.
-    fn verify(&self, hash: &Felt, public_key: &Felt, r: &Felt, s: &Felt) -> bool;
-}
 
 /// Why a multisig transaction input was refused. Fixed variants: no value, key or node text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
@@ -196,11 +184,8 @@ pub fn is_calls(calls: &[MultisigCall]) -> bool {
 }
 
 /// `transaction.getExecuteCalldata(calls, "1")` (`calls::execute_calldata`). `None` for a felt
-/// that does not parse or a selector the primitives cannot name.
-pub fn execute_calldata(
-    calls: &[MultisigCall],
-    primitives: &dyn StarkPrimitives,
-) -> Option<Vec<Felt>> {
+/// that does not parse.
+pub fn execute_calldata(calls: &[MultisigCall]) -> Option<Vec<Felt>> {
     let parsed = calls
         .iter()
         .map(|call| {
@@ -215,7 +200,7 @@ pub fn execute_calldata(
             })
         })
         .collect::<Option<Vec<_>>>()?;
-    calls::execute_calldata(&parsed, |entrypoint| primitives.selector(entrypoint))
+    Some(calls::execute_calldata(&parsed))
 }
 
 fn hex(value: u128) -> String {
@@ -299,15 +284,12 @@ impl PreparedInvoke {
 
     /// `isPreparedArgentMultisigInvokeV3`: every field canonical and in range, the calldata the
     /// calls compile to, and the hash those fields hash to. Never panics on hostile input.
-    pub fn is_valid(&self, primitives: &dyn StarkPrimitives) -> bool {
-        self.checked(primitives).is_some()
+    pub fn is_valid(&self) -> bool {
+        self.checked().is_some()
     }
 
     /// The network, sender, calldata, nonce and bounds of a valid record.
-    pub(crate) fn checked(
-        &self,
-        primitives: &dyn StarkPrimitives,
-    ) -> Option<(NetworkId, Felt, Vec<Felt>, Felt, Bounds)> {
+    pub(crate) fn checked(&self) -> Option<(NetworkId, Felt, Vec<Felt>, Felt, Bounds)> {
         let fixed = self.version == "0x3"
             && self.account_deployment_data.is_empty()
             && self.paymaster_data.is_empty()
@@ -329,17 +311,15 @@ impl PreparedInvoke {
         let sender = felt::parse_canonical_non_zero(&self.sender_address)?;
         let hash = felt::parse_canonical_non_zero(&self.transaction_hash)?;
         let bounds = self.resource_bounds.to_bounds()?;
-        let compiled = execute_calldata(&self.calls, primitives)?;
+        let compiled = execute_calldata(&self.calls)?;
         let recomputed = invoke_hash(network, &sender, &calldata, &nonce, &bounds).ok()?;
         (compiled == calldata && recomputed == hash)
             .then_some((network, sender, calldata, nonce, bounds))
     }
 
     /// `preparedArgentMultisigFee`: the most FRI the signed bounds authorise, never an estimate.
-    pub fn fee(&self, primitives: &dyn StarkPrimitives) -> Result<FeeQuote, MultisigInvokeError> {
-        let (_, _, _, _, bounds) = self
-            .checked(primitives)
-            .ok_or(MultisigInvokeError::InvalidPrepared)?;
+    pub fn fee(&self) -> Result<FeeQuote, MultisigInvokeError> {
+        let (_, _, _, _, bounds) = self.checked().ok_or(MultisigInvokeError::InvalidPrepared)?;
         let spend = max_spend(&bounds).ok_or(MultisigInvokeError::InvalidPrepared)?;
         Ok(FeeQuote {
             spend,

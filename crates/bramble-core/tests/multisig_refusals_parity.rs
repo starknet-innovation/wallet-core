@@ -178,7 +178,6 @@ fn deploy_configs_the_extension_refuses_are_refused() {
 #[test]
 fn proposals_the_extension_refuses_are_refused() {
     let fixture = refusals();
-    let primitives = TestPrimitives::new();
     let class = class();
     let account = record(&fixture);
     let config = current_config(&account);
@@ -198,14 +197,7 @@ fn proposals_the_extension_refuses_are_refused() {
             .iter()
             .map(decode)
             .collect();
-        let got = match ProposePlan::new(
-            &account,
-            &calls,
-            &config,
-            &class,
-            MULTISIG_FEE_OVERHEAD,
-            &primitives,
-        ) {
+        let got = match ProposePlan::new(&account, &calls, &config, &class, MULTISIG_FEE_OVERHEAD) {
             Err(error) => {
                 assert!(wire.is_empty(), "{name}");
                 Rust::Invoke(error)
@@ -250,7 +242,6 @@ fn diff(left: &Value, right: &Value, at: String, out: &mut Vec<String>) {
 #[test]
 fn stored_intents_get_the_extensions_verdict() {
     let fixture = refusals();
-    let primitives = TestPrimitives::new();
     let class = class();
     let cases = section(&fixture, "intents", 12);
     let raw = |name: &str| {
@@ -265,7 +256,7 @@ fn stored_intents_get_the_extensions_verdict() {
         let name = case["name"].as_str().unwrap();
         let intent: SigningIntent = serde_json::from_str(case["intent"].as_str().unwrap())
             .unwrap_or_else(|error| panic!("{name}: {error}"));
-        let valid = intent.is_valid(&class, summary_length(), &primitives);
+        let valid = intent.is_valid(&class, summary_length());
         assert_eq!(valid, case["valid"].as_bool().unwrap(), "{name}");
         let (base, changed): (&Value, &[&str]) = match name {
             "ready" | "collectingOne" => continue,
@@ -316,7 +307,6 @@ fn stored_intents_get_the_extensions_verdict() {
 #[test]
 fn replacements_get_the_extensions_verdict() {
     let fixture = refusals();
-    let primitives = TestPrimitives::new();
     let class = class();
     let intent = ready(&fixture);
     let collecting = SigningIntent {
@@ -350,7 +340,7 @@ fn replacements_get_the_extensions_verdict() {
         );
         assert_eq!(serde_json::to_value(next.state).unwrap(), case["nextState"]);
         assert_eq!(
-            current.can_replace(next, &class, summary_length(), &primitives),
+            current.can_replace(next, &class, summary_length()),
             case["canReplace"].as_bool().unwrap(),
             "{name}"
         );
@@ -399,10 +389,7 @@ fn reimports_merge_as_the_extension_merges() {
         assert_eq!(keys, expected, "{name}");
         assert_eq!(serde_json::to_value(merged.state).unwrap(), case["state"]);
         assert_eq!(merged.summary, case["summary"].as_str().unwrap(), "{name}");
-        assert!(
-            merged.is_valid(&class(), summary_length(), &TestPrimitives::new()),
-            "{name}"
-        );
+        assert!(merged.is_valid(&class(), summary_length()), "{name}");
         assert_eq!(merged.stale_outcome, None, "{name}");
         assert_eq!(merged.stale_reason, None, "{name}");
         // Only the kept terminal intent carries its broadcast hash.
@@ -440,7 +427,6 @@ fn signature_sets_the_extension_refuses_are_refused() {
 #[test]
 fn submissions_the_extension_refuses_are_refused() {
     let fixture = refusals();
-    let primitives = TestPrimitives::new();
     let class = class();
     let intent = ready(&fixture);
     let config = signed_config(&intent);
@@ -461,8 +447,7 @@ fn submissions_the_extension_refuses_are_refused() {
             .iter()
             .map(decode)
             .collect();
-        let got = match SubmitPlan::new(&candidate, &config, &class, summary_length(), &primitives)
-        {
+        let got = match SubmitPlan::new(&candidate, &config, &class, summary_length()) {
             Err(error) => {
                 assert!(wire.is_empty(), "{name}");
                 Rust::Invoke(error)

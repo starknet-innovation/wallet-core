@@ -11,7 +11,6 @@ use crate::portfolio::wire::{HttpHeader, HttpMethod, HttpOutcome, HttpRequest, H
 use crate::send::calls::Call;
 // `isEntrypoint` (`avnu.ts`, `^[a-zA-Z_][a-zA-Z0-9_]{0,63}$`) is the invoke grammar.
 use crate::send::invoke::{is_entrypoint, Invoke};
-use crate::send::multisig_invoke::StarkPrimitives;
 use crate::send::review_flags::ReviewContext;
 use crate::send::types::{Account, Policy};
 use crate::send::u256::U256;
@@ -99,7 +98,6 @@ impl PendingBuild {
         outcome: &HttpOutcome,
         context: &ReviewContext,
         send_policy: &Policy,
-        primitives: &dyn StarkPrimitives,
     ) -> Result<SwapPreparation, SwapRefusal> {
         let payload = read_json(outcome, SwapRefusal::BuildFailed)?;
         let calls = self.read_build(&payload)?;
@@ -121,7 +119,7 @@ impl PendingBuild {
             known_contracts: std::slice::from_ref(&self.router),
             ..*context
         };
-        let invoke = Invoke::reviewed(&self.account, calls, send_policy, &context, primitives)?;
+        let invoke = Invoke::reviewed(&self.account, calls, send_policy, &context)?;
         Ok(SwapPreparation::new(self, invoke, &route))
     }
 

@@ -15,7 +15,7 @@ mod multisig_support;
 
 use bramble_core::catalogs::networks;
 use bramble_core::MULTISIG_FEE_OVERHEAD;
-use multisig_support::{class, current_config, decode, drive, summary_length, TestPrimitives};
+use multisig_support::{class, current_config, decode, drive, summary_length};
 use serde_json::Value;
 use starknet_wallet_core::accounts::multisig_change::{
     config_change_call, next_public_config, parse_config_change, ConfigChange,
@@ -96,19 +96,10 @@ fn signer_changes_build_parse_and_review_as_the_extension_does() {
 
 /// `ProposePlan` over the case's recorded exchanges, the self-call as its one call.
 fn prepared(record: &Record, call: &MultisigCall, case: &Value) -> Value {
-    let primitives = TestPrimitives::new();
     let class = class();
     let config = current_config(record);
     let calls = std::slice::from_ref(call);
-    let mut plan = ProposePlan::new(
-        record,
-        calls,
-        &config,
-        &class,
-        MULTISIG_FEE_OVERHEAD,
-        &primitives,
-    )
-    .unwrap();
+    let mut plan = ProposePlan::new(record, calls, &config, &class, MULTISIG_FEE_OVERHEAD).unwrap();
     let first = plan.advance(StepReply::Start).unwrap();
     let exchanges: Vec<Value> = case["prepare"]
         .as_array()
@@ -121,7 +112,7 @@ fn prepared(record: &Record, call: &MultisigCall, case: &Value) -> Value {
         panic!("{last:?}");
     };
     let prepared: PreparedInvoke = *prepared;
-    assert!(prepared.is_valid(&primitives));
+    assert!(prepared.is_valid());
     serde_json::to_value(&prepared).unwrap()
 }
 
