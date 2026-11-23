@@ -119,6 +119,7 @@ pub use recovery_scan::RecoveryScanStep;
 pub use rpc_request::{RpcRequest, RpcResponse};
 pub use send::plan::TransferPlan;
 pub use send::revoke::{AllowanceRevoke, RevokeError};
+pub use send::swap::{SwapError, SwapQuoteView, SwapReview, TokenSwap};
 pub use send::types::{
     ActivityKind, CallKind, DeploymentState, FeeAffordability, FeeAmount, FeeUnit, ReviewFlag,
     ReviewedCall, RiskFlag, RiskFlagCode, RpcPurpose, SendAmountError, SendError, SendFailure,
