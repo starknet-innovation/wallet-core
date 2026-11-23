@@ -20,6 +20,7 @@ use super::multisig_review::{batch_line, refuse_poisoned, CallReviewError};
 use super::plan::PendingKind;
 use super::review_flags::{call_flags, dedupe, ReviewContext, RiskFlag};
 use super::types::{Account, Policy};
+use super::u256::U256;
 use crate::allowances::calls::{allowance_changes, AllowanceChange, AllowanceOwner};
 use crate::history::activity::MAX_SUMMARY_LENGTH;
 use crate::js::num::utf16_slice;
@@ -67,6 +68,7 @@ pub struct Invoke {
     pub(crate) activity_summary: Option<String>,
     pub(crate) activity_asset: Option<ActivityAsset>,
     pub(crate) allowances: Vec<AllowanceChange>,
+    pub(crate) fee_balance: Option<U256>,
 }
 
 /// The amount and token an activity row names beside its text (`recordSubmittedActivity`'s
@@ -200,6 +202,7 @@ impl Invoke {
             activity_summary: None,
             activity_asset: None,
             allowances,
+            fee_balance: None,
         })
     }
 
@@ -234,6 +237,15 @@ impl Invoke {
     #[must_use]
     pub(crate) fn with_activity_asset(mut self, asset: ActivityAsset) -> Self {
         self.activity_asset = Some(asset);
+        self
+    }
+
+    /// The STRK the host last read for the sending account, for the review's shortfall warning
+    /// only (`resolveFeeAffordability`, fee-only for a batch). Without it the review says
+    /// `Unknown`, never blocking. It rides on the batch the plan binds to its account and network.
+    #[must_use]
+    pub fn with_fee_balance(mut self, balance: U256) -> Self {
+        self.fee_balance = Some(balance);
         self
     }
 

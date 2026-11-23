@@ -122,7 +122,7 @@ integration PR (#96).
 | P1 export | here, then Bramble | krusty-kms#257 (open) | whenever Krusty ships it: the bump that exports a selector and signature verification, an implementation of `StarkPrimitives` over it, P1's FFI surface, and its screens in the tag after |
 | P7 Vault: migrate to 14 | here | v0.10.11 on the extension's `main`, a generator, and the product owner's answers | the reader takes 13 and 14 (#87, #92) and writes each back as read. Left: `NEW_VAULT_SCHEMA` to 14 and raising a v13 vault on unlock, as the extension's migration does. Waits on v0.10.11 shipping, so a backup mobile raises to 14 still opens in the released extension. The other questions are settled: mobile opens every vault the extension opens, see P7 |
 | P8 Ledger | here | the transport question | moved up 2026-11-21: every extension user has it, and a Ledger user cannot use mobile without it. #87 reads and keeps a Ledger account; P8 makes it usable |
-| P9 export | here | krusty-kms#257 (open), a generator | the mechanism (#84) and its review (#91: the flags, a summary per call, the caller's activity text) are in, with no export. Owed before one: a selector from Krusty, as for P1; a host that files the pending record's allowance changes (`allowances::calls::record_changes`) before it writes the row, which Bramble's does not yet; and fee affordability with an amount for a batch, which the invoke kind cannot yet answer |
+| P9 export | here | krusty-kms#257 (open), a generator | the mechanism (#84) and its review (#91: the flags, a summary per call, the caller's activity text) are in, with no export. Owed before one: a selector from Krusty, as for P1; a host that files the pending record's allowance changes (`allowances::calls::record_changes`) before it writes the row, which Bramble's does not yet. A batch's fee affordability is in (`Invoke::with_fee_balance`) |
 | P11, P12 and P13 exports | here, each with its generator and its mobile PR | P9's export | the core halves are in (#90, #85 and #89, #93) and joined to the review and the allowance log (#96), unexported; each export arrives with its screens |
 | P14–P16 | here, each with its generator and its mobile PR | P9's export | gasless, STRK20 submission, dapp connect |
 | Extension Krusty 3 | Bramble, `main` | — | the extension still pins `@starknetfoundation/krusty-kms-wasm` `0.11.0`, which predates the fix (Krusty 3.0 changed the derivation; 2.0.0 and earlier kept the leading zero bytes), so its keys and mobile's part for affected phrases. Its users have funds, so it follows Krusty's [migration guide](https://github.com/starknet-innovation/krusty-kms/blob/v3.0.0/docs/migration-3.0.md): keep the old key for any existing account whose public key differs. Needed before Phase 3, where the extension takes this crate's Krusty |
@@ -501,9 +501,11 @@ Foundations, which the features need, and Ledger, which needs only the first:
   batch's own count and `activityOrigin`), falling back to the review line; it rides on the
   `Invoke` the plan already binds to its account and network. Departures: each flag is attached
   to its call; `address-poisoning` refuses instead of flagging; the standing totals are filtered
-  in the core rather than by the caller; an empty activity text keeps the review line. Not
-  ported: fee affordability with an amount (the invoke kind reads no STRK balance) and the
-  approval queue's summary bound (P16). `RiskFlag` is not the transfer's `ReviewFlag`; the two
+  in the core rather than by the caller; an empty activity text keeps the review line. A
+  batch's fee affordability is the dapp card's (`estimateInvokeApprovalFee`): fee-only, the
+  deployment added when the account needs one, FRI only, over the STRK balance the host last
+  read (`Invoke::with_fee_balance`; none is `Unknown`); the STRK its calls spend counts only
+  toward the gasless offer, not ported. Not ported: the approval queue's summary bound (P16). `RiskFlag` is not the transfer's `ReviewFlag`; the two
   meet at export. Not ported, as
   for the transfer: the `fast` speed, a SNIP-36 proof (P15) and the approval queue's review
   budget (P16). As for a multisig, Krusty 3.1.0 has no selector, so `Invoke::reviewed` takes
