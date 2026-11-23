@@ -160,6 +160,7 @@ fn the_overview_reads_and_shows_what_the_extension_does() {
         let name = case["name"].as_str().unwrap();
         let policy = policy(case["enabled"].as_bool().unwrap());
         let Some(network) = policy.network(MAINNET) else {
+            assert!(case["rpc"].as_array().unwrap().is_empty(), "{name}");
             assert_eq!(
                 case["response"],
                 error(StakingRefusal::Unavailable),

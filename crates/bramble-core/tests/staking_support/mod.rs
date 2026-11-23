@@ -108,8 +108,10 @@ fn same_params(recorded: &Value, sent: &Value) -> bool {
 }
 
 /// Drives `read` over the node the extension spoke to: every body the core sends must be one the
-/// extension sent, answered with that recorded reply (each recorded exchange answers once, in
-/// order), and the core must send every one the extension did.
+/// extension sent, answered with that recorded reply (each recorded exchange answers once; of
+/// identical bodies, the earliest unused answers first), and the core must send every one the
+/// extension did. Order across different bodies is not compared: the reads are independent, and
+/// the core batches them as its pinned read does, not as the extension's per-token reads did.
 pub fn run_read(read: &mut StakingRead, rpc: &Value, name: &str) -> Option<StakingReading> {
     let recorded = rpc.as_array().unwrap();
     let mut used = vec![false; recorded.len()];
