@@ -183,10 +183,11 @@ fn retention_keeps_what_the_extension_keeps() {
                     .map(|(r, _)| r.id.clone())
                     .collect()
             }
-            _ => trim_to_total(all, limit, &ranking)
+            "trimToTotal" => trim_to_total(all, limit, &ranking)
                 .into_iter()
                 .map(|r| r.id)
                 .collect(),
+            other => panic!("{}: unmapped retention fn {other}", name(&case)),
         };
         assert_eq!(json!(kept), case["kept"], "{}", name(&case));
     }
