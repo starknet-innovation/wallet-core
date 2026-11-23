@@ -239,3 +239,31 @@ fn ids_are_not_reused_across_scans() {
     assert!(second.requests.iter().all(|request| request.id > last));
     assert_eq!(second.checked, 0);
 }
+
+#[test]
+fn a_reply_from_the_class_round_cannot_complete_the_detail_round() {
+    let oz = shape(AccountFamily::OpenZeppelin, Ladder::Account, OZ);
+    let mut config = config(vec![oz]);
+    config.limits.batch_size = 1;
+    let mut scan = Scan::new();
+    let first = scan.next(PHRASE, None, &config, None).unwrap();
+    let id = first.requests[0].id;
+    let missing = Response {
+        id,
+        body: json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "error": { "code": 20, "message": "contract not found" }
+        })
+        .to_string(),
+    };
+    let details = scan
+        .submit(PHRASE, None, &config, std::slice::from_ref(&missing))
+        .unwrap();
+    assert_eq!(details.requests.len(), 1);
+    assert!(scan.submit(PHRASE, None, &config, &[missing]).is_err());
+    let retry = scan.next(PHRASE, None, &config, None).unwrap();
+    assert_eq!(retry.checked, 0);
+    assert_eq!(retry.requests.len(), 1);
+    assert!(retry.requests[0].id > details.requests[0].id);
+}
