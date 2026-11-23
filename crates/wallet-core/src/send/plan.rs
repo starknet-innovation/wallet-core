@@ -260,6 +260,15 @@ impl Plan {
         }
     }
 
+    /// The batch this plan signs, for its review card (`Invoke::calls` beside
+    /// `Invoke::signed_calls`); `None` for any other kind.
+    pub fn invoke(&self) -> Option<&Invoke> {
+        match &self.kind {
+            Kind::Invoke(invoke) => Some(invoke),
+            _ => None,
+        }
+    }
+
     /// How many hashes this plan has had signed, so a test can prove a refusal reached no signer.
     pub fn signatures_made(&self) -> u32 {
         self.signatures
