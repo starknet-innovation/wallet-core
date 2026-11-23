@@ -1,7 +1,8 @@
 //! AVNU swaps (P11) against what the extension's real handler did (`fixtures/extension-swap.jsonl`,
 //! `bun run mobile:parity`): each quote's GET and its judgement or refusal, the value check from
 //! the wallet's own feed, each build's POST and the review it prepared (lines, flags, minimum, the
-//! calls that reached the signer, the activity row) or the refusal, and the reviewed floor.
+//! calls that reached the signer, the activity row, the allowance filed) or the refusal, and the
+//! reviewed floor.
 
 mod multisig_support;
 
@@ -129,9 +130,12 @@ fn ask(case: &Value) -> Result<(PendingQuote, HttpRequest), String> {
     .map_err(|refusal| refusal.to_string())
 }
 
+/// The quote judged from `reply`. The extension sent its GET, so the core must send it too: a
+/// refusal here would be one the extension never gave before asking.
 fn quoted(case: &Value, reply: &Value) -> Result<SwapQuote, String> {
     let name = text(&case["name"]);
-    let (pending, request) = ask(case)?;
+    let (pending, request) =
+        ask(case).unwrap_or_else(|refusal| panic!("{name}: refused before asking: {refusal}"));
     assert_request(&request, &case["requests"][0], name);
     pending
         .judge(&outcome(reply))
@@ -237,7 +241,10 @@ fn builds_match_the_handler() {
             "{name}"
         );
         let invoke = preparation.into_invoke(&account()).unwrap();
-        let submitted = case["submitted"][0].as_array().unwrap();
+        let [submitted] = case["submitted"].as_array().unwrap().as_slice() else {
+            panic!("{name}: one submit expected");
+        };
+        let submitted = submitted.as_array().unwrap();
         assert_eq!(invoke.signed_calls().len(), submitted.len(), "{name}");
         for (call, sent) in invoke.signed_calls().iter().zip(submitted) {
             assert_eq!(
@@ -248,7 +255,9 @@ fn builds_match_the_handler() {
             assert_eq!(call.entrypoint, sent["entrypoint"], "{name}");
             assert_eq!(call.calldata, felts(&sent["calldata"]), "{name}");
         }
-        let row = &case["activity"][0];
+        let [row] = case["activity"].as_array().unwrap().as_slice() else {
+            panic!("{name}: one Activity row expected");
+        };
         assert_eq!(invoke.activity_summary(), row["summary"], "{name}");
         let asset = invoke.activity_asset().unwrap();
         assert_eq!(asset.amount.as_deref(), row["amount"].as_str(), "{name}");
@@ -258,6 +267,19 @@ fn builds_match_the_handler() {
             row["tokenAddress"],
             "{name}"
         );
+        // The router's exact approval, filed as `recordApproveAllowances` filed it.
+        let allowances: Vec<Value> = invoke
+            .allowance_changes()
+            .iter()
+            .map(|change| {
+                serde_json::json!({
+                    "amount": change.input.amount.to_decimal(),
+                    "spender": change.input.spender,
+                    "token": change.input.token,
+                })
+            })
+            .collect();
+        assert_eq!(serde_json::json!(allowances), case["allowances"], "{name}");
     }
 }
 
