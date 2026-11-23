@@ -379,6 +379,15 @@ pub fn selector(entrypoint: &str) -> Felt {
     krusty_kms::selector_from_name(entrypoint)
 }
 
+/// `typedData.getMessageHash(typedData, account)`: the SNIP-12 message hash (revision 0 or 1, as
+/// the document's domain says) Krusty computes for `typed_data_json`. Keyless. Krusty refuses a
+/// document that is not canonical SNIP-12 (unknown envelope keys, duplicate keys, an unknown
+/// type); its reason is not passed on, because it can quote attacker-chosen names.
+pub fn typed_data_message_hash(typed_data_json: &str, account: &Felt) -> Result<Felt, Error> {
+    krusty_kms::compute_typed_data_message_hash(typed_data_json, account)
+        .map_err(|_| Error::kms("typed data hash"))
+}
+
 /// `verifyStarkSignature`: whether `(r, s)` signs `hash` under either curve point with x
 /// `public_key`. Keyless. Every refusal is `false`: a signature that does not match, a zero
 /// hash, and any input out of range (or a key off the curve).
