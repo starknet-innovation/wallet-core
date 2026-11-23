@@ -95,6 +95,34 @@ fn status_moves_forward_and_not_found_rejects() {
     );
 }
 
+#[test]
+fn terminal_entries_ignore_late_observations() {
+    let hash = Felt::from(0xabu8);
+    for (status, finalized_on_l1) in [
+        (TxStatus::Rejected, false),
+        (TxStatus::Reverted, false),
+        (TxStatus::Accepted, true),
+    ] {
+        let storage = Memory::default();
+        let mut log = ActivityLog::new(&storage);
+        let mut row = entry("0xab", 1);
+        row.status = status_text(status).into();
+        row.finalized_on_l1 = Some(finalized_on_l1);
+        assert!(log.record(row.clone()));
+        for _ in 0..NOT_FOUND_FAILURE_THRESHOLD {
+            assert_eq!(
+                log.observe(SCOPE, &hash, Observation::NotFound),
+                Some(status)
+            );
+        }
+        assert_eq!(
+            log.observe(SCOPE, &hash, found(TxStatus::Pending)),
+            Some(status)
+        );
+        assert_eq!(log.list(SCOPE), vec![row]);
+    }
+}
+
 // Mobile's version of this test also checks that wallet deletion removes every activity file;
 // deletion is the host's (`Storage` has no delete), so that half stays with mobile's `remove`.
 #[test]

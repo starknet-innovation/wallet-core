@@ -11,7 +11,8 @@ use crate::Felt;
 use super::judge::TxStatus;
 use super::judge::{self, Answer, EstimateAnswer, Observation, WriteAnswer};
 use super::plan::{
-    AfterWait, Authorization, Expect, Plan, PlanHost, DEPLOY_POLL_ATTEMPTS, DEPLOY_POLL_INTERVAL_MS,
+    AfterWait, Authorization, DeploymentFor, DeploymentPoll, Expect, Plan, PlanHost,
+    DEPLOY_POLL_ATTEMPTS, DEPLOY_POLL_INTERVAL_MS,
 };
 use super::plan_submit::{refusal_code, settle, Settled};
 use super::rpc_bodies::{self, DeployTx};
@@ -78,12 +79,13 @@ impl Plan {
     pub(super) fn on_deploy_estimate(
         &mut self,
         host: &dyn PlanHost,
+        purpose: DeploymentFor,
         answer: Option<Answer>,
     ) -> SendStep {
         // Inside `ensureAccountDeployed` a transport failure is "deployment status unknown" and
         // any other error "automatic deployment failed"; the standalone flow reports them as
         // any other write preparation does.
-        let transfer = self.is_invoke();
+        let transfer = matches!(purpose, DeploymentFor::Invoke(_));
         let (transport, node) = if transfer {
             (Code::DeploymentStatusUnknown, Code::AutoDeploymentFailed)
         } else {
@@ -129,7 +131,7 @@ impl Plan {
         self.work.deploy_hash = Some(hash);
         self.persist_pending(host, &hash, false);
         self.rpc(
-            Expect::DeployWrite,
+            Expect::DeployWrite { hash, purpose },
             RpcPurpose::AddDeployAccount,
             true,
             |_, id| {
@@ -148,18 +150,28 @@ impl Plan {
         )
     }
 
-    pub(super) fn on_deploy_write(&mut self, answer: Option<Answer>) -> SendStep {
-        let Some(hash) = self.work.deploy_hash else {
-            return self.fail(Code::SubmissionIndeterminate, None);
-        };
-        // Once signed, the deployment may land whatever the node answers, so its record stays
-        // and every failure carries its hash; only the code depends on the answer.
-        let transfer = self.is_invoke();
+    pub(super) fn on_deploy_write(
+        &mut self,
+        hash: Felt,
+        purpose: DeploymentFor,
+        answer: Option<Answer>,
+    ) -> SendStep {
+        // The pending record and signed hash survive any write outcome.
+        let transfer = matches!(purpose, DeploymentFor::Invoke(_));
         let code = match judge::write(answer, &hash) {
-            WriteAnswer::Accepted if transfer => {
-                return self.wait(DEPLOY_POLL_INTERVAL_MS, AfterWait::DeployStatus)
+            WriteAnswer::Accepted => {
+                return match purpose {
+                    DeploymentFor::Standalone => self.broadcast(hash),
+                    DeploymentFor::Invoke(bounds) => {
+                        let poll = DeploymentPoll {
+                            hash,
+                            bounds,
+                            attempts: 0,
+                        };
+                        self.wait(DEPLOY_POLL_INTERVAL_MS, AfterWait::DeployStatus(poll))
+                    }
+                }
             }
-            WriteAnswer::Accepted => return self.broadcast(hash),
             WriteAnswer::Mismatch | WriteAnswer::Indeterminate if transfer => {
                 Code::DeploymentStatusUnknown
             }
@@ -171,60 +183,77 @@ impl Plan {
         self.fail(code, Some(hash))
     }
 
-    pub(crate) fn poll_deployment(&mut self) -> SendStep {
-        let Some(hash) = self.work.deploy_hash else {
-            return self.fail(Code::DeploymentStatusUnknown, None);
-        };
+    pub(crate) fn poll_deployment(&mut self, poll: DeploymentPoll) -> SendStep {
         self.rpc(
-            Expect::DeployStatus,
+            Expect::DeployStatus(poll),
             RpcPurpose::TransactionStatus,
             false,
-            |_, id| rpc_bodies::transaction_status(id, &hash),
+            |_, id| rpc_bodies::transaction_status(id, &poll.hash),
         )
     }
 
-    pub(crate) fn read_deploy_receipt(&mut self) -> SendStep {
-        let Some(hash) = self.work.deploy_hash else {
-            return self.fail(Code::DeploymentStatusUnknown, None);
-        };
+    pub(crate) fn read_deploy_receipt(&mut self, poll: DeploymentPoll) -> SendStep {
         self.rpc(
-            Expect::DeployReceipt,
+            Expect::DeployReceipt(poll),
             RpcPurpose::TransactionReceipt,
             false,
-            |_, id| rpc_bodies::transaction_receipt(id, &hash),
+            |_, id| rpc_bodies::transaction_receipt(id, &poll.hash),
         )
     }
 
-    /// One more deploy-wait attempt, or `DeploymentUnconfirmed` once the budget is spent.
-    pub(super) fn retry_deploy_wait(&mut self, after: AfterWait) -> SendStep {
-        self.work.attempts += 1;
-        if self.work.attempts >= DEPLOY_POLL_ATTEMPTS {
-            let hash = self.work.deploy_hash;
-            return self.fail(Code::DeploymentUnconfirmed, hash);
+    /// Status and receipt retries share one deployment budget.
+    fn retry_deploy_wait(
+        &mut self,
+        mut poll: DeploymentPoll,
+        next: fn(DeploymentPoll) -> AfterWait,
+    ) -> SendStep {
+        poll.attempts += 1;
+        if poll.attempts >= DEPLOY_POLL_ATTEMPTS {
+            return self.fail(Code::DeploymentUnconfirmed, Some(poll.hash));
         }
-        self.wait(DEPLOY_POLL_INTERVAL_MS, after)
+        self.wait(DEPLOY_POLL_INTERVAL_MS, next(poll))
     }
 
     pub(super) fn on_deploy_status(
         &mut self,
         host: &dyn PlanHost,
+        poll: DeploymentPoll,
         answer: Option<Answer>,
     ) -> SendStep {
-        let Some(hash) = self.work.deploy_hash else {
-            return self.fail(Code::DeploymentStatusUnknown, None);
-        };
         let observation = judge::status(answer);
-        host.observe(&hash, observation);
+        host.observe(&poll.hash, observation);
         match observation {
             Observation::Found {
                 accepted_finality: true,
                 ..
-            } => self.read_deploy_receipt(),
+            } => self.read_deploy_receipt(poll),
             Observation::Found {
                 status: TxStatus::Rejected,
                 ..
-            } => self.fail(Code::DeploymentUnconfirmed, Some(hash)),
-            _ => self.retry_deploy_wait(AfterWait::DeployStatus),
+            } => self.fail(Code::DeploymentUnconfirmed, Some(poll.hash)),
+            _ => self.retry_deploy_wait(poll, AfterWait::DeployStatus),
+        }
+    }
+
+    pub(super) fn on_deploy_receipt(
+        &mut self,
+        host: &dyn PlanHost,
+        poll: DeploymentPoll,
+        answer: Option<Answer>,
+    ) -> SendStep {
+        // The deployment's receipt is read here anyway, so its record takes its fee.
+        if let Some(fee) = judge::receipt_fee(answer.as_ref()) {
+            if host.wants_fee(&poll.hash) {
+                host.record_fee(&poll.hash, &fee);
+            }
+        }
+        if judge::receipt(answer) {
+            self.read_nonce(Expect::InvokeNonce {
+                bounds: poll.bounds,
+                deployment: Some(poll.hash),
+            })
+        } else {
+            self.retry_deploy_wait(poll, AfterWait::DeployReceipt)
         }
     }
 }
