@@ -8,7 +8,7 @@
 //! Rules mirror `packages/features/transactions/src/activity/activity.ts` and
 //! `tx-observation.ts` (whose policy is `observation.rs`): entries are validated on read (invalid ones are dropped), at most 200
 //! per scope (oldest dropped), de-duplicated by numeric hash, status moves forward only
-//! (`monotonicTxStatus`), and three consecutive not-found answers make an entry
+//! (`monotonicTxStatus`), and three consecutive not-found answers make a watched entry
 //! `rejected`. A file that cannot be read as version 1 is never overwritten blind: it is renamed
 //! `activity.v1.corrupt-<n>.json` (`Storage::rename`) and the store starts empty; if it cannot be
 //! renamed, every write is refused until it can. Writes are `Storage::write`, which is atomic.
@@ -437,32 +437,52 @@ impl<'a> ActivityLog<'a> {
     }
 }
 
+enum ObservationState {
+    Watching { status: TxStatus, misses: u32 },
+    Terminal(TxStatus),
+}
+
 // One entry's share of `observe`; `None` when its stored status does not parse.
 fn observe_entry(entry: &mut Entry, observation: Observation) -> Option<TxStatus> {
-    {
-        let current = parse_status(&entry.status)?;
-        match observation {
-            Observation::Unknown => return Some(current),
-            Observation::NotFound => {
-                let count = entry.not_found_count.unwrap_or(0) + 1;
-                entry.not_found_count = Some(count);
-                if count >= NOT_FOUND_FAILURE_THRESHOLD {
-                    entry.status = status_text(TxStatus::Rejected).into();
-                }
+    let status = parse_status(&entry.status)?;
+    let finalized = entry.finalized_on_l1.unwrap_or(false);
+    let state = if observation::tier(status, finalized).is_some() {
+        ObservationState::Watching {
+            status,
+            misses: entry.not_found_count.unwrap_or(0),
+        }
+    } else {
+        ObservationState::Terminal(status)
+    };
+    let next = match (state, observation) {
+        (ObservationState::Terminal(status), _)
+        | (ObservationState::Watching { status, .. }, Observation::Unknown) => return Some(status),
+        (ObservationState::Watching { status, misses }, Observation::NotFound) => {
+            let misses = misses.saturating_add(1);
+            entry.not_found_count = Some(misses);
+            if misses >= NOT_FOUND_FAILURE_THRESHOLD {
+                TxStatus::Rejected
+            } else {
+                status
             }
+        }
+        (
+            ObservationState::Watching {
+                status: current, ..
+            },
             Observation::Found {
                 status,
                 finalized_on_l1,
                 ..
-            } => {
-                entry.status = status_text(monotonic(current, status)).into();
-                entry.not_found_count = Some(0);
-                entry.finalized_on_l1 =
-                    Some(entry.finalized_on_l1.unwrap_or(false) || finalized_on_l1);
-            }
+            },
+        ) => {
+            entry.not_found_count = Some(0);
+            entry.finalized_on_l1 = Some(finalized || finalized_on_l1);
+            monotonic(current, status)
         }
-        parse_status(&entry.status)
-    }
+    };
+    entry.status = status_text(next).into();
+    Some(next)
 }
 
 #[cfg(test)]

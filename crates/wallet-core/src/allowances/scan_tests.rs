@@ -342,6 +342,29 @@ fn a_transport_failure_restarts_the_whole_scan() {
 }
 
 #[test]
+fn allowance_scan_ignores_a_late_reply_after_restart() {
+    let mut scan = ExternalAllowanceScan::new(OWNER, &[TOKEN.into()], TEST_POLICY);
+    let old = scan.next_calls().remove(0);
+    assert_eq!(
+        scan.accept(RpcReply {
+            id: old.id,
+            status: 0,
+            body: None
+        }),
+        ScanStep::Transport
+    );
+    assert!(scan.next_calls().is_empty());
+    scan.restart();
+    let current = scan.next_calls().remove(0);
+    assert!(current.id > old.id);
+    let chain = node(100, vec![]);
+    assert_eq!(scan.accept(chain.answer(&old)), ScanStep::Continue);
+    assert!(scan.next_calls().is_empty());
+    assert_eq!(scan.accept(chain.answer(&current)), ScanStep::Continue);
+    assert!(drive(&mut scan, &chain).is_some());
+}
+
+#[test]
 fn malformed_replies_are_transport_failures() {
     let faults: [Fault; 7] = [
         // A null page, events that are not a list, an event without keys or data, a block number

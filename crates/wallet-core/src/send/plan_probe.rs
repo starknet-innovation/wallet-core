@@ -23,6 +23,7 @@
 
 use crate::Felt;
 
+use super::fees::Bounds;
 use super::judge::{self, Answer, CallAnswer, ClassHashAnswer, ClassValue};
 use super::plan::{ArgentClass, Authorization, Expect, Kind, Plan};
 use super::rpc_bodies;
@@ -54,7 +55,7 @@ pub(crate) enum Probe {
     /// The confirmation's check (`submitInvokeTransaction` / `submitAccountDeployment`).
     Submit,
     /// `ensureAccountDeployed`, just before the automatic deployment.
-    Deploy,
+    Deploy(Bounds),
 }
 
 /// What an account-state read concluded.
@@ -358,7 +359,7 @@ impl Plan {
             Probe::Review => self.review_probed(outcome),
             Probe::ReviewDeploy => self.review_deploy_probed(outcome),
             Probe::Submit => self.submit_probed(outcome),
-            Probe::Deploy => self.deploy_probed(outcome),
+            Probe::Deploy(bounds) => self.deploy_probed(outcome, bounds),
         }
     }
 

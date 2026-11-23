@@ -28,8 +28,6 @@ use crate::vault_wire::{
 const DEVNET_CHAIN_ID: &str = "0x534e5f4445564e4554";
 /// `Number.MAX_SAFE_INTEGER`: an index past it is not a safe integer (`isSafeIndex`).
 const MAX_SAFE_INTEGER: u64 = (1 << 53) - 1;
-/// `MAX_HARDENED_INDEX` (`ledger-path.ts`): a Ledger index stays below it.
-const MAX_LEDGER_INDEX: u64 = 0x8000_0000;
 /// `MAX_MNEMONIC_LENGTH` (`passphrase.ts`), in UTF-16 code units.
 const MAX_MNEMONIC_LENGTH: usize = 512;
 /// `MAX_LEDGER_STRK20_VIEWING_KEYS` (`account-secrets.ts`).
@@ -41,12 +39,6 @@ const MAX_SHADOW_NONCES: usize = 64;
 /// `MAX_MULTISIG_STRK20_VIEWING_KEYS` (`multisig-strk20-key.ts`), for each list.
 const MAX_MULTISIG_KEYS: usize = 32;
 const MULTISIG_VIEWING_KEY_SCHEME: &str = "multisig-strk20-shared-v1";
-
-/// `PATH_SCHEMES` (`ledger-path.ts`): each scheme's path around the decimal account index.
-const LEDGER_PATHS: [(&str, &str, &str); 2] = [
-    ("LedgerW", "m/2645'/1195502025'/734980059'/0'/", "'/0"),
-    ("argentx", "m/2645'/1195502025'/1148870696'/0'/0'/", ""),
-];
 
 /// `STARKNET_NETWORKS[networkId].chainId`, canonical; `None` for an unknown network id.
 pub(crate) fn chain_id(network_id: &str) -> Option<String> {
@@ -144,11 +136,9 @@ fn is_derivation(derivation: &Derivation) -> bool {
             eip2645_application,
             path,
         } => {
-            *account_index < MAX_LEDGER_INDEX
-                && LEDGER_PATHS.iter().any(|(application, prefix, suffix)| {
-                    application == eip2645_application
-                        && *path == format!("{prefix}{account_index}{suffix}")
-                })
+            // `isLedgerAccountPathFor`: the path its scheme builds for its index (below 2^31).
+            crate::ledger::ledger_account_path(eip2645_application, *account_index)
+                .is_some_and(|built| *path == built.to_string())
         }
     }
 }

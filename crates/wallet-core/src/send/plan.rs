@@ -90,6 +90,19 @@ pub trait PlanHost {
     fn explorer_url(&self, hash: &str) -> Option<String>;
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DeploymentFor {
+    Standalone,
+    Invoke(Bounds),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct DeploymentPoll {
+    pub hash: Felt,
+    pub bounds: Bounds,
+    pub attempts: u32,
+}
+
 /// Which reply the plan is waiting for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Expect {
@@ -112,13 +125,22 @@ pub(crate) enum Expect {
     SubmitChain,
     SubmitNonce,
     SubmitEstimate,
-    DeployNonce,
-    DeployEstimate,
-    DeployWrite,
-    DeployStatus,
-    DeployReceipt,
-    InvokeNonce,
-    InvokeWrite,
+    DeployNonce(Bounds),
+    DeployEstimate(DeploymentFor),
+    DeployWrite {
+        hash: Felt,
+        purpose: DeploymentFor,
+    },
+    DeployStatus(DeploymentPoll),
+    DeployReceipt(DeploymentPoll),
+    InvokeNonce {
+        bounds: Bounds,
+        deployment: Option<Felt>,
+    },
+    InvokeWrite {
+        hash: Felt,
+        deployment: Option<Felt>,
+    },
     ConfirmStatus,
     RefreshStatus,
     /// The receipt of a transaction that settled with this status, read for its fee.
@@ -129,8 +151,8 @@ pub(crate) use super::plan_probe::Probe;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AfterWait {
-    DeployStatus,
-    DeployReceipt,
+    DeployStatus(DeploymentPoll),
+    DeployReceipt(DeploymentPoll),
     Checkpoint,
 }
 
@@ -165,12 +187,11 @@ pub(crate) struct Work {
     pub reviewed_fee: Option<FeeQuote>,
     pub reviewed_deploy_fee: Option<FeeQuote>,
     pub submit_deployed: bool,
-    pub invoke_bounds: Option<Bounds>,
+    /// Signed deploy hash retained for standalone confirmation and interruption reporting.
     pub deploy_hash: Option<Felt>,
-    pub deployment_accepted: bool,
-    pub attempts: u32,
     /// Re-pins used for the account-state read in progress (`atAcceptedBlock`, three tries).
     pub pin_attempts: u8,
+    /// Signed invoke hash retained for confirmation and interruption reporting.
     pub invoke_hash: Option<Felt>,
     pub checkpoint: usize,
 }
@@ -365,8 +386,8 @@ impl Plan {
 
     fn after_wait(&mut self, after: AfterWait) -> SendStep {
         match after {
-            AfterWait::DeployStatus => self.poll_deployment(),
-            AfterWait::DeployReceipt => self.read_deploy_receipt(),
+            AfterWait::DeployStatus(poll) => self.poll_deployment(poll),
+            AfterWait::DeployReceipt(poll) => self.read_deploy_receipt(poll),
             AfterWait::Checkpoint => {
                 let Some(hash) = self.target_hash() else {
                     return self.fail(SendFailureCode::SubmissionIndeterminate, None);

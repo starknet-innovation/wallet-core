@@ -101,6 +101,52 @@ fn tracked_reads_stop_at_the_cap_and_restart_on_transport() {
 }
 
 #[test]
+fn tracked_read_ignores_a_late_reply_after_restart() {
+    let mut read = TrackedAllowanceRead::new(&[pair("a", OWNER, "0x2")], TEST_POLICY);
+    let old = read.next_calls().remove(0);
+    assert_eq!(
+        read.accept(RpcReply {
+            id: old.id,
+            status: 0,
+            body: None
+        }),
+        ScanStep::Transport
+    );
+    assert!(read.next_calls().is_empty());
+    read.restart();
+    let current = read.next_calls().remove(0);
+    assert!(current.id > old.id);
+    let chain = node(100, vec![]);
+    assert_eq!(read.accept(chain.answer(&old)), ScanStep::Continue);
+    assert!(read.finish().is_err());
+    assert_eq!(read.accept(chain.answer(&current)), ScanStep::Continue);
+    assert_eq!(read.finish().unwrap().len(), 1);
+}
+
+#[test]
+fn a_duplicate_between_pairs_requires_restart() {
+    let pairs = [pair("a", OWNER, "0x2"), pair("b", OWNER, "0x3")];
+    let chain = node(100, vec![]);
+    let mut read = TrackedAllowanceRead::new(&pairs, TEST_POLICY);
+    let first = read.next_calls().remove(0);
+    assert_eq!(read.accept(chain.answer(&first)), ScanStep::Continue);
+
+    assert_eq!(read.accept(chain.answer(&first)), ScanStep::Transport);
+    assert!(read.next_calls().is_empty());
+    assert!(read.finish().is_err());
+
+    read.restart();
+    let readings = read_all(&mut read, &chain).unwrap();
+    assert_eq!(
+        readings
+            .iter()
+            .map(|row| row.id.as_str())
+            .collect::<Vec<_>>(),
+        ["a", "b"]
+    );
+}
+
+#[test]
 fn tracked_pairs_put_lower_bounds_first() {
     use super::record::AllowanceRecord;
     use crate::NetworkId;
