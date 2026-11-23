@@ -71,8 +71,8 @@ v13 payload.
 | 2.6 Catalogs | done (#49) | done (M12, Bramble #928) |
 | 2.7 Swap | done (#50), behind the `mobile` feature | done (M13, Bramble #929), at `v0.3.0`: `mobile/core` is a shell over this crate |
 | Vault switch | done (V1 #58) | G4 done (Bramble #947); M14 done (Bramble #980): mobile pins `v0.4.0` |
-| [Mobile parity](#mobile-parity) | P6 done (#65), P2 done (#68); P1's mechanism done (P1a #70, P1b #71, P1c #72), not exported until Krusty exports a selector and signature verification; P3 done (#80), not shippable until Bramble's imported-key v13 fixture lands; P4 done (#78), no fixture yet (needs a Bramble generator); P5 done (#83), no fixture yet | not started |
-| [Parity](#parity) P7–P16 | P7 done for reading (#87, #92): every v13 and v14 collection is read, every vault the extension opens opens here, and what mobile does not operate is kept unused and listed; the 13→14 migration waits on v0.10.11 reaching the extension's `main`. P9's mechanism done (#84) with its review flags, per-call summaries and caller's activity text (#91), not exported: it waits on Krusty's selector (krusty-kms#257). P10 done (#86). P11's core half done (#90), P12's done (#85, #89) and P13's done (#93), none exported: each waits on P9's export; the four are joined (#96). None has a fixture yet (G7). P8 and P14–P16 not started | not started |
+| [Mobile parity](#mobile-parity) | P6 done (#65), P2 done (#68); P1's mechanism done (P1a #70, P1b #71, P1c #72), not exported until Krusty exports a selector and signature verification; P3 done (#80), not shippable until Bramble's imported-key v13 fixture lands; P4 done (#78), no fixture yet (needs a Bramble generator); P5 done (#83), no fixture yet | M15 (Bramble #1007–#1010) takes `v0.6.0`: P2 and P6 merged (#1008, #1009), P4 and P5 in #1010 (open); P1 waits on its export, P3's screens were left out |
+| [Parity](#parity) P7–P16 | P7 done for reading (#87, #92): every v13 and v14 collection is read, every vault the extension opens opens here, and what mobile does not operate is kept unused and listed; the 13→14 migration waits on v0.10.11 reaching the extension's `main`. P9's mechanism done (#84) with its review flags, per-call summaries and caller's activity text (#91), not exported: it waits on Krusty's selector (krusty-kms#257). P10 done (#86). P11's core half done (#90), P12's done (#85, #89) and P13's done (#93), none exported: each waits on P9's export; the four are joined (#96). None has a fixture yet (G7). P8 and P14–P16 not started. See [Road to parity](#road-to-parity) | P7's kept accounts (#1009) and P10 (#1008) merged; the rest wait on their exports |
 | 3 Extension | not started, and waits for parity; `js/package.json` is private | n/a |
 
 `v0.1.0` is tagged at `35abc8b` (GitHub release only) and was what M2 and M3 pinned. `v0.2.0`
@@ -106,26 +106,77 @@ against `feature/mobile-wallet`, where `mobile/core` and the generators live (`m
 The rest are PRs here. Phase 2's PRs (M1–M14, G1–G4, A1, A2, F1–F3, V1, K1 and the ports) are
 all merged; each is described under its step in [Phases](#phases).
 
-In order (#77–#81 merged 2026-11-21). The first three finish [Mobile parity](#mobile-parity);
-the rest are [Parity](#parity), where each step is described. P1's export waits on Krusty, so it
-does not hold the tag or the steps after it. #83–#87 (2026-11-21) landed P5 and the core halves
-of P7, P9, P10 and P12 together, at the product owner's request: five steps ahead of mobile,
-where [Process](#process) says one, and each on unit tests ported from the extension's own, with
-its generator owed to G7. #89–#93 (2026-11-21) did the same again for P7's schema
-14, P9's review flags, P11, the rest of P12 and P13: built in parallel, and joined by one
-integration PR (#96).
+#83–#87 and #89–#93 (2026-11-21) landed the core halves of P5, P7 and P9–P13 at the product
+owner's request: several steps ahead of mobile, where [Process](#process) says one, each on unit
+tests ported from the extension's own, with its generator owed. M15 (Bramble #1007–#1010,
+2026-11-22) takes `v0.6.0` and ships P2, P4–P6 and P10 on both apps; P3's screens were left out.
 
-| PR | Repo, base | Needs | What it is |
+#### Road to parity
+
+Written 2026-11-23, against #990's table. With M15 merged, mobile ships 17 of the extension's 29
+user-facing rows; 12 remain. What decides the pace is not the porting, which is mostly done, but
+one upstream export and three decisions:
+
+- **krusty-kms#257** (a selector from an entrypoint name and Stark signature verification). Open
+  since 2026-11-20 with no movement. It blocks P1's export and P9's, and through P9 every
+  feature that submits calls: P11, P12's revoke, P13, P14 and P16. Chasing it is the highest-value
+  thing anyone can do for parity.
+- **D1 Ledger transport** (P8): Bluetooth only, or USB on Android too, and whether iOS reaches the
+  device the way the app needs.
+- **D2 Dapp transport** (P16): an in-app browser that injects the extension's provider, or
+  WalletConnect, or both. *Proposed*: the browser first, since every Starknet dapp already speaks
+  to an injected wallet through `get-starknet` and the extension's provider and approval rules
+  carry over unchanged; WalletConnect later, for a desktop dapp signing with a phone, once it is
+  known which Starknet dapps would find Bramble through it. The core half is the same for both.
+- **D3 STRK20 prover** (P15): how a phone makes the proof the extension makes with a vendored
+  JavaScript SDK (a Rust build of the prover, the SDK in an embedded JavaScript engine, or a
+  proving service, which costs privacy). A spike settles it; nothing else waits on it.
+
+Generators (G*) and adoption (M*) are Bramble PRs against `feature/mobile-wallet`; X* are export
+PRs here, each tagged before its M*. Each feature follows the usual order: generator, mechanism,
+export and tag, then the mobile PR. Numbers after G7 and M16 are placeholders, assigned when a
+step starts.
+
+**Wave 0: unblocked now.**
+
+| PR | Repo | Needs | What it is |
 | --- | --- | --- | --- |
-| M15 | Bramble, `feature/mobile-wallet` | — | mobile taking `v0.6.0`: the relay loops #77 changes, the screens for P2–P6 and P10 (activity filter, counterparty summary and CSV export), Stark-name lookup in the send form (P5), and the accounts mobile keeps unused (`unusableAccounts`) with the pre-fix Ready warning (#98) |
-| G7 | Bramble, `feature/mobile-wallet` | — | the generators P1, P3 and P4 landed without: an imported-key vault, the RPC override rules, the multisig import cases and the call summaries beyond an ERC-20 transfer. And the ones #83–#87 landed without: Stark-name normalisation, calldata and judging (P5); G4 extended to a v13 vault with every collection filled (P7); a multicall and a refused batch through `submitInvokeTransaction` (P9); the CSV, filter and counterparty summary over one feed (P10); `Approval` decoding, a scan with legacy windows, the merge, eviction and settling (P12). And the ones #89–#93 landed without: G4 at schema 14 with an `accountProvenance`, sealed by the v0.10.11 store (P7); `verifyCalls` over batches that raise each flag (P9); a quote, a build and the refused builds through the real swap handler (P11); the revoke call and its settling (P12); a live directory page, a positions answer, a pinned read and each action's calls (P13) |
-| P1 export | here, then Bramble | krusty-kms#257 (open) | whenever Krusty ships it: the bump that exports a selector and signature verification, an implementation of `StarkPrimitives` over it, P1's FFI surface, and its screens in the tag after |
-| P7 Vault: migrate to 14 | here | v0.10.11 on the extension's `main`, a generator, and the product owner's answers | the reader takes 13 and 14 (#87, #92) and writes each back as read. Left: `NEW_VAULT_SCHEMA` to 14 and raising a v13 vault on unlock, as the extension's migration does. Waits on v0.10.11 shipping, so a backup mobile raises to 14 still opens in the released extension. The other questions are settled: mobile opens every vault the extension opens, see P7 |
-| P8 Ledger | here | the transport question | moved up 2026-11-21: every extension user has it, and a Ledger user cannot use mobile without it. #87 reads and keeps a Ledger account; P8 makes it usable |
-| P9 export | here | krusty-kms#257 (open), a generator | the mechanism (#84) and its review (#91: the flags, a summary per call, the caller's activity text) are in, with no export. Owed before one: a selector from Krusty, as for P1; a host that files the pending record's allowance changes (`allowances::calls::record_changes`) before it writes the row, which Bramble's does not yet; and fee affordability with an amount for a batch, which the invoke kind cannot yet answer |
-| P11, P12 and P13 exports | here, each with its generator and its mobile PR | P9's export | the core halves are in (#90, #85 and #89, #93) and joined to the review and the allowance log (#96), unexported; each export arrives with its screens |
-| P14–P16 | here, each with its generator and its mobile PR | P9's export | gasless, STRK20 submission, dapp connect |
+| M15d | Bramble | — | #1010 (custom RPC screens, Starknet names), the last of M15 |
+| G7a | Bramble | — | fixtures for what mobile already ships on unit tests alone: an imported-key v13 vault (P3), the RPC override rules (P4), Stark-name normalisation, calldata and judging (P5), and the CSV, filter and counterparty summary over one feed (P10). Also regenerates G6's `extension-activity-detail.jsonl` now that Bramble #1002 is closed (the extension stores a receipt fee; `throughProvider` should stop showing the gap), and adds G5's import over a partial intent now that #1003 is closed |
+| G7b | Bramble | — | G4 at v13 with every collection filled, and at v14 with an `accountProvenance`, sealed by the extension's own store (P7) |
+| M16 | Bramble | G7a | P3's screens (private-key import), if the product owner wants them back in; the export is in `v0.6.0` |
+| M17 | Bramble | — | analytics consent and diagnostics screens; nothing here |
 | Extension Krusty 3 | Bramble, `main` | — | the extension still pins `@starknetfoundation/krusty-kms-wasm` `0.11.0`, which predates the fix (Krusty 3.0 changed the derivation; 2.0.0 and earlier kept the leading zero bytes), so its keys and mobile's part for affected phrases. Its users have funds, so it follows Krusty's [migration guide](https://github.com/starknet-innovation/krusty-kms/blob/v3.0.0/docs/migration-3.0.md): keep the old key for any existing account whose public key differs. Needed before Phase 3, where the extension takes this crate's Krusty |
+| P7 migrate | here | v0.10.11 on the extension's `main`, G7b | `NEW_VAULT_SCHEMA` to 14 and raising a v13 vault on unlock, as the extension's migration does. Until v0.10.11 ships, a backup mobile raised to 14 would not open in the released extension |
+| D1–D3 | — | — | the three decisions above, each written into Open questions when settled |
+
+**Wave 1: when krusty-kms#257 ships.** In order; each export is one PR here and one tag.
+
+| PR | Repo | Needs | What it is |
+| --- | --- | --- | --- |
+| K2 | here | krusty-kms#257 | the Krusty bump (and `starknet-types-core` with it, if Krusty moves it), and the one implementation of `multisig_invoke::StarkPrimitives` over Krusty, in `wallet-core`. The test implementation stays for the tests |
+| G7c | Bramble | — (can start now) | P1's missing fixtures: the multisig import cases and the call summaries beyond an ERC-20 transfer |
+| X1 P1 | here | K2, G7c | P1's FFI surface: deploy, propose, co-sign, submit, change signers, and the import path with the checks the extension's `importIntent` makes and the plan says the export must enforce (the wallet's own call review replaces the remote summary; the chain's authority and nonce must equal the intent's snapshot) |
+| M18 | Bramble | X1 | multisig transaction screens on both apps: propose, sign, submit, change signers |
+| P9 rest | here | — (can start now) | the two gaps P9 has before an export: fee affordability with an amount for a batch (the invoke kind reads no STRK balance), and the record handed to the host carrying the batch's allowance changes in a form the FFI can file |
+| G7d | Bramble | — | a multicall and a refused batch through `submitInvokeTransaction`, and `verifyCalls` over batches that raise each flag (P9) |
+| X2 P9 | here | K2, P9 rest, G7d | the batch through `Plan`, exported only with its first consumer: no UniFFI call signs arbitrary calls on its own |
+| G7e, X3, M19 | both | X2 | P12 allowances first, the smallest consumer: `Approval` decoding, a scan with legacy windows, the merge, eviction, the revoke and its settling (G7e); the two step machines, the log and the merge exported (X3); the allowance manager and revoke screens, with Bramble's host filing every pending record's allowance changes (`allowances::calls::record_changes`) before its row (M19) |
+| G7f, X4, M20 | both | X2 | P11 swap: a quote, a build and the refused builds through the real handler; the export; the swap screens |
+| G7g, X5, M21 | both | X2 | P13 staking: a live directory page, a positions answer, a pinned read and each action's calls; the export (Mainnet only, `STAKING_POLICY`); the staking screens |
+| P14 | here, then both | X2 | gasless and sponsored: a SNIP-9 v2 outside execution the gateway builds and the wallet checks (calls, fee transfer, ceiling, window), and the paymaster's bodies and replies (`transactions/src/gasless/`, 1,818 lines). Its generator first shows whether Krusty's SNIP-12 hash agrees with starknet.js on this message; if not, it waits on Krusty rather than adding hashing here. Adds the sponsored and gasless rows P2 left out |
+
+**Wave 2: when its decision is made.** Each can run beside Wave 1.
+
+| PR | Repo | Needs | What it is |
+| --- | --- | --- | --- |
+| P8 Ledger | here, then both | D1 | the device protocol and session as sans-IO APDU exchanges (`ledger-protocol/`, 1,096; `background/ledger/`, 847); a signing step in `Plan` that hands the hash to the host's device instead of Krusty; opening a vault with no phrase (refused until now) and adding Ledger accounts. The generator records APDU transcripts against the Starknet Ledger app; *proposed*: under Ledger's Speculos emulator, so CI needs no device. Mobile adds the transport D1 picks and its screens |
+| P16 Dapp connect | here, then both | D2, X2 | request validation, grants (the vault's `originGrants`, and the per-account revocation P7 left, `withoutOriginAccess`), the approval queue and its review budget, typed-data review and signing (SNIP-12), add-chain and watch-asset, the blocklist and phishing feed as a sans-IO body and judge (`background/provider/`, 2,453; `background/approvals/`, 4,169; `permissions/`, 905). The core takes a request (origin, method, params) and returns a review, a grant or a refusal, whatever carried it. Mobile builds the transport: for a browser, a WebView whose bridge binds every request to the top frame's origin as the platform reports it and refuses frames it cannot attribute. P9's poisoned-payee refusal must not reach the site before the person acts |
+| P15 STRK20 | here, then both | D3 | activate, shield, unshield and private send; then shadow accounts and multisig STRK20 (`privacy/`, 9,279; `background/privacy/`, 5,872), over 2.4d's read plan. The largest step: split into those six PRs once D3 says how the proof is made |
+
+Done means #990's every shipped row on both apps, each proved against the extension by its
+generator. Phase 3 (the extension takes this crate) starts after that, and needs Extension Krusty
+3 first.
 
 ### Mobile parity
 
@@ -189,8 +240,8 @@ Needed now:
   non-member deployer is
   refused before any read, and a write answered with another hash is `HashMismatch`. The merge
   and submit deliberately differ too, closing gaps the extension has: `merge_imported` refuses
-  another intent and stops at the threshold (the extension merges past it into an invalid
-  intent), and `SubmitPlan` takes the `SigningIntent` and verifies it rather than trusting loose
+  another intent and stops at the threshold (the extension merged past it into an invalid
+  intent; Bramble #1003, closed 2026-11-22, so G7a checks whether the two now agree), and `SubmitPlan` takes the `SigningIntent` and verifies it rather than trusting loose
   signatures. So does the deployment review, which refuses an address running another class
   (`AccountClassUnrecognised`) where the extension reports it as already deployed; and
   `ProposePlan` applies `require_safe_calls` itself rather than relying on the host's review.
@@ -211,7 +262,7 @@ Needed now:
   Found on the way: through starknet.js 10 the extension's `readReceiptFee` refuses every
   receipt (a `ReceiptTx` is not a plain object), so its rows never store a fee; the core follows
   `readReceiptFee` over the node's JSON, and the fixture's `throughProvider` shows the gap until
-  Bramble fixes it. Sponsored (`feePayer`) and gasless (`userFee`) rows and the slow-pass fee
+  Bramble fixes it (#1002, closed 2026-11-22; G7a regenerates the fixture). Sponsored (`feePayer`) and gasless (`userFee`) rows and the slow-pass fee
   backfill are left out: mobile has none of them.
 
 Wanted (2026-11-20: P3 and P4 by name, P5 with the parity decision):
@@ -1681,5 +1732,7 @@ Added 2026-11-09 after reviewing the first day's work. Items marked *proposed* a
   known. Settle before P15 is designed; no other step waits on it.
 - What carries a dapp's requests on mobile (P16): WalletConnect, as #990 assumes, or something
   else. It decides which of the extension's provider rules the core can share unchanged.
+  *Proposed* 2026-11-23: an in-app browser first, WalletConnect later (see
+  [Road to parity](#road-to-parity), D2).
 - Whether Ledger on mobile is Bluetooth only, and whether iOS can reach the device at all the way
   the app needs (P8). The first of these three to settle, since P8 is the earliest.
