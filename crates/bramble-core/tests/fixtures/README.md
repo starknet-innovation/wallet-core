@@ -53,7 +53,7 @@ Generators are under `scripts/` in Bramble; each fixture's is reached from
 | `extension-transactions-verification.json` | `generate-mobile-transaction-vectors.ts` | `44253f028a3caaf4ea896b6c09afec5c3b512cce729ccabe43e4422f712385be` |
 | `extension-transactions-wire.json` | `generate-mobile-transaction-vectors.ts` | `a4e8085ad6b5e14f05c66f291b8198a167cae729e639a812c7af908d412d8e3d` |
 | `extension-activity-detail.jsonl` | `mobile-parity-activity/` | `bcbf5b06b4eeab27bfe9b30961985397386cb2159a917667a40dc8cd768d227f` |
-| `extension-allowances.jsonl` | `mobile-parity-allowances/` | `e1c4350ef939c05519163b3f37ac0dc4b6cdb247535e032d06185aca60f4e934` |
+| `extension-allowances.jsonl` | `mobile-parity-allowances/` | `11085ef20db40299f91af82512afb9db25e3d0b0150220e350352c436e673d3b` |
 | `extension-multisig-transactions.json` | `generate-mobile-parity-vectors.ts` (`mobile-multisig-*.ts`) | `32d850be66c25149257f61e343dbcaa6bc404209b6c7371475926cb745b17f8c` |
 | `extension-multisig-transactions-refusals.json` | `generate-mobile-parity-vectors.ts` (`mobile-multisig-*.ts`) | `99bb711e77ac5af4e518cab4d727555d958544d24074965d6de80797c24d08f8` |
 | `extension-multisig-transactions-signers.json` | `generate-mobile-parity-vectors.ts` (`mobile-multisig-*.ts`) | `78ad15af9b68692724cdb1e84118591870f545db892eeaf40ff1e92fe2d9a5b3` |

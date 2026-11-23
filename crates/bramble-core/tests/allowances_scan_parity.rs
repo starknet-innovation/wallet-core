@@ -1,7 +1,8 @@
-//! Allowance discovery and tracked reads (P12) against the extension's `collectExternalAllowances`
-//! and `collectTrackedAllowances` over a fake node (`fixtures/extension-allowances.jsonl`, `bun
-//! run mobile:parity`). Each case is the transcript of every call the extension made with the
-//! node's answer: the core must ask the same calls in the same order, and, fed the same answers,
+//! Allowance discovery and tracked reads (P12) against the extension's `scanExternalAllowances`
+//! and `readTrackedAllowances` over a fake node (`fixtures/extension-allowances.jsonl`, `bun run
+//! mobile:parity`). Each case is the transcript of every call the extension handed its
+//! `RpcProvider`, with the node's answer: the core must send the same calls in the same order
+//! (the same block ids, and a bound the extension omits omitted), and, fed the same answers,
 //! reach the same result, or the same transport failure for the host to fail over on.
 
 mod allowances_support;
@@ -39,14 +40,22 @@ impl Reads for TrackedAllowanceRead {
     }
 }
 
-// The extension's call, as its `AllowanceRpc` saw it, against the JSON-RPC body the core sent.
+// The extension's call, as its `RpcProvider` received it, against the JSON-RPC body the core
+// sent. starknet.js sends a filter as given and a `blockIdentifier` as `block_id`.
 fn assert_same_call(body: &Value, call: &Value, case: &str) {
     let params = &call["params"];
     match text(&call["method"]) {
-        "getLatestBlockNumber" => assert_eq!(body["method"], "starknet_blockNumber", "{case}"),
+        "getBlockNumber" => assert_eq!(body["method"], "starknet_blockNumber", "{case}"),
         "getEvents" => {
             assert_eq!(body["method"], "starknet_getEvents", "{case}");
             let filter = &body["params"]["filter"];
+            // The same fields: a bound or token the extension omits is not sent at all.
+            let fields = |value: &Value| {
+                let mut keys: Vec<String> = value.as_object().unwrap().keys().cloned().collect();
+                keys.sort();
+                keys
+            };
+            assert_eq!(fields(filter), fields(params), "{case}");
             assert!(same_felt(&filter["address"], &params["address"]), "{case}");
             assert_eq!(filter["chunk_size"], params["chunk_size"], "{case}");
             let (sent, asked) = (
@@ -63,18 +72,19 @@ fn assert_same_call(body: &Value, call: &Value, case: &str) {
                 );
             }
             for bound in ["from_block", "to_block"] {
-                assert_eq!(
-                    filter[bound]["block_number"], params[bound],
-                    "{case}: {bound}"
-                );
+                assert_eq!(filter[bound], params[bound], "{case}: {bound}");
             }
             assert_eq!(
                 filter["continuation_token"], params["continuation_token"],
                 "{case}"
             );
         }
-        _ => {
+        "callContract" => {
             assert_eq!(body["method"], "starknet_call", "{case}");
+            assert_eq!(
+                body["params"]["block_id"], params["blockIdentifier"],
+                "{case}: block_id"
+            );
             let request = &body["params"]["request"];
             assert_eq!(params["entrypoint"], "allowance", "{case}");
             assert_eq!(
@@ -95,6 +105,7 @@ fn assert_same_call(body: &Value, call: &Value, case: &str) {
                 "{case}"
             );
         }
+        other => panic!("{case}: unmapped provider call {other}"),
     }
 }
 
