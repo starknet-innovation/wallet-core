@@ -60,6 +60,13 @@ pub fn parse_canonical_non_zero(value: &str) -> Option<Felt> {
     parse_canonical(value).filter(|felt| *felt != Felt::ZERO)
 }
 
+/// 32 big-endian bytes as a felt, refusing a value at or above the prime: `Felt::from_bytes_be`
+/// would reduce it and name another value than the one given.
+pub fn from_be_bytes(bytes: &[u8; 32]) -> Option<Felt> {
+    let felt = Felt::from_bytes_be(bytes);
+    (felt.to_bytes_be() == *bytes).then_some(felt)
+}
+
 /// Whether a felt is a usable Stark signing scalar, `1 <= k < n`.
 pub fn is_private_key(felt: &Felt) -> bool {
     *felt != Felt::ZERO && *felt < STARK_CURVE_ORDER
