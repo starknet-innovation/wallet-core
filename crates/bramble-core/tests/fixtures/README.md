@@ -57,6 +57,7 @@ Generators are under `scripts/` in Bramble; each fixture's is reached from
 | `extension-multisig-transactions-refusals.json` | `generate-mobile-parity-vectors.ts` (`mobile-multisig-*.ts`) | `99bb711e77ac5af4e518cab4d727555d958544d24074965d6de80797c24d08f8` |
 | `extension-multisig-transactions-signers.json` | `generate-mobile-parity-vectors.ts` (`mobile-multisig-*.ts`) | `78ad15af9b68692724cdb1e84118591870f545db892eeaf40ff1e92fe2d9a5b3` |
 | `vault-v13.json` | `generate-mobile-parity-vectors.ts` (`mobile-parity-vault.ts`) | `d4f0cf2a62d209cd05286a6d81b372bdaf1d356ba273b41e3e8ed2437912977f` |
+| `vault-v13-imported.json` | `generate-mobile-parity-vectors.ts` (`mobile-parity-vault.ts`) | `099ced8a46789f9d3cf7d3c679d5c5287876ccab618b7e7674c9ef65c774da97` |
 
 Read today: `extension-parity.json` (`parity.rs`, `vault_parity.rs`),
 `accounts-parity-families-sepolia.json` and `nostr-multisig-parity.json` (`parity.rs`;
@@ -78,7 +79,8 @@ read) with `networks.json` and
 `nostr-coordination-parity-*.json` with `multisig.json`'s coordination, relay and Nostr values and
 `nostr-multisig-parity.json`'s `relayUrls` (`nostr_coordination_parity.rs`), and `vault-v13.json`
 (`vault_v13.rs`), and `extension-activity-detail.jsonl` (`activity_parity.rs`; its `receiptFee`
-block's `throughProvider` records the extension's starknet.js path, which no test reads).
+block's `throughProvider` records the extension's starknet.js path, which no test reads), and
+`vault-v13-imported.json` (`vault_v13_imported.rs`).
 `extension-privacy-copy.json` is the source of
 Bramble's generated Swift and Kotlin privacy copy; no Rust function returns those sentences, so
 no test here reads it. `extension-multisig-transactions.json` is read by
