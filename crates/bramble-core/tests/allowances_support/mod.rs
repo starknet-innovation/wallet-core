@@ -14,14 +14,31 @@ use starknet_wallet_core::js::felt::canonical_felt;
 use starknet_wallet_core::send::u256::U256;
 use starknet_wallet_core::{Felt, NetworkId};
 
-/// Every case of `block`, in fixture order.
+/// Every case of `block`, in fixture order; a fixture that gains or loses a case fails here.
 pub fn cases(block: &str) -> Vec<Value> {
+    let expected = match block {
+        "amount" => 9,
+        "decode" => 13,
+        "log" => 8,
+        "merge" => 4,
+        "notices" => 8,
+        "outcomes" => 5,
+        "outstanding" => 3,
+        "record" => 19,
+        "recording" => 3,
+        "retention" => 5,
+        "revoke" => 7,
+        "scan" => 8,
+        "tracked" => 2,
+        "unlimited" => 6,
+        other => panic!("unknown block {other}"),
+    };
     let found: Vec<Value> = include_str!("../fixtures/extension-allowances.jsonl")
         .lines()
         .map(|line| serde_json::from_str::<Value>(line).expect("a JSON line"))
         .filter(|case| case["block"] == block)
         .collect();
-    assert!(!found.is_empty(), "no {block} cases");
+    assert_eq!(found.len(), expected, "{block} cases");
     found
 }
 
