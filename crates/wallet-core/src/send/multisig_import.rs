@@ -107,31 +107,7 @@ pub fn import_intent(
 ) -> Result<SigningIntent, ImportError> {
     let (record, class) = (wallet.record, wallet.class);
     let mut incoming = package.intent.locally_derived_imported();
-    // The record is the frozen transaction's account, not only by id: the review below and the
-    // authority read both use its address and network, which `is_valid` never compares.
-    let prepared = &incoming.prepared;
-    let on_chain = NetworkId::from_catalog_id(&record.network_id).is_some_and(|network| {
-        same_felt(&felt::canonical(&network.chain_id()), &prepared.chain_id)
-    });
-    if record.id != incoming.account_id
-        || !same_felt(&record.address, &prepared.sender_address)
-        || !on_chain
-    {
-        return Err(ImportError::UnknownAccount);
-    }
-    if !same_felt(&read.address(), &record.address)
-        || read.network().catalog_id() != record.network_id
-        || read.class_hash() != class.hash()
-    {
-        return Err(ImportError::ReadForAnotherAccount);
-    }
-    let (threshold, signer_guids) = read.authority().ok_or(ImportError::AuthorityUnavailable)?;
-    if ConfigSnapshot::new(class, threshold, &signer_guids) != incoming.config_snapshot {
-        return Err(ImportError::ConfigChanged);
-    }
-    if !same_felt(&felt::canonical(nonce), &incoming.prepared.nonce) {
-        return Err(ImportError::NonceNotCurrent);
-    }
+    require_current(&incoming, record, read, nonce, class)?;
     let review = review_calls(
         &record.address,
         &incoming.prepared.calls,
@@ -165,10 +141,50 @@ pub fn import_intent(
     Ok(next)
 }
 
+/// `currentArgentIntentContext`'s checks, for an import and for every local operation on a
+/// stored intent (sign, submit): `record` is the intent's account by id and by the frozen
+/// transaction's sender and chain; `read` targets that address, network and `class` and is
+/// `Available` with the intent's snapshot; and `nonce` (the record's `starknet_getNonce`) is the
+/// prepared one. Marking the intent stale is the caller's.
+pub fn require_current(
+    intent: &SigningIntent,
+    record: &Record,
+    read: &MultisigAuthorityRead,
+    nonce: &Felt,
+    class: &ArgentMultisigClass,
+) -> Result<(), ImportError> {
+    // The record is the frozen transaction's account, not only by id: the review and the
+    // authority read both use its address and network, which `is_valid` never compares.
+    let prepared = &intent.prepared;
+    let on_chain = NetworkId::from_catalog_id(&record.network_id).is_some_and(|network| {
+        same_felt(&felt::canonical(&network.chain_id()), &prepared.chain_id)
+    });
+    if record.id != intent.account_id
+        || !same_felt(&record.address, &prepared.sender_address)
+        || !on_chain
+    {
+        return Err(ImportError::UnknownAccount);
+    }
+    if !same_felt(&read.address(), &record.address)
+        || read.network().catalog_id() != record.network_id
+        || read.class_hash() != class.hash()
+    {
+        return Err(ImportError::ReadForAnotherAccount);
+    }
+    let (threshold, signer_guids) = read.authority().ok_or(ImportError::AuthorityUnavailable)?;
+    if ConfigSnapshot::new(class, threshold, &signer_guids) != intent.config_snapshot {
+        return Err(ImportError::ConfigChanged);
+    }
+    if !same_felt(&felt::canonical(nonce), &prepared.nonce) {
+        return Err(ImportError::NonceNotCurrent);
+    }
+    Ok(())
+}
+
 /// `storedArgentPublicConfig` when `matchesArgentPublicConfig` holds against the chain (here the
 /// snapshot, already checked equal to it), else `None`: a signer change needs the keys behind
 /// the GUIDs, and only the record has them.
-fn held_config(
+pub fn held_config(
     record: &Record,
     chain: &ConfigSnapshot,
     class: &ArgentMultisigClass,
