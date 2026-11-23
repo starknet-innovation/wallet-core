@@ -59,7 +59,7 @@ Generators are under `scripts/` in Bramble; each fixture's is reached from
 | `vault-v13.json` | `generate-mobile-parity-vectors.ts` (`mobile-parity-vault.ts`) | `d4f0cf2a62d209cd05286a6d81b372bdaf1d356ba273b41e3e8ed2437912977f` |
 | `vault-v13-imported.json` | `generate-mobile-parity-vectors.ts` (`mobile-parity-vault.ts`) | `099ced8a46789f9d3cf7d3c679d5c5287876ccab618b7e7674c9ef65c774da97` |
 | `extension-settings-parity.jsonl` | `mobile-parity-settings.ts` | `dfa7f7248b284bac56f1cafa261b7d6941d777bcbe6ea171ae26484d23c395a3` |
-| `extension-stark-name.jsonl` | `mobile-parity-stark-name.ts` | `2266bbd155b68f40d3f302a74f107fd307f68b1116c6e5558c3fbbfbeed3b741` |
+| `extension-stark-name.jsonl` | `mobile-parity-stark-name.ts` | `6b12f77b5f9393c078019d671d13b4965cedcf24e0e0bc387ae29814b328ee79` |
 
 Read today: `extension-parity.json` (`parity.rs`, `vault_parity.rs`),
 `accounts-parity-families-sepolia.json` and `nostr-multisig-parity.json` (`parity.rs`;
