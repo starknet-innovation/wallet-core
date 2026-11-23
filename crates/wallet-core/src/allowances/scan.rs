@@ -69,6 +69,7 @@ enum Phase {
         spenders: Vec<String>,
         next: usize,
     },
+    RestartRequired,
     Done,
 }
 
@@ -77,6 +78,7 @@ struct State {
     token: usize,
     phase: Phase,
     next_id: u64,
+    first_id: u64,
     outstanding: Option<u64>,
     owned: Vec<String>,
     owned_truncated: bool,
@@ -149,17 +151,18 @@ impl ExternalAllowanceScan {
             owner: owner.unwrap_or_default(),
             tokens,
             policy,
-            state: Self::fresh(),
+            state: Self::fresh(1),
         };
         this.restart();
         this
     }
 
-    fn fresh() -> State {
+    fn fresh(first_id: u64) -> State {
         State {
             token: 0,
             phase: owner_phase(),
-            next_id: 1,
+            next_id: first_id,
+            first_id,
             outstanding: None,
             owned: Vec::new(),
             owned_truncated: false,
@@ -173,7 +176,7 @@ impl ExternalAllowanceScan {
 
     /// Discards all progress so the scan replays from its first call on another endpoint.
     pub fn restart(&mut self) {
-        self.state = Self::fresh();
+        self.state = Self::fresh(self.state.next_id);
         if self.tokens.is_empty() {
             self.state.phase = Phase::Done;
         }
@@ -194,7 +197,7 @@ impl ExternalAllowanceScan {
                 let token = &self.tokens[self.state.token];
                 Some(allowance_call(id, token, &self.owner, &spenders[*next]))
             }
-            Phase::Done => None,
+            Phase::RestartRequired | Phase::Done => None,
         };
         let Some(call) = call else {
             return Vec::new();
@@ -239,8 +242,20 @@ impl ExternalAllowanceScan {
         ))
     }
 
-    /// Judges one reply: a reply for another call, or after the end, is a transport failure.
+    /// Judges one reply, ignoring replies from an earlier attempt.
     pub fn accept(&mut self, reply: RpcReply) -> ScanStep {
+        if (1..self.state.first_id).contains(&reply.id) {
+            return ScanStep::Continue;
+        }
+        let result = self.accept_current(reply);
+        if result == ScanStep::Transport && !matches!(self.state.phase, Phase::Done) {
+            self.state.phase = Phase::RestartRequired;
+            self.state.outstanding = None;
+        }
+        result
+    }
+
+    fn accept_current(&mut self, reply: RpcReply) -> ScanStep {
         let Some(id) = self.state.outstanding.filter(|id| *id == reply.id) else {
             return ScanStep::Transport;
         };
@@ -269,7 +284,7 @@ impl ExternalAllowanceScan {
                 _ => Err(()),
             },
             Phase::Reads { spenders, next } => self.accept_read(&spenders, next, &result),
-            Phase::Done => Err(()),
+            Phase::RestartRequired | Phase::Done => Err(()),
         };
         match judged {
             Ok(()) => ScanStep::Continue,
