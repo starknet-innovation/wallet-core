@@ -36,6 +36,8 @@ mod contacts;
 mod container;
 mod ffi_coordination;
 mod ffi_nostr_multisig;
+mod ffi_staking;
+mod ffi_staking_action;
 mod files;
 mod groups;
 mod history;
@@ -97,6 +99,12 @@ pub use ffi_nostr_multisig::{
     nostr_relay_url_normalize, wallet_contact_card_encode, wallet_contact_card_parse,
     MultisigLimits, MultisigRecord,
 };
+pub use ffi_staking::{
+    staking_directory_request, staking_directory_view, DirectoryEntry, DirectoryPoolEntry,
+    DirectoryView, PositionState, RowFigures, StakingAction, StakingChainRead, StakingError,
+    StakingRowView, StakingView,
+};
+pub use ffi_staking_action::{StakingPlan, StakingPreparation};
 pub use groups::AccountGroup;
 pub use multisig_rpc::{MultisigAuthorityRead, MultisigAuthorityStatus};
 pub use networks::{NetworkInfo, TokenInfo};
