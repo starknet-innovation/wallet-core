@@ -12,6 +12,7 @@
 //!   embedded from `generated/`) and its portfolio, history and allowance choices
 //!   (`PORTFOLIO_POLICY`, `HISTORY_POLICY`, `ALLOWANCE_POLICY`, `swap::SWAP_POLICY`,
 //!   `staking::STAKING_POLICY`), plain Rust until the swap;
+//! - its Ledger minimum versions and path schemes (`ledger`), plain Rust until the swap;
 //! - the extension's v13 vault schema, which mobile writes (`vault_v13`, behind `mobile`).
 //!
 //! Functions keep the names and argument order the extension's `KmsPort` uses.
@@ -46,6 +47,7 @@ uniffi::setup_scaffolding!();
 
 pub mod catalogs;
 pub mod coordination;
+pub mod ledger;
 pub mod staking;
 pub mod swap;
 
