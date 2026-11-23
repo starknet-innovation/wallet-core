@@ -12,6 +12,7 @@ use bramble_core::catalogs::accounts::{
 use bramble_core::SEND_POLICY;
 use serde_json::{json, Value};
 use starknet_wallet_core::send::calls::ReviewFlag;
+use starknet_wallet_core::send::fees::FeeAmount;
 use starknet_wallet_core::send::judge::{Observation, TxStatus};
 use starknet_wallet_core::send::plan::{
     Account, Kind, PendingKind, PendingRecord, Plan, PlanHost, SignRefusal, Token, Transfer,
@@ -54,10 +55,7 @@ pub fn f(text: &str) -> Felt {
 }
 
 pub fn network(scenario: &Value) -> NetworkId {
-    match scenario["networkId"].as_str().unwrap() {
-        "SN_MAIN" => NetworkId::Mainnet,
-        _ => NetworkId::Sepolia,
-    }
+    NetworkId::from_catalog_id(scenario["networkId"].as_str().unwrap()).unwrap()
 }
 
 /// The wallet behind a plan: the published E2E phrase's account 0 key, and an activity log.
@@ -284,12 +282,14 @@ pub fn review_calls(scenario: &Value) -> Vec<Value> {
         .collect()
 }
 
-pub fn fee_matches(fee: Option<String>, expected: &Value, name: &str) {
-    assert_eq!(
-        fee,
-        expected["overallFee"].as_str().map(String::from),
-        "{name}"
-    );
+/// The reviewed fee's spend and unit, or none where the extension's is null.
+pub fn fee_matches(fee: Option<FeeAmount>, expected: &Value, name: &str) {
+    let expected = (!expected.is_null()).then(|| {
+        let field = |key: &str| expected[key].as_str().unwrap().to_string();
+        (field("overallFee"), field("unit"))
+    });
+    let fee = fee.map(|fee| (fee.max_spend, fee.unit.code().to_string()));
+    assert_eq!(fee, expected, "{name}");
 }
 
 pub fn run(scenario: &Value, family: &str) -> (Plan, Host) {
@@ -315,13 +315,9 @@ pub fn run_with(
     assert_eq!(step, SendStep::Review, "{name}");
     let review = plan.current_review().unwrap().clone();
     assert!(review.can_confirm, "{name}: {review:?}");
+    fee_matches(review.fee, &scenario["reviewedFee"], name);
     fee_matches(
-        review.fee.map(|f| f.max_spend),
-        &scenario["reviewedFee"],
-        name,
-    );
-    fee_matches(
-        review.deployment_fee.map(|f| f.max_spend),
+        review.deployment_fee,
         &scenario["reviewedDeploymentFee"],
         name,
     );

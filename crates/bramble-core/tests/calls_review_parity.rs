@@ -318,13 +318,9 @@ fn a_multicall_goes_on_the_wire_as_the_extension_sends_it() {
             // The review showed the extension's fees before the node's re-estimate rose.
             let review = plan.current_review().unwrap().clone();
             assert!(review.can_confirm, "{name}: {review:?}");
+            fee_matches(review.fee, &scenario["reviewedFee"], name);
             fee_matches(
-                review.fee.map(|f| f.max_spend),
-                &scenario["reviewedFee"],
-                name,
-            );
-            fee_matches(
-                review.deployment_fee.map(|f| f.max_spend),
+                review.deployment_fee,
                 &scenario["reviewedDeploymentFee"],
                 name,
             );
