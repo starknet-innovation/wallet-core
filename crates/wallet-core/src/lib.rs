@@ -18,7 +18,8 @@
 //! ERC-20 allowance discovery and the allowance log (`allowances`) follow the same rules: sans-IO
 //! reads over caller-given tokens, the log over the host's storage, the wallet's numbers passed in.
 //! So does native staking (`staking`): pinned chain reads, Starkscan's directory and positions,
-//! and actions built into a reviewed `send::invoke::Invoke` for the plan to sign.
+//! and actions built into a reviewed `send::invoke::Invoke` for the plan to sign. The Ledger
+//! device protocol (`ledger`) is sans-IO APDU bytes, the wallet's minimum versions passed in.
 
 #![forbid(unsafe_code)]
 // A panic in a wallet is a crash: library code returns errors (unit tests may unwrap: clippy.toml).
@@ -35,6 +36,7 @@ pub mod history;
 pub mod host;
 pub mod js;
 pub mod kms;
+pub mod ledger;
 pub mod nostr;
 pub mod portfolio;
 pub mod privacy;
