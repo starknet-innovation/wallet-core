@@ -1,9 +1,9 @@
 //! Each staking action (P13 `staking::{calls, review, prepare}`) against what the extension's
 //! `wallet.stakingPrepare` and `wallet.stakingExecute` did (`fixtures/extension-staking.jsonl`,
 //! block `action`): the request rules, the pinned read on the same wire, the calls estimated and
-//! submitted, the review sentence, the Activity row's text and the allowance filed; or the same
-//! refusal. The row's amount and token (`ActivityAsset`) reach the host only through the plan's
-//! pending record, so they are not compared here.
+//! submitted (the calls the frozen invoke signs), the review sentence, the Activity row's text,
+//! amount and token (a claim names the rewards token, every other action the staked token), and
+//! the allowance filed; or the same refusal.
 
 mod multisig_support;
 mod staking_support;
@@ -130,15 +130,22 @@ fn each_action_is_prepared_as_the_extension_does() {
         .unwrap();
         assert_eq!(built, expected, "{name}");
 
-        // The frozen invoke reviews exactly those calls, with the pool the one pinned contract,
-        // and names the extension's Activity text.
+        // The frozen invoke signs exactly those calls, reviews them with the pool the one pinned
+        // contract, and names the extension's Activity text, amount and token.
         let pinned = [preparation.pool];
         let reviewed = ReviewContext {
             known_contracts: &pinned,
             ..review
         };
-        let invoke = Invoke::reviewed(&account, expected, &SEND_POLICY, &reviewed, &primitives);
+        let invoke = Invoke::reviewed(
+            &account,
+            expected.clone(),
+            &SEND_POLICY,
+            &reviewed,
+            &primitives,
+        );
         let invoke = invoke.unwrap();
+        assert_eq!(preparation.invoke.signed_calls(), expected, "{name}");
         assert_eq!(preparation.invoke.calls(), invoke.calls(), "{name}");
         assert_eq!(preparation.invoke.summary(), invoke.summary(), "{name}");
         let [row] = case["activity"].as_array().unwrap().as_slice() else {
@@ -150,6 +157,10 @@ fn each_action_is_prepared_as_the_extension_does() {
             "{name}"
         );
         assert_eq!(row["kind"], "invoke", "{name}");
+        let asset = preparation.invoke.activity_asset().unwrap();
+        assert_eq!(row["amount"].as_str(), asset.amount.as_deref(), "{name}");
+        assert_eq!(row["token"], asset.symbol, "{name}");
+        assert_eq!(address(&row["tokenAddress"]), asset.token_address, "{name}");
 
         // A stake files its exact-amount approval of the pool; nothing else grants one.
         let allowances: Vec<Value> = preparation
