@@ -11,7 +11,7 @@ use super::fees::{self, Bounds, FeeQuote, FeeRefusal};
 use super::judge::TxStatus;
 use super::judge::{self, Answer, ChainAnswer, EstimateAnswer, Observation, WriteAnswer};
 use super::plan::{
-    AfterWait, Expect, Kind, PendingKind, PendingRecord, Plan, PlanHost, SignRefusal,
+    DeploymentFor, Expect, Kind, PendingKind, PendingRecord, Plan, PlanHost, SignRefusal,
 };
 use super::plan_probe::{Outcome, Probe};
 use super::plan_review::DEPLOY_SUMMARY;
@@ -104,7 +104,6 @@ impl Plan {
         }
         self.work.reviewed_fee = self.work.fee;
         self.work.reviewed_deploy_fee = self.work.deploy_fee;
-        self.work.attempts = 0;
         Ok(
             self.rpc(Expect::SubmitChain, RpcPurpose::ChainId, false, |_, id| {
                 crate::rpc::chain_id_request(id)
@@ -114,15 +113,19 @@ impl Plan {
 
     /// A failure after an accepted automatic deployment names the deployment
     /// ("Account deployment … completed, but the following transaction could not be confirmed").
-    fn after_deployment(&mut self, code: Code, hash: Option<Felt>) -> SendStep {
-        if self.work.deployment_accepted {
-            let deploy = self.work.deploy_hash;
-            return self.fail(Code::DeploymentThenInvokeUnconfirmed, deploy);
+    fn after_deployment(
+        &mut self,
+        deployment: Option<Felt>,
+        code: Code,
+        hash: Option<Felt>,
+    ) -> SendStep {
+        if let Some(deploy) = deployment {
+            return self.fail(Code::DeploymentThenInvokeUnconfirmed, Some(deploy));
         }
         self.fail(code, hash)
     }
 
-    fn read_nonce(&mut self, expect: Expect) -> SendStep {
+    pub(super) fn read_nonce(&mut self, expect: Expect) -> SendStep {
         self.rpc(expect, RpcPurpose::Nonce, false, |s, id| {
             rpc_bodies::nonce(id, &s.account.address)
         })
@@ -152,44 +155,36 @@ impl Plan {
                             |s, id| s.invoke_estimate_body(id, deployed),
                         )
                     } else {
-                        self.estimate_deployment(host, Expect::DeployEstimate)
+                        self.estimate_deployment(
+                            host,
+                            Expect::DeployEstimate(DeploymentFor::Standalone),
+                        )
                     }
                 }
                 None => self.fail(Code::PreparationUnavailable, None),
             },
             Expect::SubmitEstimate => self.on_invoke_estimate(answer),
-            Expect::DeployNonce => match judge::nonce(answer) {
+            Expect::DeployNonce(bounds) => match judge::nonce(answer) {
                 Some(nonce) => {
                     self.work.nonce = nonce;
-                    self.estimate_deployment(host, Expect::DeployEstimate)
+                    self.estimate_deployment(
+                        host,
+                        Expect::DeployEstimate(DeploymentFor::Invoke(bounds)),
+                    )
                 }
                 None => self.fail(Code::DeploymentStatusUnknown, None),
             },
-            Expect::DeployEstimate => self.on_deploy_estimate(host, answer),
-            Expect::DeployWrite => self.on_deploy_write(answer),
-            Expect::DeployStatus => self.on_deploy_status(host, answer),
-            Expect::DeployReceipt => {
-                // The deployment's receipt is read here anyway, so its record takes its fee.
-                if let (Some(hash), Some(fee)) =
-                    (self.work.deploy_hash, judge::receipt_fee(answer.as_ref()))
-                {
-                    if host.wants_fee(&hash) {
-                        host.record_fee(&hash, &fee);
-                    }
-                }
-                if judge::receipt(answer) {
-                    self.work.deployment_accepted = true;
-                    self.work.attempts = 0;
-                    self.read_nonce(Expect::InvokeNonce)
-                } else {
-                    self.retry_deploy_wait(AfterWait::DeployReceipt)
-                }
-            }
-            Expect::InvokeNonce => match judge::nonce(answer) {
-                Some(nonce) => self.sign_and_send_invoke(host, nonce),
-                None => self.after_deployment(Code::PreparationUnavailable, None),
+            Expect::DeployEstimate(purpose) => self.on_deploy_estimate(host, purpose, answer),
+            Expect::DeployWrite { hash, purpose } => self.on_deploy_write(hash, purpose, answer),
+            Expect::DeployStatus(poll) => self.on_deploy_status(host, poll, answer),
+            Expect::DeployReceipt(poll) => self.on_deploy_receipt(host, poll, answer),
+            Expect::InvokeNonce { bounds, deployment } => match judge::nonce(answer) {
+                Some(nonce) => self.sign_and_send_invoke(host, nonce, bounds, deployment),
+                None => self.after_deployment(deployment, Code::PreparationUnavailable, None),
             },
-            Expect::InvokeWrite => self.on_invoke_write(answer),
+            Expect::InvokeWrite { hash, deployment } => {
+                self.on_invoke_write(hash, deployment, answer)
+            }
             Expect::ConfirmStatus | Expect::RefreshStatus => {
                 self.on_confirm_status(host, expect, answer)
             }
@@ -235,9 +230,12 @@ impl Plan {
     }
 
     /// `ensureAccountDeployed`'s account-state read concluded.
-    pub(crate) fn deploy_probed(&mut self, outcome: Outcome) -> SendStep {
+    pub(crate) fn deploy_probed(&mut self, outcome: Outcome, bounds: Bounds) -> SendStep {
         match outcome {
-            Outcome::Deployed => self.read_nonce(Expect::InvokeNonce),
+            Outcome::Deployed => self.read_nonce(Expect::InvokeNonce {
+                bounds,
+                deployment: None,
+            }),
             Outcome::Undeployed if self.work.reviewed_deploy_fee.is_none() => {
                 self.fail(Code::ReviewedDeploymentFeeRequired, None)
             }
@@ -245,7 +243,7 @@ impl Plan {
                 let code = self.not_deployable();
                 self.fail(code, None)
             }
-            Outcome::Undeployed => self.read_nonce(Expect::DeployNonce),
+            Outcome::Undeployed => self.read_nonce(Expect::DeployNonce(bounds)),
             Outcome::Refused(failure) => self.refuse(failure),
             Outcome::NodeError => self.fail(Code::NodeError, None),
             Outcome::Unreadable => self.fail(Code::PreparationUnavailable, None),
@@ -272,19 +270,26 @@ impl Plan {
         ) {
             Settled::Refused(code) => self.fail(code, None),
             Settled::Bounds(bounds) => {
-                self.work.invoke_bounds = Some(bounds);
                 if deployed {
-                    self.read_nonce(Expect::InvokeNonce)
+                    self.read_nonce(Expect::InvokeNonce {
+                        bounds,
+                        deployment: None,
+                    })
                 } else {
-                    self.probe(Probe::Deploy)
+                    self.probe(Probe::Deploy(bounds))
                 }
             }
         }
     }
 
-    fn sign_and_send_invoke(&mut self, host: &dyn PlanHost, nonce: Felt) -> SendStep {
-        let (Some(bounds), Some(calldata)) = (self.work.invoke_bounds, self.invoke_calldata())
-        else {
+    fn sign_and_send_invoke(
+        &mut self,
+        host: &dyn PlanHost,
+        nonce: Felt,
+        bounds: Bounds,
+        deployment: Option<Felt>,
+    ) -> SendStep {
+        let Some(calldata) = self.invoke_calldata() else {
             return self.fail(Code::ReviewedFeeRequired, None);
         };
         let calldata = calldata.to_vec();
@@ -296,32 +301,39 @@ impl Plan {
             &bounds,
         ) {
             Ok(hash) => hash,
-            Err(refusal) => return self.after_deployment(refusal_code(refusal), None),
+            Err(refusal) => return self.after_deployment(deployment, refusal_code(refusal), None),
         };
         let signature = match self.sign(host, &hash) {
             Ok(signature) => signature,
-            Err(code) => return self.after_deployment(code, None),
+            Err(code) => return self.after_deployment(deployment, code, None),
         };
         self.work.invoke_hash = Some(hash);
         self.persist_pending(host, &hash, true);
-        self.rpc(Expect::InvokeWrite, RpcPurpose::AddInvoke, true, |s, id| {
-            rpc_bodies::add_invoke(
-                id,
-                &InvokeTx {
-                    sender: &s.account.address,
-                    calldata: &calldata,
-                    nonce: &nonce,
-                    bounds: Some(&bounds),
-                    signature: &signature,
-                },
-            )
-        })
+        self.rpc(
+            Expect::InvokeWrite { hash, deployment },
+            RpcPurpose::AddInvoke,
+            true,
+            |s, id| {
+                rpc_bodies::add_invoke(
+                    id,
+                    &InvokeTx {
+                        sender: &s.account.address,
+                        calldata: &calldata,
+                        nonce: &nonce,
+                        bounds: Some(&bounds),
+                        signature: &signature,
+                    },
+                )
+            },
+        )
     }
 
-    fn on_invoke_write(&mut self, answer: Option<Answer>) -> SendStep {
-        let Some(hash) = self.work.invoke_hash else {
-            return self.fail(Code::SubmissionIndeterminate, None);
-        };
+    fn on_invoke_write(
+        &mut self,
+        hash: Felt,
+        deployment: Option<Felt>,
+        answer: Option<Answer>,
+    ) -> SendStep {
         // Once signed, the invoke may land whatever the node answers, even an error (the
         // extension, which records only after an accepted write, differs here on purpose): its
         // record stays and every failure carries its hash.
@@ -331,7 +343,7 @@ impl Plan {
             WriteAnswer::Indeterminate => Code::SubmissionIndeterminate,
             WriteAnswer::NodeError => Code::NodeError,
         };
-        self.after_deployment(code, Some(hash))
+        self.after_deployment(deployment, code, Some(hash))
     }
 
     fn on_confirm_status(
