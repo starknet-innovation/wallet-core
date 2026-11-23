@@ -42,8 +42,11 @@ pub(crate) use wallet_core::js;
 mod key_import;
 mod kms;
 pub use kms::Ladder;
+mod multisig_intents;
 mod multisig_rpc;
 mod multisig_store;
+mod multisig_tx;
+mod multisig_tx_ops;
 mod nostr;
 mod nostr_relay;
 mod portfolio;
@@ -94,7 +97,12 @@ pub use ffi_nostr_multisig::{
     MultisigLimits, MultisigRecord,
 };
 pub use groups::AccountGroup;
-pub use multisig_rpc::{MultisigAuthorityRead, MultisigAuthorityStatus};
+pub use multisig_rpc::{MultisigAuthorityRead, MultisigAuthorityStatus, MultisigStateRead};
+pub use multisig_tx::{
+    ConfigChange, IntentState, MultisigCall, MultisigCallReview, MultisigIntent, MultisigProposal,
+    MultisigSubmission, MultisigTxFailure, MultisigTxStep,
+};
+pub use multisig_tx_ops::argent_multisig_config_change_call;
 pub use networks::{NetworkInfo, TokenInfo};
 pub use nostr_relay::RelayStep;
 pub use privacy::plan::PrivacyReadPlan;

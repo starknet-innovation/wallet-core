@@ -369,10 +369,12 @@ impl WalletCore {
         self.view_by_id(&id)
     }
 
-    /// Removes a shared account, its observed authority, checkpoint and held packages.
+    /// Removes a shared account, its observed authority, signing intents, checkpoint and held
+    /// packages.
     pub fn remove_multisig(&self, id: String) -> Result<(), CoreError> {
         self.require_unlocked()?;
         multisig_store::remove(self.data_dir(), &id)?;
+        crate::multisig_intents::remove_account(self.data_dir(), &id)?;
         let mut file = coordination::load(self.data_dir())?;
         file.checkpoints
             .retain(|checkpoint| checkpoint.account_id != id);

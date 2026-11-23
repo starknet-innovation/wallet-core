@@ -142,7 +142,7 @@ impl WalletCore {
     /// chain history is merged into it and an attacker can plant rows there (the extension
     /// excludes chain-discovered history for the same reason). Fails closed: an unreadable
     /// contacts or multisig file refuses the send rather than checking against fewer addresses.
-    fn trusted_recipients(&self, network: NetworkId) -> Result<Vec<Felt>, SendError> {
+    pub(crate) fn trusted_recipients(&self, network: NetworkId) -> Result<Vec<Felt>, SendError> {
         let own = self
             .with_session(false, |session| {
                 Ok(session

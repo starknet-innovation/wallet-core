@@ -75,12 +75,25 @@ impl TransferPlan {
         kind: Kind,
         generation: u64,
     ) -> Arc<Self> {
+        let plan = Plan::new(account, kind, SEND_POLICY);
+        Self::with_plan(core, account_id, network, plan, generation)
+    }
+
+    /// A plan built elsewhere (a multisig deployment), signed for and recorded under the vault
+    /// record `account_id`.
+    pub(crate) fn with_plan(
+        core: &Arc<WalletCore>,
+        account_id: String,
+        network: NetworkId,
+        plan: Plan,
+        generation: u64,
+    ) -> Arc<Self> {
         Arc::new(Self {
             core: Arc::downgrade(core),
             account_id,
             network,
             generation,
-            plan: Mutex::new(Plan::new(account, kind, SEND_POLICY)),
+            plan: Mutex::new(plan),
             prices: Mutex::new(None),
         })
     }
