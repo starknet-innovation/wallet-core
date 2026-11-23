@@ -2,7 +2,8 @@
 //! summary (P10) against what the extension's own code produced over one fixed feed
 //! (`fixtures/extension-activity-feed.jsonl`, `bun run mobile:parity`): `activityToCsv`,
 //! `activityFilterOptions`, `reconcileActivityFilter`, `activityAmountComparator` with
-//! `activityRowMatches`, and `activityPartySummary` with its parts.
+//! `activityRowMatches`, and `activityPartySummary` with its parts (and, in the mobile build,
+//! bramble-core's `activity_party_summary` with the feed's blank-search gate).
 
 mod portfolio_support;
 
@@ -19,6 +20,8 @@ use starknet_wallet_core::history::party::{
     activity_party_summary, activity_party_summary_parts, ActivityPartySummary,
 };
 use starknet_wallet_core::js::json::{parse, JsValue};
+#[cfg(feature = "mobile")]
+use starknet_wallet_core::js::num::js_trim;
 use starknet_wallet_core::portfolio::model::TokenConfig;
 
 fn cases(block: &str) -> Vec<JsValue> {
@@ -101,7 +104,8 @@ fn filter(value: &JsValue) -> ActivityFilter {
         query: text(value, "query"),
         sort: match text(value, "sort").as_str() {
             "amount" => ActivitySort::Amount,
-            _ => ActivitySort::Date,
+            "date" => ActivitySort::Date,
+            other => panic!("unknown sort {other:?}"),
         },
         status: axis(value, "status").map(|status| parse_status(&status).unwrap()),
         token: axis(value, "token"),
@@ -180,6 +184,13 @@ fn each_filter_keeps_sorts_and_summarises_as_the_feed_does() {
             "{name}: reconciled"
         );
         let visible = filter_activity(rows, &reconciled, tracked, &feed.contacts);
+        #[cfg(feature = "mobile")]
+        let exported = bramble_core::activity_party_summary(
+            visible.clone(),
+            reconciled.clone(),
+            tracked.to_vec(),
+            feed.contacts.clone(),
+        );
         let kept: Vec<String> = visible.iter().map(|entry| entry.hash.clone()).collect();
         assert_eq!(kept, hashes(at(&case, "visible")), "{name}: visible");
         let summary = activity_party_summary(&visible, tracked, &feed.contacts);
@@ -187,6 +198,15 @@ fn each_filter_keeps_sorts_and_summarises_as_the_feed_does() {
             summary.as_ref().map(summary_json),
             Some(json(at(&case, "summary"))).filter(|s| !s.is_null()),
             "{name}: summary"
+        );
+        // bramble-core's export adds `activity-ui.ts`'s gate: no summary while the search is blank.
+        #[cfg(feature = "mobile")]
+        assert_eq!(
+            exported,
+            summary
+                .clone()
+                .filter(|_| !js_trim(&reconciled.query).is_empty()),
+            "{name}: exported summary"
         );
         let parts = summary.as_ref().map(activity_party_summary_parts);
         let expected = at(&case, "parts");
