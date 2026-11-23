@@ -143,13 +143,14 @@ impl TrackedAllowanceRead {
         if (1..self.first_id).contains(&reply.id) {
             return ScanStep::Continue;
         }
-        let ReadState::Awaiting { index, id } = self.state else {
-            return ScanStep::Transport;
+        let (index, id) = match self.state {
+            ReadState::Awaiting { index, id } => (index, id),
+            ReadState::Ready(_) => {
+                self.state = ReadState::RestartRequired;
+                return ScanStep::Transport;
+            }
+            ReadState::RestartRequired | ReadState::Done => return ScanStep::Transport,
         };
-        if reply.id != id {
-            self.state = ReadState::RestartRequired;
-            return ScanStep::Transport;
-        }
         let amount = match classify(&reply, id) {
             Reply::Transport | Reply::Result(JsValue::Null) => {
                 self.state = ReadState::RestartRequired;
