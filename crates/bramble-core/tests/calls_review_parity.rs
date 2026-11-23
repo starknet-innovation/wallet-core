@@ -296,7 +296,7 @@ fn batch_plan(scenario: &Value, account: Account) -> Plan {
 
 #[test]
 fn a_multicall_goes_on_the_wire_as_the_extension_sends_it() {
-    let mut accepted = 0;
+    let (mut accepted, mut refused) = (0, 0);
     for case in cases("submit") {
         let scenario = as_capture(&case);
         let name = text(&scenario["name"]);
@@ -315,6 +315,19 @@ fn a_multicall_goes_on_the_wire_as_the_extension_sends_it() {
             let step = plan.advance(&host, StepReply::Start).unwrap();
             let step = drive(&mut plan, &host, step, &review_calls(&scenario), &scenario);
             assert_eq!(step, SendStep::Review, "{name}");
+            // The review showed the extension's fees before the node's re-estimate rose.
+            let review = plan.current_review().unwrap().clone();
+            assert!(review.can_confirm, "{name}: {review:?}");
+            fee_matches(
+                review.fee.map(|f| f.max_spend),
+                &scenario["reviewedFee"],
+                name,
+            );
+            fee_matches(
+                review.deployment_fee.map(|f| f.max_spend),
+                &scenario["reviewedDeploymentFee"],
+                name,
+            );
             let step = plan.advance(&host, StepReply::Confirm).unwrap();
             let step = drive(
                 &mut plan,
@@ -328,13 +341,14 @@ fn a_multicall_goes_on_the_wire_as_the_extension_sends_it() {
             };
             assert_eq!(failure.code, SendFailureCode::ReviewedFeeExceeded, "{name}");
             assert!(host.signed.borrow().is_empty(), "{name}");
+            refused += 1;
             continue;
         }
         // Same requests in order, the same hashes signed, accepted under the same hash.
         run_with(&scenario, "openzeppelin", batch_plan);
         accepted += 1;
     }
-    assert_eq!(accepted, 3);
+    assert_eq!((accepted, refused), (3, 2));
 }
 
 #[test]
