@@ -12,6 +12,7 @@
 
 pub(crate) mod plan;
 pub(crate) mod revoke;
+pub(crate) mod swap;
 pub(crate) mod types;
 pub(crate) mod wallet_ext;
 
