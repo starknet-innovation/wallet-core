@@ -415,7 +415,7 @@ fn a_self_call_or_an_oversized_batch_never_becomes_a_plan() {
         InvokeRefusal::Review(CallReviewError::AccountSelfCall)
     );
     assert_eq!(
-        invoke(&account, vec![transfer_call(ACCOUNT_1); 17], &[]).unwrap_err(),
+        invoke(&account, vec![transfer_call(ACCOUNT_1); 57], &[]).unwrap_err(),
         InvokeRefusal::TooManyCalls
     );
     // Bramble's numbers are the extension's `INVOKE_LIMITS`.
@@ -424,7 +424,7 @@ fn a_self_call_or_an_oversized_batch_never_becomes_a_plan() {
             bramble_core::SEND_POLICY.max_invoke_calls,
             bramble_core::SEND_POLICY.max_call_calldata_felts
         ),
-        (16, 4_096)
+        (56, 4_096)
     );
 }
 

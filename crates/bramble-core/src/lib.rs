@@ -97,8 +97,10 @@ pub const MULTISIG_FEE_OVERHEAD: starknet_wallet_core::send::fees::Overhead = {
 };
 
 /// `INVOKE_LIMITS.calls` (`wallet-protocol/src/transactions/invoke-limits.ts`): the most calls
-/// the extension accepts in one invoke. It bounds a dapp's request there; here every call batch.
-pub const MAX_INVOKE_CALLS: usize = 16;
+/// the extension accepts in one invoke, the largest batch its review fits (Bramble 08f144034). It
+/// bounds a dapp's request there; here every call batch. Argent multisig proposals keep their own
+/// 16 (`send::multisig_invoke::MAX_CALLS`).
+pub const MAX_INVOKE_CALLS: usize = 56;
 
 /// `INVOKE_LIMITS.calldataFelts` (the same file): the most calldata felts in one call.
 pub const MAX_CALL_CALLDATA_FELTS: usize = 4_096;
