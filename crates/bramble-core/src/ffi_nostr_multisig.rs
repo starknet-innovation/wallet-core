@@ -373,8 +373,10 @@ impl WalletCore {
     /// packages.
     pub fn remove_multisig(&self, id: String) -> Result<(), CoreError> {
         self.require_unlocked()?;
-        multisig_store::remove(self.data_dir(), &id)?;
+        // The intents first: a failure after them leaves the record, which removal can retry,
+        // never intents with no account to show or remove them by.
         crate::multisig_intents::remove_account(self.data_dir(), &id)?;
+        multisig_store::remove(self.data_dir(), &id)?;
         let mut file = coordination::load(self.data_dir())?;
         file.checkpoints
             .retain(|checkpoint| checkpoint.account_id != id);
