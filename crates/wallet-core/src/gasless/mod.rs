@@ -29,8 +29,8 @@ mod typed_data;
 pub use offer::{strk_affordability, token_spend, GaslessFeeOffer, GaslessHeldToken};
 pub use reference::{convert_strk_fee_to_token, fee_reference, scaled_price, MAX_TOKEN_DECIMALS};
 pub use request::{
-    read_available, read_supported_tokens, read_transaction_hash, GaslessAccount, GaslessKind,
-    GaslessSession, ListedToken,
+    read_available, read_quote, read_supported_tokens, read_transaction_hash, GaslessAccount,
+    GaslessKind, GaslessSession, ListedToken,
 };
 pub use round::{OfferRound, RoundStep};
 pub use rpc::{classify, Exchange, Exchanged, GaslessAnswer};

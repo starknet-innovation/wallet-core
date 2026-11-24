@@ -220,29 +220,34 @@ impl<'p> GaslessSession<'p> {
         ))
     }
 
-    /// `readGaslessQuote`: the quoted token maximum and the typed data to check, or `None` when
-    /// the result is not the build this session asked for. The echoed `parameters` are not read.
+    /// [`read_quote`] for the build this session asked for.
     pub(super) fn read_quote<'v>(&self, value: &'v JsValue) -> Option<(U256, &'v JsValue)> {
-        const FEE_KEYS: [&str; 5] = [
-            "estimated_fee_in_gas_token",
-            "estimated_fee_in_strk",
-            "gas_token_price_in_strk",
-            "suggested_max_fee_in_gas_token",
-            "suggested_max_fee_in_strk",
-        ];
-        let keys = ["deployment", "fee", "parameters", "type", "typed_data"];
-        let fee = value.get("fee")?;
-        let felt_at = |key: &str| felt::parse(fee.get(key)?.as_str()?);
-        let well_formed = only_keys(value, &keys)
-            && value.get("type")?.as_str()? == self.kind.wire()
-            && matches!(value.get("parameters"), Some(JsValue::Object(_)))
-            && (self.kind == GaslessKind::DeployAndInvoke || value.get("deployment").is_none())
-            && only_keys(fee, &FEE_KEYS)
-            && FEE_KEYS.iter().all(|key| felt_at(key).is_some());
-        let quoted_max = felt_at("suggested_max_fee_in_gas_token")?;
-        let quoted_max = U256::from_hex(&format!("{quoted_max:x}"))?;
-        well_formed.then_some((quoted_max, value.get("typed_data")?))
+        read_quote(value, self.kind)
     }
+}
+
+/// `readGaslessQuote`: the quoted token maximum and the typed data to check, or `None` when the
+/// result is not a `kind` build. The echoed `parameters` are not read.
+pub fn read_quote(value: &JsValue, kind: GaslessKind) -> Option<(U256, &JsValue)> {
+    const FEE_KEYS: [&str; 5] = [
+        "estimated_fee_in_gas_token",
+        "estimated_fee_in_strk",
+        "gas_token_price_in_strk",
+        "suggested_max_fee_in_gas_token",
+        "suggested_max_fee_in_strk",
+    ];
+    let keys = ["deployment", "fee", "parameters", "type", "typed_data"];
+    let fee = value.get("fee")?;
+    let felt_at = |key: &str| felt::parse(fee.get(key)?.as_str()?);
+    let well_formed = only_keys(value, &keys)
+        && value.get("type")?.as_str()? == kind.wire()
+        && matches!(value.get("parameters"), Some(JsValue::Object(_)))
+        && (kind == GaslessKind::DeployAndInvoke || value.get("deployment").is_none())
+        && only_keys(fee, &FEE_KEYS)
+        && FEE_KEYS.iter().all(|key| felt_at(key).is_some());
+    let quoted_max = felt_at("suggested_max_fee_in_gas_token")?;
+    let quoted_max = U256::from_hex(&format!("{quoted_max:x}"))?;
+    well_formed.then_some((quoted_max, value.get("typed_data")?))
 }
 
 /// `hasOnlyKnownKeys` (and `isRecord`).
