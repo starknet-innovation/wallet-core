@@ -166,7 +166,7 @@ step starts.
 | G7c | Bramble | — (can start now) | P1's missing fixtures: the multisig import cases and the call summaries beyond an ERC-20 transfer |
 | X1 P1 | here | K2, G7c | P1's FFI surface: deploy, propose, co-sign, submit, change signers, and the import path with the checks the extension's `importIntent` makes and the plan says the export must enforce (the wallet's own call review replaces the remote summary; the chain's authority and nonce must equal the intent's snapshot) |
 | M18 | Bramble | X1 | multisig transaction screens on both apps: propose, sign, submit, change signers |
-| P9 rest | here | — (can start now) | the two gaps P9 has before an export: fee affordability with an amount for a batch (the invoke kind reads no STRK balance), and the record handed to the host carrying the batch's allowance changes in a form the FFI can file |
+| P9 rest | here | — | fee affordability for a batch: done (#104, fee-only as the extension's dapp card, over the host's `Invoke::with_fee_balance`). The pending record already carries the batch's allowance changes (#96); Bramble's host filing them is X2's |
 | G7d | Bramble | — | a multicall and a refused batch through `submitInvokeTransaction`, and `verifyCalls` over batches that raise each flag (P9) |
 | X2 P9 | here | K2, P9 rest, G7d | the batch through `Plan`, exported only with its first consumer: no UniFFI call signs arbitrary calls on its own |
 | G7e, X3, M19 | both | X2 | P12 allowances first, the smallest consumer: `Approval` decoding, a scan with legacy windows, the merge, eviction, the revoke and its settling (G7e); the two step machines, the log and the merge exported (X3); the allowance manager and revoke screens, with Bramble's host filing every pending record's allowance changes (`allowances::calls::record_changes`) before its row (M19) |
@@ -560,9 +560,11 @@ Foundations, which the features need, and Ledger, which needs only the first:
   batch's own count and `activityOrigin`), falling back to the review line; it rides on the
   `Invoke` the plan already binds to its account and network. Departures: each flag is attached
   to its call; `address-poisoning` refuses instead of flagging; the standing totals are filtered
-  in the core rather than by the caller; an empty activity text keeps the review line. Not
-  ported: fee affordability with an amount (the invoke kind reads no STRK balance) and the
-  approval queue's summary bound (P16). `RiskFlag` is not the transfer's `ReviewFlag`; the two
+  in the core rather than by the caller; an empty activity text keeps the review line. A
+  batch's fee affordability is the dapp card's (`estimateInvokeApprovalFee`): fee-only, the
+  deployment added when the account needs one, FRI only, over the STRK balance the host last
+  read (`Invoke::with_fee_balance`; none is `Unknown`); the STRK its calls spend counts only
+  toward the gasless offer, not ported. Not ported: the approval queue's summary bound (P16). `RiskFlag` is not the transfer's `ReviewFlag`; the two
   meet at export. Not ported, as
   for the transfer: the `fast` speed, a SNIP-36 proof (P15) and the approval queue's review
   budget (P16). As for a multisig, Krusty 3.1.0 has no selector, so `Invoke::reviewed` takes
