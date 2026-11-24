@@ -56,7 +56,8 @@ fn a_stake_is_read_reviewed_and_signed_with_its_approval_filed_before_the_row() 
             vec![wallet.address.clone(), hex(amount)],
         ),
     ]);
-    assert_eq!(reviewed_calldata(&wallet, &plan), expected);
+    let first = plan.advance(StepReply::Start).unwrap();
+    assert_eq!(wallet.drive(&plan, first), SendStep::Review);
     let review = plan.current_review().unwrap();
     assert!(review.can_confirm);
     assert_eq!(review.affordability, FeeAffordability::Sufficient);
@@ -128,7 +129,7 @@ fn each_action_signs_the_calls_its_position_allows() {
     });
     let signed = |chain: &Chain, action, amount| {
         let plan = wallet.plan(chain, action, amount).unwrap().plan;
-        reviewed_calldata(&wallet, &plan)
+        signed_calldata(&wallet, &plan)
     };
     let stake = signed(&chain, StakingAction::Stake, Some("1"));
     let approve = (STRK, "approve", vec![POOL.into(), hex(E18), "0x0".into()]);

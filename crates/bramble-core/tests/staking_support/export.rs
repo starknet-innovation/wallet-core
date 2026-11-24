@@ -244,22 +244,40 @@ pub fn felts(value: &Value) -> Vec<String> {
     items.iter().map(|v| canon(v.as_str().unwrap())).collect()
 }
 
-/// The calldata the plan estimates (the same it signs), once reviewed.
-pub fn reviewed_calldata(wallet: &Wallet, plan: &TransferPlan) -> Vec<String> {
-    let mut seen = None;
+/// The `__execute__` calldata `plan` writes to the node, signed, after one confirm. The fee was
+/// estimated on the same calldata, and the write is the batch's only one.
+pub fn signed_calldata(wallet: &Wallet, plan: &TransferPlan) -> Vec<String> {
+    let (mut estimated, mut signed) = (None, None);
     let mut node = Node::new(NetworkId::Mainnet, true);
     let mut step = plan.advance(StepReply::Start).unwrap();
-    while let SendStep::Rpc { .. } = &step {
-        let (id, method, params, _) = rpc_parts(&step);
-        if method == "starknet_estimateFee" {
-            seen = Some(felts(&params["request"][0]["calldata"]));
+    loop {
+        match &step {
+            SendStep::Rpc { .. } => {
+                let (id, method, params, is_write) = rpc_parts(&step);
+                if method == "starknet_estimateFee" {
+                    estimated = Some(felts(&params["request"][0]["calldata"]));
+                }
+                let hash = is_write.then(|| {
+                    assert_eq!(signed, None, "one write");
+                    signed = Some(felts(&params["invoke_transaction"]["calldata"]));
+                    latest_row_hash(&wallet.core, &wallet.id)
+                });
+                let answer = node.reply(&method, &params, hash.as_deref());
+                step = plan.advance(rpc_reply(id, &answer)).unwrap();
+            }
+            SendStep::Wait { .. } => step = plan.advance(StepReply::WaitElapsed).unwrap(),
+            SendStep::Review => step = plan.advance(StepReply::Confirm).unwrap(),
+            _ => break,
         }
-        step = plan
-            .advance(rpc_reply(id, &node.reply(&method, &params, None)))
-            .unwrap();
     }
-    assert_eq!(step, SendStep::Review, "{}", wallet.id);
-    seen.expect("an estimate")
+    assert!(matches!(step, SendStep::Broadcast { .. }), "{step:?}");
+    let signed = signed.expect("a signed write");
+    assert_eq!(
+        estimated.as_ref(),
+        Some(&signed),
+        "estimated what it signed"
+    );
+    signed
 }
 
 pub fn refused(error: StakingError) -> String {
