@@ -1,5 +1,5 @@
-//! Bramble's staking choices, for `starknet_wallet_core::staking`. Plain Rust until the swap: no
-//! UniFFI export reads them yet.
+//! Bramble's staking choices, for `starknet_wallet_core::staking`; mobile's exports over them are
+//! `ffi_staking` and `ffi_staking_action`.
 
 use starknet_wallet_core::staking::{StakingNetwork, StakingPolicy};
 use starknet_wallet_core::NetworkId;

@@ -17,6 +17,7 @@ use bramble_core::{
     NetworkId, SendFailure, SendStep, StepReply, TransferPlan, TransferRequest, WalletCore,
 };
 use serde_json::{json, Value};
+use starknet_wallet_core::kms::selector;
 
 pub const STRK: &str = "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d";
 pub const ACCOUNT_0: &str = "0x208361e3911b1d93a704400b88e7e53a89171fce64dbb48f8479e4f44b398d9";
@@ -235,4 +236,27 @@ pub fn failure(step: SendStep) -> SendFailure {
 
 pub fn sepolia(deployed: bool) -> Node {
     Node::new(bramble_core::NetworkId::Sepolia, deployed)
+}
+
+/// A felt in one spelling: lowercase, unpadded.
+pub fn canon(value: &str) -> String {
+    let digits = value.trim_start_matches("0x").trim_start_matches('0');
+    format!("0x{}", if digits.is_empty() { "0" } else { digits }).to_lowercase()
+}
+
+/// `__execute__` calldata of `calls` (contract, entrypoint, calldata), as the account signs it.
+pub fn execute(calls: &[(&str, &str, Vec<String>)]) -> Vec<String> {
+    let mut out = vec![format!("{:#x}", calls.len())];
+    for (contract, entrypoint, calldata) in calls {
+        out.push(canon(contract));
+        out.push(canon(&format!("{:#x}", selector(entrypoint))));
+        out.push(format!("{:#x}", calldata.len()));
+        out.extend(calldata.iter().map(|felt| canon(felt)));
+    }
+    out
+}
+
+pub fn felts(value: &Value) -> Vec<String> {
+    let items = value.as_array().unwrap();
+    items.iter().map(|v| canon(v.as_str().unwrap())).collect()
 }

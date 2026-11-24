@@ -217,3 +217,8 @@ pub fn entry_json(entry: &DirectoryEntry) -> Value {
         "website": entry.website,
     })
 }
+
+/// The export suite's half (`tests/staking.rs`, mobile's build): a canned Mainnet chain behind
+/// the real staking contract, and a wallet that prepares, plans and signs through `WalletCore`.
+#[cfg(feature = "testing")]
+pub mod export;
