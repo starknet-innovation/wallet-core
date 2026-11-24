@@ -5,12 +5,10 @@
 //! amount and token (a claim names the rewards token, every other action the staked token), and
 //! the allowance filed; or the same refusal.
 
-mod multisig_support;
 mod staking_support;
 
 use bramble_core::catalogs::networks;
 use bramble_core::SEND_POLICY;
-use multisig_support::TestPrimitives;
 use serde_json::{json, Value};
 use staking_support::*;
 use starknet_wallet_core::send::call_decode::Known;
@@ -70,7 +68,6 @@ fn each_action_is_prepared_as_the_extension_does() {
         },
         ..ReviewContext::default()
     };
-    let primitives = TestPrimitives::new();
     for case in cases("action") {
         let name = case["name"].as_str().unwrap();
         let prepared = &case["prepared"];
@@ -95,7 +92,6 @@ fn each_action_is_prepared_as_the_extension_does() {
             now: now(&case),
             policy: &SEND_POLICY,
             review: &review,
-            primitives: &primitives,
         };
         let preparation = match prepare(&input, reading.as_ref(), &context) {
             Err(refusal) => {
@@ -137,13 +133,7 @@ fn each_action_is_prepared_as_the_extension_does() {
             known_contracts: &pinned,
             ..review
         };
-        let invoke = Invoke::reviewed(
-            &account,
-            expected.clone(),
-            &SEND_POLICY,
-            &reviewed,
-            &primitives,
-        );
+        let invoke = Invoke::reviewed(&account, expected.clone(), &SEND_POLICY, &reviewed);
         let invoke = invoke.unwrap();
         assert_eq!(preparation.invoke.signed_calls(), expected, "{name}");
         assert_eq!(preparation.invoke.calls(), invoke.calls(), "{name}");

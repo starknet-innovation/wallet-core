@@ -4,10 +4,7 @@
 //! calls that reached the signer, the activity row, the allowance filed) or the refusal, and the
 //! reviewed floor.
 
-mod multisig_support;
-
 use bramble_core::swap::SWAP_POLICY;
-use multisig_support::TestPrimitives;
 use serde_json::Value;
 use starknet_wallet_core::catalog::TokenInfo;
 use starknet_wallet_core::portfolio::model::DisplayCurrency;
@@ -210,7 +207,6 @@ fn builds_match_the_handler() {
             &outcome(&case["build"]),
             &context,
             &bramble_core::SEND_POLICY,
-            &TestPrimitives::new(),
         );
         let preparation = match judged {
             Err(refusal) => {

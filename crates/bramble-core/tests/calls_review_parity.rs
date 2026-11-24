@@ -12,13 +12,11 @@
 //! - `refusal`: what the invoke path refuses before reading anything is refused by `reviewed`,
 //!   and the batches on each bound pass.
 
-mod multisig_support;
 mod plan_support;
 
 use bramble_core::catalogs::accounts::{send_authorization, AccountFamily};
 use bramble_core::catalogs::networks::registry;
 use bramble_core::SEND_POLICY;
-use multisig_support::TestPrimitives;
 use plan_support::*;
 use serde_json::Value;
 use starknet_wallet_core::allowances::record::AllowanceRecord;
@@ -124,13 +122,7 @@ fn reviewed(
     batch: Vec<Call>,
     context: &ReviewContext,
 ) -> Result<Invoke, InvokeRefusal> {
-    Invoke::reviewed(
-        account,
-        batch,
-        &SEND_POLICY,
-        context,
-        &TestPrimitives::new(),
-    )
+    Invoke::reviewed(account, batch, &SEND_POLICY, context)
 }
 
 #[test]
@@ -351,7 +343,6 @@ fn a_multicall_goes_on_the_wire_as_the_extension_sends_it() {
 fn what_the_invoke_path_refuses_up_front_is_refused() {
     let cases = cases("refusal");
     assert_eq!(cases.len(), 13);
-    let primitives = TestPrimitives::new();
     for case in cases {
         let name = text(&case["name"]);
         let address = case["account"].as_str().map_or(Felt::from(0x5au8), f);
@@ -361,7 +352,6 @@ fn what_the_invoke_path_refuses_up_front_is_refused() {
             calls(&case["calls"]),
             &SEND_POLICY,
             &ReviewContext::default(),
-            &primitives,
         );
         if case["accepted"].as_bool().unwrap() {
             assert!(result.is_ok(), "{name}: {result:?}");
