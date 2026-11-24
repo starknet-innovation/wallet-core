@@ -12,8 +12,8 @@ mod multisig_support;
 mod multisig_tx_support;
 
 use bramble_core::{
-    CoreError, IntentState, MultisigIntent, MultisigTxFailure, MultisigTxStep, StaleReason,
-    StepReply,
+    CoreError, IntentState, MultisigIntent, MultisigTxFailure, MultisigTxStep, SendStep,
+    StaleReason, StepReply, TxStatus,
 };
 use multisig_support::fixture;
 use multisig_tx_support::*;
@@ -393,6 +393,67 @@ fn a_submission_files_its_activity_row() {
     let file = wallet.dir.path().join("activity.v1.json");
     let text = std::fs::read_to_string(file).unwrap();
     assert!(text.contains(&ready.transaction_hash), "{text}");
+}
+
+/// A submitted intent settles once its row does: `refresh_activity` takes the multisig's id, and
+/// the accepted row marks the intent accepted, so it may be evicted to make room.
+#[test]
+fn a_submitted_intent_settles_through_a_refresh_by_multisig_id() {
+    let wallet = sepolia();
+    let ready = wallet.ready();
+    let submission = wallet
+        .core
+        .clone()
+        .submit_multisig_intent(ready.id.clone(), wallet.current_state(&ready))
+        .unwrap();
+    let step = submission.advance(StepReply::Start).unwrap();
+    let step = drive(step, &phase(&wallet.net["proposal"]["submit"]), |reply| {
+        submission.advance(reply).unwrap()
+    });
+    let MultisigTxStep::Submitted { hash } = step else {
+        panic!("{step:?}");
+    };
+    assert_eq!(stored(&wallet, &ready.id).state, IntentState::Submitted);
+
+    let refresh = wallet
+        .core
+        .clone()
+        .refresh_activity(wallet.multisig_id(), hash)
+        .unwrap();
+    let SendStep::Rpc { id, body, .. } = refresh.advance(StepReply::Start).unwrap() else {
+        panic!("expected the status read");
+    };
+    assert!(body.contains("starknet_getTransactionStatus"), "{body}");
+    let accepted = json!({"jsonrpc": "2.0", "id": id, "result":
+        {"finality_status": "ACCEPTED_ON_L2", "execution_status": "SUCCEEDED"}});
+    let reply = StepReply::Rpc {
+        id,
+        body: accepted.to_string(),
+        now_ms: 0,
+    };
+    // The settled row reads its receipt fee once; a failed read records none and settles the same.
+    let SendStep::Rpc { id, .. } = refresh.advance(reply).unwrap() else {
+        panic!("expected the receipt read");
+    };
+    let failed = json!({"jsonrpc": "2.0", "id": id, "error": {"code": 29, "message": "x"}});
+    let reply = StepReply::Rpc {
+        id,
+        body: failed.to_string(),
+        now_ms: 0,
+    };
+    let step = refresh.advance(reply).unwrap();
+    assert!(
+        matches!(
+            step,
+            SendStep::Finished {
+                status: TxStatus::Accepted,
+                ..
+            }
+        ),
+        "{step:?}"
+    );
+    assert_eq!(refresh.signatures_made(), 0);
+    assert_eq!(stored(&wallet, &ready.id).state, IntentState::Accepted);
 }
 
 /// Removing a multisig drops its intents first: when that fails, the record stays, so removal
