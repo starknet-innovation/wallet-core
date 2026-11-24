@@ -183,10 +183,9 @@ pub fn is_calls(calls: &[MultisigCall]) -> bool {
         && calls.iter().map(|call| call.calldata.len()).sum::<usize>() <= MAX_TOTAL_CALLDATA_FELTS
 }
 
-/// `transaction.getExecuteCalldata(calls, "1")` (`calls::execute_calldata`). `None` for a felt
-/// that does not parse.
-pub fn execute_calldata(calls: &[MultisigCall]) -> Option<Vec<Felt>> {
-    let parsed = calls
+/// `normalizedArgentMultisigCalls`: the calls as felts. `None` for a felt that does not parse.
+pub fn as_calls(calls: &[MultisigCall]) -> Option<Vec<Call>> {
+    calls
         .iter()
         .map(|call| {
             Some(Call {
@@ -199,8 +198,13 @@ pub fn execute_calldata(calls: &[MultisigCall]) -> Option<Vec<Felt>> {
                     .collect::<Option<_>>()?,
             })
         })
-        .collect::<Option<Vec<_>>>()?;
-    Some(calls::execute_calldata(&parsed))
+        .collect()
+}
+
+/// `transaction.getExecuteCalldata(calls, "1")` (`calls::execute_calldata`). `None` for a felt
+/// that does not parse.
+pub fn execute_calldata(calls: &[MultisigCall]) -> Option<Vec<Felt>> {
+    Some(calls::execute_calldata(&as_calls(calls)?))
 }
 
 fn hex(value: u128) -> String {

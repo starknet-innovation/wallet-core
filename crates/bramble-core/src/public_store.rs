@@ -27,6 +27,8 @@ pub const CONTACTS: &str = "contacts.json";
 pub const MULTISIGS: &str = "multisigs.json";
 /// Relay choice, sync checkpoints, and held packages.
 pub const COORDINATION: &str = "coordination.json";
+/// Multisig signing intents: frozen transactions and their co-signers' signatures.
+pub const MULTISIG_INTENTS: &str = "multisig-intents.json";
 /// Account labels, groups, hidden accounts, RPC overrides and the backup flag: the extension keeps
 /// all but the flag in its preferences rather than the vault, and the flag is mobile's own.
 pub const PREFERENCES: &str = "preferences.json";
@@ -68,7 +70,7 @@ pub fn write<T: Serialize>(dir: &Path, file: &str, value: &T) -> Result<(), Core
 /// leaves a wallet that owes its backup; they go after the vault (`remove`), and a new wallet
 /// overwrites any left behind.
 pub fn remove_all(dir: &Path) -> Result<(), CoreError> {
-    [CONTACTS, MULTISIGS, COORDINATION]
+    [CONTACTS, MULTISIGS, COORDINATION, MULTISIG_INTENTS]
         .into_iter()
         .try_for_each(|file| remove(dir, file))
 }

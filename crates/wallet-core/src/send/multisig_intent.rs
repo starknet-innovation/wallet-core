@@ -221,6 +221,20 @@ impl SigningIntent {
         }
     }
 
+    /// `staleArgentMultisigIntent`: this intent marked stale for `reason`. A `Fee` reason never
+    /// replaces a recorded `Nonce` or `Config` one: once a co-signer may have sent it, a later
+    /// fee refusal cannot make that untrue.
+    pub fn marked_stale(&self, reason: StaleReason) -> SigningIntent {
+        let kept = self
+            .stale_reason
+            .filter(|recorded| reason == StaleReason::Fee && *recorded != StaleReason::Fee);
+        SigningIntent {
+            stale_reason: Some(kept.unwrap_or(reason)),
+            state: IntentState::Stale,
+            ..self.clone()
+        }
+    }
+
     /// `mergeImportedArgentMultisigIntent`: a re-import of the same frozen hash. A terminal or
     /// stale local intent is kept as it is; an open one gains the incoming signers it lacks, in
     /// GUID order, up to the threshold, and keeps its own summary.
@@ -404,5 +418,53 @@ impl SigningIntent {
                     })
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_fee_reason_never_weakens_a_recorded_one() {
+        let intent: SigningIntent = SigningIntent {
+            account_id: String::new(),
+            broadcast_transaction_hash: None,
+            config_snapshot: ConfigSnapshot {
+                class_hash: String::new(),
+                signer_guids: Vec::new(),
+                threshold: 1,
+            },
+            id: String::new(),
+            prepared: serde_json::from_value(serde_json::json!({
+                "accountDeploymentData": [], "calldata": [], "calls": [], "chainId": "0x1",
+                "feeDataAvailabilityMode": "L1", "nonce": "0x0", "nonceDataAvailabilityMode": "L1",
+                "paymasterData": [], "resourceBounds": {
+                    "l1DataGas": {"maxAmount": "0x0", "maxPricePerUnit": "0x0"},
+                    "l1Gas": {"maxAmount": "0x0", "maxPricePerUnit": "0x0"},
+                    "l2Gas": {"maxAmount": "0x0", "maxPricePerUnit": "0x0"}},
+                "senderAddress": "0x1", "tip": "0x0", "version": "0x3", "transactionHash": "0x1"
+            }))
+            .unwrap(),
+            signatures: Vec::new(),
+            stale_outcome: None,
+            stale_reason: None,
+            state: IntentState::Collecting,
+            summary: String::new(),
+        };
+        let reason = |intent: &SigningIntent| (intent.state, intent.stale_reason);
+        let fee = intent.marked_stale(StaleReason::Fee);
+        assert_eq!(reason(&fee), (IntentState::Stale, Some(StaleReason::Fee)));
+        let nonce = fee.marked_stale(StaleReason::Nonce);
+        assert_eq!(
+            reason(&nonce),
+            (IntentState::Stale, Some(StaleReason::Nonce))
+        );
+        assert_eq!(
+            reason(&nonce.marked_stale(StaleReason::Fee)),
+            reason(&nonce)
+        );
+        let config = nonce.marked_stale(StaleReason::Config);
+        assert_eq!(config.stale_reason, Some(StaleReason::Config));
     }
 }

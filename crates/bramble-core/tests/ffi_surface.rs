@@ -260,6 +260,53 @@ fn a_private_key_enters_mobile_only_through_its_import_and_never_leaves() {
         .contains("Result<AccountRecord, CoreError>"));
 }
 
+/// P1's multisig transaction exports sign by vault record and judge reads the host drove: none
+/// takes or returns a key, a phrase or a raw signature, so a co-signer's key never crosses the
+/// FFI (AGENTS.md). Their files are named so a new export there is scanned here.
+#[test]
+fn multisig_transactions_take_and_return_no_key() {
+    let mut seen = Vec::new();
+    for (file, source) in sources() {
+        if !file.starts_with("multisig_tx")
+            && file != "multisig_rpc.rs"
+            && file != "multisig_guard.rs"
+        {
+            continue;
+        }
+        for exported in exported_signatures(&source) {
+            let signature = exported.signature.to_lowercase();
+            for word in [
+                "private",
+                "secret",
+                "mnemonic",
+                "phrase",
+                "passphrase",
+                "signature:",
+            ] {
+                assert!(
+                    !signature.contains(word),
+                    "{file}: `{}` carries `{word}`",
+                    exported.signature
+                );
+            }
+            seen.push(exported.name().to_string());
+        }
+    }
+    for name in [
+        "prepare_multisig_deployment",
+        "propose_multisig_transaction",
+        "sign_multisig_intent",
+        "submit_multisig_intent",
+        "import_multisig_intent",
+        "multisig_intent_read",
+    ] {
+        assert!(
+            seen.iter().any(|seen| seen == name),
+            "{name} is not exported"
+        );
+    }
+}
+
 /// The records that carry a call's parts (a `calldata` or `entrypoint` field), by name, from every
 /// source file: what an export would have to take to be handed calls to sign.
 fn call_shaped_records(sources: &[(String, String)]) -> Vec<String> {

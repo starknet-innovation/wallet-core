@@ -82,12 +82,23 @@ impl TransferPlan {
         kind: Kind,
         ranking: Ranking,
     ) -> Arc<Self> {
+        let plan = Plan::new(acting.account.clone(), kind, SEND_POLICY);
+        Self::with_plan(core, acting, plan, ranking)
+    }
+
+    /// A plan built elsewhere (a multisig deployment), signed for and recorded under `acting`.
+    pub(crate) fn with_plan(
+        core: &Arc<WalletCore>,
+        acting: PlanAccount,
+        plan: Plan,
+        ranking: Ranking,
+    ) -> Arc<Self> {
         Arc::new(Self {
             core: Arc::downgrade(core),
             account_id: acting.account_id,
             network: acting.network,
             generation: acting.generation,
-            plan: Mutex::new(Plan::new(acting.account, kind, SEND_POLICY)),
+            plan: Mutex::new(plan),
             prices: Mutex::new(None),
             ranking,
         })
