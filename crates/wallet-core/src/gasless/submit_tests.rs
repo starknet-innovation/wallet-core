@@ -129,6 +129,41 @@ fn refuses_a_fresh_fee_above_the_reviewed_amount() {
     );
 }
 
+// The core holds the build between the host's exchanges, so its reply is judged only for the
+// account and network it was asked for, never a session the host swapped in.
+#[test]
+fn judges_a_build_only_for_its_own_account_and_network() {
+    let session = session(&user_calls());
+    let mut other_account = session.clone();
+    other_account.account = felt_of(RECIPIENT);
+    let mut other_network = session.clone();
+    other_network.network = NetworkId::Sepolia;
+    let strk = felt_of(STRK);
+    let held = GaslessHeldToken {
+        address: felt_of(USDC),
+        balance: Some(U256::from_u128(5000)),
+        decimals: 6,
+        label: "USDC".into(),
+    };
+    for other in [&other_account, &other_network] {
+        let (pending, _) = session
+            .submit_build(&reviewed("2000"), Some(U256::from_u128(1000)), NOW)
+            .unwrap();
+        assert_eq!(
+            pending.judge(other, &quote_body()).err(),
+            Some(GaslessCode::InvalidGaslessRequest.into())
+        );
+        let (pending, _) = session
+            .offer_build(&held, Some(U256::from_u128(1000)), NOW)
+            .unwrap();
+        assert_eq!(pending.judge(other, &quote_body(), &strk), None);
+    }
+    let (pending, _) = session
+        .offer_build(&held, Some(U256::from_u128(1000)), NOW)
+        .unwrap();
+    assert!(pending.judge(&session, &quote_body(), &strk).is_some());
+}
+
 #[test]
 fn maps_each_body_refusal_to_the_gateways_code_and_needs_a_reference() {
     let session = session(&user_calls());

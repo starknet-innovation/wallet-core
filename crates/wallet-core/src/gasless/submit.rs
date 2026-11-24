@@ -25,7 +25,7 @@ use crate::js::json::JsValue;
 use crate::portfolio::wire::HttpRequest;
 use crate::send::types::FeeAffordability;
 use crate::send::u256::U256;
-use crate::{felt, Felt};
+use crate::{felt, Felt, NetworkId};
 use serde_json::{json, Value};
 
 /// The signed fee a submission records (`GaslessSubmission.userFee`): the base units in the
@@ -58,15 +58,24 @@ pub fn held_for<'h>(
 /// One token's build in flight, with the ceiling and spend it is judged against.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PendingOffer {
+    bound: Bound,
     held: GaslessHeldToken,
     ceiling: U256,
     spent: U256,
     now: u64,
 }
 
+/// The account and network a build was asked for: its reply is judged only for them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Bound {
+    account: Felt,
+    network: NetworkId,
+}
+
 /// The reviewed choice's build in flight.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PendingSubmit {
+    bound: Bound,
     reviewed: GaslessFeeOffer,
     gas_token: Felt,
     reviewed_max: U256,
@@ -93,6 +102,13 @@ fn refusal_for(reason: Refusal) -> GaslessCode {
 }
 
 impl<'p> GaslessSession<'p> {
+    fn bound(&self) -> Bound {
+        Bound {
+            account: self.account,
+            network: self.network,
+        }
+    }
+
     /// Checks a build's result for `gas_token` against `ceiling` at `now`.
     fn check(
         &self,
@@ -133,6 +149,7 @@ impl<'p> GaslessSession<'p> {
         }
         let request = self.build_request(&held.address, now).ok()?;
         let pending = PendingOffer {
+            bound: self.bound(),
             held: held.clone(),
             ceiling,
             spent,
@@ -157,6 +174,7 @@ impl<'p> GaslessSession<'p> {
         let reference = reference.ok_or(GaslessCode::Unverifiable)?;
         let request = self.build_request(&gas_token, now)?;
         let pending = PendingSubmit {
+            bound: self.bound(),
             reviewed: reviewed.clone(),
             gas_token,
             reviewed_max,
@@ -169,13 +187,17 @@ impl<'p> GaslessSession<'p> {
 
 impl PendingOffer {
     /// `heldOffer` after its build: a checked quote whose fee the token's balance covers beside
-    /// the batch's own spend, as an offer the wallet could render. `None` otherwise.
+    /// the batch's own spend, as an offer the wallet could render. `None` otherwise, and for a
+    /// session of another account or network than the build's.
     pub fn judge(
         self,
         session: &GaslessSession<'_>,
         result: &JsValue,
         strk: &Felt,
     ) -> Option<GaslessFeeOffer> {
+        if session.bound() != self.bound {
+            return None;
+        }
         let accepted = session
             .check(result, self.held.address, self.ceiling, self.now)
             .ok()?;
@@ -191,14 +213,17 @@ impl PendingOffer {
 }
 
 impl PendingSubmit {
-    /// `prepareSubmission` after its build: an unreadable quote is `invalid_gasless_request`, a
-    /// refused body its `refusalFor` code, and a fee above the reviewed maximum
-    /// `ReviewedFeeExceeded`.
+    /// `prepareSubmission` after its build: a session for another account or network, or an
+    /// unreadable quote, is `invalid_gasless_request`, a refused body its `refusalFor` code, and
+    /// a fee above the reviewed maximum `ReviewedFeeExceeded`.
     pub fn judge<'p>(
         self,
         session: &GaslessSession<'p>,
         result: &JsValue,
     ) -> Result<CheckedQuote<'p>, GaslessError> {
+        if session.bound() != self.bound {
+            return Err(GaslessCode::InvalidGaslessRequest.into());
+        }
         let accepted = session.check(result, self.gas_token, self.ceiling, self.now)?;
         if accepted.fee_amount > self.reviewed_max {
             return Err(GaslessError::ReviewedFeeExceeded);
