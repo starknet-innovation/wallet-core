@@ -10,7 +10,6 @@
 //! the intent stale, as `currentArgentIntentContext` does. An import's summary is always this
 //! wallet's own review of the calls (`import_intent`).
 
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use wallet_core::accounts::multisig::{signer_guid, ArgentMultisigClass};
@@ -38,6 +37,8 @@ use crate::multisig_tx::{
 use crate::networks::{self, NetworkId, TokenInfo};
 use crate::portfolio::registry;
 use crate::send::plan::TransferPlan;
+use crate::send::wallet_ext::Use;
+use wallet_core::allowances::retention::Ranking;
 use crate::send::types::SendError;
 use crate::wallet::WalletCore;
 use crate::wallet_accounts::{sign_for, signing_record};
@@ -170,15 +171,11 @@ impl WalletCore {
             .deployment
             .as_ref()
             .ok_or_else(|| refused("Argent multisig deployment is unavailable"))?;
-        let (deployer, generation) = self.with_session(false, |session| {
-            let signer = signing_record(&session.payload, &deployer_account_id)
-                .ok()
-                .filter(|signer| signer.network() == network)
-                .ok_or_else(|| refused("unknown account"))?;
-            let key = felt::parse_non_zero(&signer.public_key)
-                .ok_or_else(|| refused("unknown account"))?;
-            Ok((key, self.lock_epoch.load(Ordering::SeqCst)))
-        })?;
+        let acting = self
+            .plan_account_for(&deployer_account_id, Use::Sign)
+            .ok()
+            .filter(|acting| acting.network == network)
+            .ok_or_else(|| refused("unknown account"))?;
         let config = ArgentMultisigConfig {
             threshold: setup.threshold,
             signer_public_keys: setup.signer_public_keys.clone(),
@@ -188,7 +185,7 @@ impl WalletCore {
             &config,
             &setup.salt,
             class(),
-            &deployer,
+            &acting.account.public_key,
             crate::SEND_POLICY,
         )
         .map_err(|refusal| {
@@ -199,13 +196,7 @@ impl WalletCore {
                 }
             })
         })?;
-        Ok(TransferPlan::with_plan(
-            &self,
-            deployer_account_id,
-            network,
-            plan,
-            generation,
-        ))
+        Ok(TransferPlan::with_plan(&self, acting, plan, Ranking::default()))
     }
 
     /// Proposes `calls` from the saved multisig `read` describes (`prepareIntent`). `read` is a

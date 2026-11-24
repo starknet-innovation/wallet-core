@@ -10,15 +10,20 @@
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 
 use wallet_core::activity::detail::submitted_price;
+use wallet_core::allowances::calls::record_changes;
+use wallet_core::allowances::retention::Ranking;
 use wallet_core::history::activity_rules::price_json;
 use wallet_core::send::fees::TransactionFee;
 use wallet_core::send::judge::{Observation, TxStatus};
-use wallet_core::send::plan::{
-    Account, Kind, PendingKind, PendingRecord, Plan, PlanHost, SignRefusal,
-};
+use wallet_core::send::plan::{Kind, PendingKind, PendingRecord, Plan, PlanHost, SignRefusal};
 use wallet_core::{Felt, StarkSignature};
 
-use super::types::{ActivityKind, SendError, SendFailure, SendStep, StepReply, TransferReview};
+use super::types::{
+    ActivityKind, ReviewedCall, RiskFlag, SendError, SendFailure, SendStep, StepReply,
+    TransferReview,
+};
+use super::wallet_ext::PlanAccount;
+use crate::allowances::with_allowance_log;
 use wallet_core::activity::store::{kind_text, Entry};
 use wallet_core::history::activity::TransferDirection;
 use wallet_core::history::activity_rules::direction_text;
@@ -64,37 +69,38 @@ pub struct TransferPlan {
     plan: Mutex<Plan>,
     /// Where a public send's price at submission comes from (`price_with`).
     prices: Mutex<Option<(Arc<PriceBook>, DisplayCurrency)>>,
+    /// What a batch's allowance changes are evicted by (`allowances::ranking`).
+    ranking: Ranking,
 }
 
 impl TransferPlan {
+    /// A plan for `kind` from `acting`. A batch's allowance changes are filed ranked by
+    /// `ranking`: the trusted tokens its review read.
     pub(crate) fn new(
         core: &Arc<WalletCore>,
-        account_id: String,
-        network: NetworkId,
-        account: Account,
+        acting: PlanAccount,
         kind: Kind,
-        generation: u64,
+        ranking: Ranking,
     ) -> Arc<Self> {
-        let plan = Plan::new(account, kind, SEND_POLICY);
-        Self::with_plan(core, account_id, network, plan, generation)
+        let plan = Plan::new(acting.account.clone(), kind, SEND_POLICY);
+        Self::with_plan(core, acting, plan, ranking)
     }
 
-    /// A plan built elsewhere (a multisig deployment), signed for and recorded under the vault
-    /// record `account_id`.
+    /// A plan built elsewhere (a multisig deployment), signed for and recorded under `acting`.
     pub(crate) fn with_plan(
         core: &Arc<WalletCore>,
-        account_id: String,
-        network: NetworkId,
+        acting: PlanAccount,
         plan: Plan,
-        generation: u64,
+        ranking: Ranking,
     ) -> Arc<Self> {
         Arc::new(Self {
             core: Arc::downgrade(core),
-            account_id,
-            network,
-            generation,
+            account_id: acting.account_id,
+            network: acting.network,
+            generation: acting.generation,
             plan: Mutex::new(plan),
             prices: Mutex::new(None),
+            ranking,
         })
     }
 
@@ -162,6 +168,34 @@ impl TransferPlan {
     pub fn price_with(&self, prices: Arc<PriceBook>, currency: DisplayCurrency) {
         *self.prices.lock().unwrap_or_else(PoisonError::into_inner) = Some((prices, currency));
     }
+
+    /// A batch's calls as its review shows them, in the order signed (`verifyCalls`'s `calls`),
+    /// each with its flags; empty for a transfer, deployment or refresh.
+    pub fn reviewed_calls(&self) -> Vec<ReviewedCall> {
+        let plan = self.lock_plan();
+        let Some(invoke) = plan.invoke() else {
+            return Vec::new();
+        };
+        invoke
+            .signed_calls()
+            .iter()
+            .zip(invoke.calls())
+            .map(|(call, reviewed)| ReviewedCall {
+                contract_address: felt::canonical(&call.contract_address),
+                entrypoint: call.entrypoint.clone(),
+                kind: reviewed.kind,
+                summary: reviewed.summary.clone(),
+                flags: reviewed.flags.iter().map(RiskFlag::from).collect(),
+            })
+            .collect()
+    }
+
+    /// A batch's flags as its card lists them, each once (`Plan::risk_flags`); empty for any
+    /// other kind (a transfer's are `TransferReview::flags`).
+    pub fn risk_flags(&self) -> Vec<RiskFlag> {
+        let plan = self.lock_plan();
+        plan.risk_flags().into_iter().map(RiskFlag::from).collect()
+    }
 }
 
 impl TransferPlan {
@@ -202,8 +236,7 @@ fn row(kind: PendingKind) -> (ActivityKind, Text, Text, Text, Text, bool) {
             Some(felt::canonical(&token_address)),
             true,
         ),
-        // No export builds a call batch yet. The one that does files `allowances` in the
-        // allowance log before this row is written (`allowances::calls::record_changes`).
+        // Its `allowances` were filed in the allowance log before this row (`record_pending`).
         PendingKind::Invoke { asset, .. } => match asset {
             Some(asset) => (
                 ActivityKind::Invoke,
@@ -248,6 +281,16 @@ impl PlanHost for TransferPlan {
         let Some(core) = self.core.upgrade() else {
             return;
         };
+        // A batch's grants first, as the extension's `recordRevoke` files them: the log is what
+        // keeps a residual grant listed and revokable, so it never waits on the row's write.
+        if let PendingKind::Invoke { allowances, .. } = &record.kind {
+            if !allowances.is_empty() {
+                let hash = felt::canonical(&record.hash);
+                with_allowance_log(&core.data_dir, |log| {
+                    record_changes(log, allowances, &hash, &self.ranking)
+                });
+            }
+        }
         let (kind, amount, counterparty, token, token_address, outgoing) = row(record.kind);
         let mut entry = Entry {
             account_id: self.account_id.clone(),

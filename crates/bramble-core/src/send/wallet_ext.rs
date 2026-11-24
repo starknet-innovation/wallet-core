@@ -10,6 +10,7 @@ use std::sync::Arc;
 use wallet_core::Felt;
 
 use wallet_core::accounts::constructor_calldata;
+use wallet_core::allowances::retention::Ranking;
 use wallet_core::send::calls;
 use wallet_core::send::plan::{Account, Kind, Token, Transfer, TransferRefusal};
 use wallet_core::send::sign::Deployment;
@@ -49,7 +50,7 @@ impl From<TransferRefusal> for SendError {
 /// What a plan needs the account for: signing (transfer, deployment) passes the signing gate;
 /// reading activity only needs the record to exist.
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Use {
+pub(crate) enum Use {
     Sign,
     Read,
 }
@@ -90,11 +91,12 @@ fn deployment(record: &StoredAccount, public_key: &Felt) -> Option<Deployment> {
 
 /// The acting account for a plan: the core's `Account`, built once from the vault record, and
 /// what ties the plan to that record. The plan's `Transfer` is derived from the same `account`.
-struct PlanAccount {
-    account: Account,
-    account_id: String,
-    network: NetworkId,
-    generation: u64,
+#[derive(Clone)]
+pub(crate) struct PlanAccount {
+    pub(crate) account: Account,
+    pub(crate) account_id: String,
+    pub(crate) network: NetworkId,
+    pub(crate) generation: u64,
 }
 
 fn plan_account(record: &StoredAccount) -> Result<Account, SendError> {
@@ -173,7 +175,11 @@ impl WalletCore {
 
     /// The stored record `account_id` names plus the session generation, for a plan being
     /// prepared. A signing plan must pass `signing_record` (a known record, no pending discovery). Passive: preparing or reading never renews the idle window.
-    fn plan_account_for(&self, account_id: &str, purpose: Use) -> Result<PlanAccount, SendError> {
+    pub(crate) fn plan_account_for(
+        &self,
+        account_id: &str,
+        purpose: Use,
+    ) -> Result<PlanAccount, SendError> {
         let outcome = self.with_session(false, |session| {
             let payload = &session.payload;
             let record = match purpose {
@@ -335,13 +341,7 @@ impl WalletCore {
 
 impl WalletCore {
     fn plan(self: &Arc<Self>, acting: PlanAccount, kind: Kind) -> Arc<TransferPlan> {
-        TransferPlan::new(
-            self,
-            acting.account_id,
-            acting.network,
-            acting.account,
-            kind,
-            acting.generation,
-        )
+        // A transfer, deployment or refresh files no allowance, so ranks no token.
+        TransferPlan::new(self, acting, kind, Ranking::default())
     }
 }

@@ -444,6 +444,7 @@ impl WalletCore {
             fs::remove_file(self.vault_path()).map_err(|_| storage("remove vault"))?;
             let _ = public_store::remove(&self.data_dir, public_store::PREFERENCES);
             crate::activity::remove(&self.data_dir);
+            let _ = public_store::remove(&self.data_dir, crate::allowances::ALLOWANCE_FILE);
             security::remove(&self.data_dir)
         })
     }

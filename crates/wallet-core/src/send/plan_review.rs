@@ -252,10 +252,14 @@ impl Plan {
         }
     }
 
-    // `resolveFeeAffordability`: FRI fees only; the amount counts when STRK is sent.
+    // `resolveFeeAffordability`: FRI fees only; a transfer's amount counts when it sends STRK. A
+    // batch's verdict is fee-only, as the dapp invoke card's (`estimateInvokeApprovalFee`): the
+    // STRK its calls spend counts only toward the gasless offer, which is not ported.
     fn affordability(&self) -> FeeAffordability {
-        let Kind::Transfer(transfer) = &self.kind else {
-            return FeeAffordability::Unknown;
+        let (balance, spent) = match &self.kind {
+            Kind::Transfer(t) => (t.fee_balance, t.is_strk.then_some(t.amount)),
+            Kind::Invoke(invoke) => (invoke.fee_balance, None),
+            Kind::Deployment | Kind::Refresh { .. } => return FeeAffordability::Unknown,
         };
         let total = match (
             self.work.requires_deployment,
@@ -266,16 +270,15 @@ impl Plan {
             (true, Some(fee), Some(deploy)) => fees::sum(fee, deploy),
             _ => None,
         };
-        let (Some(total), Some(balance)) = (total, transfer.fee_balance) else {
+        let (Some(total), Some(balance)) = (total, balance) else {
             return FeeAffordability::Unknown;
         };
         if total.unit != FeeUnit::Fri {
             return FeeAffordability::Unknown;
         }
-        let required = if transfer.is_strk {
-            total.spend.checked_add(transfer.amount)
-        } else {
-            Some(total.spend)
+        let required = match spent {
+            Some(spent) => total.spend.checked_add(spent),
+            None => Some(total.spend),
         };
         match required {
             Some(required) if balance >= required => FeeAffordability::Sufficient,
@@ -300,7 +303,7 @@ impl Plan {
             deployment_fee_estimate_failed: requires_deployment && work.deploy_fee.is_none(),
             requires_deployment,
             already_deployed: false,
-            affordability: FeeAffordability::Unknown,
+            affordability: self.affordability(),
             flags: Vec::new(),
             can_confirm: self.can_confirm(),
         }
@@ -317,7 +320,6 @@ impl Plan {
                     recipient,
                     amount_display: transfer.amount_text.clone(),
                     token_symbol: transfer.symbol.clone(),
-                    affordability: self.affordability(),
                     flags: transfer.flags.clone(),
                     ..self.invoke_review(transfer.summary.clone())
                 }

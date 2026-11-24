@@ -11,8 +11,9 @@
 //! here.
 
 pub(crate) mod plan;
+pub(crate) mod revoke;
 pub(crate) mod types;
-mod wallet_ext;
+pub(crate) mod wallet_ext;
 
 use wallet_core::send::{calls, judge, rpc_bodies};
 
