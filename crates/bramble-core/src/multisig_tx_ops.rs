@@ -29,23 +29,23 @@ use wallet_core::send::multisig_invoke_plan::{ProposePlan, SubmitPlan};
 use wallet_core::send::multisig_review::review_calls;
 use wallet_core::Felt;
 
+use crate::allowances::{token_infos, trusted_tokens};
 use crate::argent_multisig::ArgentMultisigConfig;
 use crate::multisig_rpc::{MultisigAuthorityRead, MultisigStateRead};
 use crate::multisig_tx::{
     intent_view, MultisigCall, MultisigCallReview, MultisigIntent, MultisigProposal,
     MultisigProposalRequest, MultisigSubmission,
 };
-use crate::allowances::{token_infos, trusted_tokens};
 use crate::networks::NetworkId;
 use crate::portfolio::model::TokenConfig;
 use crate::portfolio::tokens::TokenPreferences;
 use crate::send::plan::TransferPlan;
-use crate::send::wallet_ext::Use;
-use wallet_core::allowances::retention::Ranking;
 use crate::send::types::SendError;
+use crate::send::wallet_ext::Use;
 use crate::wallet::WalletCore;
 use crate::wallet_accounts::{sign_for, signing_record};
 use crate::{felt, multisig_constants, multisig_intents, multisig_store, CoreError};
+use wallet_core::allowances::retention::Ranking;
 
 fn refused(reason: &str) -> CoreError {
     CoreError::InvalidInput {
@@ -208,7 +208,12 @@ impl WalletCore {
                 }
             })
         })?;
-        Ok(TransferPlan::with_plan(&self, acting, plan, Ranking::default()))
+        Ok(TransferPlan::with_plan(
+            &self,
+            acting,
+            plan,
+            Ranking::default(),
+        ))
     }
 
     /// Proposes `request` from the saved multisig `read` describes (`prepareIntent`). `read` is
