@@ -156,7 +156,7 @@ pub(crate) enum AfterWait {
     Checkpoint,
 }
 
-enum Stage {
+pub(super) enum Stage {
     Fresh,
     Awaiting { id: u64, expect: Expect },
     Waiting(AfterWait),
@@ -201,7 +201,7 @@ pub struct Plan {
     pub(crate) account: Account,
     pub(crate) kind: Kind,
     pub(crate) policy: Policy,
-    stage: Stage,
+    pub(super) stage: Stage,
     pub(crate) work: Work,
     pub(crate) signatures: u32,
     review: Option<TransferReview>,
