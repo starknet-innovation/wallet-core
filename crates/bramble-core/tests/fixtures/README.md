@@ -8,12 +8,12 @@ network, privacy-routing and token tables into `mobile/core/generated/`. Syncing
 unchanged, all at one Bramble commit. `tests/fixtures.rs` checks this table against the directory:
 every file must be listed, and its sha256 must match.
 
-All files: Bramble commit `c43b1a3d3d81410788effc74a413c8aba5e777ea` (`feature/mobile-wallet`,
-2026-11-20: G5's merge, #998, which added the three `extension-multisig-transactions*.json`, each
-byte-identical to its head `7d4cd801`). Every other file is byte-identical to its earlier copy:
-`extension-activity-detail.jsonl` from G6's merge (#999, `8b729036`), the rest from G4's merge
-(#947, `008f2968`, 2026-11-13; all but its `vault-v13.json` as first copied from the G1–G3 stack
-at `7293d188`), where re-running `mobile:parity` and `mobile:assets` left no diff; privacy SDK
+All files: Bramble commit `1771d951a5b23669455b6b31caed137abe251684` (`feature/mobile-wallet`,
+2026-11-24, after the G7 merges #1013–#1018 of 2026-11-23, which added
+`vault-v13-imported.json`, `extension-settings-parity.jsonl`, `extension-stark-name.jsonl`,
+`extension-activity-feed.jsonl`, `extension-call-review.jsonl`, `extension-allowances.jsonl`,
+`extension-swap.jsonl` and `extension-staking.jsonl`). Every file is byte-identical to its copy at
+that commit, and re-running `mobile:parity` and `mobile:assets` there left no diff; privacy SDK
 `vendor/starknet-privacy` at `b40bf109` (Bramble's pin).
 Generators are under `scripts/` in Bramble; each fixture's is reached from
 `generate-mobile-parity-vectors.ts`.
@@ -88,16 +88,15 @@ read) with `networks.json` and
 (`vault_v13.rs`), and `extension-activity-detail.jsonl` (`activity_parity.rs`; its `receiptFee`
 block's `throughProvider` records the extension's starknet.js path, which no test reads), and
 `vault-v13-imported.json` (`vault_v13_imported.rs`), `extension-settings-parity.jsonl`
-(`settings_parity.rs`) and `extension-stark-name.jsonl` (`stark_name_parity.rs`).
+(`settings_parity.rs`), `extension-stark-name.jsonl` (`stark_name_parity.rs`),
 `extension-activity-feed.jsonl` with `networks.json` for the explorer links
-(`activity_feed_parity.rs`).
-`extension-call-review.jsonl` (`calls_review_parity.rs`: the call summaries, the review flags, a
-multicall on the wire and the batches refused up front).
+(`activity_feed_parity.rs`), `extension-call-review.jsonl` (`calls_review_parity.rs`: the call
+summaries, the review flags, a multicall on the wire and the batches refused up front),
 `extension-allowances.jsonl` (`allowances_parity.rs`; its `log` and `recording` blocks
-`allowances_log_parity.rs`, its `scan` and `tracked` transcripts `allowances_scan_parity.rs`).
-`extension-swap.jsonl` (`swap_parity.rs`; an accepted build's `executed` reply is the
-extension's submit, which no test reads).
-`extension-staking.jsonl` (`staking_parity.rs`, and its `action` block `staking_action_parity.rs`).
+`allowances_log_parity.rs`, its `scan` and `tracked` transcripts `allowances_scan_parity.rs`),
+`extension-swap.jsonl` (`swap_parity.rs`; an accepted build's `executed` reply is the extension's
+submit, which no test reads) and `extension-staking.jsonl` (`staking_parity.rs`, and its `action`
+block `staking_action_parity.rs`).
 `extension-privacy-copy.json` is the source of
 Bramble's generated Swift and Kotlin privacy copy; no Rust function returns those sentences, so
 no test here reads it. `extension-multisig-transactions.json` is read by
