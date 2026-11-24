@@ -20,6 +20,7 @@
 mod offer;
 mod reference;
 mod request;
+mod round;
 mod rpc;
 mod submit;
 mod typed_data;
@@ -30,7 +31,8 @@ pub use request::{
     read_available, read_supported_tokens, read_transaction_hash, GaslessAccount, GaslessKind,
     GaslessSession, ListedToken,
 };
-pub use rpc::{classify, GaslessAnswer};
+pub use round::{OfferRound, RoundStep};
+pub use rpc::{classify, Exchange, Exchanged, GaslessAnswer};
 pub use submit::{held_for, CheckedQuote, GaslessSubmission, PendingOffer, PendingSubmit, UserFee};
 pub use typed_data::{
     validate_typed_data, Accepted, Refusal, TypedDataCheck, OUTSIDE_EXECUTION_DOMAIN,
