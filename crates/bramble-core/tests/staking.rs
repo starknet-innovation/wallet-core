@@ -238,6 +238,19 @@ fn a_plan_needs_a_finished_verified_read() {
     }
     prepared.restart();
     assert_eq!(plan(&prepared), unreadable);
+    // A restart after a finished read keeps none of its facts, for the plan or the rows.
+    run(&chain, || prepared.next_calls(), |r| prepared.accept(r));
+    assert!(prepared.plan(NOW_S, None).is_ok());
+    prepared.restart();
+    assert_eq!(plan(&prepared), unreadable);
+    let read = wallet
+        .core
+        .staking_overview(wallet.id.clone(), STAKER.into(), wallet.prefs.clone())
+        .unwrap();
+    run(&chain, || read.next_calls(), |r| read.accept(r));
+    assert!(read.view(NOW_S).is_ok());
+    read.restart();
+    assert_eq!(read.view(NOW_S).err().map(refused), unreadable);
     // A pool whose own parameters name another staker is never staked into.
     chain.pool_staker = "0x5a4";
     let forged = wallet
