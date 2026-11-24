@@ -162,7 +162,7 @@ step starts.
 
 | PR | Repo | Needs | What it is |
 | --- | --- | --- | --- |
-| K2 | here | krusty-kms#257 | the Krusty bump (and `starknet-types-core` with it, if Krusty moves it), and the one implementation of `multisig_invoke::StarkPrimitives` over Krusty, in `wallet-core`. The test implementation stays for the tests |
+| K2 | here | krusty-kms#257 | the Krusty bump (and `starknet-types-core` with it, if Krusty moves it), and a selector and Stark signature verification from Krusty 3.2.0, which replace the stand-in trait `multisig_invoke::StarkPrimitives` (#105) |
 | G7c | Bramble | — (can start now) | P1's missing fixtures: the multisig import cases and the call summaries beyond an ERC-20 transfer |
 | X1 P1 | here | K2, G7c | P1's FFI surface: deploy, propose, co-sign, submit, change signers, and the import path with the checks the extension's `importIntent` makes and the plan says the export must enforce (the wallet's own call review replaces the remote summary; the chain's authority and nonce must equal the intent's snapshot) |
 | M18 | Bramble | X1 | multisig transaction screens on both apps: propose, sign, submit, change signers |
@@ -180,7 +180,7 @@ step starts.
 | --- | --- | --- | --- |
 | P8 Ledger | here, then both | D1 (settled); krusty-kms#257 for signature verification | as the extension's v1: blind signing only. The Starknet app's version, public-key and `signHash` commands with the extension's minimum app version and its status-word catalogue (`ledger-protocol/`, 1,096; `background/ledger/`, 847), as sans-IO APDU bytes here; a signing step in `Plan` that hands the hash to the host's device and takes a signature back, verified against the record's stored `publicKeyX` before anything is broadcast, and never falls back to a key (`account-hash-signer.ts`); Ledger records made operable; and a vault with no phrase opened and created, for Ledger-only onboarding. The apps link to the device through Ledger's Device Management Kit (`LedgerHQ/device-sdk-mobile`, Kotlin Multiplatform; Android native, iOS through Objective-C interop; 0.0.x as of 2026-11, so pinned exactly and checked for maintenance first). It has no Starknet signer module, so it only scans, pairs and moves the core's APDUs (its raw APDU call). Bluetooth first; Android USB a follow-up. Later: Ledger's Bluetooth framing moves into the core and the kit goes. The generator records APDU transcripts against the Starknet Ledger app; *proposed*: under Ledger's Speculos emulator, so CI needs no device |
 | P16 Dapp connect | here, then both | D2, X2 | request validation, grants (the vault's `originGrants`, and the per-account revocation P7 left, `withoutOriginAccess`), the approval queue and its review budget, typed-data review and signing (SNIP-12), add-chain and watch-asset, the blocklist and phishing feed as a sans-IO body and judge (`background/provider/`, 2,453; `background/approvals/`, 4,169; `permissions/`, 905). The core takes a request (origin, method, params) and returns a review, a grant or a refusal, whatever carried it. Mobile builds the transport: for a browser, a WebView whose bridge binds every request to the top frame's origin as the platform reports it and refuses frames it cannot attribute. P9's poisoned-payee refusal must not reach the site before the person acts |
-| P15 STRK20 | here, then both | D3 (settled), the P15 spike | activate, shield, unshield and private send; then shadow accounts and multisig STRK20 (`privacy/`, 9,279; `background/privacy/`, 5,872), over 2.4d's read plan. The core owns the policy, the review and the extension's own rules around the SDK; the SDK is an engine the core drives through a trait, as `StarkPrimitives` brings in what Krusty lacks, and each app runs the same pinned bundle the extension vendors (its pin, its digests) in a sandboxed runtime the spike picks. The largest step: six PRs in that order. Later: the SDK's client ported to Rust, once upstream leaves release candidates or StarkWare ships one, with its crypto from Krusty (the core adds none of its own), and the embedded runtime goes |
+| P15 STRK20 | here, then both | D3 (settled), the P15 spike | activate, shield, unshield and private send; then shadow accounts and multisig STRK20 (`privacy/`, 9,279; `background/privacy/`, 5,872), over 2.4d's read plan. The core owns the policy, the review and the extension's own rules around the SDK; the SDK is an engine the core drives through a trait, and each app runs the same pinned bundle the extension vendors (its pin, its digests) in a sandboxed runtime the spike picks. The largest step: six PRs in that order. Later: the SDK's client ported to Rust, once upstream leaves release candidates or StarkWare ships one, with its crypto from Krusty (the core adds none of its own), and the embedded runtime goes |
 
 Done means #990's every shipped row on both apps, each proved against the extension by its
 generator. Phase 3 (the extension takes this crate) starts after that, and needs Extension Krusty
@@ -205,10 +205,9 @@ Needed now:
   `multisig_invoke_plan` (`ProposePlan`, `SubmitPlan`: neither signs nor holds a key) and
   `send::multisig_intent` (the signing intent, its package, merge and validator); Bramble's fee
   overhead for a transaction that waits on co-signers is `MULTISIG_FEE_OVERHEAD`. Plain Rust,
-  not yet exported. Krusty 3.1.0 exports neither a selector (`starknet_keccak` of an entrypoint
-  name) nor Stark signature verification, and the core adds no crypto of its own, so both come
-  in through `multisig_invoke::StarkPrimitives`; nothing implements it outside the tests until
-  Krusty exports them, which the mobile export waits on. Left to the wallet: the class-declared
+  not yet exported. The selector (`starknet_keccak` of an entrypoint name) and Stark signature
+  verification come from Krusty 3.2.0 through `kms::selector` and
+  `kms::stark_signature_is_valid` (K2, #105); the core adds no crypto of its own. Left to the wallet: the class-declared
   read before a deployment, endpoint failover, and the extension's operation bookkeeping.
   P1b (change signers, and the review of any call batch) is in `accounts::multisig_change`
   (the change, its self-call, the strict parser and the next configuration) and
@@ -565,9 +564,7 @@ Foundations, which the features need, and Ledger, which needs only the first:
   approval queue's summary bound (P16). `RiskFlag` is not the transfer's `ReviewFlag`; the two
   meet at export. Not ported, as
   for the transfer: the `fast` speed, a SNIP-36 proof (P15) and the approval queue's review
-  budget (P16). As for a multisig, Krusty 3.1.0 has no selector, so `Invoke::reviewed` takes
-  `multisig_invoke::StarkPrimitives`, and nothing
-  outside the tests can build a batch until krusty-kms#257. Evidence: every transfer capture
+  budget (P16). Selectors come from Krusty (`kms::selector`, K2). Evidence: every transfer capture
   (OpenZeppelin, Ready, Braavos) driven as a one-call batch puts the same requests on the wire
   and signs the same hashes (`transactions_invoke.rs`); the multicall, its refusals and failure
   paths, and the extension's `verify*` and submit cases, have unit tests only and need a Bramble
@@ -849,7 +846,7 @@ Features, smallest and least dependent first:
     `SurplusTo`, `Invoke`, shadow `Invoke`), the proving block, the route's URLs, and the viewing
     key in a zeroizing buffer, its one crossing. `SignRequest` is the calls the SDK asked to sign;
     the core checks they are the pool's one `compile_actions`, recomputes the `CallSet` digest
-    (Poseidon here; the selector through `StarkPrimitives`) and signs with Krusty or gathers the
+    (Poseidon here; the selector from Krusty) and signs with Krusty or gathers the
     multisig aggregate, so no signing callback reaches the runtime (the app holds the SDK's signer
     promise open between the two calls). `EngineProof` is the `apply_actions` call, `{data, output,
     proof_facts}` and the warnings, which the core judges as `official-sdk-results.ts` does
