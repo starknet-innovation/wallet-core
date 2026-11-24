@@ -1,9 +1,10 @@
 //! P7, second half: what mobile's writes do to a vault's schema and `accountProvenance`, as the
-//! extension's service on `release/v0.10.11` does it. A vault is written back at the schema it was
-//! read at; at 14 an account added here is `created` (`addDerivedAccount`), a pasted key
-//! `imported` (`importRawKeyAccount`), a projection onto another network takes its source's
-//! origin or none (`ensureNetworkAccount`), and a restore from the phrase records none
-//! (`recoverVaultAccounts`). Every other entry, a kept record's included, stays as it was.
+//! extension's service on `release/v0.10.11` does it. A v13 vault is raised to 14 on unlock (no
+//! entry inferred, `vault_migration.rs`); at 14 an account added here is `created`
+//! (`addDerivedAccount`), a pasted key `imported` (`importRawKeyAccount`), a projection onto
+//! another network takes its source's origin or none (`ensureNetworkAccount`), and a restore from
+//! the phrase records none (`recoverVaultAccounts`). Every other entry, a kept record's included,
+//! stays as it was.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
 mod common;
@@ -196,32 +197,36 @@ fn a_restore_records_no_origin() {
     );
 }
 
-/// A v13 vault is written back at 13, in a container of 13, with no map: the released extension
-/// reads nothing else.
+/// A v13 vault is raised to 14 on unlock with no map (the extension's step infers none), so an
+/// account added after it is recorded `created` like any other at 14.
 #[test]
-fn a_v13_vault_stays_at_13() {
+fn a_v13_vault_is_raised_to_14_and_records_from_then_on() {
     let (dir, core) = unlocked(&full());
     let added = core.add_regular_account(NetworkId::Sepolia).unwrap();
     let written = on_disk(&dir);
-    assert_eq!(written["schemaVersion"], 13);
-    assert!(written.get("accountProvenance").is_none());
+    assert_eq!(
+        written["accountProvenance"],
+        json!({ added.id.clone(): "created" })
+    );
     assert_eq!(
         without(&written, &added.id, &full()["activeAccountId"]),
-        full()
+        at_14(&full(), Some(json!({})))
     );
-    assert_eq!(container_version(&dir), 13);
+    assert_eq!(container_version(&dir), 14);
 }
 
-/// A new wallet is written at `NEW_VAULT_SCHEMA`, 13, created or imported.
+/// A new wallet is written at `NEW_VAULT_SCHEMA`, 14, created or imported.
 #[test]
-fn a_new_wallet_is_written_at_13() {
+fn a_new_wallet_is_written_at_14() {
     let (dir, _clock, core) = core();
     core.create_wallet(PASSWORD.into(), 12).unwrap();
     let (imported, _clock, _core) = common::imported();
     for dir in [&dir, &imported] {
-        let written = on_disk(dir);
-        assert_eq!(written["schemaVersion"], 13);
-        assert!(written.get("accountProvenance").is_none());
-        assert_eq!(container_version(dir), 13);
+        assert_eq!(on_disk(dir)["schemaVersion"], 14);
+        assert_eq!(container_version(dir), 14);
     }
+    // A created wallet's first account is `created`, as the extension's creation records it.
+    let created = on_disk(&dir);
+    let first = created["accounts"][0]["id"].as_str().unwrap();
+    assert_eq!(created["accountProvenance"], json!({ first: "created" }));
 }

@@ -44,7 +44,10 @@ fn the_extensions_sealed_vault_holds_the_payload_the_core_reads_and_writes() {
 #[test]
 fn a_wallet_built_here_seals_the_extensions_payload() {
     let fixture = fixture();
-    let expected = &fixture["payload"];
+    // G4 as the extension's 13→14 step writes it back: a new wallet here is written at 14.
+    let mut expected = fixture["payload"].clone();
+    expected["schemaVersion"] = 14.into();
+    let expected = &expected;
     let (dir, _clock, core) = core();
     core.import_wallet(PASSWORD.into(), text(&fixture["mnemonic"]).into())
         .unwrap();

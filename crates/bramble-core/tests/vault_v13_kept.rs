@@ -16,7 +16,7 @@ use bramble_core::testing::{open_vault, seal_container_vault};
 use bramble_core::{CoreError, NetworkId, PrivacyError, SendError, TransferRequest, WalletCore};
 use common::{core, PASSWORD};
 use serde_json::{json, Value};
-use support::{full, g4, kept_ids, opens, round_trip, text};
+use support::{full, g4, kept_ids, migrated, opens, round_trip, text};
 
 /// A core over a fresh directory holding `payload`, sealed and unlocked.
 fn unlocked(payload: &Value) -> (tempfile::TempDir, Arc<WalletCore>) {
@@ -123,9 +123,15 @@ fn a_write_keeps_everything_kept_and_takes_no_kept_id() {
     let added = core.add_regular_account(NetworkId::Sepolia).unwrap();
     assert_eq!(added.account_index, 2);
     assert_ne!(added.id, kept.seeded);
-    let written = on_disk(&dir);
+    let mut written = on_disk(&dir);
     assert_eq!(written["activeAccountId"], json!(added.id));
-    assert_eq!(without(&written, &added.id, &full["activeAccountId"]), full);
+    // Raised to 14 on unlock, so the added account is recorded as created there.
+    let provenance = written.as_object_mut().unwrap().remove("accountProvenance");
+    assert_eq!(provenance, Some(json!({ added.id.clone(): "created" })));
+    assert_eq!(
+        without(&written, &added.id, &full["activeAccountId"]),
+        migrated(&full)
+    );
 }
 
 /// The vault's active account may be a kept one: then no account is active here until the
@@ -140,7 +146,7 @@ fn an_active_kept_record_leaves_no_account_active() {
     let picked = core.ensure_network_account(NetworkId::Sepolia).unwrap();
     assert_eq!(picked.unwrap().id, text(&g4()["accounts"][5]["id"]));
     let written = on_disk(&dir);
-    let mut expected = full.clone();
+    let mut expected = migrated(&full);
     expected["activeAccountId"] = g4()["accounts"][5]["id"].clone();
     assert_eq!(written, expected);
 }
@@ -172,7 +178,7 @@ fn a_vault_of_kept_records_only_waits_for_discovery_and_keeps_them() {
     let written = on_disk(&dir);
     assert_eq!(
         without(&written, &restored[0].id, &only["activeAccountId"]),
-        only
+        migrated(&only)
     );
 }
 
@@ -207,6 +213,7 @@ fn the_budget_bounds_every_open_and_every_write() {
         core.add_regular_account(NetworkId::Mainnet),
         Err(CoreError::Storage { reason }) if reason == "vault storage limit reached"
     ));
-    assert_eq!(on_disk(&dir), at_capacity);
+    // The unlock raised it to 14; the refused write changed nothing after that.
+    assert_eq!(on_disk(&dir), migrated(&at_capacity));
     assert_eq!(core.all_account_records().unwrap().len(), 6);
 }

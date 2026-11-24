@@ -25,9 +25,9 @@ fn on_disk(dir: &tempfile::TempDir) -> Value {
     serde_json::from_str(&open_vault(&path(dir), PASSWORD).unwrap()).unwrap()
 }
 
-/// Seals `payload` at 13 over the wallet in `dir` and unlocks it again.
+/// Seals `payload` at 14 (a new wallet's schema) over the wallet in `dir` and unlocks it again.
 fn reopened(dir: &tempfile::TempDir, clock: &Arc<FakeClock>, payload: &Value) -> Arc<WalletCore> {
-    seal_container_vault(&path(dir), PASSWORD, 13, &payload.to_string()).unwrap();
+    seal_container_vault(&path(dir), PASSWORD, 14, &payload.to_string()).unwrap();
     let core = open(dir.path(), clock);
     core.unlock(PASSWORD.into()).unwrap();
     core
