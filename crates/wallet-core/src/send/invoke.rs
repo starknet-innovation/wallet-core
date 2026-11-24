@@ -92,7 +92,7 @@ pub struct ReviewedCall {
 
 /// `clampActivitySummary`: at most `MAX_SUMMARY_LENGTH` UTF-16 units, a longer one cut to one
 /// fewer and ended with an ellipsis.
-fn clamp_activity_summary(summary: &str) -> String {
+pub(crate) fn clamp_activity_summary(summary: &str) -> String {
     if summary.encode_utf16().nth(MAX_SUMMARY_LENGTH).is_none() {
         return summary.to_string();
     }

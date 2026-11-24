@@ -34,6 +34,8 @@ pub(super) fn sent() -> ActivityEntry {
         counterparty: Some(CONTACT_SHORT.into()),
         direction: None,
         failure_notice: None,
+        fee_payer: None,
+        user_fee: None,
         fee_paid: None,
         finalized_on_l1: None,
         hash: "0x1".into(),

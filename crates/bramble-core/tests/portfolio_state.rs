@@ -267,6 +267,8 @@ fn history_cadence_and_lane_authority() {
         counterparty: None,
         direction: None,
         failure_notice: None,
+        fee_payer: None,
+        user_fee: None,
         fee_paid: None,
         origin: None,
         submitted_price: None,

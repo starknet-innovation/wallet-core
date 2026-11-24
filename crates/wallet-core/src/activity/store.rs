@@ -27,7 +27,7 @@ use super::observation;
 use crate::felt;
 use crate::history::activity::ActivityKind;
 use crate::history::activity_rules::{
-    is_recorded_token_address, parse_direction, submitted_price, transaction_fee,
+    is_recorded_token_address, parse_direction, submitted_price, transaction_fee, user_fee,
 };
 use crate::host::Storage;
 use crate::js::num::utf16_len;
@@ -60,6 +60,9 @@ pub struct Entry {
     /// `feePaid`, as stored (`transaction_fee` judges it).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fee_paid: Option<serde_json::Value>,
+    /// `feePayer`, as stored: `"sponsor"` only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fee_payer: Option<String>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -84,6 +87,9 @@ pub struct Entry {
     pub token: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub token_address: Option<String>,
+    /// `userFee`, as stored (`user_fee` judges it).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_fee: Option<serde_json::Value>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -210,10 +216,10 @@ fn valid(entry: &Entry, scope: &str) -> bool {
             .fee_paid
             .as_ref()
             .is_none_or(|fee| transaction_fee(fee).is_some())
-        && entry
-            .origin
-            .as_deref()
-            .is_none_or(|origin| origin == "wallet")
+        && [(&entry.fee_payer, "sponsor"), (&entry.origin, "wallet")]
+            .iter()
+            .all(|(field, only)| field.as_deref().is_none_or(|text| text == *only))
+        && entry.user_fee.iter().all(|fee| user_fee(fee).is_some())
         && entry
             .submitted_price
             .as_ref()

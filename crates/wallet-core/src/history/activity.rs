@@ -9,8 +9,9 @@ use serde_json::{json, Map, Value};
 
 use super::activity_rules::{
     activity_token_address, direction_text, fee_json, is_recorded_token_address, parse_direction,
-    price_json, submitted_price, transaction_fee,
+    price_json, submitted_price, transaction_fee, user_fee, user_fee_json,
 };
+pub use super::activity_rules::{FeePayer, UserFee};
 use super::explorer::is_account_id_for_network;
 use crate::activity::store::{kind_text, parse_kind, parse_status, status_text};
 use crate::js::felt::{
@@ -83,6 +84,8 @@ pub struct ActivityEntry {
     /// The fee the receipt reported, read once a row this wallet submitted reached an outcome
     /// with a receipt (`feePaid`). Never an estimate; absent on discovered and older rows.
     pub fee_paid: Option<TransactionFee>,
+    /// `Sponsor` on a row whose network fee someone else paid (`feePayer`).
+    pub fee_payer: Option<FeePayer>,
     pub finalized_on_l1: Option<bool>,
     pub hash: String,
     pub kind: ActivityKind,
@@ -97,6 +100,8 @@ pub struct ActivityEntry {
     pub token: Option<String>,
     /// The canonical address of the token `token` names (issue 643); never without `token`.
     pub token_address: Option<String>,
+    /// The token fee the person signed on a gasless transaction (`userFee`).
+    pub user_fee: Option<UserFee>,
 }
 
 fn optional_detail(value: Option<&String>) -> bool {
@@ -141,6 +146,9 @@ pub fn entry_to_json(entry: &ActivityEntry) -> Value {
     if let Some(fee) = &entry.fee_paid {
         map.insert("feePaid".into(), fee_json(fee));
     }
+    if entry.fee_payer.is_some() {
+        map.insert("feePayer".into(), json!("sponsor"));
+    }
     if let Some(v) = entry.finalized_on_l1 {
         map.insert("finalizedOnL1".into(), json!(v));
     }
@@ -165,6 +173,9 @@ pub fn entry_to_json(entry: &ActivityEntry) -> Value {
     if let Some(v) = &entry.token_address {
         map.insert("tokenAddress".into(), json!(v));
     }
+    if let Some(fee) = &entry.user_fee {
+        map.insert("userFee".into(), user_fee_json(fee));
+    }
     Value::Object(map)
 }
 
@@ -175,13 +186,14 @@ fn safe_count(value: &JsValue) -> Option<u64> {
 
 /// Reads a stored or fixture entry; `None` unless it passes `isActivityEntry`.
 pub fn entry_from_json(value: &JsValue) -> Option<ActivityEntry> {
-    const KEYS: [&str; 18] = [
+    const KEYS: [&str; 20] = [
         "accountId",
         "amount",
         "counterparty",
         "direction",
         "failureNotice",
         "feePaid",
+        "feePayer",
         "finalizedOnL1",
         "hash",
         "kind",
@@ -194,6 +206,7 @@ pub fn entry_from_json(value: &JsValue) -> Option<ActivityEntry> {
         "summary",
         "token",
         "tokenAddress",
+        "userFee",
     ];
     if !value
         .as_object()?
@@ -241,6 +254,11 @@ pub fn entry_from_json(value: &JsValue) -> Option<ActivityEntry> {
             Some(_) => return None,
         },
         fee_paid,
+        fee_payer: match optional_text("feePayer")?.as_deref() {
+            None => None,
+            Some("sponsor") => Some(FeePayer::Sponsor),
+            Some(_) => return None,
+        },
         finalized_on_l1: match value.get("finalizedOnL1") {
             None => None,
             Some(JsValue::Bool(b)) => Some(*b),
@@ -264,6 +282,10 @@ pub fn entry_from_json(value: &JsValue) -> Option<ActivityEntry> {
         summary: text("summary")?,
         token: optional_text("token")?,
         token_address: optional_text("tokenAddress")?,
+        user_fee: match value.get("userFee") {
+            None => None,
+            Some(_) => Some(user_fee(&nested("userFee")?)?),
+        },
     };
     is_activity_entry(&entry).then_some(entry)
 }
@@ -304,6 +326,8 @@ pub fn on_chain_activity_entry(
             TransferDirection::Out
         }),
         failure_notice: None,
+        fee_payer: None,
+        user_fee: None,
         fee_paid: None,
         finalized_on_l1: None,
         hash: decoded.hash.clone(),

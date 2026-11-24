@@ -37,12 +37,7 @@ use serde_json::{json, Value};
 
 /// The signed fee a submission records (`GaslessSubmission.userFee`): the base units in the
 /// signed transfer as decimal digits, which may be below the reviewed maximum.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UserFee {
-    pub amount: String,
-    pub token: String,
-    pub token_address: String,
-}
+pub use crate::history::activity::UserFee;
 
 /// `GaslessSubmission`.
 #[derive(Debug, Clone, PartialEq, Eq)]

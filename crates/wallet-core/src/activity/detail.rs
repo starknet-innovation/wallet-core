@@ -17,14 +17,18 @@ use crate::portfolio::model::DisplayCurrency;
 use crate::portfolio::prices::PriceView;
 use crate::send::calls::format_token_amount;
 use crate::send::fees::format_fri;
+use crate::send::invoke::clamp_activity_summary;
 use crate::send::judge::TxStatus;
 use crate::send::u256::U256;
 use crate::Felt;
 
-// `wantsFee`: only this wallet's rows (a receipt's fee is its sender's), only once (a recorded
-// fee is final), and only after an outcome the chain executed, which has a receipt.
+// `wantsFee`: only this wallet's rows (a receipt's fee is its sender's), never a sponsored or
+// gasless row (the receipt's STRK is the sponsor's or the relayer's), only once (a recorded fee
+// is final), and only after an outcome the chain executed, which has a receipt.
 fn wants_fee(entry: &Entry) -> bool {
     entry.origin.as_deref() == Some("wallet")
+        && entry.fee_payer.is_none()
+        && entry.user_fee.is_none()
         && entry.fee_paid.is_none()
         && [TxStatus::Accepted, TxStatus::Reverted]
             .iter()
@@ -90,15 +94,41 @@ pub fn submitted_price(entry: &Entry, view: &PriceView) -> Option<SubmittedPrice
     })
 }
 
-/// `activityFeeText` for the rows this core records: the receipt's fee in its own unit, STRK to
-/// six places (`formatFri`), ETH in full. `None` when the row holds no fee.
-pub fn fee_text(entry: &ActivityEntry) -> Option<String> {
+/// What an expanded row shows for a fee someone else paid (`portfolio.activity.sponsored`).
+pub const SPONSORED: &str = "Sponsored";
+
+/// `activityFeeText`: "Sponsored" when someone else paid, the signed token fee of a gasless row
+/// at its token's decimals (`decimals_of` the fee token's address on the row's network, from the
+/// wallet's own tokens; an unknown scale shows nothing rather than a guess), or the receipt's fee
+/// in its own unit, STRK to six places (`formatFri`), ETH in full. `None` when the row holds no
+/// fee.
+pub fn fee_text(entry: &ActivityEntry, decimals_of: impl Fn(&str) -> Option<u8>) -> Option<String> {
+    if entry.fee_payer.is_some() {
+        return Some(SPONSORED.into());
+    }
+    if let Some(fee) = &entry.user_fee {
+        let decimals = decimals_of(&fee.token_address)?;
+        let raw = U256::from_decimal(&fee.amount)?;
+        return Some(format!(
+            "{} {}",
+            format_token_amount(&raw, decimals),
+            fee.token
+        ));
+    }
     let fee = entry.fee_paid.as_ref()?;
     let raw = U256::from_decimal(&parse_bigint(&fee.amount)?.magnitude.to_decimal())?;
     Some(match fee.unit {
         FeeUnit::Fri => format_fri(&raw),
         FeeUnit::Wei => format!("{} ETH", format_token_amount(&raw, 18)),
     })
+}
+
+/// `gaslessFeeSummary`: a gasless send's activity summary, `base` with the fee signed in the
+/// token (`amount` base units at `decimals`), so two sends with different fees do not read alike;
+/// clamped as every summary is.
+pub fn gasless_fee_summary(base: &str, amount: &U256, decimals: u8, token: &str) -> String {
+    let shown = format!("{} {token}", format_token_amount(amount, decimals));
+    clamp_activity_summary(&format!("{base} (network fee {shown})"))
 }
 
 /// The amount at the captured unit price, and the currency it was priced in: the figure behind
@@ -120,3 +150,7 @@ pub fn submitted_value(entry: &ActivityEntry) -> Option<(f64, DisplayCurrency)> 
 pub fn submitted_value_text(entry: &ActivityEntry) -> Option<String> {
     submitted_value(entry).map(|(value, currency)| format_fiat(value, currency))
 }
+
+#[cfg(test)]
+#[path = "detail_tests.rs"]
+mod tests;

@@ -36,6 +36,8 @@ fn loose_entry(v: &JsValue) -> ActivityEntry {
             _ => None,
         },
         failure_notice: None,
+        fee_payer: None,
+        user_fee: None,
         fee_paid: None,
         origin: None,
         submitted_price: None,

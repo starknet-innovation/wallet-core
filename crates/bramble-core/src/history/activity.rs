@@ -2,8 +2,8 @@
 //! `isActivityEntry`, `onChainActivityEntry` and `mergeActivity`): the UniFFI shapes.
 
 pub use wallet_core::history::activity::{
-    ActivityEntry, ActivityKind, ActivityOrigin, FailureNotice, FeeUnit, SubmittedPrice,
-    TransactionFee, TransferDirection, TxStatus,
+    ActivityEntry, ActivityKind, ActivityOrigin, FailureNotice, FeePayer, FeeUnit, SubmittedPrice,
+    TransactionFee, TransferDirection, TxStatus, UserFee,
 };
 
 use crate::networks::NetworkId;
@@ -62,6 +62,9 @@ pub struct ActivityEntry {
     /// receipt. Absent on discovered and older rows: never an estimate.
     #[uniffi(default = None)]
     pub fee_paid: Option<TransactionFee>,
+    /// `Sponsor` when someone else paid the network fee; such a row never takes a receipt fee.
+    #[uniffi(default = None)]
+    pub fee_payer: Option<FeePayer>,
     pub finalized_on_l1: Option<bool>,
     pub hash: String,
     pub kind: ActivityKind,
@@ -79,13 +82,49 @@ pub struct ActivityEntry {
     /// The canonical address of the token `token` names (issue 643); never without `token`.
     #[uniffi(default = None)]
     pub token_address: Option<String>,
+    /// The fee signed in a token on a gasless transaction; such a row never takes a receipt fee.
+    #[uniffi(default = None)]
+    pub user_fee: Option<UserFee>,
 }
 
-/// `activityFeeText`: the expanded row's "Network fee", the receipt's fee in its own unit; `None`
-/// when the row holds none.
+/// Who paid a row's network fee when the account did not (`feePayer`).
+#[uniffi::remote(Enum)]
+pub enum FeePayer {
+    Sponsor,
+}
+
+/// The fee a gasless transaction signed in a token (`userFee`): `amount` base units as decimal
+/// digits of the token `token` names at `token_address`.
+#[uniffi::remote(Record)]
+pub struct UserFee {
+    pub amount: String,
+    pub token: String,
+    pub token_address: String,
+}
+
+/// `activityFeeText`: the expanded row's "Network fee": "Sponsored" when someone else paid, the
+/// fee a gasless row signed in a token, or the receipt's fee in its own unit; `None` when the row
+/// holds none, or a gasless fee's token is one the wallet has no decimals for. The decimals come
+/// from Bramble's catalog for the row's network: its bundled tokens, then the curated registry
+/// the gasless offers are drawn from.
 #[uniffi::export]
 pub fn activity_fee_text(entry: ActivityEntry) -> Option<String> {
-    wallet_core::activity::detail::fee_text(&entry)
+    let network = entry.network;
+    wallet_core::activity::detail::fee_text(&entry, |address| {
+        let wanted = wallet_core::felt::parse(address)?;
+        let same = |candidate: &str| wallet_core::felt::parse(candidate) == Some(wanted);
+        let bundled = crate::networks::info(network)
+            .tokens
+            .iter()
+            .find(|token| same(&token.address))
+            .map(|token| token.decimals);
+        bundled.or_else(|| {
+            crate::portfolio::registry::known_tokens(network)
+                .into_iter()
+                .find(|token| same(&token.address))
+                .map(|token| token.decimals)
+        })
+    })
 }
 
 /// The expanded row's "Value at submission": the amount at the price captured when it was sent,
@@ -122,6 +161,8 @@ mod tests {
             counterparty: None,
             direction: None,
             failure_notice: None,
+            fee_payer: None,
+            user_fee: None,
             fee_paid: None,
             finalized_on_l1: None,
             hash: "0xabc".into(),
