@@ -291,12 +291,8 @@ fn judge_fails_closed_on_another_node_error() {
 
 #[test]
 fn selector_is_starknet_keccak() {
-    use sha3::{Digest, Keccak256};
-    let mut digest: [u8; 32] = Keccak256::digest(b"domain_to_address").into();
-    digest[0] &= 0x03; // keep 250 bits
-    let hex: String = digest.iter().map(|b| format!("{b:02x}")).collect();
     assert_eq!(
-        format!("0x{}", hex.trim_start_matches('0')),
+        crate::felt::canonical(&crate::kms::selector("domain_to_address")),
         DOMAIN_TO_ADDRESS_SELECTOR
     );
 }

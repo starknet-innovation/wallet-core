@@ -4,10 +4,8 @@
 //! extension's `submitErc20Transfer` is `submitInvokeTransaction` with one call), and a scripted
 //! node drives a multicall, its refusals and its failures.
 
-mod multisig_support;
 mod plan_support;
 
-use multisig_support::TestPrimitives;
 use plan_support::node::*;
 use plan_support::*;
 use serde_json::{json, Value};
@@ -15,7 +13,6 @@ use starknet_wallet_core::allowances::calls::ChangeKind;
 use starknet_wallet_core::catalog::TokenInfo;
 use starknet_wallet_core::send::call_decode::Known;
 use starknet_wallet_core::send::calls::Call;
-use starknet_wallet_core::send::multisig_invoke::StarkPrimitives;
 use starknet_wallet_core::send::multisig_review::CallReviewError;
 use starknet_wallet_core::send::plan::{
     Account, Authorization, Invoke, InvokeRefusal, Kind, PendingKind, Plan, Policy,
@@ -25,7 +22,7 @@ use starknet_wallet_core::send::types::{
     FeeAffordability, SendError, SendFailureCode as Code, SendStep, StepReply,
 };
 use starknet_wallet_core::send::u256::U256;
-use starknet_wallet_core::{felt, Felt, NetworkId};
+use starknet_wallet_core::{felt, kms, Felt, NetworkId};
 
 /// 1.5 STRK in base units.
 const AMOUNT: u128 = 1_500_000_000_000_000_000;
@@ -49,13 +46,7 @@ fn invoke(account: &Account, calls: Vec<Call>, trusted: &[Felt]) -> Result<Invok
         trusted,
         ..ReviewContext::default()
     };
-    Invoke::reviewed(
-        account,
-        calls,
-        &bramble_core::SEND_POLICY,
-        &context,
-        &TestPrimitives::new(),
-    )
+    Invoke::reviewed(account, calls, &bramble_core::SEND_POLICY, &context)
 }
 
 fn call(contract: &str, entrypoint: &str, calldata: Vec<Felt>) -> Call {
@@ -151,8 +142,7 @@ fn a_multicall_signs_and_submits_every_call() {
     let write = run_until(&mut plan, &host, &mut node, step, |_, is_write| is_write);
     let (id, method, params, _) = parts(&write);
     assert_eq!(method, "starknet_addInvokeTransaction");
-    let primitives = TestPrimitives::new();
-    let selector = |name: &str| felt::canonical(&primitives.selector(name).unwrap());
+    let selector = |name: &str| felt::canonical(&kms::selector(name));
     let expected = json!([
         "0x2",
         STRK,

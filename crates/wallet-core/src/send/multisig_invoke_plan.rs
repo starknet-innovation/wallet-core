@@ -17,7 +17,7 @@ use super::judge::{self, Answer, ChainAnswer, EstimateAnswer, WriteAnswer};
 use super::multisig_intent::{IntentState, SigningIntent};
 use super::multisig_invoke::{
     execute_calldata, input_felt, normalize_calls, query_signature, signature_felts, MultisigCall,
-    MultisigInvokeError, PreparedInvoke, StarkPrimitives, MAX_EXECUTE_CALLDATA_FELTS,
+    MultisigInvokeError, PreparedInvoke, MAX_EXECUTE_CALLDATA_FELTS,
 };
 use super::multisig_review::require_safe_calls;
 use super::rpc_bodies::{self, InvokeTx};
@@ -181,7 +181,6 @@ impl ProposePlan {
         config: &ArgentMultisigConfig,
         class: &ArgentMultisigClass,
         overhead: Overhead,
-        primitives: &dyn StarkPrimitives,
     ) -> Result<Self, MultisigInvokeError> {
         let network = NetworkId::from_catalog_id(&record.network_id)
             .filter(|_| record.account_contract_type == "argent-multisig")
@@ -194,8 +193,7 @@ impl ProposePlan {
         let calls = normalize_calls(calls)?;
         require_safe_calls(&record.address, &calls, class)
             .map_err(|_| MultisigInvokeError::UnsafeCalls)?;
-        let calldata =
-            execute_calldata(&calls, primitives).ok_or(MultisigInvokeError::InvalidCalls)?;
+        let calldata = execute_calldata(&calls).ok_or(MultisigInvokeError::InvalidCalls)?;
         if calldata.len() > MAX_EXECUTE_CALLDATA_FELTS {
             return Err(MultisigInvokeError::CalldataLength);
         }
@@ -310,18 +308,17 @@ impl SubmitPlan {
         config: &ArgentMultisigConfig,
         class: &ArgentMultisigClass,
         max_summary_length: usize,
-        primitives: &dyn StarkPrimitives,
     ) -> Result<Self, MultisigInvokeError> {
         let prepared = &intent.prepared;
         let (network, sender, calldata, nonce, bounds) = prepared
-            .checked(primitives)
+            .checked()
             .ok_or(MultisigInvokeError::InvalidPrepared)?;
         let signature = signature_felts(&intent.signatures, config, class)?;
         let submittable = matches!(
             intent.state,
             IntentState::Ready | IntentState::Stale | IntentState::Submitted
         );
-        if !submittable || !intent.is_valid(class, max_summary_length, primitives) {
+        if !submittable || !intent.is_valid(class, max_summary_length) {
             return Err(MultisigInvokeError::InvalidIntent);
         }
         let hash =

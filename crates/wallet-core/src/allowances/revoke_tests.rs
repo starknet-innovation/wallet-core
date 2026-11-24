@@ -12,26 +12,9 @@ use crate::send::call_decode::Known;
 use crate::send::calls::Call;
 use crate::send::fees::Headroom;
 use crate::send::invoke::{Invoke, InvokeRefusal};
-use crate::send::multisig_invoke::StarkPrimitives;
 use crate::send::review_flags::ReviewContext;
 use crate::send::types::{Account, Authorization, Policy};
 use crate::{Felt, NetworkId};
-
-/// Test-only: the selector is sha3's Keccak (a dev-dependency); nothing here verifies.
-struct Keccak;
-
-impl StarkPrimitives for Keccak {
-    fn selector(&self, entrypoint: &str) -> Option<Felt> {
-        use sha3::{Digest, Keccak256};
-        let mut digest: [u8; 32] = Keccak256::digest(entrypoint.as_bytes()).into();
-        digest[0] &= 0x03;
-        Some(Felt::from_bytes_be(&digest))
-    }
-
-    fn verify(&self, _: &Felt, _: &Felt, _: &Felt, _: &Felt) -> bool {
-        false
-    }
-}
 
 /// Bramble's `INVOKE_LIMITS` numbers, as `SEND_POLICY` sets them.
 const POLICY: Policy = Policy {
@@ -81,7 +64,7 @@ pub(super) fn build(
     known: &Known,
     readings: &[AllowanceReading],
 ) -> Result<Invoke, RevokeRefusal> {
-    target.invoke(&account(), &context(known), readings, &POLICY, &Keccak)
+    target.invoke(&account(), &context(known), readings, &POLICY)
 }
 
 /// What the wallet knows on the account's network: here only its trusted lists.
@@ -281,13 +264,7 @@ fn a_revoke_is_reviewed_without_the_hosts_pinned_contracts() {
         ..context(&lists.known())
     };
     let invoke = target
-        .invoke(
-            &account(),
-            &context,
-            &[reading(&row.id, "5")],
-            &POLICY,
-            &Keccak,
-        )
+        .invoke(&account(), &context, &[reading(&row.id, "5")], &POLICY)
         .unwrap();
     let codes: Vec<_> = invoke.flags().iter().map(|flag| flag.code()).collect();
     assert_eq!(codes, ["unknown-contract"]);
@@ -305,7 +282,7 @@ fn a_target_is_built_only_for_the_account_and_network_it_was_resolved_for() {
         account_on(NetworkId::Mainnet, other),
     ] {
         assert_eq!(
-            target.invoke(&account, &context(&known), &[], &POLICY, &Keccak),
+            target.invoke(&account, &context(&known), &[], &POLICY),
             Err(RevokeRefusal::OtherAccount)
         );
     }
@@ -326,7 +303,7 @@ fn the_batch_review_still_applies() {
         ..POLICY
     };
     assert_eq!(
-        target.invoke(&account(), &context(&lists.known()), &[], &strict, &Keccak),
+        target.invoke(&account(), &context(&lists.known()), &[], &strict),
         Err(RevokeRefusal::Invoke(InvokeRefusal::TooManyCalls))
     );
 }

@@ -12,7 +12,8 @@ use crate::js::json::JsValue;
 use crate::send::u256::U256;
 use crate::NetworkId;
 
-/// `APPROVAL_EVENT_KEY = hash.getSelectorFromName("Approval")`; Keccak-checked in the tests.
+/// `APPROVAL_EVENT_KEY = hash.getSelectorFromName("Approval")`; checked by `kms::selector`
+/// in the tests.
 pub const APPROVAL_EVENT_KEY: &str =
     "0x134692b230b9e1ffa39098904722134159652b09c5bc41d88d6698779d228ff";
 

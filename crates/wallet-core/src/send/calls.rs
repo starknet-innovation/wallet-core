@@ -33,7 +33,7 @@ pub enum SendAmountError {
 /// JavaScript `trim` and `shortAddress`, re-exported from `js` so existing callers keep their path.
 pub use crate::js::num::{js_trim, short_label};
 
-/// `starknet_keccak("transfer")`, checked against a Keccak implementation in the tests and
+/// `starknet_keccak("transfer")`, checked against `kms::selector` in the tests and
 /// against starknet.js `getSelectorFromName` by the fixture.
 pub const TRANSFER_SELECTOR: &str =
     "0x83afd3f4caedc6eebf44246fe54e38c95e3179a5ec9ea81740eca5b482d12e";
@@ -124,20 +124,17 @@ pub fn erc20_approve(token: Felt, spender: Felt, amount: U256) -> Call {
 /// `transaction.getExecuteCalldata(calls, "1")`: the account `__execute__` calldata, the count
 /// then each call's contract, selector, calldata length and calldata. Every family this wallet
 /// signs for takes this one encoding (the extension builds every account with `cairoVersion:
-/// "1"`, `krustyAccount` in `rpc/account-signer.ts`). `None` when `selector` cannot name an
-/// entrypoint.
-pub fn execute_calldata(
-    calls: &[Call],
-    selector: impl Fn(&str) -> Option<Felt>,
-) -> Option<Vec<Felt>> {
+/// "1"`, `krustyAccount` in `rpc/account-signer.ts`). Selectors are Krusty's (`kms::selector`);
+/// the entrypoint grammar is the caller's check.
+pub fn execute_calldata(calls: &[Call]) -> Vec<Felt> {
     let mut out = vec![Felt::from(calls.len() as u64)];
     for call in calls {
         out.push(call.contract_address);
-        out.push(selector(&call.entrypoint)?);
+        out.push(crate::kms::selector(&call.entrypoint));
         out.push(Felt::from(call.calldata.len() as u64));
         out.extend_from_slice(&call.calldata);
     }
-    Some(out)
+    out
 }
 
 /// `transaction.getExecuteCalldata([transfer(recipient, amount)], "1")`: the Cairo-1 account
@@ -156,9 +153,7 @@ pub fn transfer_execute_calldata(
         entrypoint: "transfer".into(),
         calldata: vec![*recipient, u128_felt(amount.low), u128_felt(amount.high)],
     };
-    execute_calldata(std::slice::from_ref(&call), |_| {
-        Felt::from_hex(TRANSFER_SELECTOR).ok()
-    })
+    Some(execute_calldata(std::slice::from_ref(&call)))
 }
 
 /// The verifier's transfer summary: `Send <formatTokenAmount> <SYMBOL> to <shortAddress>`.
@@ -236,12 +231,8 @@ mod tests {
 
     #[test]
     fn selector_is_starknet_keccak() {
-        use sha3::{Digest, Keccak256};
-        let mut digest: [u8; 32] = Keccak256::digest(b"transfer").into();
-        digest[0] &= 0x03;
-        let hex: String = digest.iter().map(|b| format!("{b:02x}")).collect();
         assert_eq!(
-            format!("0x{}", hex.trim_start_matches('0')),
+            crate::felt::canonical(&crate::kms::selector("transfer")),
             TRANSFER_SELECTOR
         );
     }

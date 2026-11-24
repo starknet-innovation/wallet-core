@@ -5,7 +5,7 @@
 
 use super::calls::StakingAction;
 use super::prepare::{PrepareInput, StakingPreparation};
-use super::prepare_tests::{account, act_in, Keccak, SEND};
+use super::prepare_tests::{account, act_in, SEND};
 use super::test_chain::*;
 use crate::allowances::calls::{AllowanceChange, ChangeKind};
 use crate::allowances::record::AllowanceInput;
@@ -136,14 +136,8 @@ fn the_verified_pool_is_pinned_for_the_review() {
     let stake = prepared(&mut chain(), StakingAction::Stake, Some("5"), &review);
     assert_eq!(codes(&stake.invoke), Vec::<&str>::new());
     // The same calls reviewed without the pin warn about the pool.
-    let unpinned = Invoke::reviewed(
-        &account(),
-        stake.invoke.calls.clone(),
-        &SEND,
-        &review,
-        &Keccak,
-    )
-    .unwrap();
+    let unpinned =
+        Invoke::reviewed(&account(), stake.invoke.calls.clone(), &SEND, &review).unwrap();
     assert_eq!(
         unpinned.flags(),
         [&RiskFlag::UnknownContract {

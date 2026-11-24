@@ -18,7 +18,7 @@ fn judge_with(status: u16, body: &str, send: &Policy) -> Result<SwapPreparation,
         known: known(&tokens),
         ..ReviewContext::default()
     };
-    build.judge(&outcome(status, body), &context, send, &Keccak)
+    build.judge(&outcome(status, body), &context, send)
 }
 
 fn judge(body: &str) -> Result<SwapPreparation, SwapRefusal> {
@@ -296,7 +296,7 @@ fn the_pinned_router_raises_no_unknown_contract_flag() {
         ..ReviewContext::default()
     };
     let calls = vec![approve_router(), route_call()];
-    let invoke = Invoke::reviewed(&account(), calls, &SEND_POLICY, &unpinned, &Keccak).unwrap();
+    let invoke = Invoke::reviewed(&account(), calls, &SEND_POLICY, &unpinned).unwrap();
     let codes: Vec<_> = invoke.flags().iter().map(|flag| flag.code()).collect();
     assert_eq!(codes, ["unknown-contract"]);
 }
@@ -318,12 +318,7 @@ fn a_payee_that_mimics_a_trusted_address_is_refused() {
     };
     let judge = |calls: &[Call]| {
         let (build, _) = prepared(None).unwrap();
-        build.judge(
-            &outcome(200, &build_reply(calls)),
-            &context,
-            &SEND_POLICY,
-            &Keccak,
-        )
+        build.judge(&outcome(200, &build_reply(calls)), &context, &SEND_POLICY)
     };
     let route = Route {
         beneficiary: felt(mimic),

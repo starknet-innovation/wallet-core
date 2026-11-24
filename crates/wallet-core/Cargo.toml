@@ -13,7 +13,7 @@ categories = ["cryptography::cryptocurrencies"]
 
 [dependencies]
 # Wallet cryptography. Pinned exactly; `parallel` (rayon) only serves proof generation.
-krusty-kms = { version = "=3.1.0", default-features = false }
+krusty-kms = { version = "=3.2.0", default-features = false }
 krusty-kms-common = { version = "=3.0.0" }
 starknet-types-core = { version = "=0.2.4", features = ["hash", "curve"] }
 # Vault envelope: the extension's EncryptedEnvelope v3 (PBKDF2-SHA-256 -> AES-256-GCM).
@@ -26,10 +26,6 @@ serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = { version = "=1.0.154" }
 thiserror = { version = "=2.0.21" }
 zeroize = { version = "=1.9.1", features = ["derive"] }
-
-[dev-dependencies]
-# Checks the selector constants are starknet_keccak of their names; already in the lockfile.
-sha3 = { version = "=0.12.0" }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 # OS entropy through `crypto.getRandomValues`; see .cargo/config.toml for the backend cfg.

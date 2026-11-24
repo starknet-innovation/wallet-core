@@ -1,9 +1,6 @@
 //! Shared by the multisig proposal tests: `extension-multisig-transactions.json`, Bramble's
-//! pinned class, the published phrase's OpenZeppelin keys, and test-only stand-ins for the two
-//! primitives Krusty 3.1.0 lacks (`StarkPrimitives`). The stand-ins are not production code:
-//! the selector is sha3's Keccak (a dev-dependency), and "verification" re-signs with the
-//! phrase's own keys, which only works because RFC-6979 signing is deterministic and every
-//! signer here is one of those keys.
+//! pinned class and the published phrase's OpenZeppelin keys. Selectors and signature checks are
+//! Krusty's own (`kms`), so every signature here, the extension's included, is verified for real.
 #![allow(dead_code)] // Each multisig suite reads a different subset.
 
 use bramble_core::catalogs::multisig;
@@ -11,10 +8,9 @@ use serde_json::{json, Value};
 use starknet_wallet_core::accounts::multisig::{ArgentMultisigClass, ArgentMultisigConfig};
 use starknet_wallet_core::accounts::multisig_records::Record;
 use starknet_wallet_core::accounts::{AccountFamily, Ladder};
-use starknet_wallet_core::send::multisig_invoke::StarkPrimitives;
 use starknet_wallet_core::send::multisig_invoke_plan::MultisigStep;
 use starknet_wallet_core::send::types::StepReply;
-use starknet_wallet_core::{account_keypair, felt, sign_stark_hash, Felt, SecretFelt};
+use starknet_wallet_core::{account_keypair, SecretFelt};
 
 pub fn fixture() -> Value {
     let path = format!(
@@ -55,41 +51,6 @@ pub fn signer(index: u32) -> (SecretFelt, String) {
     let ladder = Ladder::vendor(AccountFamily::OpenZeppelin);
     let (pair, _) = account_keypair(&phrase, None, ladder, index).unwrap();
     (pair.private_key, pair.public_key_x)
-}
-
-/// Test-only primitives: Keccak selectors, and verification by re-signing with the phrase's
-/// accounts 0..=4.
-pub struct TestPrimitives {
-    keys: Vec<(Felt, SecretFelt)>,
-}
-
-impl TestPrimitives {
-    pub fn new() -> Self {
-        let keys = (0..=4)
-            .map(|index| {
-                let (key, public) = signer(index);
-                (felt::parse(&public).unwrap(), key)
-            })
-            .collect();
-        Self { keys }
-    }
-}
-
-impl StarkPrimitives for TestPrimitives {
-    fn selector(&self, entrypoint: &str) -> Option<Felt> {
-        use sha3::{Digest, Keccak256};
-        let mut digest: [u8; 32] = Keccak256::digest(entrypoint.as_bytes()).into();
-        digest[0] &= 0x03;
-        Some(Felt::from_bytes_be(&digest))
-    }
-
-    fn verify(&self, hash: &Felt, public_key: &Felt, r: &Felt, s: &Felt) -> bool {
-        let Some((_, key)) = self.keys.iter().find(|(public, _)| public == public_key) else {
-            return false;
-        };
-        let signed = sign_stark_hash(key, &felt::canonical(hash)).unwrap();
-        felt::parse(&signed.r) == Some(*r) && felt::parse(&signed.s) == Some(*s)
-    }
 }
 
 pub fn rpc_reply(id: u64, recorded: &Value) -> StepReply {

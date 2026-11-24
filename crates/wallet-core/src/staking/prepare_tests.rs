@@ -13,26 +13,9 @@ use crate::send::call_decode::Known;
 use crate::send::calls::Call;
 use crate::send::fees::Headroom;
 use crate::send::invoke::{ActivityAsset, InvokeRefusal};
-use crate::send::multisig_invoke::StarkPrimitives;
 use crate::send::review_flags::ReviewContext;
 use crate::send::types::{Account, Authorization, Policy};
 use crate::{Felt, NetworkId};
-
-/// Test-only: the selector is sha3's Keccak (a dev-dependency); nothing here verifies.
-pub(super) struct Keccak;
-
-impl StarkPrimitives for Keccak {
-    fn selector(&self, entrypoint: &str) -> Option<Felt> {
-        use sha3::{Digest, Keccak256};
-        let mut digest: [u8; 32] = Keccak256::digest(entrypoint.as_bytes()).into();
-        digest[0] &= 0x03;
-        Some(Felt::from_bytes_be(&digest))
-    }
-
-    fn verify(&self, _: &Felt, _: &Felt, _: &Felt, _: &Felt) -> bool {
-        false
-    }
-}
 
 /// Bramble's `SEND_POLICY` numbers.
 pub(super) const SEND: Policy = Policy {
@@ -111,7 +94,6 @@ fn context<'a>(
         now: NOW,
         policy,
         review: &NOTHING_KNOWN,
-        primitives: &Keccak,
     }
 }
 

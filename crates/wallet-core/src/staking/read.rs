@@ -30,7 +30,7 @@ use crate::portfolio::wire::{classify, rpc_call, Reply, RpcReply, RpcRequest};
 use crate::send::judge;
 use crate::{felt, Felt, NetworkId};
 
-/// `starknet_keccak` of each entrypoint read; Keccak-checked in the tests.
+/// `starknet_keccak` of each entrypoint read; checked against `kms::selector` in the tests.
 pub const GET_ACTIVE_TOKENS: &str =
     "0x3f3cf5e475189c2cec4d370647dc1c1e0ef821e68b827a66c21b3ceb538db4d";
 pub const CONTRACT_PARAMETERS_V1: &str =

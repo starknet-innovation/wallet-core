@@ -13,13 +13,9 @@
 //! flags `verifyCalls` raises on it (`review_flags`), and the builder may name the activity row's
 //! text as the extension's callers do (a swap's or a stake's line, a dapp's "<origin> submitted N
 //! calls"), cut as the activity log cuts it.
-//!
-//! Krusty 3.1.0 has no selector (`starknet_keccak` of an entrypoint name), so, as for a multisig,
-//! the caller lends one through `multisig_invoke::StarkPrimitives`.
 
 use super::call_decode::{decode_call, CallKind};
 use super::calls::{execute_calldata, Call};
-use super::multisig_invoke::StarkPrimitives;
 use super::multisig_review::{batch_line, refuse_poisoned, CallReviewError};
 use super::plan::PendingKind;
 use super::review_flags::{call_flags, dedupe, ReviewContext, RiskFlag};
@@ -50,8 +46,7 @@ pub enum InvokeRefusal {
     /// A call with more calldata than the wallet's `Policy::max_call_calldata_felts`.
     #[error("calldata too long")]
     CalldataTooLong,
-    /// A zero contract, an entrypoint outside the grammar, or one the selector primitive could
-    /// not name.
+    /// A zero contract or an entrypoint outside the grammar.
     #[error("invalid call")]
     InvalidCall,
     /// The call review refused the batch.
@@ -164,7 +159,6 @@ impl Invoke {
         calls: Vec<Call>,
         policy: &Policy,
         context: &ReviewContext,
-        primitives: &dyn StarkPrimitives,
     ) -> Result<Self, InvokeRefusal> {
         check(&account.address, &calls, policy)?;
         refuse_poisoned(&account.address, &calls, context.trusted)?;
@@ -182,8 +176,7 @@ impl Invoke {
         let flags = call_flags(&calls, &decoded, account, context);
         let summaries: Vec<&str> = decoded.iter().map(|call| call.summary.as_str()).collect();
         let summary = batch_line(&summaries, MAX_SUMMARY_LENGTH, "");
-        let calldata = execute_calldata(&calls, |entrypoint| primitives.selector(entrypoint))
-            .ok_or(InvokeRefusal::InvalidCall)?;
+        let calldata = execute_calldata(&calls);
         let reviewed = decoded
             .into_iter()
             .zip(flags)

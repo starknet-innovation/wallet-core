@@ -11,22 +11,6 @@ use crate::send::review_flags::{ReviewContext, RiskFlag};
 use crate::send::types::Authorization;
 use crate::send::u256::U256;
 
-/// Test-only: the selector is sha3's Keccak (a dev-dependency); nothing here verifies.
-struct Keccak;
-
-impl StarkPrimitives for Keccak {
-    fn selector(&self, entrypoint: &str) -> Option<Felt> {
-        use sha3::{Digest, Keccak256};
-        let mut digest: [u8; 32] = Keccak256::digest(entrypoint.as_bytes()).into();
-        digest[0] &= 0x03;
-        Some(Felt::from_bytes_be(&digest))
-    }
-
-    fn verify(&self, _: &Felt, _: &Felt, _: &Felt, _: &Felt) -> bool {
-        false
-    }
-}
-
 // `verify.test.ts`'s account, token and contact.
 const ACCOUNT: &str = "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcde";
 const ETH: &str = "0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7";
@@ -86,7 +70,7 @@ fn invoke(calls: Vec<Call>) -> Result<Invoke, InvokeRefusal> {
         trusted: &trusted,
         ..ReviewContext::default()
     };
-    Invoke::reviewed(&account(), calls, &POLICY, &context, &Keccak)
+    Invoke::reviewed(&account(), calls, &POLICY, &context)
 }
 
 #[test]
@@ -111,7 +95,7 @@ fn one_transfer_call_is_the_transfer_calldata() {
         transfer_execute_calldata(&felt(ETH), &recipient, &amount)
     );
     assert_eq!(
-        Keccak.selector("transfer"),
+        Some(crate::kms::selector("transfer")),
         Felt::from_hex(TRANSFER_SELECTOR).ok()
     );
     assert_eq!(batch.summary, "Send 1.5 ETH to 0x3fa7…41a3");
@@ -124,7 +108,7 @@ fn a_batch_compiles_every_call_in_order() {
         call("0x123456789abcdef1122", "upgrade", &["0x1"]),
     ])
     .unwrap();
-    let selector = |name: &str| Keccak.selector(name).unwrap();
+    let selector = |name: &str| crate::kms::selector(name);
     let expected = vec![
         Felt::from(2u8),
         felt(ETH),
@@ -350,14 +334,7 @@ fn the_whole_context_reaches_the_flags() {
         token_contracts: &contracts,
         standing: &[],
     };
-    let batch = Invoke::reviewed(
-        &account(),
-        transfer_then_approve(),
-        &POLICY,
-        &context,
-        &Keccak,
-    )
-    .unwrap();
+    let batch = Invoke::reviewed(&account(), transfer_then_approve(), &POLICY, &context).unwrap();
     assert_eq!(
         batch.flags(),
         [
@@ -381,7 +358,7 @@ fn the_whole_context_reaches_the_flags() {
         ..context
     };
     assert_eq!(
-        Invoke::reviewed(&account(), poisoned, &POLICY, &context, &Keccak),
+        Invoke::reviewed(&account(), poisoned, &POLICY, &context),
         Err(InvokeRefusal::Review(CallReviewError::PoisonedRecipient))
     );
 }
