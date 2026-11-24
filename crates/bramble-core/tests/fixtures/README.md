@@ -109,8 +109,10 @@ summaries, the review flags, a multicall on the wire and the batches refused up 
 `extension-allowances.jsonl` (`allowances_parity.rs`; its `log` and `recording` blocks
 `allowances_log_parity.rs`, its `scan` and `tracked` transcripts `allowances_scan_parity.rs`),
 `extension-swap.jsonl` (`swap_parity.rs`; an accepted build's `executed` reply is the extension's
-submit, which no test reads) and `extension-staking.jsonl` (`staking_parity.rs`, and its `action`
-block `staking_action_parity.rs`).
+submit, which no test reads), `extension-staking.jsonl` (`staking_parity.rs`, and its `action`
+block `staking_action_parity.rs`), and `vault-v13-full.json`, `vault-v14.json` and
+`vault-v13-to-v14.json` (`vault_migration.rs`: each payload against its sealed copy, the first two
+written back unchanged, and unlocking the migration's input writing back its output).
 `extension-privacy-copy.json` is the source of
 Bramble's generated Swift and Kotlin privacy copy; no Rust function returns those sentences, so
 no test here reads it. `extension-multisig-transactions.json` is read by
