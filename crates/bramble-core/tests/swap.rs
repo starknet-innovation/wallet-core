@@ -238,7 +238,12 @@ fn a_swaps_approval_is_filed_before_its_row_and_without_it() {
         );
         let step = plan.advance(StepReply::Confirm).unwrap();
         let write = run_until(&plan, &core, &mut node, step, |_, is_write| is_write);
-        assert!(rpc_parts(&write).3, "{write:?}");
+        let (_, _, params, is_write) = rpc_parts(&write);
+        assert!(is_write, "{write:?}");
+        let signed = felts(&params["invoke_transaction"]["calldata"]);
+        let approve = (ETH, "approve", vec![ROUTER.into(), hex(SELL), "0x0".into()]);
+        let swap = (ROUTER, "multi_route_swap", route(ACCOUNT_0, MIN_BUY));
+        assert_eq!(signed, execute(&[approve, swap]), "the signed calldata");
         let filed = allowance_log(dir.path());
         assert_eq!(filed.len(), 1, "filed before the write left");
         assert_eq!(

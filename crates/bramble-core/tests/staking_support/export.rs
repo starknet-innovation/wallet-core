@@ -9,7 +9,6 @@ use bramble_core::{
     StakingPlan, StakingPreparation, StepReply, TokenPreferences, TransferPlan, WalletCore,
 };
 use serde_json::{json, Value};
-use starknet_wallet_core::kms::selector;
 use starknet_wallet_core::staking::read::{
     CONTRACT_PARAMETERS_V1, GET_ACTIVE_TOKENS, GET_POOL_MEMBER_INFO_V1, GET_STAKER_INFO_V1,
     STAKER_POOL_INFO,
@@ -27,12 +26,6 @@ pub const POOL: &str = "0x5a3";
 pub const NOW_S: u64 = super::NOW;
 pub const E18: u128 = 1_000_000_000_000_000_000;
 pub const BALANCE: &str = "100000000000000000000";
-
-/// A felt in one spelling: lowercase, unpadded.
-pub fn canon(value: &str) -> String {
-    let digits = value.trim_start_matches("0x").trim_start_matches('0');
-    format!("0x{}", if digits.is_empty() { "0" } else { digits }).to_lowercase()
-}
 
 pub fn hex(value: u128) -> String {
     format!("{value:#x}")
@@ -225,23 +218,6 @@ impl Wallet {
 /// The hash of the newest row, which the plan files before its write leaves.
 pub fn latest_row_hash(core: &WalletCore, id: &str) -> String {
     core.activity(id.into()).unwrap()[0].hash.clone()
-}
-
-/// `__execute__` calldata of `calls` (contract, entrypoint, calldata), as the account signs it.
-pub fn execute(calls: &[(&str, &str, Vec<String>)]) -> Vec<String> {
-    let mut out = vec![hex(calls.len() as u128)];
-    for (contract, entrypoint, calldata) in calls {
-        out.push(canon(contract));
-        out.push(canon(&format!("{:#x}", selector(entrypoint))));
-        out.push(hex(calldata.len() as u128));
-        out.extend(calldata.iter().map(|felt| canon(felt)));
-    }
-    out
-}
-
-pub fn felts(value: &Value) -> Vec<String> {
-    let items = value.as_array().unwrap();
-    items.iter().map(|v| canon(v.as_str().unwrap())).collect()
 }
 
 /// The `__execute__` calldata `plan` writes to the node, signed, after one confirm. The fee was
