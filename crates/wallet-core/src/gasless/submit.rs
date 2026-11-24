@@ -15,7 +15,7 @@
 //!
 //! The `reference` both builds take is the network fee in the fee token's base units by the
 //! wallet's own price book: its STRK fee estimate converted at its own fiat prices for STRK and
-//! the token (the extension's `convertStrkFeeToToken`, `gasless-ceiling.ts`). It must never come
+//! the token ([`super::fee_reference`], the extension's `convertStrkFeeToToken`). It must never come
 //! from the paymaster's reply (`gas_token_price_in_strk`, a listed `price_in_strk` or any fee it
 //! quotes): the ceiling exists to bound the paymaster, so a reference it supplied bounds nothing.
 //! No reference means no offer and an `Unverifiable` submission.
