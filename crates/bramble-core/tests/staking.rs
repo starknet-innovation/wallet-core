@@ -6,7 +6,6 @@
 //! layout of its `test_chain`, behind the real Mainnet staking contract.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod send_support;
 mod staking_support;
 
 use bramble_core::{
@@ -14,9 +13,8 @@ use bramble_core::{
     HttpOutcome, NetworkId, PositionState, SendStep, StakingAction, StakingError, StepReply,
     TokenPreferences,
 };
-use send_support::*;
 use serde_json::json;
-use staking_support::*;
+use staking_support::export::*;
 
 #[test]
 fn a_stake_is_read_reviewed_and_signed_with_its_approval_filed_before_the_row() {

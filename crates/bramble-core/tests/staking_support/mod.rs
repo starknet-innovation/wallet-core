@@ -1,298 +1,224 @@
-//! Staking test support: a canned Mainnet staking chain in the deployed contracts' layout
-//! (wallet-core's `staking::test_chain`, behind the real staking contract), a wallet with its
-//! Mainnet account, and the calldata an account signs. Nothing here touches a network.
-#![allow(dead_code)]
+//! Shared by the staking parity suites: `extension-staking.jsonl`, its context, Bramble's policy
+//! pointed at the fixture chain's staking contract, the pinned read driven over the recorded
+//! node, and the extension's JSON shapes for a row and a directory entry.
+#![allow(dead_code)] // Each staking suite reads a different subset.
 
-use std::sync::Arc;
-
-use bramble_core::{
-    HttpOutcome, NetworkId, RpcReply, RpcRequest, ScanStep, SendStep, StakingAction, StakingError,
-    StakingPlan, StakingPreparation, StepReply, TokenPreferences, TransferPlan, WalletCore,
-};
+use bramble_core::catalogs::networks;
+use bramble_core::staking::STAKING_POLICY;
 use serde_json::{json, Value};
-use starknet_wallet_core::kms::selector;
-use starknet_wallet_core::staking::read::{
-    CONTRACT_PARAMETERS_V1, GET_ACTIVE_TOKENS, GET_POOL_MEMBER_INFO_V1, GET_STAKER_INFO_V1,
-    STAKER_POOL_INFO,
-};
+use starknet_wallet_core::catalog::TokenInfo;
+use starknet_wallet_core::history::events::ScanStep;
+use starknet_wallet_core::portfolio::model::TokenConfig;
+use starknet_wallet_core::portfolio::wire::RpcReply;
+use starknet_wallet_core::send::types::{Account, Authorization};
+use starknet_wallet_core::staking::calls::PositionState;
+use starknet_wallet_core::staking::directory::DirectoryEntry;
+use starknet_wallet_core::staking::read::{StakingRead, StakingReading};
+use starknet_wallet_core::staking::view::StakingRow;
+use starknet_wallet_core::staking::{StakingNetwork, StakingPolicy};
+use starknet_wallet_core::{felt, Felt, NetworkId};
 
-use crate::send_support::*;
+/// The fixture chain's staking contract (`tests/support/staking-chain.ts`).
+pub const CONTRACT: &str = "0x5a1";
+/// The context's clock, in Unix seconds; each case carries its own (`now`).
+pub const NOW: u64 = 1_800_000_000;
 
-/// `STAKING_POLICY`'s Mainnet staking contract.
-pub const STAKING: &str = "0xca1702e64c81d9a07b86bd2c540188d92a2c73cf5cc0e508d949015e7e84a7";
-pub const STAKER: &str = "0x5a200000000000000000000000000000000000000000000000000000000beef";
-pub const POOL: &str = "0x5a3";
-pub const NOW_S: u64 = 1_800_000_000;
-pub const E18: u128 = 1_000_000_000_000_000_000;
-pub const BALANCE: &str = "100000000000000000000";
-
-/// A felt in one spelling: lowercase, unpadded.
-pub fn canon(value: &str) -> String {
-    let digits = value.trim_start_matches("0x").trim_start_matches('0');
-    format!("0x{}", if digits.is_empty() { "0" } else { digits }).to_lowercase()
+/// The clock the extension ran `case` at.
+pub fn now(case: &Value) -> u64 {
+    case["now"].as_u64().unwrap()
 }
 
-pub fn hex(value: u128) -> String {
-    format!("{value:#x}")
+/// The explorer lane's base every Starkscan request was made against.
+pub const BASE: &str = "https://starkscan.test/v1";
+
+/// Every case of `block`, in file order.
+pub fn cases(block: &str) -> Vec<Value> {
+    let found: Vec<Value> = include_str!("../fixtures/extension-staking.jsonl")
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("a JSON line"))
+        .filter(|case| case["block"] == block)
+        .collect();
+    assert!(!found.is_empty(), "no {block} cases");
+    found
 }
 
-#[derive(Clone, Copy)]
-pub struct Member {
-    pub amount: u128,
-    pub unclaimed: u128,
-    pub unpool: Option<(u128, u64)>,
+fn context() -> Value {
+    cases("context").remove(0)
 }
 
-/// The staking contract, `STAKER` with a STRK pool at `POOL`, and the account's membership.
-pub struct Chain {
-    pub account: String,
-    pub member: Option<Member>,
-    /// The staker the pool's own parameters name (`STAKER` unless a test forges it).
-    pub pool_staker: &'static str,
-}
+const ON: &[StakingNetwork] = &[StakingNetwork {
+    network: NetworkId::Mainnet,
+    enabled: true,
+    staking_contract: CONTRACT,
+    starkscan: true,
+}];
+const OFF: &[StakingNetwork] = &[StakingNetwork {
+    enabled: false,
+    ..ON[0]
+}];
 
-impl Chain {
-    pub fn new(account: &str) -> Self {
-        Self {
-            account: canon(account),
-            member: None,
-            pool_staker: STAKER,
-        }
-    }
-
-    pub fn answer(&self, contract: &str, selector: &str, calldata: &[Value]) -> Vec<String> {
-        let felts = |items: &[&str]| items.iter().map(|s| s.to_string()).collect();
-        let commission = "0x3e8";
-        if contract == STAKING {
-            let staker = canon(calldata.first().and_then(Value::as_str).unwrap_or("0x0"));
-            let ours = staker == STAKER;
-            return match selector {
-                GET_ACTIVE_TOKENS => felts(&["0x1", STRK]),
-                CONTRACT_PARAMETERS_V1 => felts(&["0x1", STRK, "0x7", "0x8", "0x9", "0x93a80"]),
-                STAKER_POOL_INFO if ours => {
-                    felts(&["0x0", commission, "0x1", POOL, STRK, "0x3635c9adc5dea00000"])
-                }
-                STAKER_POOL_INFO => felts(&["0x1", "0x0"]),
-                GET_STAKER_INFO_V1 if ours => {
-                    felts(&["0x0", STAKER, STAKER, "0x1", "0x0", "0x0", "0x1"])
-                }
-                GET_STAKER_INFO_V1 => felts(&["0x1"]),
-                other => panic!("unexpected staking selector {other}"),
-            };
-        }
-        assert_eq!(contract, POOL, "only the verified pool is read");
-        match (selector, self.member) {
-            (CONTRACT_PARAMETERS_V1, _) => {
-                felts(&[self.pool_staker, "0x0", STAKING, STRK, commission])
-            }
-            (GET_POOL_MEMBER_INFO_V1, None) => felts(&["0x1"]),
-            (GET_POOL_MEMBER_INFO_V1, Some(m)) => {
-                let mut out = vec!["0x0".into(), self.account.clone(), hex(m.amount)];
-                let (amount, time) = m.unpool.unwrap_or_default();
-                out.extend([hex(m.unclaimed), commission.into(), hex(amount)]);
-                match m.unpool {
-                    None => out.push("0x1".into()),
-                    Some(_) => out.extend(["0x0".into(), hex(u128::from(time))]),
-                }
-                out
-            }
-            (other, _) => panic!("unexpected pool selector {other}"),
-        }
-    }
-
-    pub fn reply(&self, request: &RpcRequest) -> RpcReply {
-        let body: Value = serde_json::from_str(&request.body).unwrap();
-        let result = match body["method"].as_str().unwrap() {
-            "starknet_blockHashAndNumber" => json!({"block_hash": "0xb10c", "block_number": 7}),
-            "starknet_call" => {
-                assert_eq!(body["params"]["block_id"], json!({"block_hash": "0xb10c"}));
-                let call = &body["params"]["request"];
-                let contract = canon(call["contract_address"].as_str().unwrap());
-                let selector = call["entry_point_selector"].as_str().unwrap();
-                json!(self.answer(&contract, selector, call["calldata"].as_array().unwrap()))
-            }
-            other => panic!("unexpected method {other}"),
-        };
-        let reply = json!({"jsonrpc": "2.0", "id": request.id, "result": result});
-        RpcReply {
-            id: request.id,
-            status: 200,
-            body: Some(reply.to_string()),
-        }
+/// `STAKING_POLICY` with the fixture chain's contract on Mainnet, switched on or off.
+pub fn policy(enabled: bool) -> StakingPolicy {
+    StakingPolicy {
+        networks: if enabled { ON } else { OFF },
+        ..STAKING_POLICY
     }
 }
 
-/// Answers every call `next` hands out until it hands out none.
-pub fn run(
-    chain: &Chain,
-    next: impl Fn() -> Vec<RpcRequest>,
-    accept: impl Fn(RpcReply) -> ScanStep,
-) {
+/// The acting account (the extension's `invokeAccount`, Mainnet). The key is never read.
+pub fn account() -> Account {
+    Account {
+        network: NetworkId::Mainnet,
+        address: felt::parse("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcde")
+            .unwrap(),
+        public_key: Felt::from(3u8),
+        authorization: Authorization::StarkPair,
+        deployment: None,
+    }
+}
+
+/// The Mainnet tokens the extension's default preferences track, as the fixture lists them.
+pub fn tokens() -> Vec<TokenConfig> {
+    context()["tokens"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|token| {
+            assert_eq!(token["networkId"], "SN_MAIN");
+            TokenConfig {
+                id: token["id"].as_str().unwrap().into(),
+                network: NetworkId::Mainnet,
+                address: token["address"].as_str().unwrap().into(),
+                symbol: token["symbol"].as_str().unwrap().into(),
+                name: token["name"].as_str().unwrap().into(),
+                decimals: token["decimals"].as_u64().unwrap() as u8,
+            }
+        })
+        .collect()
+}
+
+/// The rewards token a read checks: the Mainnet catalog's STRK.
+pub fn rewards() -> TokenInfo {
+    networks::info(NetworkId::Mainnet)
+        .tokens
+        .iter()
+        .find(|token| token.symbol == "STRK")
+        .unwrap()
+        .clone()
+}
+
+// starknet.js sends `starknet_blockHashAndNumber` with no `params`; the core sends `[]`. Both
+// are the same call.
+fn same_params(recorded: &Value, sent: &Value) -> bool {
+    recorded == sent || (recorded.is_null() && *sent == json!([]))
+}
+
+/// Drives `read` over the node the extension spoke to: every body the core sends must be one the
+/// extension sent, answered with that recorded reply (each recorded exchange answers once; of
+/// identical bodies, the earliest unused answers first), and the core must send every one the
+/// extension did. Order across different bodies is not compared: the reads are independent, and
+/// the core batches them as its pinned read does, not as the extension's per-token reads did.
+pub fn run_read(read: &mut StakingRead, rpc: &Value, name: &str) -> Option<StakingReading> {
+    let recorded = rpc.as_array().unwrap();
+    let mut used = vec![false; recorded.len()];
     loop {
-        let calls = next();
+        let calls = read.next_calls();
         if calls.is_empty() {
-            return;
+            break;
         }
-        for call in &calls {
-            assert_eq!(accept(chain.reply(call)), ScanStep::Continue);
+        for call in calls {
+            let body: Value = serde_json::from_str(&call.body).unwrap();
+            let index = (0..recorded.len())
+                .find(|&i| {
+                    !used[i]
+                        && recorded[i]["method"] == body["method"]
+                        && same_params(&recorded[i]["params"], &body["params"])
+                })
+                .unwrap_or_else(|| panic!("{name}: the extension never sent {body}"));
+            used[index] = true;
+            let mut reply = json!({ "jsonrpc": "2.0", "id": call.id });
+            for (key, value) in recorded[index]["reply"].as_object().unwrap() {
+                reply[key] = value.clone();
+            }
+            let step = read.accept(RpcReply {
+                id: call.id,
+                status: 200,
+                body: Some(reply.to_string()),
+            });
+            assert_eq!(step, ScanStep::Continue, "{name}");
         }
     }
+    // The one departure (PLAN P13): the extension reads a staker once per token, the core once
+    // per pinned read. An exchange the core skipped must repeat, body and reply, one it sent.
+    let missed: Vec<&Value> = recorded
+        .iter()
+        .zip(&used)
+        .filter(|(exchange, skipped)| {
+            !**skipped
+                && !recorded
+                    .iter()
+                    .zip(&used)
+                    .any(|(sent, was)| *was && sent == *exchange)
+        })
+        .map(|(exchange, _)| exchange)
+        .collect();
+    assert!(missed.is_empty(), "{name}: the core never sent {missed:?}");
+    read.finish()
 }
 
-pub struct Wallet {
-    pub dir: tempfile::TempDir,
-    pub core: Arc<WalletCore>,
-    pub id: String,
-    pub address: String,
-    pub prefs: Arc<TokenPreferences>,
-}
-
-pub fn mainnet() -> Wallet {
-    let (dir, core) = wallet();
-    let id = oz_id(&core, NetworkId::Mainnet, 0);
-    let address = canon(id.split(':').nth(1).unwrap());
-    Wallet {
-        dir,
-        core,
-        id,
-        address,
-        prefs: TokenPreferences::new(None),
+fn state(state: PositionState) -> &'static str {
+    match state {
+        PositionState::NotStaked => "none",
+        PositionState::Staked => "staked",
+        PositionState::ExitPending => "exit-pending",
+        PositionState::Withdrawable => "withdrawable",
     }
 }
 
-impl Wallet {
-    pub fn strk_id(&self) -> String {
-        let tracked = self.prefs.tracked(NetworkId::Mainnet);
-        let strk = tracked.iter().find(|t| t.token.symbol == "STRK").unwrap();
-        strk.token.id.clone()
-    }
-
-    pub fn prepare(
-        &self,
-        action: StakingAction,
-        amount: Option<&str>,
-    ) -> Result<Arc<StakingPreparation>, StakingError> {
-        let amount = amount.map(String::from);
-        let (id, staker, prefs) = (self.id.clone(), STAKER.into(), self.prefs.clone());
-        self.core
-            .clone()
-            .prepare_staking(id, action, staker, self.strk_id(), amount, prefs)
-    }
-
-    /// `action` prepared, read from `chain` and planned.
-    pub fn plan(
-        &self,
-        chain: &Chain,
-        action: StakingAction,
-        amount: Option<&str>,
-    ) -> Result<StakingPlan, StakingError> {
-        let prepared = self.prepare(action, amount)?;
-        run(chain, || prepared.next_calls(), |r| prepared.accept(r));
-        prepared.plan(NOW_S, Some(BALANCE.into()))
-    }
-
-    /// Runs `step` against a Mainnet node until a non-RPC step, the signed write echoing the
-    /// row's hash.
-    pub fn drive(&self, plan: &TransferPlan, mut step: SendStep) -> SendStep {
-        let mut node = Node::new(NetworkId::Mainnet, true);
-        loop {
-            match &step {
-                SendStep::Rpc { .. } => {
-                    let (id, method, params, is_write) = rpc_parts(&step);
-                    let signed = is_write.then(|| latest_row_hash(&self.core, &self.id));
-                    let answer = node.reply(&method, &params, signed.as_deref());
-                    step = plan.advance(rpc_reply(id, &answer)).unwrap();
-                }
-                SendStep::Wait { .. } => step = plan.advance(StepReply::WaitElapsed).unwrap(),
-                _ => return step,
+/// A row as the extension's `StakingRowView` spells it. Rewards are labelled with the read's
+/// rewards token, which the read confirmed is STRK.
+pub fn row_json(row: &StakingRow) -> Value {
+    let mut out = json!({ "staker": row.staker, "symbol": row.symbol, "tokenId": row.token_id });
+    match &row.figures {
+        Err(refusal) => out["refusal"] = json!(refusal.to_string()),
+        Ok(figures) => {
+            out["accepting"] = json!(figures.accepting);
+            out["commission"] = json!(figures.commission);
+            out["delegated"] = json!(figures.delegated);
+            if let Some(to) = &figures.rewards_to {
+                out["rewardsTo"] = json!(to);
+            }
+            out["staked"] = json!(figures.staked);
+            out["state"] = json!(state(figures.state));
+            out["rewardSymbol"] = json!(rewards().symbol);
+            out["unclaimed"] = json!(figures.unclaimed);
+            out["unpoolAmount"] = json!(figures.unpool_amount);
+            if let Some(time) = figures.unpool_time {
+                out["unpoolTime"] = json!(time);
             }
         }
-    }
-
-    pub fn allowance_log(&self) -> Vec<Value> {
-        let text = std::fs::read_to_string(self.dir.path().join("allowances.v1.json"))
-            .unwrap_or_else(|_| "[]".into());
-        serde_json::from_str::<Value>(&text)
-            .unwrap()
-            .as_array()
-            .unwrap()
-            .clone()
-    }
-}
-
-/// The hash of the newest row, which the plan files before its write leaves.
-pub fn latest_row_hash(core: &WalletCore, id: &str) -> String {
-    core.activity(id.into()).unwrap()[0].hash.clone()
-}
-
-/// `__execute__` calldata of `calls` (contract, entrypoint, calldata), as the account signs it.
-pub fn execute(calls: &[(&str, &str, Vec<String>)]) -> Vec<String> {
-    let mut out = vec![hex(calls.len() as u128)];
-    for (contract, entrypoint, calldata) in calls {
-        out.push(canon(contract));
-        out.push(canon(&format!("{:#x}", selector(entrypoint))));
-        out.push(hex(calldata.len() as u128));
-        out.extend(calldata.iter().map(|felt| canon(felt)));
     }
     out
 }
 
-pub fn felts(value: &Value) -> Vec<String> {
-    let items = value.as_array().unwrap();
-    items.iter().map(|v| canon(v.as_str().unwrap())).collect()
-}
-
-/// The calldata the plan estimates (the same it signs), once reviewed.
-pub fn reviewed_calldata(wallet: &Wallet, plan: &TransferPlan) -> Vec<String> {
-    let mut seen = None;
-    let mut node = Node::new(NetworkId::Mainnet, true);
-    let mut step = plan.advance(StepReply::Start).unwrap();
-    while let SendStep::Rpc { .. } = &step {
-        let (id, method, params, _) = rpc_parts(&step);
-        if method == "starknet_estimateFee" {
-            seen = Some(felts(&params["request"][0]["calldata"]));
-        }
-        step = plan
-            .advance(rpc_reply(id, &node.reply(&method, &params, None)))
-            .unwrap();
-    }
-    assert_eq!(step, SendStep::Review, "{}", wallet.id);
-    seen.expect("an estimate")
-}
-
-pub fn refused(error: StakingError) -> String {
-    match error {
-        StakingError::Refused { reason } => reason,
-        other => panic!("expected a refusal, got {other:?}"),
-    }
-}
-
-pub fn http(body: &Value) -> HttpOutcome {
-    HttpOutcome {
-        status: 200,
-        retry_after: None,
-        body: Some(body.to_string().into_bytes()),
-        timed_out: false,
-    }
-}
-
-pub fn coverage() -> Value {
-    json!({"activityHistoryTruncated": false, "finalizedOnly": true, "gapIntervals": [],
-        "lagBlocks": 0, "lastSuccessfulRunAtIso": "2026-11-06T00:00:00Z",
-        "materializedThroughBlock": 100, "outstandingMaterializationIntervals": [],
-        "reasonCode": "ok", "sourceLatestFinalizedBlock": 100, "status": "prepared"})
-}
-
-pub fn positions(address: &str, validators: &[&str]) -> Value {
-    let positions: Vec<Value> = validators
+/// A directory entry as the extension's `StakingDirectoryEntry` spells it.
+pub fn entry_json(entry: &DirectoryEntry) -> Value {
+    let pools: Vec<Value> = entry
+        .pools
         .iter()
-        .map(|validator| {
-            json!({"address": address, "delegatedRaw": "5000000000000000000",
-                "pendingExitRaw": null, "poolAddress": POOL, "status": "active",
-                "tokenAddress": STRK, "validatorAddress": validator})
-        })
+        .map(|pool| json!({ "delegated": pool.delegated, "symbol": pool.symbol }))
         .collect();
-    json!({"address": address, "chainId": "SN_MAIN", "coverage": coverage(), "history": [],
-        "nextHistoryCursor": null, "positions": positions, "positionsTruncated": false,
-        "source": "finalized_prepared_staking_snapshot"})
+    json!({
+        "commission": entry.commission,
+        "name": entry.name,
+        "pools": pools,
+        "staker": entry.staker,
+        "uptime": entry.uptime,
+        "website": entry.website,
+    })
 }
+
+/// The export suite's half (`tests/staking.rs`, mobile's build): a canned Mainnet chain behind
+/// the real staking contract, and a wallet that prepares, plans and signs through `WalletCore`.
+#[cfg(feature = "testing")]
+pub mod export;

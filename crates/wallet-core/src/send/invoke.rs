@@ -220,6 +220,11 @@ impl Invoke {
         &self.calls
     }
 
+    /// The amount and token the activity row names, when the batch's builder named them.
+    pub fn activity_asset(&self) -> Option<&ActivityAsset> {
+        self.activity_asset.as_ref()
+    }
+
     /// The batch's flags as the extension's card lists them: every call's, in order, each line
     /// once (`dedupeFlags`).
     pub fn flags(&self) -> Vec<&RiskFlag> {
