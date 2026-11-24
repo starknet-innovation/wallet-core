@@ -12,14 +12,14 @@
 //! choice, a choice the round did not offer, or a step out of turn is `NotFound` and changes
 //! nothing. A lock since `prepare_transfer` voids it. The submitted transfer's row carries the
 //! signed fee (`userFee`) and names it in its summary; a lost execute files no row, as the
-//! extension's does not, since no hash came back.
+//! extension's does not, since no hash came back. The round starts in `gasless_offers.rs`.
 
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use wallet_core::activity::detail::gasless_fee_summary;
 use wallet_core::gasless::{
-    fee_reference, GaslessAccount, GaslessError, GaslessFeeOffer, GaslessHeldToken, GaslessPolicy,
-    GaslessSession, GaslessSubmission, OfferRound, RoundStep, SubmitRound, SubmitStep,
+    fee_reference, GaslessError, GaslessFeeOffer, GaslessPolicy, GaslessSession, GaslessSubmission,
+    OfferRound, RoundStep, SubmitRound, SubmitStep,
 };
 use wallet_core::send::calls::format_token_amount;
 use wallet_core::send::plan::{PendingKind, PendingRecord};
@@ -29,16 +29,14 @@ use wallet_core::send::u256::U256;
 use wallet_core::Felt;
 
 use super::plan::TransferPlan;
-use super::wallet_ext::Use;
 use crate::felt;
-use crate::gasless::{gasless_v2_classes, GASLESS_POLICY};
+use crate::gasless::GASLESS_POLICY;
 use crate::portfolio::prices::PriceView;
 use crate::portfolio::registry::known_tokens;
 use crate::portfolio::wire::{HttpOutcome, HttpRequest};
 use crate::wallet::WalletCore;
-use crate::wallet_accounts::signing_record;
 
-static POLICY: GaslessPolicy = GASLESS_POLICY;
+pub(super) static POLICY: GaslessPolicy = GASLESS_POLICY;
 
 /// Why a gasless step was refused. Each is a fixed sentence (the extension's); none carries an
 /// address, an amount or reply text.
@@ -108,6 +106,11 @@ pub enum GaslessSubmitStep {
     Post {
         post: GaslessPost,
     },
+    /// Screening was unavailable for the execute: wait `delay_ms`, then call `resume`, which
+    /// posts again only if the wallet is still unlocked (`postGasless` checks after its pause).
+    Wait {
+        delay_ms: u64,
+    },
     /// The relay accepted it: its hash, and its page on the network's explorer.
     Submitted {
         transaction_hash: String,
@@ -115,21 +118,23 @@ pub enum GaslessSubmitStep {
     },
 }
 
-enum Stage {
+pub(super) enum Stage {
     Offering(Box<OfferRound<'static>>),
     Offered(Vec<GaslessFeeOffer>),
     Submitting(Box<SubmitRound<'static>>, GaslessFeeOffer),
+    /// An execute repeat held until its pause is over.
+    Paused(Box<SubmitRound<'static>>, GaslessFeeOffer, HttpRequest),
     Spent,
 }
 
 /// The gasless choice for one reviewed transfer.
 #[derive(uniffi::Object)]
 pub struct GaslessFee {
-    plan: Arc<TransferPlan>,
-    account: Account,
-    session: GaslessSession<'static>,
-    basis: GaslessBasis,
-    stage: Mutex<Stage>,
+    pub(super) plan: Arc<TransferPlan>,
+    pub(super) account: Account,
+    pub(super) session: GaslessSession<'static>,
+    pub(super) basis: GaslessBasis,
+    pub(super) stage: Mutex<Stage>,
 }
 
 /// A started offer round: the object, and the first request to post.
@@ -153,7 +158,7 @@ fn offer_view(offer: &GaslessFeeOffer) -> GaslessOffer {
     }
 }
 
-fn offer_step(step: RoundStep) -> GaslessOfferStep {
+pub(super) fn offer_step(step: RoundStep) -> GaslessOfferStep {
     match step {
         RoundStep::Post { request, delay_ms } => GaslessOfferStep::Post {
             post: GaslessPost { request, delay_ms },
@@ -165,7 +170,7 @@ fn offer_step(step: RoundStep) -> GaslessOfferStep {
 }
 
 /// `STRK_TOKEN_ADDRESS`: STRK in Bramble's bundled catalog for `network`.
-fn strk_address(network: crate::NetworkId) -> Option<Felt> {
+pub(super) fn strk_address(network: crate::NetworkId) -> Option<Felt> {
     crate::networks::info(network)
         .tokens
         .iter()
@@ -174,7 +179,7 @@ fn strk_address(network: crate::NetworkId) -> Option<Felt> {
 }
 
 /// `strk20FeeReference` for `token` on the plan's network: the STRK fee at the wallet's prices.
-fn reference(
+pub(super) fn reference(
     plan: &TransferPlan,
     basis: &GaslessBasis,
     prices: &PriceView,
@@ -307,6 +312,27 @@ impl GaslessFee {
         self.submit_step(step, now_ms)
     }
 
+    /// After a `Wait`: the execute posted again, or `Locked` (and the submission over) when the
+    /// wallet locked during the pause.
+    pub fn resume(&self) -> Result<GaslessSubmitStep, GaslessFeeError> {
+        let mut stage = self.stage();
+        if !matches!(*stage, Stage::Paused(..)) {
+            return Err(GaslessFeeError::NotFound);
+        }
+        let Stage::Paused(round, chosen, request) = std::mem::replace(&mut *stage, Stage::Spent)
+        else {
+            return Err(GaslessFeeError::NotFound);
+        };
+        self.core()?;
+        *stage = Stage::Submitting(round, chosen);
+        Ok(GaslessSubmitStep::Post {
+            post: GaslessPost {
+                request,
+                delay_ms: 0,
+            },
+        })
+    }
+
     /// Judges the outcome of the submission's last `Post`, at `now_ms`. A checked build is
     /// signed here, in the plan's session, and its execute returned; a submitted one files its
     /// row. Every refusal ends the submission.
@@ -354,6 +380,14 @@ impl GaslessFee {
                     if executes && self.core().is_err() {
                         break Err(GaslessFeeError::Locked);
                     }
+                    if executes && delay_ms > 0 {
+                        if let Stage::Submitting(round, chosen) =
+                            std::mem::replace(&mut *stage, Stage::Spent)
+                        {
+                            *stage = Stage::Paused(round, chosen, request);
+                        }
+                        return Ok(GaslessSubmitStep::Wait { delay_ms });
+                    }
                     return Ok(GaslessSubmitStep::Post {
                         post: GaslessPost { request, delay_ms },
                     });
@@ -389,87 +423,4 @@ impl GaslessFee {
         *stage = Stage::Spent;
         outcome
     }
-}
-
-#[uniffi::export]
-impl TransferPlan {
-    /// The gasless choice for this reviewed transfer (`reviewGaslessOffers`): `None` unless the
-    /// review found its STRK short of an FRI fee, the network's route is on, and the account's
-    /// class signs SNIP-9 v2 and is deployed. `prices` is the wallet's own fresh USD answer for
-    /// STRK and its curated tokens (`PriceBook::plan`); `balances` the host's last read of those
-    /// tokens (base units; a token missing or `None` is unread). The offers are curated tokens
-    /// other than STRK, with Bramble's labels and decimals, never the paymaster's. `now_ms` is
-    /// the host's wall clock.
-    pub fn gasless_offers(
-        self: Arc<Self>,
-        prices: Option<PriceView>,
-        balances: Vec<GaslessBalance>,
-        now_ms: u64,
-    ) -> Option<GaslessOffers> {
-        let core = self.core.upgrade()?;
-        let basis = self.gasless_basis()?;
-        let acting = core.plan_account_for(&self.account_id, Use::Sign).ok()?;
-        let (family, class_hash) = core
-            .with_session(false, |session| {
-                let record = signing_record(&session.payload, &self.account_id)?;
-                Ok((record.family(), record.class_felt()))
-            })
-            .ok()?;
-        let account = GaslessAccount {
-            network: self.network,
-            address: acting.account.address,
-            family,
-            class_hash,
-            deployed: basis.deployed,
-            deployment: None,
-        };
-        let calls = [basis.call.clone()];
-        let session =
-            GaslessSession::open(&POLICY, &account, &calls, &gasless_v2_classes()).ok()?;
-        let strk = strk_address(self.network)?;
-        let held = known_tokens(self.network)
-            .into_iter()
-            .filter_map(|known| {
-                let address = felt::parse(&known.address).filter(|address| *address != strk)?;
-                let balance = balances
-                    .iter()
-                    .find(|b| felt::parse(&b.token_address) == Some(address))
-                    .and_then(|b| b.balance.as_deref().and_then(U256::from_decimal));
-                let reference = prices
-                    .as_ref()
-                    .and_then(|p| reference(&self, &basis, p, address));
-                let token = GaslessHeldToken {
-                    address,
-                    balance,
-                    decimals: known.decimals,
-                    label: known.symbol,
-                };
-                Some((token, reference))
-            })
-            .collect();
-        let (round, step) = OfferRound::start(session.clone(), held, strk, now_ms / 1000);
-        let stage = match &step {
-            RoundStep::Done(offers) => Stage::Offered(offers.clone()),
-            RoundStep::Post { .. } => Stage::Offering(Box::new(round)),
-        };
-        let fee = Arc::new(GaslessFee {
-            plan: self.clone(),
-            account: acting.account,
-            session,
-            basis,
-            stage: Mutex::new(stage),
-        });
-        Some(GaslessOffers {
-            fee,
-            step: offer_step(step),
-        })
-    }
-}
-
-/// The host's last read of one curated token's balance (`getTokenBalances`).
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
-pub struct GaslessBalance {
-    pub token_address: String,
-    /// Base units as decimal digits; `None` when the read failed.
-    pub balance: Option<String>,
 }

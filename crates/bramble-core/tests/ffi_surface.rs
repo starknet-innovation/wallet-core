@@ -312,8 +312,11 @@ fn multisig_transactions_take_and_return_no_key() {
 /// hands a key or a signature back.
 #[test]
 fn gasless_takes_no_calls_hash_or_signature_and_returns_none() {
-    let source = include_str!("../src/send/gasless.rs");
-    let exported = exported_signatures(source);
+    let source = [
+        include_str!("../src/send/gasless.rs"),
+        include_str!("../src/send/gasless_offers.rs"),
+    ];
+    let exported: Vec<Exported> = source.iter().flat_map(|s| exported_signatures(s)).collect();
     for exported in &exported {
         let signature = exported.signature.to_lowercase();
         for word in [
@@ -340,6 +343,7 @@ fn gasless_takes_no_calls_hash_or_signature_and_returns_none() {
         [
             "accept_offer_reply",
             "choose",
+            "resume",
             "accept_submit_reply",
             "gasless_offers"
         ]

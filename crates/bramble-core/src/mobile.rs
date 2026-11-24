@@ -135,9 +135,10 @@ pub use recovery::{RecoveryCandidate, RecoverySelection};
 pub use recovery_scan::RecoveryScanStep;
 pub use rpc_request::{RpcRequest, RpcResponse};
 pub use send::gasless::{
-    GaslessBalance, GaslessFee, GaslessFeeError, GaslessOffer, GaslessOfferStep, GaslessOffers,
-    GaslessPost, GaslessSubmitStep,
+    GaslessFee, GaslessFeeError, GaslessOffer, GaslessOfferStep, GaslessOffers, GaslessPost,
+    GaslessSubmitStep,
 };
+pub use send::gasless_offers::GaslessBalance;
 pub use send::plan::TransferPlan;
 pub use send::revoke::{AllowanceRevoke, RevokeError};
 pub use send::swap::{SwapError, SwapQuoteView, SwapReview, TokenSwap};

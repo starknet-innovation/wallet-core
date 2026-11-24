@@ -403,3 +403,35 @@ fn a_lost_execute_files_no_row() {
     ));
     assert!(core.activity(account_id(&core)).unwrap().is_empty());
 }
+
+// `postGasless`: an execute whose screening was unavailable is posted again after a pause, and
+// only if the wallet is still unlocked when the pause ends.
+#[test]
+fn an_execute_repeat_waits_and_is_refused_if_the_wallet_locked_meanwhile() {
+    let unavailable = || HttpOutcome {
+        status: 503,
+        retry_after: None,
+        body: Some(br#"{"error":"screening_unavailable"}"#.to_vec()),
+        timed_out: false,
+    };
+    for lock in [false, true] {
+        let (_dir, core) = wallet();
+        let plan = transfer(&core, ACCOUNT_1, "0");
+        let (fee, offer) = offered(&plan);
+        post(fee.choose(offer, Some(prices()), NOW).unwrap());
+        assert_eq!(fee.resume(), Err(GaslessFeeError::NotFound));
+        let typed = typed_data(AMOUNT, "0x3e8");
+        let execute = post(fee.accept_submit_reply(built(&typed), NOW).unwrap());
+        assert_eq!(
+            fee.accept_submit_reply(unavailable(), NOW),
+            Ok(GaslessSubmitStep::Wait { delay_ms: 250 })
+        );
+        if lock {
+            core.lock();
+            assert_eq!(fee.resume(), Err(GaslessFeeError::Locked));
+            assert_eq!(fee.resume(), Err(GaslessFeeError::NotFound));
+        } else {
+            assert_eq!(post(fee.resume().unwrap()), execute, "the same signed body");
+        }
+    }
+}
