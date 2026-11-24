@@ -257,8 +257,13 @@ pub enum PrivacyEntry {
 pub enum DetailSummary {
     None,
     Retry,
-    Amount { text: String },
+    Amount {
+        text: String,
+    },
     RegisterToStart,
+    /// The network has no privacy pool ("Not available on this network"): a final answer, shown
+    /// in place of the retry control (`token-flows.ts` `privateFinalAnswer`).
+    NotOnThisNetwork,
 }
 
 /// Token detail's privacy action (`token-flows.ts` `privacyActions`).
@@ -284,6 +289,17 @@ pub enum DetailAction {
 pub struct TokenDetailPrivacy {
     pub summary: DetailSummary,
     pub action: DetailAction,
+}
+
+/// The private-balances row under Home's token list (`home-tabs.ts`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HomePrivateRow {
+    /// No row.
+    None,
+    /// "Private balances · Try again" (`data-privacy-retry`), after a failed read.
+    Retry,
+    /// "Private balances · Not available on this network": a final answer, no retry.
+    NotOnThisNetwork,
 }
 
 /// The header's private-data freshness (`network-status.ts` `privacyDataIssue`).
