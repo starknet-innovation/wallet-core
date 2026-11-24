@@ -373,3 +373,28 @@ fn the_call_and_fee_checks_refuse_on_their_own_before_any_hash() {
     };
     assert_eq!(fee_amount(&transfer, &input), Ok(U256::from_u128(1000)));
 }
+
+#[test]
+fn rejects_a_nonce_outside_the_felt_grammar_and_a_zero_account() {
+    for nonce in ["5", "0X5", ""] {
+        let mut body = standard();
+        body["message"]["Nonce"] = json!(nonce);
+        assert_eq!(check(&body), Err(Refusal::Shape));
+    }
+    let reviewed = [user_call()];
+    let input = TypedDataCheck {
+        account: Felt::ZERO,
+        network: NetworkId::Mainnet,
+        calls: &reviewed,
+        forwarder: felt_of(FORWARDER),
+        gas_token: felt_of(USDC),
+        quoted_max: U256::from_u128(1000),
+        ceiling: U256::from_u128(1000),
+        now: NOW,
+        minimum_remaining: 10,
+    };
+    assert_eq!(
+        validate_typed_data(&js(&standard()), &input, &POLICY),
+        Err(Refusal::Forwarder)
+    );
+}
