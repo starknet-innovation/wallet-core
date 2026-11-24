@@ -14,6 +14,7 @@ use super::gasless::{
 };
 use super::plan::TransferPlan;
 use super::wallet_ext::Use;
+use crate::activity::with_log;
 use crate::felt;
 use crate::gasless::gasless_v2_classes;
 use crate::portfolio::prices::PriceView;
@@ -37,6 +38,13 @@ impl TransferPlan {
     ) -> Option<GaslessOffers> {
         let core = self.core.upgrade()?;
         let basis = self.gasless_basis()?;
+        // A signed execution still able to run is pending: a second one could pay twice.
+        let pending = with_log(&core.data_dir, |log| {
+            log.relay_pending(&self.account_id, now_ms / 1000)
+        });
+        if pending {
+            return None;
+        }
         let acting = core.plan_account_for(&self.account_id, Use::Sign).ok()?;
         let (family, class_hash) = core
             .with_session(false, |session| {
@@ -66,7 +74,7 @@ impl TransferPlan {
                     .and_then(|b| b.balance.as_deref().and_then(U256::from_decimal));
                 let reference = prices
                     .as_ref()
-                    .and_then(|p| reference(&self, &basis, p, address));
+                    .and_then(|p| reference(&self, &basis, p, address, now_ms));
                 let token = GaslessHeldToken {
                     address,
                     balance,
@@ -87,6 +95,7 @@ impl TransferPlan {
             session,
             basis,
             stage: Mutex::new(stage),
+            journaled: Mutex::new(None),
         });
         Some(GaslessOffers {
             fee,

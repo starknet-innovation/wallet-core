@@ -9,9 +9,10 @@ use serde_json::{json, Map, Value};
 
 use super::activity_rules::{
     activity_token_address, direction_text, fee_json, is_recorded_token_address, parse_direction,
-    price_json, submitted_price, transaction_fee, user_fee, user_fee_json,
+    price_json, relay_execution, relay_json, submitted_price, transaction_fee, user_fee,
+    user_fee_json,
 };
-pub use super::activity_rules::{FeePayer, UserFee};
+pub use super::activity_rules::{FeePayer, RelayExecution, UserFee};
 use super::explorer::is_account_id_for_network;
 use crate::activity::store::{kind_text, parse_kind, parse_status, status_text};
 use crate::js::felt::{
@@ -92,6 +93,9 @@ pub struct ActivityEntry {
     pub network: NetworkId,
     pub not_found_count: Option<u64>,
     pub origin: Option<ActivityOrigin>,
+    /// A gasless execution signed for the relay with no transaction hash yet (`hash` is then the
+    /// signed message's); `None` on every other row.
+    pub relay: Option<RelayExecution>,
     pub status: TxStatus,
     pub submitted_at: u64,
     /// The unit price known when this wallet submitted a public send; never back-filled.
@@ -161,6 +165,9 @@ pub fn entry_to_json(entry: &ActivityEntry) -> Value {
     if entry.origin.is_some() {
         map.insert("origin".into(), json!("wallet"));
     }
+    if let Some(relay) = &entry.relay {
+        map.insert("relay".into(), relay_json(relay));
+    }
     map.insert("status".into(), json!(status_text(entry.status)));
     map.insert("submittedAt".into(), json!(entry.submitted_at));
     if let Some(price) = &entry.submitted_price {
@@ -186,7 +193,7 @@ fn safe_count(value: &JsValue) -> Option<u64> {
 
 /// Reads a stored or fixture entry; `None` unless it passes `isActivityEntry`.
 pub fn entry_from_json(value: &JsValue) -> Option<ActivityEntry> {
-    const KEYS: [&str; 20] = [
+    const KEYS: [&str; 21] = [
         "accountId",
         "amount",
         "counterparty",
@@ -200,6 +207,7 @@ pub fn entry_from_json(value: &JsValue) -> Option<ActivityEntry> {
         "networkId",
         "notFoundCount",
         "origin",
+        "relay",
         "status",
         "submittedAt",
         "submittedPrice",
@@ -276,6 +284,10 @@ pub fn entry_from_json(value: &JsValue) -> Option<ActivityEntry> {
             Some("wallet") => Some(ActivityOrigin::Wallet),
             Some(_) => return None,
         },
+        relay: match value.get("relay") {
+            None => None,
+            Some(_) => Some(relay_execution(&nested("relay")?)?),
+        },
         status: parse_status(&text("status")?)?,
         submitted_at: safe_count(value.get("submittedAt")?)?,
         submitted_price: submitted,
@@ -328,6 +340,7 @@ pub fn on_chain_activity_entry(
         failure_notice: None,
         fee_payer: None,
         user_fee: None,
+        relay: None,
         fee_paid: None,
         finalized_on_l1: None,
         hash: decoded.hash.clone(),

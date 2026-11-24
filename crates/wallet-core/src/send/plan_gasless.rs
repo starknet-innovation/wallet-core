@@ -52,6 +52,9 @@ impl Plan {
             ],
         };
         let qualifies = matches!(self.stage, Stage::Reviewed)
+            // `execute_calldata` names the entrypoint (always by name); the outside execution takes
+            // a felt entrypoint as its own selector (`selector_of`). Equal for this one "transfer";
+            // a batch with felt entrypoints would need both to agree before it is widened to.
             && execute_calldata(std::slice::from_ref(&call)) == transfer.calldata
             && !transfer.flags.contains(&ReviewFlag::AddressPoisoning)
             && review.affordability == FeeAffordability::Insufficient

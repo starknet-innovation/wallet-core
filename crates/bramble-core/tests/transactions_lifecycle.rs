@@ -382,6 +382,7 @@ fn submitted_and_on_chain_rows_share_one_log() {
         failure_notice: None,
         fee_payer: None,
         user_fee: None,
+        relay: None,
         fee_paid: None,
         origin: None,
         submitted_price: None,

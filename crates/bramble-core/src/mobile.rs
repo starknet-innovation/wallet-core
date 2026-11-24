@@ -162,8 +162,8 @@ pub use wallet_accounts::AccountRecord;
 // Portfolio and activity (mobile/docs/portfolio-activity.md).
 pub use history::activity::{
     activity_csv, activity_csv_file_name, activity_fee_text, activity_value_text, ActivityEntry,
-    ActivityOrigin, FailureNotice, FeePayer, SubmittedPrice, TransactionFee, TransferDirection,
-    UserFee,
+    ActivityOrigin, FailureNotice, FeePayer, RelayExecution, SubmittedPrice, TransactionFee,
+    TransferDirection, UserFee,
 };
 pub use history::activity_book::{ActivityBook, ActivityView};
 pub use history::appearance::{

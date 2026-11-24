@@ -309,7 +309,8 @@ fn multisig_transactions_take_and_return_no_key() {
 
 /// P14's gasless exports start from a reviewed `TransferPlan` and sign only the outside execution
 /// the core checked: none takes a call, a hash, a signature or typed data from the host, and none
-/// hands a key or a signature back.
+/// hands a key back. The one signature that leaves is the account's over the checked execution's
+/// hash, inside the execute request's body the host posts to the relay as described.
 #[test]
 fn gasless_takes_no_calls_hash_or_signature_and_returns_none() {
     let source = [

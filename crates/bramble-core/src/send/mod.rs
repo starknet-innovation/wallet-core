@@ -43,16 +43,20 @@ pub fn parse_token_amount(amount: String, decimals: u8) -> Result<String, SendEr
 /// Whether a recorded transaction is still due a status read at `now_ms` (the extension's
 /// `isObserved`, either cadence): pending or pre-confirmed and submitted less than an hour ago
 /// (the fast tier), or L2-accepted, not yet final on L1, and submitted less than seven days ago
-/// (the slow tier). Hosts reconcile only these, and at most once per
+/// (the slow tier), and not a gasless row still awaiting its transaction hash (`relay`). Hosts
+/// reconcile only these, and at most once per
 /// `activity_observation_period_for(record)`.
 #[uniffi::export]
 pub fn activity_needs_observation(record: crate::ActivityEntry, now_ms: u64) -> bool {
-    observation::is_observed(
-        record.status,
-        record.finalized_on_l1 == Some(true),
-        record.submitted_at,
-        now_ms,
-    )
+    // A gasless row filed before its execute holds the signed message's hash, which no node
+    // knows: it is settled by the relay's answer, never by a status read.
+    record.relay.is_none()
+        && observation::is_observed(
+            record.status,
+            record.finalized_on_l1 == Some(true),
+            record.submitted_at,
+            now_ms,
+        )
 }
 
 /// The extension's `FAST_OBSERVATION_PERIOD_MINUTES`, in milliseconds: the shortest period any

@@ -29,14 +29,21 @@ use wallet_core::send::u256::U256;
 use wallet_core::Felt;
 
 use super::plan::TransferPlan;
+use crate::activity::with_log;
 use crate::felt;
 use crate::gasless::GASLESS_POLICY;
 use crate::portfolio::prices::PriceView;
 use crate::portfolio::registry::known_tokens;
 use crate::portfolio::wire::{HttpOutcome, HttpRequest};
 use crate::wallet::WalletCore;
+use wallet_core::gasless::CheckedQuote;
+use wallet_core::history::activity::RelayExecution;
 
 pub(super) static POLICY: GaslessPolicy = GASLESS_POLICY;
+
+/// `INVOKE_NOT_JOURNALED`: the execution could not be filed before posting, so it was not posted.
+const INVOKE_NOT_JOURNALED: &str =
+    "The transaction could not be recorded before sending. Nothing was submitted — try again.";
 
 /// Why a gasless step was refused. Each is a fixed sentence (the extension's); none carries an
 /// address, an amount or reply text.
@@ -135,6 +142,8 @@ pub struct GaslessFee {
     pub(super) session: GaslessSession<'static>,
     pub(super) basis: GaslessBasis,
     pub(super) stage: Mutex<Stage>,
+    /// The signed message whose journal row the relay's answer settles.
+    pub(super) journaled: Mutex<Option<Felt>>,
 }
 
 /// A started offer round: the object, and the first request to post.
@@ -184,6 +193,7 @@ pub(super) fn reference(
     basis: &GaslessBasis,
     prices: &PriceView,
     token: Felt,
+    now_ms: u64,
 ) -> Option<U256> {
     let decimals = |address: &Felt| {
         known_tokens(plan.network)
@@ -199,6 +209,7 @@ pub(super) fn reference(
         strk,
         (token, decimals(&token)?),
         basis.strk_fee,
+        now_ms,
     )
 }
 
@@ -228,34 +239,64 @@ impl GaslessFee {
         Ok(self.account.signature(r, s))
     }
 
-    /// Files the submitted transfer's row with the fee it signed.
-    fn record(
+    /// `recordRequiredRelaySignature`: files the transfer's row before its execute is posted,
+    /// under the signed message's hash with the execution's nonce and deadline, so a lost answer
+    /// still leaves a pending row that guards a second signature (`ActivityLog::relay_pending`).
+    /// Whether it is stored; when not, nothing may be posted.
+    fn journal(
         &self,
         core: &WalletCore,
+        quote: &CheckedQuote<'_>,
         offer: &GaslessFeeOffer,
-        submission: &GaslessSubmission,
         now_ms: u64,
-    ) {
+    ) -> bool {
         let basis = &self.basis;
-        let amount = U256::from_decimal(&submission.user_fee.amount).unwrap_or(U256::ZERO);
+        let Some(nonce) = quote.nonce() else {
+            return false;
+        };
+        let relay = RelayExecution {
+            nonce: felt::canonical(&nonce),
+            execute_before: quote.execute_before(),
+        };
+        let user_fee = quote.user_fee();
+        let amount = U256::from_decimal(&user_fee.amount).unwrap_or(U256::ZERO);
         let record = PendingRecord {
-            hash: submission.transaction_hash,
+            hash: quote.message_hash(),
             kind: PendingKind::Transfer {
                 amount: basis.amount_text.clone(),
                 recipient: basis.recipient,
                 symbol: basis.symbol.clone(),
                 token_address: basis.token_address,
             },
-            summary: gasless_fee_summary(
-                &basis.summary,
-                &amount,
-                offer.decimals,
-                &submission.user_fee.token,
-            ),
+            summary: gasless_fee_summary(&basis.summary, &amount, offer.decimals, &user_fee.token),
             submitted_at: now_ms,
         };
-        self.plan
-            .record_row(core, record, Some(&submission.user_fee));
+        let stored = self
+            .plan
+            .record_row(core, record, Some(user_fee), Some(&relay));
+        if stored {
+            *self
+                .journaled
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner) = Some(quote.message_hash());
+        }
+        stored
+    }
+
+    /// The relay accepted: the journal row takes the transaction hash, one row, never two.
+    fn settle(&self, core: &WalletCore, submission: &GaslessSubmission) {
+        let journaled = self
+            .journaled
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take();
+        let Some(message_hash) = journaled else {
+            return;
+        };
+        let account_id = &self.plan.account_id;
+        with_log(&core.data_dir, |log| {
+            log.settle_relay(account_id, &message_hash, &submission.transaction_hash)
+        });
     }
 }
 
@@ -298,13 +339,19 @@ impl GaslessFee {
             .find(|made| offer_view(made) == offer)
             .cloned()
             .ok_or(GaslessFeeError::NotFound)?;
-        if self.plan.take_for_gasless().is_none() {
+        // The offers stand only for the review they were made for: a re-review (a new estimate)
+        // replaces it, as the extension replaces its held review.
+        if self.plan.gasless_basis().as_ref() != Some(&self.basis) {
             return Err(GaslessFeeError::NotFound);
         }
+        let taken = self.plan.take_for_gasless();
         *stage = Stage::Spent;
+        let basis = taken
+            .filter(|taken| *taken == self.basis)
+            .ok_or(GaslessFeeError::NotFound)?;
         let token = felt::parse(&chosen.token_address).ok_or(GaslessFeeError::NotFound)?;
         let reference =
-            prices.and_then(|prices| reference(&self.plan, &self.basis, &prices, token));
+            prices.and_then(|prices| reference(&self.plan, &basis, &prices, token, now_ms));
         let (round, step) =
             SubmitRound::start(self.session.clone(), &chosen, reference, now_ms / 1000)?;
         *stage = Stage::Submitting(Box::new(round), chosen);
@@ -399,15 +446,26 @@ impl GaslessFee {
                             .signed(&signature, now_ms / 1000)
                             .map_err(GaslessFeeError::from)
                     });
-                    match next {
+                    let journaled = next.and_then(|next| {
+                        let core = self.core()?;
+                        let quote = round.checked().ok_or(GaslessFeeError::NotFound)?;
+                        if !self.journal(&core, quote, chosen, now_ms) {
+                            return Err(GaslessFeeError::Refused {
+                                reason: INVOKE_NOT_JOURNALED.into(),
+                                retryable: false,
+                            });
+                        }
+                        Ok(next)
+                    });
+                    match journaled {
                         Ok(next) => next,
                         Err(error) => break Err(error),
                     }
                 }
                 SubmitStep::Submitted(submission) => {
-                    // Filed even if the wallet locked meanwhile: the relay has it either way.
+                    // Settled even if the wallet locked meanwhile: the relay has it either way.
                     if let Some(core) = self.plan.core.upgrade() {
-                        self.record(&core, chosen, &submission, now_ms);
+                        self.settle(&core, &submission);
                     }
                     let hash = felt::canonical(&submission.transaction_hash);
                     break Ok(GaslessSubmitStep::Submitted {

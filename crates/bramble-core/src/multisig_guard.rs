@@ -71,6 +71,7 @@ pub(crate) fn journal(
         failure_notice: None,
         fee_payer: None,
         user_fee: None,
+        relay: None,
         fee_paid: None,
         finalized_on_l1: None,
         hash: felt::parse(hash).map_or_else(|| hash.to_string(), |hash| felt::canonical(&hash)),

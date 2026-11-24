@@ -29,6 +29,7 @@ fn entry(account_id: &str, network: NetworkId, hash: &str, status: TxStatus) -> 
         failure_notice: None,
         fee_payer: None,
         user_fee: None,
+        relay: None,
         fee_paid: None,
         finalized_on_l1: None,
         hash: hash.into(),

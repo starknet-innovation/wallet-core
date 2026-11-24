@@ -12,8 +12,8 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 use wallet_core::activity::detail::submitted_price;
 use wallet_core::allowances::calls::record_changes;
 use wallet_core::allowances::retention::Ranking;
-use wallet_core::history::activity::UserFee;
-use wallet_core::history::activity_rules::{price_json, user_fee_json};
+use wallet_core::history::activity::{RelayExecution, UserFee};
+use wallet_core::history::activity_rules::{price_json, relay_json, user_fee_json};
 use wallet_core::send::fees::TransactionFee;
 use wallet_core::send::judge::{Observation, TxStatus};
 use wallet_core::send::plan::{Kind, PendingKind, PendingRecord, Plan, PlanHost, SignRefusal};
@@ -212,14 +212,16 @@ impl TransferPlan {
 
 impl TransferPlan {
     /// Files `record`'s row (`recordSubmittedActivity`): this wallet's, pending, priced as a send
-    /// is. `user_fee` is a gasless send's signed fee (`userFee`), whose row takes no receipt fee.
-    /// Best effort: a storage failure never blocks or rewrites a send.
+    /// is. `user_fee` is a gasless send's signed fee (`userFee`), whose row takes no receipt fee;
+    /// `relay` marks it as filed before its execute was posted (`record.hash` is then the signed
+    /// message's). Whether the row is stored; a plan's own rows are best effort and ignore it.
     pub(crate) fn record_row(
         &self,
         core: &WalletCore,
         record: PendingRecord,
         user_fee: Option<&UserFee>,
-    ) {
+        relay: Option<&RelayExecution>,
+    ) -> bool {
         let (kind, amount, counterparty, token, token_address, outgoing) = row(record.kind);
         let mut entry = Entry {
             account_id: self.account_id.clone(),
@@ -227,6 +229,7 @@ impl TransferPlan {
             counterparty,
             direction: outgoing.then(|| direction_text(TransferDirection::Out).into()),
             failure_notice: None,
+            relay: relay.map(relay_json),
             fee_paid: None,
             fee_payer: None,
             finalized_on_l1: None,
@@ -245,7 +248,7 @@ impl TransferPlan {
             user_fee: user_fee.map(user_fee_json),
         };
         entry.submitted_price = self.price_at_submission(&entry).map(|p| price_json(&p));
-        with_log(&core.data_dir, |log| log.record(entry));
+        with_log(&core.data_dir, |log| log.record(entry))
     }
 
     // The cached-only read the extension's `capturePrice` makes, at the record's own time.
@@ -340,7 +343,7 @@ impl PlanHost for TransferPlan {
                 });
             }
         }
-        self.record_row(&core, record, None);
+        self.record_row(&core, record, None, None);
     }
 
     fn wants_fee(&self, hash: &Felt) -> bool {

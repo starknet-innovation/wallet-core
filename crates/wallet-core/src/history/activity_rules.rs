@@ -74,6 +74,38 @@ pub fn user_fee(value: &Value) -> Option<UserFee> {
     })
 }
 
+/// A gasless execution signed and about to be posted to the relay (the extension's
+/// `RelaySignature`, `relay-record.ts`), kept on its row until the relay answers with a
+/// transaction hash. While it is set the row's `hash` is the signed message's hash, which no
+/// node knows, so the row is never observed as a transaction; past `execute_before` (Unix
+/// seconds) the execution can no longer run, though whether it did is not known here.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RelayExecution {
+    pub nonce: String,
+    pub execute_before: u64,
+}
+
+/// `isRelaySignature`'s share that a row carries: exactly `{executeBefore, nonce}`, a safe
+/// integer and a canonical felt.
+pub fn relay_execution(value: &Value) -> Option<RelayExecution> {
+    let map = only_keys(value, &["executeBefore", "nonce"])?;
+    let nonce = map.get("nonce")?.as_str()?;
+    let before = map
+        .get("executeBefore")?
+        .as_u64()
+        .filter(|b| *b < 1 << 53)?;
+    (is_stark_field_element(nonce) && canonical_felt(nonce).as_deref() == Some(nonce)).then(|| {
+        RelayExecution {
+            nonce: nonce.into(),
+            execute_before: before,
+        }
+    })
+}
+
+pub fn relay_json(relay: &RelayExecution) -> Value {
+    json!({"executeBefore": relay.execute_before, "nonce": relay.nonce})
+}
+
 pub fn user_fee_json(fee: &UserFee) -> Value {
     json!({"amount": fee.amount, "token": fee.token, "tokenAddress": fee.token_address})
 }
@@ -198,6 +230,7 @@ mod tests {
             failure_notice: None,
             fee_payer: None,
             user_fee: None,
+            relay: None,
             fee_paid: None,
             origin: None,
             submitted_price: None,

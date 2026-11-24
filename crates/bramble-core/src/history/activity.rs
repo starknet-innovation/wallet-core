@@ -2,8 +2,8 @@
 //! `isActivityEntry`, `onChainActivityEntry` and `mergeActivity`): the UniFFI shapes.
 
 pub use wallet_core::history::activity::{
-    ActivityEntry, ActivityKind, ActivityOrigin, FailureNotice, FeePayer, FeeUnit, SubmittedPrice,
-    TransactionFee, TransferDirection, TxStatus, UserFee,
+    ActivityEntry, ActivityKind, ActivityOrigin, FailureNotice, FeePayer, FeeUnit, RelayExecution,
+    SubmittedPrice, TransactionFee, TransferDirection, TxStatus, UserFee,
 };
 
 use crate::networks::NetworkId;
@@ -72,6 +72,11 @@ pub struct ActivityEntry {
     pub not_found_count: Option<u64>,
     #[uniffi(default = None)]
     pub origin: Option<ActivityOrigin>,
+    /// A gasless execution signed for the relay that has no transaction hash yet: `hash` is the
+    /// signed message's, the row stays pending and is never observed. Show it as a fee payment
+    /// whose outcome is unknown; past `execute_before` it can no longer run.
+    #[uniffi(default = None)]
+    pub relay: Option<RelayExecution>,
     pub status: TxStatus,
     pub submitted_at: u64,
     /// The unit price captured when this wallet submitted a public send; never back-filled.
@@ -85,6 +90,14 @@ pub struct ActivityEntry {
     /// The fee signed in a token on a gasless transaction; such a row never takes a receipt fee.
     #[uniffi(default = None)]
     pub user_fee: Option<UserFee>,
+}
+
+/// A signed gasless execution awaiting its transaction hash (`relay-record.ts`): its nonce and
+/// deadline (Unix seconds).
+#[uniffi::remote(Record)]
+pub struct RelayExecution {
+    pub nonce: String,
+    pub execute_before: u64,
 }
 
 /// Who paid a row's network fee when the account did not (`feePayer`).
@@ -163,6 +176,7 @@ mod tests {
             failure_notice: None,
             fee_payer: None,
             user_fee: None,
+            relay: None,
             fee_paid: None,
             finalized_on_l1: None,
             hash: "0xabc".into(),

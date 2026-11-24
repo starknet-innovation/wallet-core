@@ -254,6 +254,17 @@ impl CheckedQuote<'_> {
         &self.accepted.typed_data
     }
 
+    /// The execution's `Execute Before`, Unix seconds: after it the execution cannot run.
+    pub fn execute_before(&self) -> u64 {
+        self.accepted.execute_before
+    }
+
+    /// The execution's SNIP-9 nonce, which the check required to be a felt.
+    pub fn nonce(&self) -> Option<Felt> {
+        let message = self.accepted.typed_data.get("message")?;
+        felt::parse(message.get("Nonce")?.as_str()?)
+    }
+
     pub fn user_fee(&self) -> &UserFee {
         &self.user_fee
     }
