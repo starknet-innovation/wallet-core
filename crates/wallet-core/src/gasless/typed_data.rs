@@ -322,3 +322,7 @@ pub fn validate_typed_data(
 #[cfg(test)]
 #[path = "typed_data_tests.rs"]
 pub(super) mod tests;
+
+#[cfg(test)]
+#[path = "typed_data_vectors.rs"]
+mod vectors;

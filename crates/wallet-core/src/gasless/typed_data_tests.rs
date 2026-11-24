@@ -1,6 +1,5 @@
-//! `gasless-typed-data.test.ts`, plus the hash vectors: starknet.js 10.8's
-//! `typedData.getMessageHash` over `outsideExecution.getTypedData(.., V2)` bodies (generated with
-//! the extension's pinned starknet.js) and the gateway's mainnet fixture the extension pins.
+//! `gasless-typed-data.test.ts`, plus the gateway's mainnet fixture hash the extension pins.
+//! starknet.js's hashes of the outside executions are `typed_data_vectors.rs`.
 
 use super::*;
 use crate::gasless::tests::{call, felt_of, POLICY};
@@ -24,9 +23,6 @@ const STARKNET_JS_MAIN: &str = r#"{"types":{"StarknetDomain":[{"name":"name","ty
 /// starknet.js's `getMessageHash(STARKNET_JS_MAIN, ACCOUNT)`.
 const STARKNET_JS_MAIN_HASH: &str =
     "0x3e0b0050e380d58f5d4dc5e1adf6a16f817dc384f3c41ee1b31d3fea20885e1";
-/// The same execution on `SN_SEPOLIA`.
-const STARKNET_JS_SEPOLIA_HASH: &str =
-    "0x6020432453d718412ae41abe59b3c65b30cde91b88f534d30833053d29cee62";
 /// The gateway's mainnet fixture hash, as the extension's test pins it.
 const GATEWAY_FIXTURE_HASH: &str =
     "0x44d69d150b511e0084b004806ebb0203070e9be95d5178a209891fee25d55cd";
@@ -111,16 +107,6 @@ fn check_with(value: &JsValue, check: Check) -> Result<Accepted, Refusal> {
 
 fn check(value: &serde_json::Value) -> Result<Accepted, Refusal> {
     check_with(&js(value), Check::default())
-}
-
-#[test]
-fn krusty_hashes_starknet_js_outside_executions_alike() {
-    let account = felt_of(ACCOUNT);
-    let main = kms::typed_data_message_hash(STARKNET_JS_MAIN, &account).unwrap();
-    assert_eq!(felt::canonical(&main), STARKNET_JS_MAIN_HASH);
-    let sepolia = STARKNET_JS_MAIN.replace("SN_MAIN", "SN_SEPOLIA");
-    let sepolia = kms::typed_data_message_hash(&sepolia, &account).unwrap();
-    assert_eq!(felt::canonical(&sepolia), STARKNET_JS_SEPOLIA_HASH);
 }
 
 #[test]
