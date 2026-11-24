@@ -71,8 +71,8 @@ v13 payload.
 | 2.6 Catalogs | done (#49) | done (M12, Bramble #928) |
 | 2.7 Swap | done (#50), behind the `mobile` feature | done (M13, Bramble #929), at `v0.3.0`: `mobile/core` is a shell over this crate |
 | Vault switch | done (V1 #58) | G4 done (Bramble #947); M14 done (Bramble #980): mobile pins `v0.4.0` |
-| [Mobile parity](#mobile-parity) | P6 done (#65), P2 done (#68); P1's mechanism done (P1a #70, P1b #71, P1c #72), not exported until Krusty exports a selector and signature verification; P3 done (#80), not shippable until Bramble's imported-key v13 fixture lands; P4 done (#78), no fixture yet (needs a Bramble generator); P5 done (#83), no fixture yet | M15 (Bramble #1007–#1010) takes `v0.6.0`: P2 and P6 merged (#1008, #1009), P4 and P5 in #1010 (open); P1 waits on its export, P3's screens were left out |
-| [Parity](#parity) P7–P16 | P7 done for reading (#87, #92): every v13 and v14 collection is read, every vault the extension opens opens here, and what mobile does not operate is kept unused and listed; the 13→14 migration waits on v0.10.11 reaching the extension's `main`. P9's mechanism done (#84) with its review flags, per-call summaries and caller's activity text (#91), not exported: it waits on Krusty's selector (krusty-kms#257). P10 done (#86). P11's core half done (#90), P12's done (#85, #89) and P13's done (#93), none exported: each waits on P9's export; the four are joined (#96). None has a fixture yet (G7). P8 and P14–P16 not started. See [Road to parity](#road-to-parity) | P7's kept accounts (#1009) and P10 (#1008) merged; the rest wait on their exports |
+| [Mobile parity](#mobile-parity) | P6 done (#65), P2 done (#68); P1 done (P1a #70, P1b #71, P1c #72) and exported (X1 #111); P3 done (#80), not shippable until Bramble's imported-key v13 fixture lands; P4 done (#78), no fixture yet (needs a Bramble generator); P5 done (#83), no fixture yet | M15 (Bramble #1007–#1010) takes `v0.6.0`: P2 and P6 merged (#1008, #1009), P4 and P5 in #1010 (open); P1 waits on its export, P3's screens were left out |
+| [Parity](#parity) P7–P16 | P7 done for reading (#87, #92): every v13 and v14 collection is read, every vault the extension opens opens here, and what mobile does not operate is kept unused and listed; the 13→14 migration waits on v0.10.11 reaching the extension's `main`. P9 done (#84, #91, #104) and exported with P12's revoke (X2+X3 #106). P10 done (#86). P11 exported (X4 #107), P13 exported (X5 #110). Fixtures for P3–P5 and P9–P13 copied (G7, #109). P8's device protocol (#101) and P14's core (#108) done, neither exported; P15 spiked (#102); P16 not started. See [Road to parity](#road-to-parity) | P7's kept accounts (#1009) and P10 (#1008) merged; the rest wait on their exports |
 | 3 Extension | not started, and waits for parity; `js/package.json` is private | n/a |
 
 `v0.1.0` is tagged at `35abc8b` (GitHub release only) and was what M2 and M3 pinned. `v0.2.0`
@@ -98,6 +98,15 @@ nil.
 bindings (`unusableAccounts`, `UnusableAccount`, `UnusableReason`, and
 `AccountRecord.preFixReadyKey`, false by default), but the new public field breaks a Rust struct
 literal, hence the minor bump. `starknet-wallet-core` is unchanged since `0.5.0`.
+`v0.7.0` carries #100–#113: Krusty 3.2.0, whose selector and signature check replace the
+stand-in `StarkPrimitives` (K2, #105); the exports X1 (multisig transactions, #111), X2+X3 (the
+call batch, the revoke and the allowance listing, #106), X4 (swap, #107) and X5 (staking, #110);
+P9's fee affordability (#104), P14's gasless core, not exported (#108), and P8's device protocol
+(#101); the G7 fixtures (#109); and what mobile needs to take Bramble `main` at v0.10.11 (#112,
+#113). Mobile adopts, with the bump: `DetailSummary::NotOnThisNetwork` in each app's exhaustive
+switch, `homePrivateRow` for Home's retry row, and addresses spelled as the extension's
+`addressLabel` (padded, then 6…4), so `TransferReview.recipient` and `accountPreviewLabel` change.
+Invokes are capped at 56 calls.
 
 ### Next PRs
 
@@ -158,21 +167,21 @@ step starts.
 | D2 | — | — | the dapp transport above; D1 and D3 are settled |
 | P15 spike | here | — | done 2026-11-23: see "P15 spike findings" under P15 in [Parity](#parity). The account key stays in Rust (the SDK only asks for a `CallSet` signature the core can compute and sign); the viewing key crosses into the runtime and on to StarkWare's prover and discovery service, as in the extension; a hidden WebView on both apps runs the pinned bundle unchanged behind a native fetch bridge; no StarkWare Rust client exists or is announced; the core's first P15 PR (the `PrivacyEngine` trait, `CallSet` signing, result judging) can start now |
 
-**Wave 1: when krusty-kms#257 ships.** In order; each export is one PR here and one tag.
+**Wave 1: krusty-kms#257 shipped (Krusty 3.2.0).** In order; each export is one PR here and one tag.
 
 | PR | Repo | Needs | What it is |
 | --- | --- | --- | --- |
-| K2 | here | krusty-kms#257 | the Krusty bump (and `starknet-types-core` with it, if Krusty moves it), and a selector and Stark signature verification from Krusty 3.2.0, which replace the stand-in trait `multisig_invoke::StarkPrimitives` (#105) |
+| K2 | here | — | done (#105): Krusty 3.2.0; its selector and Stark signature verification replace `StarkPrimitives` |
 | G7c | Bramble | — (can start now) | P1's missing fixtures: the multisig import cases and the call summaries beyond an ERC-20 transfer |
-| X1 P1 | here | K2, G7c | P1's FFI surface: deploy, propose, co-sign, submit, change signers, and the import path with the checks the extension's `importIntent` makes and the plan says the export must enforce (the wallet's own call review replaces the remote summary; the chain's authority and nonce must equal the intent's snapshot) |
+| X1 P1 | here | — | done (#111, `v0.7.0`): deploy, propose, co-sign, submit, change signers and import, with the extension's stale-intent and resend guards. Left: settling a submitted intent needs `refresh_activity` to take a multisig id |
 | M18 | Bramble | X1 | multisig transaction screens on both apps: propose, sign, submit, change signers |
-| P9 rest | here | — | fee affordability for a batch: done (#104, fee-only as the extension's dapp card, over the host's `Invoke::with_fee_balance`). The pending record already carries the batch's allowance changes (#96); Bramble's host filing them is X2's |
+| P9 rest | here | — | done (#104) |
 | G7d | Bramble | — | a multicall and a refused batch through `submitInvokeTransaction`, and `verifyCalls` over batches that raise each flag (P9) |
-| X2 P9 | here | K2, P9 rest, G7d | the batch through `Plan`, exported only with its first consumer: no UniFFI call signs arbitrary calls on its own. Done with X3, ahead of G7d: the revoke is the one export that builds a batch, from an allowance id; `TransferPlan::reviewed_calls` and `risk_flags` are its card; `ffi_surface.rs` fails if any export takes a call |
-| G7e, X3, M19 | both | X2 | P12 allowances first, the smallest consumer: `Approval` decoding, a scan with legacy windows, the merge, eviction, the revoke and its settling (G7e); the two step machines, the log and the merge exported (X3); the allowance manager and revoke screens, with Bramble's host filing every pending record's allowance changes (`allowances::calls::record_changes`) before its row (M19). X3 done with X2, ahead of G7e: Bramble's host files them (`allowances.v1.json`), the revoke is `WalletCore::prepare_revoke` (its confirmation read inside), and the listing is one step machine, `WalletCore::allowance_listing`; mobile lists no multisig's grants yet (`MultisigUnread` when it holds one) |
-| G7f, X4, M20 | both | X2 | P11 swap: a quote, a build and the refused builds through the real handler; the export; the swap screens |
-| G7g, X5, M21 | both | X2 | P13 staking: a live directory page, a positions answer, a pinned read and each action's calls; the export (Mainnet only, `STAKING_POLICY`); the staking screens |
-| P14 | here, then both | X2 | gasless and sponsored: a SNIP-9 v2 outside execution the gateway builds and the wallet checks (calls, fee transfer, ceiling, window), and the paymaster's bodies and replies (`transactions/src/gasless/`, 1,818 lines). Its generator first shows whether Krusty's SNIP-12 hash agrees with starknet.js on this message; if not, it waits on Krusty rather than adding hashing here. Adds the sponsored and gasless rows P2 left out |
+| X2 P9 | here | — | done with X3 (#106, `v0.7.0`): no UniFFI call signs arbitrary calls on its own; `ffi_surface.rs` fails if any export takes a call |
+| G7e, X3, M19 | both | — | G7e and X3 done (#106, #109); M19, the allowance manager and revoke screens, is next |
+| G7f, X4, M20 | both | — | G7f and X4 done (#107, #109); M20, the swap screens, is next |
+| G7g, X5, M21 | both | — | X5 done (#110, Mainnet only, `STAKING_POLICY`); M21, the staking screens, is next |
+| P14 | here, then both | — | core done (#108): the gateway's outside execution checked against the reviewed calls (Krusty's SNIP-12 hash agrees with starknet.js), and the paymaster's bodies and judges. Not exported; left: the ceiling's fee-to-token conversion, the export and the sponsored and gasless rows |
 
 **Wave 2: when its decision is made.** Each can run beside Wave 1.
 
