@@ -55,6 +55,7 @@ Generators are under `scripts/` in Bramble; each fixture's is reached from
 | `extension-activity-detail.jsonl` | `mobile-parity-activity/` | `bcbf5b06b4eeab27bfe9b30961985397386cb2159a917667a40dc8cd768d227f` |
 | `extension-activity-feed.jsonl` | `mobile-parity-activity-feed/` | `109a0a25356ef2ada1a27eb5e09509b894cdb24763ce102d02f5db052d1fbbe9` |
 | `extension-allowances.jsonl` | `mobile-parity-allowances/` | `11085ef20db40299f91af82512afb9db25e3d0b0150220e350352c436e673d3b` |
+| `extension-swap.jsonl` | `mobile-parity-swap/` | `fa129926965653cbc3caf87471845f95f299cc298ef85335ab02d0b568badb21` |
 | `extension-multisig-transactions.json` | `generate-mobile-parity-vectors.ts` (`mobile-multisig-*.ts`) | `32d850be66c25149257f61e343dbcaa6bc404209b6c7371475926cb745b17f8c` |
 | `extension-multisig-transactions-refusals.json` | `generate-mobile-parity-vectors.ts` (`mobile-multisig-*.ts`) | `99bb711e77ac5af4e518cab4d727555d958544d24074965d6de80797c24d08f8` |
 | `extension-multisig-transactions-signers.json` | `generate-mobile-parity-vectors.ts` (`mobile-multisig-*.ts`) | `78ad15af9b68692724cdb1e84118591870f545db892eeaf40ff1e92fe2d9a5b3` |
@@ -93,6 +94,8 @@ block's `throughProvider` records the extension's starknet.js path, which no tes
 multicall on the wire and the batches refused up front).
 `extension-allowances.jsonl` (`allowances_parity.rs`; its `log` and `recording` blocks
 `allowances_log_parity.rs`, its `scan` and `tracked` transcripts `allowances_scan_parity.rs`).
+`extension-swap.jsonl` (`swap_parity.rs`; an accepted build's `executed` reply is the
+extension's submit, which no test reads).
 `extension-privacy-copy.json` is the source of
 Bramble's generated Swift and Kotlin privacy copy; no Rust function returns those sentences, so
 no test here reads it. `extension-multisig-transactions.json` is read by
