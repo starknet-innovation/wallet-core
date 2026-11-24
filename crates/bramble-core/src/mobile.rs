@@ -134,6 +134,10 @@ pub use privacy::{
 pub use recovery::{RecoveryCandidate, RecoverySelection};
 pub use recovery_scan::RecoveryScanStep;
 pub use rpc_request::{RpcRequest, RpcResponse};
+pub use send::gasless::{
+    GaslessBalance, GaslessFee, GaslessFeeError, GaslessOffer, GaslessOfferStep, GaslessOffers,
+    GaslessPost, GaslessSubmitStep,
+};
 pub use send::plan::TransferPlan;
 pub use send::revoke::{AllowanceRevoke, RevokeError};
 pub use send::swap::{SwapError, SwapQuoteView, SwapReview, TokenSwap};
@@ -157,7 +161,8 @@ pub use wallet_accounts::AccountRecord;
 // Portfolio and activity (mobile/docs/portfolio-activity.md).
 pub use history::activity::{
     activity_csv, activity_csv_file_name, activity_fee_text, activity_value_text, ActivityEntry,
-    ActivityOrigin, FailureNotice, SubmittedPrice, TransactionFee, TransferDirection,
+    ActivityOrigin, FailureNotice, FeePayer, SubmittedPrice, TransactionFee, TransferDirection,
+    UserFee,
 };
 pub use history::activity_book::{ActivityBook, ActivityView};
 pub use history::appearance::{

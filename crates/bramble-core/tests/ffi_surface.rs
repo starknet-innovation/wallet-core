@@ -307,6 +307,45 @@ fn multisig_transactions_take_and_return_no_key() {
     }
 }
 
+/// P14's gasless exports start from a reviewed `TransferPlan` and sign only the outside execution
+/// the core checked: none takes a call, a hash, a signature or typed data from the host, and none
+/// hands a key or a signature back.
+#[test]
+fn gasless_takes_no_calls_hash_or_signature_and_returns_none() {
+    let source = include_str!("../src/send/gasless.rs");
+    let exported = exported_signatures(source);
+    for exported in &exported {
+        let signature = exported.signature.to_lowercase();
+        for word in [
+            "private",
+            "secret",
+            "mnemonic",
+            "phrase",
+            "signature",
+            "hash:",
+            "typed",
+            "felt",
+            "call",
+        ] {
+            assert!(
+                !signature.contains(word),
+                "`{}` carries `{word}`",
+                exported.signature
+            );
+        }
+    }
+    let names: Vec<&str> = exported.iter().map(Exported::name).collect();
+    assert_eq!(
+        names,
+        [
+            "accept_offer_reply",
+            "choose",
+            "accept_submit_reply",
+            "gasless_offers"
+        ]
+    );
+}
+
 /// The records that carry a call's parts (a `calldata` or `entrypoint` field), by name, from every
 /// source file: what an export would have to take to be handed calls to sign.
 fn call_shaped_records(sources: &[(String, String)]) -> Vec<String> {

@@ -10,6 +10,7 @@
 //! log's rules among them); mobile's send numbers and failure-notice copy by `fixture_tests.rs`
 //! here.
 
+pub(crate) mod gasless;
 pub(crate) mod plan;
 pub(crate) mod revoke;
 pub(crate) mod swap;
