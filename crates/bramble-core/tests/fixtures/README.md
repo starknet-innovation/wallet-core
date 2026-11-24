@@ -22,6 +22,9 @@ padded address labels of #884 (`accounts-parity-rules.json`, `portfolio-parity.j
 an extension bug fixed on Bramble `fix/review-decimal-recipient`; that exception goes with the next
 copy. Every file is byte-identical to its copy at that commit; privacy SDK
 `vendor/starknet-privacy` at `b40bf109` (Bramble's pin).
+Provisional: `vault-v13-full.json`, `vault-v14.json` and `vault-v13-to-v14.json` are copied from Bramble
+#1033's head `6876ddeb`, and `extension-gasless.jsonl` from #1034's head `aa944a9c`, both unmerged;
+they are recopied with every other file at one `feature/mobile-wallet` commit once both merge.
 Generators are under `scripts/` in Bramble; each fixture's is reached from
 `generate-mobile-parity-vectors.ts`.
 
@@ -72,6 +75,10 @@ Generators are under `scripts/` in Bramble; each fixture's is reached from
 | `vault-v13-imported.json` | `generate-mobile-parity-vectors.ts` (`mobile-parity-vault.ts`) | `099ced8a46789f9d3cf7d3c679d5c5287876ccab618b7e7674c9ef65c774da97` |
 | `extension-settings-parity.jsonl` | `mobile-parity-settings.ts` | `dfa7f7248b284bac56f1cafa261b7d6941d777bcbe6ea171ae26484d23c395a3` |
 | `extension-stark-name.jsonl` | `mobile-parity-stark-name.ts` | `6b12f77b5f9393c078019d671d13b4965cedcf24e0e0bc387ae29814b328ee79` |
+| `vault-v13-full.json` | `generate-mobile-parity-vectors.ts` (`mobile-parity-vault-full.ts`) | `fc436cfa55d752a8782112a42b5d08632bcef69f736310823fd8e0f1d8434834` |
+| `vault-v14.json` | `generate-mobile-parity-vectors.ts` (`mobile-parity-vault-full.ts`) | `97a437888e92569c45b810d757633506bb971fd9f9f91199ec8bfe05f4e01a5b` |
+| `vault-v13-to-v14.json` | `generate-mobile-parity-vectors.ts` (`mobile-parity-vault-full.ts`) | `58e4671a1ebe15bef6159df851211390de48c11b42537c8d6fb2e70290067565` |
+| `extension-gasless.jsonl` | `mobile-parity-gasless/` | `c232ecadeb65c8dc36e64d3b51a091eb63c8923698f8d686b269845e4d9e45c7` |
 
 Read today: `extension-parity.json` (`parity.rs`, `vault_parity.rs`),
 `accounts-parity-families-sepolia.json` and `nostr-multisig-parity.json` (`parity.rs`;
