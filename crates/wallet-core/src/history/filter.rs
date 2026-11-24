@@ -12,8 +12,9 @@ use std::collections::HashMap;
 
 use super::activity::{ActivityEntry, TxStatus};
 use super::appearance::activity_row_model;
+use crate::js::felt::address_label;
 use crate::js::felt::{canonical_address, canonical_felt};
-use crate::js::num::{js_trim, short_label, string_to_number, utf16_cmp};
+use crate::js::num::{js_trim, string_to_number, utf16_cmp};
 use crate::portfolio::model::TokenConfig;
 
 /// The feed's order: newest first as given, or `activityAmountComparator`.
@@ -150,8 +151,7 @@ pub fn activity_filter_options(
             label: if !shared(label) || key.starts_with("symbol:") {
                 label.clone()
             } else {
-                let address = canonical_address(key).unwrap_or_else(|| key.clone());
-                format!("{label} · {}", short_label(&address))
+                format!("{label} · {}", address_label(key))
             },
         })
         .collect();

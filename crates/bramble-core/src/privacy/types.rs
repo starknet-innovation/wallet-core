@@ -8,10 +8,10 @@
 use std::fmt;
 
 pub use wallet_core::privacy::types::{
-    DetailAction, DetailSummary, PoolNotice, PrivacyBlocker, PrivacyCapabilities, PrivacyEntry,
-    PrivacyFailure, PrivacyPurpose, PrivacyReading, PrivacyRegistration, PrivacyReply,
-    PrivacyState, PrivacyStatus, PrivateBalance, PrivateLine, ShieldTile, TokenDetailPrivacy,
-    UnifiedBalance,
+    DetailAction, DetailSummary, HomePrivateRow, PoolNotice, PrivacyBlocker, PrivacyCapabilities,
+    PrivacyEntry, PrivacyFailure, PrivacyPurpose, PrivacyReading, PrivacyRegistration,
+    PrivacyReply, PrivacyState, PrivacyStatus, PrivateBalance, PrivateLine, ShieldTile,
+    TokenDetailPrivacy, UnifiedBalance,
 };
 
 use crate::networks::NetworkId;
@@ -311,6 +311,7 @@ pub enum DetailSummary {
     Retry,
     Amount { text: String },
     RegisterToStart,
+    NotOnThisNetwork,
 }
 
 /// Token detail's privacy action (`token-flows.ts` `privacyActions`).
@@ -336,6 +337,14 @@ pub enum DetailAction {
 pub struct TokenDetailPrivacy {
     pub summary: DetailSummary,
     pub action: DetailAction,
+}
+
+/// The private-balances row under Home's token list (`home-tabs.ts`).
+#[uniffi::remote(Enum)]
+pub enum HomePrivateRow {
+    None,
+    Retry,
+    NotOnThisNetwork,
 }
 
 /// The header's private-data freshness (`network-status.ts` `privacyDataIssue`).

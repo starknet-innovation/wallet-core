@@ -20,8 +20,8 @@ pub(crate) mod types;
 mod wallet_ext;
 
 use types::{
-    PoolNotice, PrivacyCapabilities, PrivacyEntry, PrivacyReading, PrivacyState, PrivacyStatus,
-    PrivateLine, ShieldTile, TokenDetailPrivacy, UnifiedBalance,
+    HomePrivateRow, PoolNotice, PrivacyCapabilities, PrivacyEntry, PrivacyReading, PrivacyState,
+    PrivacyStatus, PrivateLine, ShieldTile, TokenDetailPrivacy, UnifiedBalance,
 };
 use wallet_core::privacy::{gates, home};
 
@@ -168,6 +168,12 @@ pub fn token_detail_privacy(
         &token_address,
         state.as_ref(),
     )
+}
+
+/// The private-balances row under Home's token list: the retry, the no-pool answer, or none.
+#[uniffi::export]
+pub fn home_private_row(network: NetworkId, reading: PrivacyReading) -> HomePrivateRow {
+    gates::home_private_row(routes(), network, reading)
 }
 
 /// The header's private-data freshness on Home.

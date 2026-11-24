@@ -18,8 +18,9 @@ use starknet_wallet_core::privacy::gates::{
 };
 use starknet_wallet_core::privacy::home::unified;
 use starknet_wallet_core::privacy::types::{
-    DetailAction, DetailSummary, PoolNotice, PrivacyBlocker, PrivacyEntry, PrivacyReading,
-    PrivacyRegistration, PrivacyState, PrivacyStatus, PrivateBalance, PrivateLine, ShieldTile,
+    DetailAction, DetailSummary, HomePrivateRow, PoolNotice, PrivacyBlocker, PrivacyEntry,
+    PrivacyReading, PrivacyRegistration, PrivacyState, PrivacyStatus, PrivateBalance, PrivateLine,
+    ShieldTile,
 };
 use starknet_wallet_core::privacy::{privacy_entry, shielded_balances_included};
 use starknet_wallet_core::send::types::DeploymentState;
@@ -188,9 +189,17 @@ fn static_gates_match_the_rendered_extension() {
             "{label}"
         );
         let status = gates::status(&routes, network, read);
+        let home_row = gates::home_private_row(&routes, network, read);
         assert_eq!(
-            status == PrivacyStatus::Unavailable,
+            home_row == HomePrivateRow::Retry,
             row["retryRow"].as_bool().unwrap(),
+            "{label}"
+        );
+        // The rendered fixture records only the retry control; the no-pool row is its
+        // replacement on an unconfigured reading (`home-tabs.ts`).
+        assert_eq!(
+            home_row == HomePrivateRow::NotOnThisNetwork,
+            read == PrivacyReading::Unconfigured,
             "{label}"
         );
         let expected_status = match row["status"].as_str() {
@@ -214,6 +223,7 @@ fn static_gates_match_the_rendered_extension() {
         let expected_summary = match row["detail"]["summary"].as_str() {
             None => DetailSummary::None,
             Some("Try again") => DetailSummary::Retry,
+            Some("Not available on this network") => DetailSummary::NotOnThisNetwork,
             Some("Register to start shielding") => DetailSummary::RegisterToStart,
             Some(amount) => DetailSummary::Amount {
                 text: amount.into(),

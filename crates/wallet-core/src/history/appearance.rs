@@ -19,7 +19,8 @@ use super::time::{format_utc_clock, format_utc_date, utc_day_key};
 use super::HistoryPolicy;
 use crate::catalog::Catalogs;
 use crate::js::felt::same_felt;
-use crate::js::num::{js_trim, short_label};
+use crate::js::felt::{address_label, address_text};
+use crate::js::num::js_trim;
 use crate::portfolio::model::TokenConfig;
 use crate::portfolio::tokens::{starknet_glyph, token_glyph, TokenGlyph};
 
@@ -257,7 +258,7 @@ fn row(
         accessibility_label: format!("{heading}. {spoken}"),
         heading,
         hash: entry.hash.clone(),
-        hash_label: short_label(&entry.hash),
+        hash_label: address_label(&entry.hash),
         hash_copy_label: HASH_COPY_LABEL.into(),
         explorer_url: explorer_transaction_url(
             catalogs.networks,
@@ -271,9 +272,9 @@ fn row(
             .counterparty
             .map(|(address, role)| ActivityCounterparty {
                 role: capitalise(role),
-                address_label: address.clone(),
+                address_label: address_text(&address),
                 copy_label: format!("Copy {role} address"),
-                address,
+                address: address_text(&address),
             }),
         detail,
         submitted,

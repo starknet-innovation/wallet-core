@@ -15,7 +15,7 @@
 use std::collections::HashSet;
 
 use crate::account_catalog::{authorization_shape, type_label, AccountFamily};
-use crate::account_names::{display_name, normalise_label, short_label};
+use crate::account_names::{address_label, display_name, normalise_label};
 use crate::account_store::{
     next_account_index, push_active, KeySource, StoredAccount, VaultPayload,
 };
@@ -90,7 +90,7 @@ pub(crate) fn render(payload: &VaultPayload, record: &StoredAccount) -> AccountR
         deployment_salt: record.deployment_salt.clone(),
         display_name: display_name(&record.address, label.as_deref()),
         label,
-        short_address: short_label(&record.address),
+        short_address: address_label(&record.address),
         type_label: type_label(record.family(), &class_hash),
         authorization_shape: authorization_shape(record.family(), &class_hash),
         group_id: groups::group_of(&payload.groups, &record.id).map(|group| group.id.clone()),

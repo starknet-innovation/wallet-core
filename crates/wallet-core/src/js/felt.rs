@@ -74,6 +74,24 @@ pub fn padded_felt(value: &str) -> Option<String> {
     Some(format!("0x{hex:0>64}"))
 }
 
+/// `addressLabel`: a felt cut for display as `0x05e1…f2e4` from its [`padded_felt`] spelling, so
+/// every stored spelling of one address reads the same. Anything that is not a felt (a decimal,
+/// free text, a value at or above the prime) is returned unchanged. The one shortener: every
+/// address or hash a screen shortens goes through it.
+pub fn address_label(value: &str) -> String {
+    match padded_felt(value) {
+        // ASCII, 66 bytes: `0x` and 64 digits.
+        Some(felt) => format!("{}…{}", &felt[..6], &felt[felt.len() - 4..]),
+        None => value.to_string(),
+    }
+}
+
+/// `addressText`: a felt spelled in full for display and copying, padded to 64 digits; anything
+/// that is not a felt is returned unchanged.
+pub fn address_text(value: &str) -> String {
+    padded_felt(value).unwrap_or_else(|| value.to_string())
+}
+
 /// `canonicalAddress`: `paddedFelt` of a non-zero field element; `None` otherwise.
 pub fn canonical_address(value: &str) -> Option<String> {
     let lower = js_trim(value).to_lowercase();
@@ -134,6 +152,57 @@ mod tests {
         assert_eq!(two("-1", "0"), None);
         assert_eq!(two(&format!("0x1{}", "0".repeat(32)), "0"), None);
         assert_eq!(two("", "0"), None);
+    }
+
+    #[test]
+    fn address_label_cuts_the_padded_spelling_and_passes_non_felts_through() {
+        let account = "0x208361e3911b1d93a704400b88e7e53a89171fce64dbb48f8479e4f44b398d9";
+        for (input, label) in [
+            (account, "0x0208…98d9"),
+            (&format!("0x0{}", &account[2..]), "0x0208…98d9"),
+            (
+                &format!("0x00{}", &account[2..]),
+                &format!("0x00{}", &account[2..]),
+            ),
+            ("0x0", "0x0000…0000"),
+            ("0x1", "0x0000…0001"),
+            ("0XABC", "0x0000…0abc"),
+            ("0xABC", "0x0000…0abc"),
+            ("  0x1f  ", "0x0000…001f"),
+            // At and just below the field prime.
+            (
+                "0x800000000000011000000000000000000000000000000000000000000000001",
+                "0x800000000000011000000000000000000000000000000000000000000000001",
+            ),
+            (
+                "0x800000000000011000000000000000000000000000000000000000000000000",
+                "0x0800…0000",
+            ),
+            // 65 digits, even with a leading zero, is not the grammar.
+            (
+                &format!("0x0{}", "1".repeat(64)),
+                &format!("0x0{}", "1".repeat(64)),
+            ),
+            ("1234567", "1234567"),
+            ("-45", "-45"),
+            ("0b101", "0b101"),
+            ("0o777", "0o777"),
+            ("0x", "0x"),
+            ("0xg", "0xg"),
+            ("not an address", "not an address"),
+            ("", ""),
+        ] {
+            assert_eq!(address_label(input), label, "{input:?}");
+        }
+    }
+
+    #[test]
+    fn address_text_pads_felts_and_passes_non_felts_through() {
+        assert_eq!(address_text("0x12"), format!("0x{}12", "0".repeat(62)));
+        assert_eq!(address_text(" 0XAB "), format!("0x{}ab", "0".repeat(62)));
+        assert_eq!(address_text("1234567"), "1234567");
+        assert_eq!(address_text("  text  "), "  text  ");
+        assert_eq!(address_text(""), "");
     }
 
     #[test]

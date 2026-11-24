@@ -98,7 +98,7 @@ fn one_transfer_call_is_the_transfer_calldata() {
         Some(crate::kms::selector("transfer")),
         Felt::from_hex(TRANSFER_SELECTOR).ok()
     );
-    assert_eq!(batch.summary, "Send 1.5 ETH to 0x3fa7…41a3");
+    assert_eq!(batch.summary, "Send 1.5 ETH to 0x03fa…41a3");
 }
 
 #[test]
@@ -125,7 +125,7 @@ fn a_batch_compiles_every_call_in_order() {
     assert_eq!(batch.calldata, expected);
     assert_eq!(
         batch.summary,
-        "Allow 0x5…0x5 to spend 0.000000000000000001 ETH (+1 more)"
+        "Allow 0x0000…0005 to spend 0.000000000000000001 ETH (+1 more)"
     );
 }
 
@@ -291,20 +291,20 @@ fn every_call_keeps_its_summary_kind_and_flags() {
     // The multisig-shaped line is unchanged.
     assert_eq!(
         batch.summary(),
-        "Send 0.000000000000000001 ETH to 0x777a…bbcc (+2 more)"
+        "Send 0.000000000000000001 ETH to 0x0777…bbcc (+2 more)"
     );
     let calls = batch.calls();
     assert_eq!(calls.len(), 3);
     assert_eq!(calls[0].kind, CallKind::Transfer);
     assert_eq!(
         calls[0].summary,
-        "Send 0.000000000000000001 ETH to 0x777a…bbcc"
+        "Send 0.000000000000000001 ETH to 0x0777…bbcc"
     );
     assert!(calls[0].flags.is_empty());
     assert_eq!(calls[1].kind, CallKind::Approve);
     assert_eq!(
         calls[1].summary,
-        "Authorize 0x999…x999 for amount or NFT #115792089237316195423570985008687907853269984665640564039457584007913129639935 on unknown contract 0x6b17…0aff"
+        "Authorize 0x0000…0999 for amount or NFT #115792089237316195423570985008687907853269984665640564039457584007913129639935 on unknown contract 0x06b1…0aff"
     );
     let unknown = RiskFlag::UnknownContract {
         contract: felt(UNKNOWN),

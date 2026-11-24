@@ -229,7 +229,19 @@ fn builds_match_the_handler() {
         let flags: Vec<Value> = preparation
             .flags()
             .iter()
-            .map(|flag| serde_json::json!({ "code": flag.code(), "message": flag.message() }))
+            .map(|flag| {
+                let text = flag.text();
+                let facts: serde_json::Map<String, Value> = text
+                    .facts
+                    .into_iter()
+                    .map(|(name, value)| (name.to_string(), Value::from(value)))
+                    .collect();
+                serde_json::json!({
+                    "code": flag.code(),
+                    "message": flag.message(),
+                    "text": { "key": text.key, "facts": facts },
+                })
+            })
             .collect();
         assert_eq!(
             flags,

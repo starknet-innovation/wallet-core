@@ -192,7 +192,7 @@ fn a_swap_is_quoted_built_against_the_pinned_router_and_planned_with_its_fee() {
     assert_eq!(review.min_buy_amount, "12.4375");
     assert_eq!(
         review.summaries[1],
-        "Swap 0.01 ETH for at least 12.4375 STRK, paid to 0x2083…98d9"
+        "Swap 0.01 ETH for at least 12.4375 STRK, paid to 0x0208…98d9"
     );
     assert!(review.flags.is_empty(), "{:?}", review.flags);
 

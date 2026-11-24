@@ -20,7 +20,7 @@ use super::review::review_sentence;
 use super::{staker_address, StakingNetwork, StakingPolicy, StakingRefusal};
 use crate::catalog::TokenInfo;
 use crate::js::felt::canonical_felt;
-use crate::js::num::short_label;
+use crate::js::felt::{address_label, address_text};
 use crate::portfolio::model::TokenConfig;
 use crate::send::calls::parse_token_amount;
 use crate::send::invoke::{ActivityAsset, Invoke};
@@ -185,7 +185,7 @@ pub fn prepare(
         input.action,
         amount,
         &token.symbol,
-        &format!("validator {}", short_label(&staker)),
+        &format!("validator {}", address_label(&staker)),
     );
     // A claim pays the rewards token whatever the staked one. Only stake and unstake carry an
     // amount (`PrepareInput::new`).
@@ -217,7 +217,7 @@ pub fn prepare(
             amount,
             member,
             &token.symbol,
-            &format!("validator {staker}"),
+            &format!("validator {}", address_text(&staker)),
         ),
         invoke,
     })

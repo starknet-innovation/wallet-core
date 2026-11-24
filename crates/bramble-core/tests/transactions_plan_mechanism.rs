@@ -25,7 +25,7 @@ fn deployed_send_confirms_and_records() {
     let review = plan.current_review().unwrap().clone();
     assert!(review.can_confirm && !review.requires_deployment);
     assert_eq!(review.fee.unwrap().display, "0.008053 STRK");
-    assert_eq!(review.recipient_short, "0x3fa7…41a3");
+    assert_eq!(review.recipient_short, "0x03fa…41a3");
     let step = plan.advance(&host, StepReply::Confirm).unwrap();
     let SendStep::Broadcast { hash } = run_until(&mut plan, &host, &mut node, step, never) else {
         panic!("no broadcast");

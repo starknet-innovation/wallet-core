@@ -7,6 +7,7 @@ use starknet_types_core::felt::Felt;
 
 use super::u256::U256;
 use crate::felt;
+use crate::js::felt::address_label;
 
 /// A reviewable risk the verifier raised.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,8 +31,8 @@ pub enum SendAmountError {
     TooLarge,
 }
 
-/// JavaScript `trim` and `shortAddress`, re-exported from `js` so existing callers keep their path.
-pub use crate::js::num::{js_trim, short_label};
+/// JavaScript `trim`, re-exported from `js` so existing callers keep their path.
+pub use crate::js::num::js_trim;
 
 /// `starknet_keccak("transfer")`, checked against `kms::selector` in the tests and
 /// against starknet.js `getSelectorFromName` by the fixture.
@@ -156,12 +157,12 @@ pub fn transfer_execute_calldata(
     Some(execute_calldata(std::slice::from_ref(&call)))
 }
 
-/// The verifier's transfer summary: `Send <formatTokenAmount> <SYMBOL> to <shortAddress>`.
+/// The verifier's transfer summary: `Send <formatTokenAmount> <SYMBOL> to <addressLabel>`.
 pub fn transfer_summary(amount: &U256, decimals: u8, symbol: &str, recipient: &Felt) -> String {
     format!(
         "Send {} {symbol} to {}",
         format_token_amount(amount, decimals),
-        short_label(&felt::canonical(recipient))
+        address_label(&felt::canonical(recipient))
     )
 }
 
@@ -262,12 +263,6 @@ mod tests {
             parse_token_amount("\u{feff} 2.5\u{a0}", 1).unwrap(),
             U256::from_u128(25)
         );
-    }
-
-    #[test]
-    fn short_address_matches_short_inputs() {
-        assert_eq!(short_label("0x1"), "0x1…0x1");
-        assert_eq!(short_label(""), "…");
     }
 }
 #[cfg(test)]

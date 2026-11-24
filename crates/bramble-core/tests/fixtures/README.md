@@ -8,12 +8,19 @@ network, privacy-routing and token tables into `mobile/core/generated/`. Syncing
 unchanged, all at one Bramble commit. `tests/fixtures.rs` checks this table against the directory:
 every file must be listed, and its sha256 must match.
 
-All files: Bramble commit `1771d951a5b23669455b6b31caed137abe251684` (`feature/mobile-wallet`,
-2026-11-24, after the G7 merges #1013–#1018 of 2026-11-23, which added
-`vault-v13-imported.json`, `extension-settings-parity.jsonl`, `extension-stark-name.jsonl`,
-`extension-activity-feed.jsonl`, `extension-call-review.jsonl`, `extension-allowances.jsonl`,
-`extension-swap.jsonl` and `extension-staking.jsonl`). Every file is byte-identical to its copy at
-that commit, and re-running `mobile:parity` and `mobile:assets` there left no diff; privacy SDK
+All files: Bramble commit `aa9d9d1df1cde58849e0e637a6d5c6e8a1060caa` (`feature/mobile-wallet`, 2026-11-24, merging `main` at
+v0.10.11 into the branch). Against the previous copy (`1771d951`) twelve files changed: the
+padded address labels of #884 (`accounts-parity-rules.json`, `portfolio-parity.jsonl`,
+`extension-transactions-presentation.json`, `extension-multisig-transactions.json`,
+`extension-multisig-transactions-refusals.json`, `extension-staking.jsonl`, and the summaries in
+`extension-call-review.jsonl`, `extension-swap.jsonl` and
+`extension-transactions-verification.json`), the 56-call cap and the flags' `text`
+(`extension-call-review.jsonl`, `extension-swap.jsonl`), the no-pool privacy copy
+(`extension-privacy-rules.json`), the receipt fee's `throughProvider`
+(`extension-activity-detail.jsonl`) and the review copy (`extension-transactions-copy.json`).
+`transactions_rules_parity.rs` excuses the decimal recipients in `-verification.json`'s summaries,
+an extension bug fixed on Bramble `fix/review-decimal-recipient`; that exception goes with the next
+copy. Every file is byte-identical to its copy at that commit; privacy SDK
 `vendor/starknet-privacy` at `b40bf109` (Bramble's pin).
 Generators are under `scripts/` in Bramble; each fixture's is reached from
 `generate-mobile-parity-vectors.ts`.
@@ -24,7 +31,7 @@ Generators are under `scripts/` in Bramble; each fixture's is reached from
 | `accounts-parity-families-mainnet.json` | `mobile-parity-accounts.ts` | `ca50194ee4bb565e0d5ab6c4d61f50369efa79f046ff10b4d5c54b1198710594` |
 | `accounts-parity-families-sepolia.json` | `mobile-parity-accounts.ts` | `6cfb3ecc0490ec06c8a53b50fc795b749a818e11d3410b06f1a8c8ba14514634` |
 | `accounts-parity-recovery.json` | `mobile-parity-accounts.ts` | `15fa78d7a9fa08a17e82585f83b1d8d6282c1e6c5414673b1d2d345c1f1f2c85` |
-| `accounts-parity-rules.json` | `mobile-parity-accounts.ts` | `48f09827f5fd82119b01e7f5f39b17af30a42e4684031b817b40422966d8dc14` |
+| `accounts-parity-rules.json` | `mobile-parity-accounts.ts` | `27b8c6f75126972f1d52c370d13fe32f1a223a76d0fbfa3a45d903d022d483c2` |
 | `accounts-parity-scan.json` | `mobile-parity-scan.ts` | `1dec0dea47148d4f8b1f3d4ab3e527e99e1e2b344a70880cfb776aff0afa7b80` |
 | `accounts-parity-scan-signing.json` | `mobile-parity-scan.ts` | `650589076793744ea3057610c2e7afb1985c265efac1c3dc05ea580f6ac1f01e` |
 | `accounts.json` | `generate-mobile-assets.ts` (`mobile-assets/accounts.ts`) | `67bfdf2f70406e7e3f694ea97a66431d1d7e3ad33c153f86bf6780693eb259d3` |
@@ -36,31 +43,31 @@ Generators are under `scripts/` in Bramble; each fixture's is reached from
 | `nostr-coordination-parity-rules.json` | `mobile-assets/write-nostr-coordination-parity.ts` | `961cebd8144d12397dcfda445b30708d63156e528d7b3c7edd3d71ef18bf4c4b` |
 | `nostr-coordination-parity-relays.json` | `mobile-assets/write-nostr-coordination-parity.ts` | `f5df889ec2e42ba1bf2271878f1af56572403f61e4c6875b97cec88ce125ca1b` |
 | `nostr-coordination-parity-paging.json` | `mobile-assets/write-nostr-coordination-parity.ts` | `c57293ac4507bc310ffdb1510e508f829d589615e3757597d8e52a8d20a147a5` |
-| `portfolio-parity.jsonl` | `mobile-parity-portfolio/` | `89348ba0e6b64d5662ae5860a084b10492288bdd2029a88a3e99131cf2a27c7f` |
+| `portfolio-parity.jsonl` | `mobile-parity-portfolio/` | `dbfb6119814faba09197ef127c1f8e4e01413579d6624a4e2c2dcfcd15cb71ce` |
 | `extension-privacy-copy.json` | `generate-mobile-privacy-vectors.ts` | `62ef74e7e64fb79e01c00a5c95350d3ddd719340c5a50ee31e181ef7dff82838` |
-| `extension-privacy-rules.json` | `generate-mobile-privacy-vectors.ts` | `fa7729d067c5d1bdfb57d9857075622b97effba165f029d69732552ccb59ae70` |
+| `extension-privacy-rules.json` | `generate-mobile-privacy-vectors.ts` | `771a2b7c98f8bc699b530305f6996aec2b150f96aec4bd4c5fe20358c45c20cd` |
 | `extension-privacy-wire.json` | `generate-mobile-privacy-vectors.ts` | `6274911bb8d13c31815cb1f32cc4d158be634d47180aad9d77cbb01cac717171` |
 | `extension-transactions-argent-refusals.json` | `generate-mobile-transaction-vectors.ts` | `f2eb7492ca5425e618b9954b22fc666bf7a2a4645438ba8837a1c3f6b78d2997` |
 | `extension-transactions-argent-upgraded.json` | `generate-mobile-transaction-vectors.ts` | `9d14e829c7c2dfccb940e150984036db18a528ddd65f134763371049981b8156` |
 | `extension-transactions-argent.json` | `generate-mobile-transaction-vectors.ts` | `854103a684d841a7ed2949ac238283d17a934cd7cba9a9d29b522868959edb5f` |
 | `extension-transactions-braavos-refusals.json` | `generate-mobile-transaction-vectors.ts` | `5c15ab334651870307d8259a6c75865f8a5e555fa53b2bf50d468879eeefa102` |
 | `extension-transactions-braavos.json` | `generate-mobile-transaction-vectors.ts` | `fe2a1bdaf2420700b70396b7214fcb706f2f6aab88fa46ee6fa17f1ed3fc9f4f` |
-| `extension-transactions-copy.json` | `generate-mobile-transaction-vectors.ts` | `7fdbd62e36e2e56696ec52a5600ea440dfbcbaee120c6243e7e68085e4fc93f8` |
+| `extension-transactions-copy.json` | `generate-mobile-transaction-vectors.ts` | `0b3904f1f16c3d180b1478d8e9a60a80854d81e2a3c17f00331226dff6c5cdbc` |
 | `extension-transactions-observation.json` | `generate-mobile-transaction-vectors.ts` | `bc02c237f67d1ac646a86df25305f4be0181a8f3e44d19cf5c748bc898c01541` |
-| `extension-transactions-presentation.json` | `generate-mobile-transaction-vectors.ts` | `fcf33dbdc1d1273042910feae40525a10a73dca38f59808e8269ea4e61a4a4c5` |
+| `extension-transactions-presentation.json` | `generate-mobile-transaction-vectors.ts` | `b374f88f25e31cb4e4d2360e5639c6b6e5fc7516c2592563004765087d6f968a` |
 | `extension-transactions-rules.json` | `generate-mobile-transaction-vectors.ts` | `65673321490171d26684a2e133c23e821d8ac185227f220e21ca383e719af825` |
 | `extension-transactions-status.json` | `generate-mobile-transaction-vectors.ts` | `8e36ccc8e9a9752b5d2d704a43fbcb4325cf5a1b6d1bbfc01042a6f6277db671` |
-| `extension-transactions-verification.json` | `generate-mobile-transaction-vectors.ts` | `44253f028a3caaf4ea896b6c09afec5c3b512cce729ccabe43e4422f712385be` |
+| `extension-transactions-verification.json` | `generate-mobile-transaction-vectors.ts` | `c7186e7c4d1a1787aac77d58d519381520ac41ca74c5d13d207adcca8c16ba8c` |
 | `extension-transactions-wire.json` | `generate-mobile-transaction-vectors.ts` | `a4e8085ad6b5e14f05c66f291b8198a167cae729e639a812c7af908d412d8e3d` |
-| `extension-activity-detail.jsonl` | `mobile-parity-activity/` | `bcbf5b06b4eeab27bfe9b30961985397386cb2159a917667a40dc8cd768d227f` |
+| `extension-activity-detail.jsonl` | `mobile-parity-activity/` | `f4a53faad7bb3f3b24d1eee3fee6a956919bc5b24fdf86d2909b917ab48e7d48` |
 | `extension-activity-feed.jsonl` | `mobile-parity-activity-feed/` | `109a0a25356ef2ada1a27eb5e09509b894cdb24763ce102d02f5db052d1fbbe9` |
 | `extension-allowances.jsonl` | `mobile-parity-allowances/` | `11085ef20db40299f91af82512afb9db25e3d0b0150220e350352c436e673d3b` |
-| `extension-swap.jsonl` | `mobile-parity-swap/` | `fa129926965653cbc3caf87471845f95f299cc298ef85335ab02d0b568badb21` |
-| `extension-staking.jsonl` | `mobile-parity-staking/` | `fa543124c8224ebe0e0942857398490d022dc5891fdf8ae43dc328de844b2182` |
-| `extension-multisig-transactions.json` | `generate-mobile-parity-vectors.ts` (`mobile-multisig-*.ts`) | `32d850be66c25149257f61e343dbcaa6bc404209b6c7371475926cb745b17f8c` |
-| `extension-multisig-transactions-refusals.json` | `generate-mobile-parity-vectors.ts` (`mobile-multisig-*.ts`) | `99bb711e77ac5af4e518cab4d727555d958544d24074965d6de80797c24d08f8` |
+| `extension-swap.jsonl` | `mobile-parity-swap/` | `86408b02ba6f86fc6141ab06418b41da66ba8426860c20ec57c720203fc0c838` |
+| `extension-staking.jsonl` | `mobile-parity-staking/` | `6e5b51fcf743981c7486d3aac6ea3adef03cfffb670b20c1f9801aa8f2e27c96` |
+| `extension-multisig-transactions.json` | `generate-mobile-parity-vectors.ts` (`mobile-multisig-*.ts`) | `6af5ce7e64ed96da66c8cfc77b264e230395846ad9f3851b1f7fd7f9afe8c8a3` |
+| `extension-multisig-transactions-refusals.json` | `generate-mobile-parity-vectors.ts` (`mobile-multisig-*.ts`) | `80b278d7f23092c70ae76306b813cb5fe13cea8e79b018d7223d9fa5a7185653` |
 | `extension-multisig-transactions-signers.json` | `generate-mobile-parity-vectors.ts` (`mobile-multisig-*.ts`) | `78ad15af9b68692724cdb1e84118591870f545db892eeaf40ff1e92fe2d9a5b3` |
-| `extension-call-review.jsonl` | `mobile-parity-calls/` | `6c1d06220f87ce13c23af341eb2a535983f332cdd747e094094a1b65ce659cd8` |
+| `extension-call-review.jsonl` | `mobile-parity-calls/` | `c9e106c0c6433eccaad6b5503b1b44d80e09cfd1bcac64904ac9c01224055ce6` |
 | `vault-v13.json` | `generate-mobile-parity-vectors.ts` (`mobile-parity-vault.ts`) | `d4f0cf2a62d209cd05286a6d81b372bdaf1d356ba273b41e3e8ed2437912977f` |
 | `vault-v13-imported.json` | `generate-mobile-parity-vectors.ts` (`mobile-parity-vault.ts`) | `099ced8a46789f9d3cf7d3c679d5c5287876ccab618b7e7674c9ef65c774da97` |
 | `extension-settings-parity.jsonl` | `mobile-parity-settings.ts` | `dfa7f7248b284bac56f1cafa261b7d6941d777bcbe6ea171ae26484d23c395a3` |

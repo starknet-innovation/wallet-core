@@ -57,25 +57,8 @@ pub fn display_name(address: &str, label: Option<&str>) -> String {
     label.map_or_else(|| friendly_name(address), str::to_string)
 }
 
-fn utf16_slice(units: &[u16]) -> String {
-    String::from_utf16_lossy(units)
-}
-
-/// `a.slice(0, head) + "…" + a.slice(-tail)`, on UTF-16 units, with no length guard (as in JS).
-fn truncate(value: &str, head: usize, tail: usize) -> String {
-    let units: Vec<u16> = value.encode_utf16().collect();
-    let start = &units[..head.min(units.len())];
-    let end = &units[units.len().saturating_sub(tail)..];
-    format!("{}…{}", utf16_slice(start), utf16_slice(end))
-}
-
-/// `accountLabel` / `shortAddress`: `0x1234…abcd` (wallet-core's `slice(0, 6) + "…" + slice(-4)`).
-pub use wallet_core::js::num::short_label;
-
-/// The onboarding review step's longer preview, `slice(0, 10) + "…" + slice(-8)`.
-pub fn preview_label(value: &str) -> String {
-    truncate(value, 10, 8)
-}
+/// `addressLabel`: the one shortener, `0x0208…98d9` from the padded spelling (wallet-core's).
+pub use wallet_core::js::felt::address_label;
 
 /// The shared 1-64 trimmed-label rule (`isLabel`).
 pub fn is_label(value: &str) -> bool {
@@ -109,17 +92,19 @@ pub fn account_display_name(address: String, label: Option<String>) -> String {
     display_name(&address, label.as_deref())
 }
 
-/// Truncated address for rows and headers (`accountLabel`, 6…4). The full value is always the one
-/// copied, shown in full on Receive, and exposed as the accessibility value.
+/// Shortened address for rows and headers (`addressLabel`: padded to 64 digits, then 6…4; a
+/// non-felt unchanged). The full value is always the one copied, shown in full on Receive, and
+/// exposed as the accessibility value.
 #[uniffi::export]
 pub fn account_label(address: String) -> String {
-    short_label(&address)
+    address_label(&address)
 }
 
-/// The onboarding review step's preview (10…8).
+/// The onboarding review step's preview. The extension's onboarding now cuts it through
+/// `addressLabel` too, so this is [`account_label`]; kept so the mobile surface does not change.
 #[uniffi::export]
 pub fn account_preview_label(address: String) -> String {
-    preview_label(&address)
+    address_label(&address)
 }
 
 /// Whether text is an acceptable account label once trimmed (1-64 UTF-16 units).
@@ -144,12 +129,14 @@ mod tests {
     }
 
     #[test]
-    fn truncation_is_on_utf16_units_without_a_guard() {
-        assert_eq!(short_label("0x0"), "0x0…0x0");
-        assert_eq!(short_label("0xf5a"), "0xf5a…xf5a");
+    fn labels_cut_the_padded_spelling() {
+        assert_eq!(account_label("0x0".into()), "0x0000…0000");
+        assert_eq!(account_label("0xf5a".into()), "0x0000…0f5a");
         assert_eq!(
-            preview_label("0x208361e3911b1d93a704400b88e7e53a89171fce64dbb48f8479e4f44b398d9"),
-            "0x208361e3…44b398d9"
+            account_preview_label(
+                "0x208361e3911b1d93a704400b88e7e53a89171fce64dbb48f8479e4f44b398d9".into()
+            ),
+            "0x0208…98d9"
         );
     }
 

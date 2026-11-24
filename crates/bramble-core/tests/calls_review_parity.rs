@@ -246,16 +246,35 @@ fn every_batch_is_flagged_and_refused_as_the_extension_does() {
             .map(|call| (call.kind, call.summary.as_str()))
             .collect();
         assert_eq!(decoded, expected, "{name}");
-        let flags: Vec<(&str, String)> = batch
+        // Each flag's English and its translatable key and facts (`ReviewText`).
+        type Flag<'a> = (&'a str, String, &'a str, Vec<(String, String)>);
+        let flags: Vec<Flag> = batch
             .flags()
             .into_iter()
-            .map(|flag| (flag.code(), flag.message()))
+            .map(|flag| {
+                let review = flag.text();
+                let facts = review.facts.into_iter();
+                let facts = facts.map(|(k, v)| (k.to_string(), v)).collect();
+                (flag.code(), flag.message(), review.key, facts)
+            })
             .collect();
-        let expected: Vec<(&str, String)> = case["flags"]
+        let expected: Vec<Flag> = case["flags"]
             .as_array()
             .unwrap()
             .iter()
-            .map(|flag| (text(&flag["code"]), text(&flag["message"]).to_string()))
+            .map(|flag| {
+                let facts = flag["text"]["facts"].as_object().unwrap().iter();
+                let facts = facts
+                    .map(|(k, v)| (k.clone(), text(v).to_string()))
+                    .collect();
+                let message = text(&flag["message"]).to_string();
+                (
+                    text(&flag["code"]),
+                    message,
+                    text(&flag["text"]["key"]),
+                    facts,
+                )
+            })
             .collect();
         assert_eq!(flags, expected, "{name}");
     }

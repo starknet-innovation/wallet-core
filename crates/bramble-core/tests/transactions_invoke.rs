@@ -132,7 +132,7 @@ fn a_multicall_signs_and_submits_every_call() {
     let shown = plan.current_review().unwrap().clone();
     assert_eq!(
         shown.summary,
-        "Allow 0x3fa7…41a3 to spend 0.000000000000000001 STRK (+1 more)"
+        "Allow 0x03fa…41a3 to spend 0.000000000000000001 STRK (+1 more)"
     );
     assert!(shown.can_confirm && !shown.requires_deployment && shown.fee.is_some());
     assert_eq!(shown.affordability, FeeAffordability::Unknown);
@@ -415,7 +415,7 @@ fn a_self_call_or_an_oversized_batch_never_becomes_a_plan() {
         InvokeRefusal::Review(CallReviewError::AccountSelfCall)
     );
     assert_eq!(
-        invoke(&account, vec![transfer_call(ACCOUNT_1); 17], &[]).unwrap_err(),
+        invoke(&account, vec![transfer_call(ACCOUNT_1); 57], &[]).unwrap_err(),
         InvokeRefusal::TooManyCalls
     );
     // Bramble's numbers are the extension's `INVOKE_LIMITS`.
@@ -424,7 +424,7 @@ fn a_self_call_or_an_oversized_batch_never_becomes_a_plan() {
             bramble_core::SEND_POLICY.max_invoke_calls,
             bramble_core::SEND_POLICY.max_call_calldata_felts
         ),
-        (16, 4_096)
+        (56, 4_096)
     );
 }
 

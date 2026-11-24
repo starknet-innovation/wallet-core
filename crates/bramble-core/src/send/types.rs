@@ -82,7 +82,7 @@ pub enum DeploymentState {
 /// Everything the review screen shows, derived from the one stored call.
 #[uniffi::remote(Record)]
 pub struct TransferReview {
-    /// The verifier's summary, e.g. "Send 1.5 STRK to 0x3fa7…41a3", or "Deploy account contract".
+    /// The verifier's summary, e.g. "Send 1.5 STRK to 0x03fa…41a3", or "Deploy account contract".
     pub summary: String,
     pub recipient: String,
     pub recipient_short: String,
@@ -314,11 +314,28 @@ pub enum RiskFlagCode {
     UndecodedSwap,
 }
 
+/// One placeholder of a review sentence and the display text it takes.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct ReviewFact {
+    pub name: String,
+    pub value: String,
+}
+
+/// A review sentence as the extension's catalog key and facts (`ReviewText`), for a host that
+/// renders it in the person's language; `message` is the same sentence in English.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct ReviewText {
+    /// e.g. `review.flag.unknownContract`.
+    pub key: String,
+    pub facts: Vec<ReviewFact>,
+}
+
 /// One reviewable risk with the extension's sentence (`RiskFlag`).
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct RiskFlag {
     pub code: RiskFlagCode,
     pub message: String,
+    pub text: ReviewText,
 }
 
 impl From<&wallet_core::send::review_flags::RiskFlag> for RiskFlag {
@@ -333,9 +350,21 @@ impl From<&wallet_core::send::review_flags::RiskFlag> for RiskFlag {
             Core::ForeignBeneficiary { .. } => RiskFlagCode::ForeignBeneficiary,
             Core::UndecodedSwap => RiskFlagCode::UndecodedSwap,
         };
+        let text = flag.text();
         Self {
             code,
             message: flag.message(),
+            text: ReviewText {
+                key: text.key.into(),
+                facts: text
+                    .facts
+                    .into_iter()
+                    .map(|(name, value)| ReviewFact {
+                        name: name.into(),
+                        value,
+                    })
+                    .collect(),
+            },
         }
     }
 }

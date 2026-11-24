@@ -15,7 +15,7 @@ use wallet_core::Felt;
 
 use crate::account_address::{argent_shape, resolve_class};
 use crate::account_catalog::{catalog, class_entry, deployment_classes, AccountFamily};
-use crate::account_names::short_label;
+use crate::account_names::address_label;
 use crate::account_store::{
     is_usable_account_index, record_at, KeySource, StoredAccount, VaultPayload,
 };
@@ -266,7 +266,7 @@ pub(crate) fn candidate(found: &Found) -> RecoveryCandidate {
         ladder: found.ladder,
         class_hash: felt::canonical(&found.class_hash),
         account_index: found.account_index,
-        short_address: short_label(&address),
+        short_address: address_label(&address),
         address,
         title: title(found),
         hint: hint(found),

@@ -2,7 +2,7 @@
 //! can show them as not usable on this device rather than as missing. Public data only: no key,
 //! and nothing here makes a kept record selectable or able to sign.
 
-use crate::account_names::short_label;
+use crate::account_names::address_label;
 use crate::vault_rules::{is_ledger, seed_id};
 use crate::vault_wire::Account;
 use crate::wallet::WalletCore;
@@ -61,7 +61,7 @@ impl WalletCore {
                     id: account.id.clone(),
                     network_id: account.network_id.clone(),
                     address: account.address.clone(),
-                    short_address: short_label(&account.address),
+                    short_address: address_label(&account.address),
                     reason: reason(account),
                 })
                 .collect())

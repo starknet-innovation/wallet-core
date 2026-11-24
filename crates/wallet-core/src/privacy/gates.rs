@@ -12,8 +12,8 @@
 use super::config::{route_for, Route};
 use super::home::compact;
 use super::types::{
-    DetailAction, DetailSummary, PoolNotice, PrivacyBlocker, PrivacyReading, PrivacyRegistration,
-    PrivacyState, PrivacyStatus, PrivateLine, ShieldTile, TokenDetailPrivacy,
+    DetailAction, DetailSummary, HomePrivateRow, PoolNotice, PrivacyBlocker, PrivacyReading,
+    PrivacyRegistration, PrivacyState, PrivacyStatus, PrivateLine, ShieldTile, TokenDetailPrivacy,
 };
 use crate::catalog::{network_info, NetworkInfo, TokenInfo};
 use crate::portfolio::fiat::portfolio_amount;
@@ -244,7 +244,10 @@ pub fn token_detail(
     let reading = effective(routes, network, reading);
     let state = in_scope(network, state);
     let seen = deployed(deployment, reading);
-    let summary = if is_error(reading) && deployment != DeploymentState::Undeployed {
+    // A network with no pool is a final answer, ahead of every other summary.
+    let summary = if reading == PrivacyReading::Unconfigured {
+        DetailSummary::NotOnThisNetwork
+    } else if is_error(reading) && deployment != DeploymentState::Undeployed {
         DetailSummary::Retry
     } else if seen != Some(false) && registered(reading) {
         DetailSummary::Amount {
@@ -273,6 +276,20 @@ pub fn token_detail(
         DetailAction::GoPrivate
     };
     TokenDetailPrivacy { summary, action }
+}
+
+/// The private-balances row under Home's token list: a network with no pool says so in place of
+/// the retry, which no retry would change; a failed read offers the retry.
+pub fn home_private_row(
+    routes: &[Route],
+    network: NetworkId,
+    reading: PrivacyReading,
+) -> HomePrivateRow {
+    match effective(routes, network, reading) {
+        PrivacyReading::Unconfigured => HomePrivateRow::NotOnThisNetwork,
+        PrivacyReading::Failed => HomePrivateRow::Retry,
+        _ => HomePrivateRow::None,
+    }
 }
 
 /// `privacyDataIssue` for the active account on Home.

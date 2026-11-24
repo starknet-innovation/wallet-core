@@ -206,8 +206,8 @@ fn the_honest_build_prepares_with_its_review_and_activity() {
     assert_eq!(
         preparation.summaries(),
         [
-            "Allow 0x4270…3b0f to spend 0.01 ETH",
-            "Swap 0.01 ETH for at least 12.4375 STRK, paid to 0x1234…bcde",
+            "Allow 0x0427…3b0f to spend 0.01 ETH",
+            "Swap 0.01 ETH for at least 12.4375 STRK, paid to 0x0123…bcde",
         ]
     );
     assert!(!preparation

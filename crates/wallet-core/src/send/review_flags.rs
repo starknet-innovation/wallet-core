@@ -18,12 +18,13 @@ use super::call_decode::{
     recipient_for_flags, uint256_at, CallKind, DecodedCall, Known, APPROVE_SET,
     AVNU_MULTI_ROUTE_SWAP, DECREASE_ALLOWANCE,
 };
-use super::calls::{short_label, Call};
+use super::calls::Call;
 use super::types::Account;
 use super::u256::U256;
 use crate::allowances::calls::{standing_allowance_totals, AllowanceOwner};
 use crate::allowances::record::{is_unlimited, AllowanceRecord};
 use crate::felt;
+use crate::js::felt::address_label;
 
 /// `RiskFlag`: one warning, with the extension's `code` and `message`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -81,6 +82,41 @@ impl RiskFlag {
     }
 }
 
+/// `ReviewText` (`review-messages.ts`): a review sentence as its catalog key and the facts its
+/// placeholders take, so a host can render it in the person's language. `message()` is the same
+/// sentence in English. Facts are display text (addresses already cut by `addressLabel`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReviewText {
+    /// The catalog key, e.g. `review.flag.unknownContract`.
+    pub key: &'static str,
+    /// Placeholder name and value, in the extension's order.
+    pub facts: Vec<(&'static str, String)>,
+}
+
+impl RiskFlag {
+    /// The flag's sentence as `verifyCalls` builds it (`reviewText(key, facts)`). Every fact here is
+    /// an `addressLabel`, well inside the panel's bounds, so unlike the extension's optional
+    /// `text` it is always present.
+    pub fn text(&self) -> ReviewText {
+        let (key, facts) = match self {
+            Self::UnknownContract { contract } => (
+                "review.flag.unknownContract",
+                vec![("contract", short(contract))],
+            ),
+            Self::UnlimitedApproval => ("review.flag.unlimitedApproval", vec![]),
+            Self::OperatorApproval => ("review.flag.operatorApproval", vec![]),
+            Self::SelfTransfer => ("review.flag.selfTransfer", vec![]),
+            Self::TokenContractRecipient => ("review.flag.tokenContractRecipient", vec![]),
+            Self::ForeignBeneficiary { beneficiary } => (
+                "review.flag.foreignBeneficiary",
+                vec![("payee", short(beneficiary))],
+            ),
+            Self::UndecodedSwap => ("review.flag.undecodedSwap", vec![]),
+        };
+        ReviewText { key, facts }
+    }
+}
+
 impl fmt::Display for RiskFlag {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.message())
@@ -106,9 +142,9 @@ pub struct ReviewContext<'a> {
     pub standing: &'a [AllowanceRecord],
 }
 
-/// `shortAddress(canonical(value))`.
+/// `addressLabel(value)`.
 fn short(value: &Felt) -> String {
-    short_label(&felt::canonical(value))
+    address_label(&felt::canonical(value))
 }
 
 /// A pair's running total, `None` once it has passed `UINT256_MAX`. It stays there through a

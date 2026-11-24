@@ -35,7 +35,7 @@ fn an_import_is_stored_with_the_wallets_own_summary() {
         stored, ready,
         "lifecycle derived locally, summary the wallet's review"
     );
-    assert_eq!(stored.summary, "Send 1 units to 0x456…x456");
+    assert_eq!(stored.summary, "Send 1 units to 0x0000…0456");
 
     // Into a stored intent: merged, and the stored summary kept.
     let local = local(&ready);

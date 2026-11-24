@@ -111,14 +111,14 @@ pub use networks::{NetworkInfo, TokenInfo};
 pub use nostr_relay::RelayStep;
 pub use privacy::plan::PrivacyReadPlan;
 pub use privacy::types::{
-    DetailAction, DetailSummary, PoolNotice, PrivacyBlocker, PrivacyCapabilities, PrivacyEntry,
-    PrivacyError, PrivacyFailure, PrivacyPurpose, PrivacyReading, PrivacyRegistration,
-    PrivacyReply, PrivacyState, PrivacyStatus, PrivacyStep, PrivateBalance, PrivateLine,
-    ShieldTile, TokenDetailPrivacy, UnifiedBalance,
+    DetailAction, DetailSummary, HomePrivateRow, PoolNotice, PrivacyBlocker, PrivacyCapabilities,
+    PrivacyEntry, PrivacyError, PrivacyFailure, PrivacyPurpose, PrivacyReading,
+    PrivacyRegistration, PrivacyReply, PrivacyState, PrivacyStatus, PrivacyStep, PrivateBalance,
+    PrivateLine, ShieldTile, TokenDetailPrivacy, UnifiedBalance,
 };
 pub use privacy::{
-    max_privacy_response_bytes, privacy_capabilities, privacy_configured, privacy_discovery_url,
-    privacy_entry, privacy_status, private_line, receive_pool_notice,
+    home_private_row, max_privacy_response_bytes, privacy_capabilities, privacy_configured,
+    privacy_discovery_url, privacy_entry, privacy_status, private_line, receive_pool_notice,
     set_privacy_discovery_override, shield_tile, shielded_balances_included, token_detail_privacy,
     unified_home_balances,
 };

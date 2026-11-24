@@ -22,7 +22,7 @@ fn token() -> Vec<TokenInfo> {
     }]
 }
 
-const OPAQUE: &str = "Call {} on 0x1234…9abc";
+const OPAQUE: &str = "Call {} on 0x0000…9abc";
 
 fn opaque(entrypoint: &str) -> String {
     OPAQUE.replace("{}", entrypoint)
@@ -38,23 +38,23 @@ fn transfers_and_allowances_name_the_token_when_it_is_known() {
     let none = Known::default();
     assert_eq!(
         summary("transfer", &[0x77, 150, 0], &known),
-        "Send 1.5 TST to 0x77…0x77"
+        "Send 1.5 TST to 0x0000…0077"
     );
     assert_eq!(
         summary("transfer", &[0x77, 150, 0], &none),
-        "Send 150 units to 0x77…0x77"
+        "Send 150 units to 0x0000…0077"
     );
     assert_eq!(
         summary("approve", &[0x77, 100, 0], &known),
-        "Allow 0x77…0x77 to spend 1 TST"
+        "Allow 0x0000…0077 to spend 1 TST"
     );
     assert_eq!(
         summary("increase_allowance", &[0x77, 100, 0], &known),
-        "Allow 0x77…0x77 to spend 1 TST more"
+        "Allow 0x0000…0077 to spend 1 TST more"
     );
     assert_eq!(
         summary("increaseAllowance", &[0x77, 5, 0], &none),
-        "Authorize 0x77…0x77 for amount or NFT #5 on unknown contract 0x1234…9abc"
+        "Authorize 0x0000…0077 for amount or NFT #5 on unknown contract 0x0000…9abc"
     );
     let watched = [format!("0x{CONTRACT:x}")];
     let nft = Known {
@@ -63,7 +63,7 @@ fn transfers_and_allowances_name_the_token_when_it_is_known() {
     };
     assert_eq!(
         summary("approve", &[0x77, 5, 0], &nft),
-        "Allow 0x77…0x77 to transfer NFT #5 of collection 0x1234…9abc"
+        "Allow 0x0000…0077 to transfer NFT #5 of collection 0x0000…9abc"
     );
     // Wrong arity or a limb at 2^128 is opaque.
     assert_eq!(summary("transfer", &[0x77, 1], &known), opaque("transfer"));
@@ -96,11 +96,11 @@ fn transfer_from_reads_an_amount_for_a_token_and_an_id_otherwise() {
     };
     assert_eq!(
         summary("transfer_from", &[0x55, 0x77, 250, 0], &known),
-        "Send 2.5 TST from 0x55…0x55 to 0x77…0x77"
+        "Send 2.5 TST from 0x0000…0055 to 0x0000…0077"
     );
     assert_eq!(
         summary("transferFrom", &[0x55, 0x77, 9, 0], &Known::default()),
-        "Send NFT #9 to 0x77…0x77"
+        "Send NFT #9 to 0x0000…0077"
     );
     assert_eq!(
         summary("transfer_from", &[0x55, 0x77, 9], &known),
@@ -114,17 +114,17 @@ fn safe_transfers_state_no_quantity_they_cannot_attribute() {
     // ERC721 with an empty data span.
     assert_eq!(
         summary("safe_transfer_from", &[0x55, 0x77, 9, 0, 0], &none),
-        "Send NFT #9 to 0x77…0x77"
+        "Send NFT #9 to 0x0000…0077"
     );
     // ERC1155 with an empty data span.
     assert_eq!(
         summary("safeTransferFrom", &[0x55, 0x77, 9, 0, 3, 0, 0], &none),
-        "Send 3 of NFT #9 to 0x77…0x77"
+        "Send 3 of NFT #9 to 0x0000…0077"
     );
     // Fits both readings: no count.
     assert_eq!(
         summary("safe_transfer_from", &[0x55, 0x77, 9, 0, 2, 4, 0], &none),
-        "Safe transfer of NFT #9 to 0x77…0x77"
+        "Safe transfer of NFT #9 to 0x0000…0077"
     );
     assert_eq!(
         summary("safe_transfer_from", &[0x55, 0x77, 9, 0, 5], &none),
@@ -138,7 +138,7 @@ fn batch_transfers_walk_the_whole_span() {
     let line = |calldata: &[u64]| summary("safe_batch_transfer_from", calldata, &none);
     assert_eq!(
         line(&[0x55, 0x77, 1, 9, 0, 1, 3, 0, 0]),
-        "Send 1 token id of collection 0x1234…9abc to 0x77…0x77"
+        "Send 1 token id of collection 0x0000…9abc to 0x0000…0077"
     );
     assert_eq!(
         summary(
@@ -146,7 +146,7 @@ fn batch_transfers_walk_the_whole_span() {
             &[0x55, 0x77, 2, 9, 0, 8, 0, 2, 3, 0, 4, 0, 1, 7],
             &none
         ),
-        "Send 2 token ids of collection 0x1234…9abc to 0x77…0x77"
+        "Send 2 token ids of collection 0x0000…9abc to 0x0000…0077"
     );
     // Mismatched counts, a trailing felt, or an id count past the span.
     assert_eq!(
@@ -168,11 +168,11 @@ fn operator_approvals_and_swaps() {
     let none = Known::default();
     assert_eq!(
         summary("set_approval_for_all", &[0x77, 1], &none),
-        "Allow 0x77…0x77 to transfer EVERY item you own in collection 0x1234…9abc"
+        "Allow 0x0000…0077 to transfer EVERY item you own in collection 0x0000…9abc"
     );
     assert_eq!(
         summary("setApprovalForAll", &[0x77, 0], &none),
-        "Revoke 0x77…0x77's permission to transfer every item in collection 0x1234…9abc"
+        "Revoke 0x0000…0077's permission to transfer every item in collection 0x0000…9abc"
     );
     assert_eq!(
         summary("setApprovalForAll", &[0x77], &none),
@@ -181,7 +181,7 @@ fn operator_approvals_and_swaps() {
     let swap = [1, 5, 0, 2, 9, 0, 8, 0, 3, 0, 4, 1, 6, 7, 10, 11, 0];
     assert_eq!(
         summary(AVNU_MULTI_ROUTE_SWAP, &swap, &none),
-        "Swap 5 units of 0x1…0x1 for at least 8 units of 0x2…0x2, paid to 0x3…0x3"
+        "Swap 5 units of 0x0000…0001 for at least 8 units of 0x0000…0002, paid to 0x0000…0003"
     );
     assert_eq!(
         summary(AVNU_MULTI_ROUTE_SWAP, &swap[..16], &none),

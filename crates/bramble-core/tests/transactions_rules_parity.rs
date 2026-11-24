@@ -16,6 +16,7 @@ use serde_json::Value;
 use starknet_wallet_core::activity::observation::{self, Tier};
 use starknet_wallet_core::activity::store;
 use starknet_wallet_core::history::explorer::explorer_transaction_url;
+use starknet_wallet_core::js::felt::address_label;
 use starknet_wallet_core::send::calls::{self, ReviewFlag, SendAmountError};
 use starknet_wallet_core::send::fees::{self, FeeQuote, FeeRefusal, FeeUnit};
 use starknet_wallet_core::send::judge::{self, Observation, TxStatus};
@@ -182,7 +183,7 @@ fn presentation_rules_match_the_extension() {
     }
     for case in presentation["shortAddresses"].as_array().unwrap() {
         assert_eq!(
-            calls::short_label(case["input"].as_str().unwrap()),
+            address_label(case["input"].as_str().unwrap()),
             case["short"].as_str().unwrap()
         );
     }
@@ -244,7 +245,28 @@ fn verification_summary_and_flags_match_the_extension() {
             symbol,
             &recipient,
         );
-        assert_eq!(summary, case["summary"].as_str().unwrap());
+        // EXCEPTION, remove on the next fixture copy. Bramble main at aa9d9d1df labels a
+        // recipient straight from starknet.js calldata, which `buildErc20TransferCall` compiles to
+        // decimal, so these summaries print the recipient as a decimal number ("Send 1.5 ETH to
+        // 1799…283"). That is the extension's bug (#884 dropped the `canonical()` before the
+        // label), fixed on Bramble `fix/review-decimal-recipient` (5562e51ed, 855da6cb8), not yet
+        // on main. The core keeps the hex label. Only a summary that is exactly the buggy
+        // spelling of this case is excused, and the core must still give the hex one; every
+        // other summary, and every case's flags, is compared as usual.
+        let expected = case["summary"].as_str().unwrap();
+        let decimal_bug = format!("Send 1.5 {symbol} to {recipient}");
+        if expected == decimal_bug {
+            assert_eq!(
+                summary,
+                format!(
+                    "Send 1.5 {symbol} to {}",
+                    address_label(&felt::canonical(&recipient))
+                ),
+                "{case}"
+            );
+        } else {
+            assert_eq!(summary, expected, "{case}");
+        }
         let trusted: Vec<Felt> = case["trusted"]
             .as_array()
             .unwrap()

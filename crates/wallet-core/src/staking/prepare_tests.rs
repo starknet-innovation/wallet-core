@@ -40,7 +40,7 @@ pub(super) fn account() -> Account {
 }
 
 const VALIDATOR: &str =
-    "validator 0x5a200000000000000000000000000000000000000000000000000000000beef";
+    "validator 0x05a200000000000000000000000000000000000000000000000000000000beef";
 
 /// A wallet that knows nothing on the network: no token, contact or pinned contract.
 const NOTHING_KNOWN: ReviewContext<'static> = ReviewContext {
@@ -121,7 +121,7 @@ fn a_first_stake_approves_exactly_the_amount_and_enters_the_verified_pool() {
     );
     assert_eq!(
         preparation.invoke.activity_summary(),
-        "Stake 5 STRK with validator 0x5a20…beef"
+        "Stake 5 STRK with validator 0x05a2…beef"
     );
     assert_eq!(preparation.pool, f(STAKING_POOL));
     let amount = Felt::from(5 * 10u128.pow(18));
@@ -220,7 +220,7 @@ fn withdraw_waits_for_the_exit_window_the_chain_reports() {
     );
     assert_eq!(
         withdraw.invoke.activity_summary(),
-        "Withdraw unstaked STRK from validator 0x5a20…beef"
+        "Withdraw unstaked STRK from validator 0x05a2…beef"
     );
 }
 
@@ -282,12 +282,12 @@ fn a_claim_discloses_rewards_paid_to_another_address_and_records_strk() {
     assert_eq!(
         claim.review,
         format!(
-            "Claim your STRK rewards from {VALIDATOR}. Rewards are paid to 0xabc1…c123, not this account."
+            "Claim your STRK rewards from {VALIDATOR}. Rewards are paid to 0x0000…c123, not this account."
         )
     );
     assert_eq!(
         claim.invoke.activity_summary(),
-        "Claim staking rewards from validator 0x5a20…beef"
+        "Claim staking rewards from validator 0x05a2…beef"
     );
     let asset = claim.invoke.activity_asset.unwrap();
     assert_eq!(

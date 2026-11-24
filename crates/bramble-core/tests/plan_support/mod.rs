@@ -357,13 +357,13 @@ pub fn run_with(
             },
             "transfer",
         ) => {
-            assert_eq!(record.summary, "Send 1.5 STRK to 0x3fa7…41a3");
+            assert_eq!(record.summary, "Send 1.5 STRK to 0x03fa…41a3");
             assert_eq!((amount.as_str(), symbol.as_str()), ("1.5", "STRK"));
             assert_eq!(*recipient, f(scenario["recipient"].as_str().unwrap()));
         }
         // The same transfer as a one-call batch (`transactions_invoke.rs`): its review's line.
         (PendingKind::Invoke { .. }, "transfer") => {
-            assert_eq!(record.summary, "Send 1.5 STRK to 0x3fa7…41a3");
+            assert_eq!(record.summary, "Send 1.5 STRK to 0x03fa…41a3");
         }
         // A batch (`calls_review_parity.rs`): `submitInvokeTransaction` records no row; its
         // caller's text is the review's line, which that test does not pin.
