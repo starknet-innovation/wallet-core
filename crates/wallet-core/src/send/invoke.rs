@@ -215,6 +215,11 @@ impl Invoke {
         &self.reviewed
     }
 
+    /// The calls the plan signs, in batch order, each beside its review in `calls`.
+    pub fn signed_calls(&self) -> &[Call] {
+        &self.calls
+    }
+
     /// The batch's flags as the extension's card lists them: every call's, in order, each line
     /// once (`dedupeFlags`).
     pub fn flags(&self) -> Vec<&RiskFlag> {

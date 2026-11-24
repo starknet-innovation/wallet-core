@@ -259,3 +259,57 @@ fn a_private_key_enters_mobile_only_through_its_import_and_never_leaves() {
         .outgoing()
         .contains("Result<AccountRecord, CoreError>"));
 }
+
+/// The records that carry a call's parts (a `calldata` or `entrypoint` field), by name, from every
+/// source file: what an export would have to take to be handed calls to sign.
+fn call_shaped_records(sources: &[(String, String)]) -> Vec<String> {
+    let mut names = vec!["Call".to_string()];
+    for (_, source) in sources {
+        let lines: Vec<&str> = source.lines().collect();
+        for (at, line) in lines.iter().enumerate() {
+            let Some(rest) = line.trim_start().strip_prefix("pub struct ") else {
+                continue;
+            };
+            let name = rest
+                .split(|c: char| !c.is_alphanumeric() && c != '_')
+                .next()
+                .unwrap_or("");
+            let body = lines[at..].iter().take_while(|line| **line != "}");
+            if body
+                .clone()
+                .any(|line| line.contains("calldata") || line.contains("entrypoint"))
+            {
+                names.push(name.to_string());
+            }
+        }
+    }
+    names
+}
+
+/// P9: no export signs calls the host supplies. A batch is built in the core by its reviewed
+/// consumer (the revoke takes an allowance id, never a call), so no exported function the apps
+/// call takes calldata, an entrypoint, or a record carrying either.
+#[test]
+fn no_export_takes_calls_to_sign() {
+    let sources = sources();
+    let call_shaped = call_shaped_records(&sources);
+    assert!(
+        call_shaped.iter().any(|name| name == "ReviewedCall"),
+        "the scan found no call-shaped record: {call_shaped:?}"
+    );
+    for (file, source) in &sources {
+        for exported in exported_signatures(source).iter().filter(|e| !e.foreign) {
+            let incoming = exported.signature.split("->").next().unwrap_or("");
+            let arguments = incoming.split_once('(').map_or("", |(_, rest)| rest);
+            for word in arguments.split(|c: char| !c.is_alphanumeric() && c != '_') {
+                assert!(
+                    word != "calldata"
+                        && word != "entrypoint"
+                        && !call_shaped.iter().any(|name| name == word),
+                    "{file}: `{}` takes calls",
+                    exported.signature
+                );
+            }
+        }
+    }
+}

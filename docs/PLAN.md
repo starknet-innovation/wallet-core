@@ -168,8 +168,8 @@ step starts.
 | M18 | Bramble | X1 | multisig transaction screens on both apps: propose, sign, submit, change signers |
 | P9 rest | here | — | fee affordability for a batch: done (#104, fee-only as the extension's dapp card, over the host's `Invoke::with_fee_balance`). The pending record already carries the batch's allowance changes (#96); Bramble's host filing them is X2's |
 | G7d | Bramble | — | a multicall and a refused batch through `submitInvokeTransaction`, and `verifyCalls` over batches that raise each flag (P9) |
-| X2 P9 | here | K2, P9 rest, G7d | the batch through `Plan`, exported only with its first consumer: no UniFFI call signs arbitrary calls on its own |
-| G7e, X3, M19 | both | X2 | P12 allowances first, the smallest consumer: `Approval` decoding, a scan with legacy windows, the merge, eviction, the revoke and its settling (G7e); the two step machines, the log and the merge exported (X3); the allowance manager and revoke screens, with Bramble's host filing every pending record's allowance changes (`allowances::calls::record_changes`) before its row (M19) |
+| X2 P9 | here | K2, P9 rest, G7d | the batch through `Plan`, exported only with its first consumer: no UniFFI call signs arbitrary calls on its own. Done with X3, ahead of G7d: the revoke is the one export that builds a batch, from an allowance id; `TransferPlan::reviewed_calls` and `risk_flags` are its card; `ffi_surface.rs` fails if any export takes a call |
+| G7e, X3, M19 | both | X2 | P12 allowances first, the smallest consumer: `Approval` decoding, a scan with legacy windows, the merge, eviction, the revoke and its settling (G7e); the two step machines, the log and the merge exported (X3); the allowance manager and revoke screens, with Bramble's host filing every pending record's allowance changes (`allowances::calls::record_changes`) before its row (M19). X3 done with X2, ahead of G7e: Bramble's host files them (`allowances.v1.json`), the revoke is `WalletCore::prepare_revoke` (its confirmation read inside), and the listing is one step machine, `WalletCore::allowance_listing`; mobile lists no multisig's grants yet (`MultisigUnread` when it holds one) |
 | G7f, X4, M20 | both | X2 | P11 swap: a quote, a build and the refused builds through the real handler; the export; the swap screens |
 | G7g, X5, M21 | both | X2 | P13 staking: a live directory page, a positions answer, a pinned read and each action's calls; the export (Mainnet only, `STAKING_POLICY`); the staking screens |
 | P14 | here, then both | X2 | gasless and sponsored: a SNIP-9 v2 outside execution the gateway builds and the wallet checks (calls, fee transfer, ceiling, window), and the paymaster's bodies and replies (`transactions/src/gasless/`, 1,818 lines). Its generator first shows whether Krusty's SNIP-12 hash agrees with starknet.js on this message; if not, it waits on Krusty rather than adding hashing here. Adds the sponsored and gasless rows P2 left out |
@@ -559,11 +559,9 @@ Foundations, which the features need, and Ledger, which needs only the first:
   batch's own count and `activityOrigin`), falling back to the review line; it rides on the
   `Invoke` the plan already binds to its account and network. Departures: each flag is attached
   to its call; `address-poisoning` refuses instead of flagging; the standing totals are filtered
-  in the core rather than by the caller; an empty activity text keeps the review line. A
-  batch's fee affordability is the dapp card's (`estimateInvokeApprovalFee`): fee-only, the
-  deployment added when the account needs one, FRI only, over the STRK balance the host last
-  read (`Invoke::with_fee_balance`; none is `Unknown`); the STRK its calls spend counts only
-  toward the gasless offer, not ported. Not ported: the approval queue's summary bound (P16). `RiskFlag` is not the transfer's `ReviewFlag`; the two
+  in the core rather than by the caller; an empty activity text keeps the review line. Not
+  ported: fee affordability with an amount (the invoke kind reads no STRK balance) and the
+  approval queue's summary bound (P16). `RiskFlag` is not the transfer's `ReviewFlag`; the two
   meet at export. Not ported, as
   for the transfer: the `fast` speed, a SNIP-36 proof (P15) and the approval queue's review
   budget (P16). Selectors come from Krusty (`kms::selector`, K2). Evidence: every transfer capture
