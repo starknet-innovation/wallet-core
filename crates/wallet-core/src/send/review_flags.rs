@@ -18,12 +18,13 @@ use super::call_decode::{
     recipient_for_flags, uint256_at, CallKind, DecodedCall, Known, APPROVE_SET,
     AVNU_MULTI_ROUTE_SWAP, DECREASE_ALLOWANCE,
 };
-use super::calls::{short_label, Call};
+use super::calls::Call;
 use super::types::Account;
 use super::u256::U256;
 use crate::allowances::calls::{standing_allowance_totals, AllowanceOwner};
 use crate::allowances::record::{is_unlimited, AllowanceRecord};
 use crate::felt;
+use crate::js::felt::address_label;
 
 /// `RiskFlag`: one warning, with the extension's `code` and `message`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -106,9 +107,9 @@ pub struct ReviewContext<'a> {
     pub standing: &'a [AllowanceRecord],
 }
 
-/// `shortAddress(canonical(value))`.
+/// `addressLabel(value)`.
 fn short(value: &Felt) -> String {
-    short_label(&felt::canonical(value))
+    address_label(&felt::canonical(value))
 }
 
 /// A pair's running total, `None` once it has passed `UINT256_MAX`. It stays there through a

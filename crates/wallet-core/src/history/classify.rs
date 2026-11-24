@@ -6,7 +6,8 @@
 use std::sync::OnceLock;
 
 use super::activity::{ActivityEntry, ActivityKind, TransferDirection};
-use crate::js::num::{js_trim, short_label, utf16_len};
+use crate::js::felt::address_label;
+use crate::js::num::{js_trim, utf16_len};
 use crate::js::regex::Regex;
 use crate::portfolio::fiat::compact_amount;
 
@@ -298,7 +299,7 @@ pub(super) fn detail(
             "recipient" => "To",
             _ => "With",
         };
-        return Some(format!("{preposition} {}", short_label(address)));
+        return Some(format!("{preposition} {}", address_label(address)));
     }
     let summary = compact_summary(js_trim(&entry.summary));
     if look.kind == "swap" {

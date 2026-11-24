@@ -105,10 +105,10 @@ fn ordinary_batches_summarise_the_first_call_and_count_the_rest() {
     let transfer = call("0x123", "transfer", &["0x456", "0x1", "0x0"]);
     let other = call("0x123", "poke", &[]);
     let one = review(std::slice::from_ref(&transfer), &[], 120).unwrap();
-    assert_eq!(one.summary, "Send 1 units to 0x456…x456");
+    assert_eq!(one.summary, "Send 1 units to 0x0000…0456");
     assert_eq!(one.config, None);
     let three = review(&[transfer.clone(), other.clone(), other], &[], 120).unwrap();
-    assert_eq!(three.summary, "Send 1 units to 0x456…x456 (+2 more)");
+    assert_eq!(three.summary, "Send 1 units to 0x0000…0456 (+2 more)");
     // Cut to the wallet's length in UTF-16 units, then trimmed.
     assert_eq!(
         review(std::slice::from_ref(&transfer), &[], 5)

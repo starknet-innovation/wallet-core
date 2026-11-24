@@ -130,7 +130,7 @@ fn revokes_a_tracked_allowance_with_a_zero_amount_approve() {
         (NetworkId::Mainnet, f(ADDRESS))
     );
     // The activity line the revoke records is the review's summary (`report.calls[0].summary`).
-    assert_eq!(invoke.summary(), "Allow 0x5…0x5 to spend 0 ETH");
+    assert_eq!(invoke.summary(), "Allow 0x0000…0005 to spend 0 ETH");
 }
 
 #[test]

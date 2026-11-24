@@ -281,10 +281,10 @@ fn the_review_names_a_reward_address_that_is_not_this_account() {
     );
     assert_eq!(
         sentence(StakingAction::Claim, None, Some(&elsewhere)),
-        "Claim your STRK rewards from Val. Rewards are paid to 0xbeef…0001, not this account."
+        "Claim your STRK rewards from Val. Rewards are paid to 0x0000…0001, not this account."
     );
     assert!(sentence(StakingAction::Stake, Some("5"), Some(&elsewhere))
-        .ends_with("Rewards are paid to 0xbeef…0001, not this account."));
+        .ends_with("Rewards are paid to 0x0000…0001, not this account."));
     assert_eq!(
         sentence(StakingAction::Withdraw, None, Some(&elsewhere)),
         "Withdraw your unstaked STRK from Val."

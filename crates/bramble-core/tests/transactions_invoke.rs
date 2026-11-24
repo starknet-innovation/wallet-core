@@ -132,7 +132,7 @@ fn a_multicall_signs_and_submits_every_call() {
     let shown = plan.current_review().unwrap().clone();
     assert_eq!(
         shown.summary,
-        "Allow 0x3fa7…41a3 to spend 0.000000000000000001 STRK (+1 more)"
+        "Allow 0x03fa…41a3 to spend 0.000000000000000001 STRK (+1 more)"
     );
     assert!(shown.can_confirm && !shown.requires_deployment && shown.fee.is_some());
     assert_eq!(shown.affordability, FeeAffordability::Unknown);

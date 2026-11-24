@@ -41,7 +41,13 @@ fn a_stake_is_read_reviewed_and_signed_with_its_approval_filed_before_the_row() 
         .plan(&chain, StakingAction::Stake, Some("1.5"))
         .unwrap();
     assert!(staking.review.contains("1.5 STRK"), "{}", staking.review);
-    assert!(staking.review.contains(STAKER), "{}", staking.review);
+    assert!(
+        staking
+            .review
+            .contains(&starknet_wallet_core::js::felt::address_text(STAKER)),
+        "{}",
+        staking.review
+    );
     let plan = staking.plan;
     let amount = 3 * E18 / 2;
     let expected = execute(&[
@@ -113,7 +119,7 @@ fn a_submitted_stake_names_its_row() {
         SendStep::Broadcast { .. }
     ));
     let row = &wallet.core.activity(wallet.id.clone()).unwrap()[0];
-    assert_eq!(row.summary, "Stake 1.5 STRK with validator 0x5a20…beef");
+    assert_eq!(row.summary, "Stake 1.5 STRK with validator 0x05a2…beef");
     assert_eq!(plan.signatures_made(), 1);
 }
 

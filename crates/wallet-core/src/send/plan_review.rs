@@ -5,7 +5,7 @@
 use crate::Felt;
 use serde_json::Value;
 
-use super::calls::{short_label, ReviewFlag};
+use super::calls::ReviewFlag;
 use super::fees::FeeUnit;
 use super::fees::{self, FeeQuote};
 use super::judge::{self, Answer, ChainAnswer, EstimateAnswer};
@@ -15,6 +15,7 @@ use super::plan_probe::{Outcome, Probe};
 use super::rpc_bodies::{self, DeployTx, InvokeTx};
 use super::types::{FeeAffordability, RpcPurpose, SendFailureCode, SendStep, TransferReview};
 use crate::felt;
+use crate::js::felt::{address_label, address_text};
 
 /// The standalone Deploy account summary (`deployment-ops.ts`).
 pub const DEPLOY_SUMMARY: &str = "Deploy account contract";
@@ -316,8 +317,8 @@ impl Plan {
             Kind::Transfer(transfer) => {
                 let recipient = felt::canonical(&transfer.recipient);
                 TransferReview {
-                    recipient_short: short_label(&recipient),
-                    recipient,
+                    recipient_short: address_label(&recipient),
+                    recipient: address_text(&recipient),
                     amount_display: transfer.amount_text.clone(),
                     token_symbol: transfer.symbol.clone(),
                     flags: transfer.flags.clone(),
@@ -329,8 +330,8 @@ impl Plan {
                 let address = felt::canonical(&self.account.address);
                 TransferReview {
                     summary: DEPLOY_SUMMARY.into(),
-                    recipient_short: short_label(&address),
-                    recipient: address,
+                    recipient_short: address_label(&address),
+                    recipient: address_text(&address),
                     amount_display: String::new(),
                     token_symbol: String::new(),
                     fee: None,

@@ -132,7 +132,7 @@ fn the_unknown_contract_message_names_the_contract() {
     };
     assert_eq!(
         flag.message(),
-        "0x7aaa…0001 is not a token or contact this wallet knows. Verify the contract before continuing."
+        "0x07aa…0001 is not a token or contact this wallet knows. Verify the contract before continuing."
     );
     assert_eq!(flag.to_string(), flag.message());
 }
@@ -460,7 +460,7 @@ fn a_swap_is_warned_about_when_it_pays_elsewhere_or_cannot_be_read() {
     let elsewhere = flags_from(&account(), &[swap(SPENDER)], &context);
     assert_eq!(
         elsewhere[0].iter().map(RiskFlag::message).collect::<Vec<_>>(),
-        ["This swap pays its proceeds to 0x555a…bbcc, not to this account. Reject it unless you meant to send them there."]
+        ["This swap pays its proceeds to 0x0555…bbcc, not to this account. Reject it unless you meant to send them there."]
     );
     // "malformed calldata falls back to the opaque line, still shows the call, and is flagged".
     let mut truncated = swap(SPENDER);

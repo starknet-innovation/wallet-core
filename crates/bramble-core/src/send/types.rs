@@ -82,7 +82,7 @@ pub enum DeploymentState {
 /// Everything the review screen shows, derived from the one stored call.
 #[uniffi::remote(Record)]
 pub struct TransferReview {
-    /// The verifier's summary, e.g. "Send 1.5 STRK to 0x3fa7…41a3", or "Deploy account contract".
+    /// The verifier's summary, e.g. "Send 1.5 STRK to 0x03fa…41a3", or "Deploy account contract".
     pub summary: String,
     pub recipient: String,
     pub recipient_short: String,

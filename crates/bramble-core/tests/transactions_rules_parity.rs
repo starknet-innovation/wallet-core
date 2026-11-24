@@ -16,6 +16,7 @@ use serde_json::Value;
 use starknet_wallet_core::activity::observation::{self, Tier};
 use starknet_wallet_core::activity::store;
 use starknet_wallet_core::history::explorer::explorer_transaction_url;
+use starknet_wallet_core::js::felt::address_label;
 use starknet_wallet_core::send::calls::{self, ReviewFlag, SendAmountError};
 use starknet_wallet_core::send::fees::{self, FeeQuote, FeeRefusal, FeeUnit};
 use starknet_wallet_core::send::judge::{self, Observation, TxStatus};
@@ -182,7 +183,7 @@ fn presentation_rules_match_the_extension() {
     }
     for case in presentation["shortAddresses"].as_array().unwrap() {
         assert_eq!(
-            calls::short_label(case["input"].as_str().unwrap()),
+            address_label(case["input"].as_str().unwrap()),
             case["short"].as_str().unwrap()
         );
     }

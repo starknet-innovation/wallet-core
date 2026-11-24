@@ -4,7 +4,7 @@
 
 use super::{PendingBuild, SwapRefusal};
 use crate::felt;
-use crate::js::num::short_label;
+use crate::js::felt::address_label;
 use crate::send::avnu_route::AvnuRoute;
 use crate::send::call_decode::AVNU_MULTI_ROUTE_SWAP;
 use crate::send::calls::format_token_amount;
@@ -43,7 +43,7 @@ impl SwapPreparation {
             request.sell_text,
             sell.symbol,
             buy.symbol,
-            short_label(&felt::canonical(&build.account.address)),
+            address_label(&felt::canonical(&build.account.address)),
         );
         let summaries = invoke
             .calls

@@ -10,10 +10,11 @@
 
 use starknet_types_core::felt::Felt;
 
-use super::calls::{format_token_amount, short_label, transfer_summary};
+use super::calls::{format_token_amount, transfer_summary};
 use super::u256::U256;
 use crate::catalog::TokenInfo;
 use crate::felt;
+use crate::js::felt::address_label;
 use crate::js::felt::same_felt;
 
 /// AVNU's `multi_route_swap` entrypoint and the felt its beneficiary sits at.
@@ -106,9 +107,9 @@ pub fn recipient_for_flags(entrypoint: &str, calldata: &[Felt]) -> Option<Felt> 
     calldata.get(recipient_felt_index(entrypoint)?).copied()
 }
 
-/// `shortAddress(canonical(value))`.
+/// `addressLabel(value)`.
 fn short(value: &Felt) -> String {
-    short_label(&felt::canonical(value))
+    address_label(&felt::canonical(value))
 }
 
 /// `uint256Felts`: two felts each below 2^128.

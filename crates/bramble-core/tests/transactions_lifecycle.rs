@@ -32,7 +32,7 @@ fn close_between_invoke_write_and_reply_keeps_the_pending_record() {
         (records[0].hash.as_str(), records[0].status),
         (hash.as_str(), TxStatus::Pending)
     );
-    assert_eq!(records[0].summary, "Send 1.5 STRK to 0x3fa7…41a3");
+    assert_eq!(records[0].summary, "Send 1.5 STRK to 0x03fa…41a3");
     // The journey reports "status unknown" with the hash, never "not sent".
     let interrupted = plan.interrupted_failure().unwrap();
     assert_eq!(interrupted.code, SendFailureCode::SubmissionIndeterminate);

@@ -6,7 +6,8 @@
 
 use super::calls::StakingAction;
 use super::decode::PoolMember;
-use crate::js::num::{js_trim, short_label};
+use crate::js::felt::address_label;
+use crate::js::num::js_trim;
 use crate::{felt, Felt};
 
 /// `stakingReviewSentence`. `member` is the membership read at the block the calls were built
@@ -41,7 +42,7 @@ pub fn review_sentence(
         {
             format!(
                 "{what} Rewards are paid to {}, not this account.",
-                short_label(&felt::canonical(&reward))
+                address_label(&felt::canonical(&reward))
             )
         }
         _ => what,

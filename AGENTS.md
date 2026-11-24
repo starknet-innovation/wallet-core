@@ -97,10 +97,13 @@ Grep first; extend in place rather than adding a sibling.
 - Starknet ID names (name → address: grammar, `useEncoded`, the `domain_to_address` body and its
   judge) are `stark_name`; Bramble's naming contracts and exports are `bramble-core`'s
   `stark_name.rs`.
-- JavaScript semantics live in `crates/wallet-core/src/js/`: `trim`, `shortAddress`, UTF-16
-  lengths and `Number` formatting in `js::num` (`js_trim`, `short_label`; `send::calls`
-  re-exports both), `BigInt` in `js::big`, `JSON` in `js::json`, the budgeted regex matcher in
-  `js::regex`, felt helpers over them in `js::felt`. Fixed-UTC dates are `history::time`.
+- JavaScript semantics live in `crates/wallet-core/src/js/`: `trim`, UTF-16 lengths and
+  `Number` formatting in `js::num` (`js_trim`; `send::calls` re-exports it), `BigInt` in
+  `js::big`, `JSON` in `js::json`, the budgeted regex matcher in `js::regex`, felt helpers over
+  them in `js::felt`. Fixed-UTC dates are `history::time`.
+- Every address or hash shown is spelled by `js::felt::address_label` (`0x0208…98d9`, cut from
+  the 64-digit padded spelling) or `address_text` (in full, padded): Bramble's `addressLabel` and
+  `addressText`. A non-felt passes through unchanged. Never cut an address anywhere else.
 - Ladders, account families, family addresses and constructor calldata live in
   `crates/wallet-core/src/accounts/`; an account's key is `kms::account_key(.., ladder, index)`.
 - The recovery scan is `accounts::scan::Scan`, fed a `ScanConfig` (Bramble's shapes, limits,

@@ -84,7 +84,7 @@ fn a_stake_carries_its_exact_approval_of_the_pool_and_names_its_row() {
     // The row is the staking line, not the review's "Approve ..." line.
     assert_eq!(
         stake.invoke.activity_summary(),
-        "Stake 5 STRK with validator 0x5a20…beef"
+        "Stake 5 STRK with validator 0x05a2…beef"
     );
     assert_ne!(stake.invoke.activity_summary(), stake.invoke.summary());
 }

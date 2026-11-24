@@ -14,7 +14,8 @@ use super::activity_rules::{
 use super::explorer::is_account_id_for_network;
 use crate::activity::store::{kind_text, parse_kind, parse_status, status_text};
 use crate::js::felt::{
-    canonical_felt, is_stark_field_element, same_felt, same_felt_value, uint256_felts,
+    address_label, canonical_felt, is_stark_field_element, same_felt, same_felt_value,
+    uint256_felts,
 };
 use crate::js::json::JsValue;
 use crate::js::num::{is_safe_integer, utf16_len, utf16_slice};
@@ -277,19 +278,6 @@ pub struct DecodedTransfer {
     pub hash: String,
 }
 
-fn short_address(address: &str) -> String {
-    if utf16_len(address) > 12 {
-        let len = utf16_len(address);
-        format!(
-            "{}…{}",
-            utf16_slice(address, 0, 6),
-            utf16_slice(address, len - 4, len)
-        )
-    } else {
-        address.to_string()
-    }
-}
-
 /// `onChainActivityEntry`: an accepted transfer row dated by its block.
 pub fn on_chain_activity_entry(
     account_id: &str,
@@ -300,7 +288,7 @@ pub fn on_chain_activity_entry(
 ) -> ActivityEntry {
     let amount = crate::rpc::format_amount(&decoded.amount_raw, token.decimals, token.decimals)
         .unwrap_or_else(|_| decoded.amount_raw.clone());
-    let short = short_address(&decoded.counterparty);
+    let short = address_label(&decoded.counterparty);
     let summary = if decoded.incoming {
         format!("Received {amount} {} from {short}", token.symbol)
     } else {
