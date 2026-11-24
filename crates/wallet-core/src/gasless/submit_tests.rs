@@ -3,10 +3,12 @@
 use super::*;
 use crate::accounts::AccountFamily;
 use crate::gasless::tests::{call, felt_of, v2_classes, POLICY};
-use crate::gasless::typed_data::tests::{standard, BEFORE, FORWARDER, NOW, RECIPIENT, USDC};
+use crate::gasless::typed_data::tests::{quote, standard, BEFORE, FORWARDER, NOW, RECIPIENT, USDC};
 use crate::gasless::{strk_affordability, GaslessAccount};
+use crate::gasless::{GaslessPolicy, GaslessRoute};
 use crate::js::json;
 use crate::send::fees::FeeUnit;
+use crate::send::sign::Deployment;
 use crate::NetworkId;
 
 const ACCOUNT: &str = "0x5dccf9cfdcabb9e4ef45814bda1b056bb23063d0e9b64e5a845e9dfb3d23f10";
@@ -31,6 +33,10 @@ fn user_calls() -> Vec<crate::send::calls::Call> {
 
 /// `quoteBody()`: a build result whose fee transfer is 1000 USDC base units.
 fn quote_body() -> JsValue {
+    quote_body_of("invoke", standard())
+}
+
+fn quote_body_of(kind: &str, typed_data: serde_json::Value) -> JsValue {
     let body = serde_json::json!({
         "fee": {
             "estimated_fee_in_gas_token": "0x1",
@@ -40,8 +46,8 @@ fn quote_body() -> JsValue {
             "suggested_max_fee_in_strk": "0x1",
         },
         "parameters": {"fee_mode": {"gas_token": USDC, "mode": "default"}, "version": "0x1"},
-        "type": "invoke",
-        "typed_data": standard(),
+        "type": kind,
+        "typed_data": typed_data,
     });
     json::parse(&body.to_string()).unwrap()
 }
@@ -246,4 +252,121 @@ fn counts_strk_the_calls_spend_not_only_the_network_fee() {
         strk_affordability(&[], &strk, Some(U256::from_u128(1)), wei),
         FeeAffordability::Unknown
     );
+}
+
+#[test]
+fn refuses_to_execute_without_a_signature() {
+    let session = session(&user_calls());
+    let quote = checked(&session);
+    assert_eq!(
+        quote.execute_request(&[], NOW),
+        Err(GaslessCode::Unavailable.into())
+    );
+}
+
+/// The standard body's calls on `SN_SEPOLIA`.
+fn sepolia_typed_data() -> serde_json::Value {
+    let calls = standard()["message"]["Calls"].clone();
+    quote(calls.as_array().unwrap(), "SN_SEPOLIA")
+}
+
+// The chain id check would refuse a Mainnet body under a Sepolia session, so the body here is
+// Sepolia's: only the build's own network refuses it.
+#[test]
+fn judges_a_build_only_for_its_own_network_even_with_a_body_for_the_other() {
+    let session = session(&user_calls());
+    let mut sepolia = session.clone();
+    sepolia.network = NetworkId::Sepolia;
+    let body = quote_body_of("invoke", sepolia_typed_data());
+    let (pending, _) = session
+        .submit_build(&reviewed("2000"), Some(U256::from_u128(1000)), NOW)
+        .unwrap();
+    assert_eq!(
+        pending.clone().judge(&sepolia, &body).err(),
+        Some(GaslessCode::InvalidGaslessRequest.into())
+    );
+    let strk = felt_of(STRK);
+    let held = GaslessHeldToken {
+        address: felt_of(USDC),
+        balance: Some(U256::from_u128(5000)),
+        decimals: 6,
+        label: "USDC".into(),
+    };
+    let (offer, _) = session
+        .offer_build(&held, Some(U256::from_u128(1000)), NOW)
+        .unwrap();
+    assert_eq!(offer.clone().judge(&sepolia, &body, &strk), None);
+    // The same body is accepted for a build asked for on Sepolia.
+    let mut built_on_sepolia = pending;
+    built_on_sepolia.bound.network = NetworkId::Sepolia;
+    assert!(built_on_sepolia.judge(&sepolia, &body).is_ok());
+}
+
+#[test]
+fn a_deploy_and_invoke_executes_with_the_builds_deployment() {
+    const ROUTES: [GaslessRoute; 1] = [GaslessRoute {
+        network: NetworkId::Sepolia,
+        url: "https://gateway.example/sepolia",
+        enabled: true,
+        forwarder: Some(Felt::from_hex_unchecked(FORWARDER)),
+    }];
+    let policy = GaslessPolicy {
+        routes: &ROUTES,
+        ..POLICY
+    };
+    let deployment = Deployment {
+        class_hash: felt_of("0x4"),
+        salt: felt_of("0x3"),
+        constructor_calldata: vec![felt_of("0x5")],
+    };
+    let address = deployment.address().unwrap();
+    let account = GaslessAccount {
+        network: NetworkId::Sepolia,
+        address,
+        family: AccountFamily::Argent,
+        class_hash: felt_of(ARGENT_04),
+        deployed: false,
+        deployment: Some(&deployment),
+    };
+    let calls = user_calls();
+    let session = GaslessSession::open(&policy, &account, &calls, &v2_classes()).unwrap();
+    let (pending, _) = session
+        .submit_build(&reviewed("2000"), Some(U256::from_u128(1000)), NOW)
+        .unwrap();
+    let body = quote_body_of("deploy_and_invoke", sepolia_typed_data());
+    let quote = pending.judge(&session, &body).unwrap();
+    let request = quote.execute_request(&[felt_of("0x1")], NOW).unwrap();
+    let sent: serde_json::Value = serde_json::from_str(request.body.as_deref().unwrap()).unwrap();
+    let transaction = &sent["params"]["transaction"];
+    assert_eq!(transaction["type"], "deploy_and_invoke");
+    assert_eq!(
+        transaction["deployment"],
+        serde_json::json!({
+            "address": felt::canonical(&address),
+            "calldata": ["0x5"],
+            "class_hash": "0x4",
+            "salt": "0x3",
+            "version": 1,
+        })
+    );
+    assert_eq!(
+        transaction["invoke"]["user_address"],
+        felt::canonical(&address)
+    );
+}
+
+#[test]
+fn strk_is_never_held_for_a_gasless_fee() {
+    let strk = felt_of(STRK);
+    let listed = ListedToken {
+        address: strk,
+        decimals: 18,
+    };
+    let held = GaslessHeldToken {
+        address: strk,
+        balance: Some(U256::from_u128(1)),
+        decimals: 18,
+        label: "STRK".into(),
+    };
+    assert_eq!(held_for(&listed, &[held], &strk), None);
 }

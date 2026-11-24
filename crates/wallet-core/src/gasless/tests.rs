@@ -125,6 +125,17 @@ fn the_window_must_be_live_keep_its_floor_and_end_within_the_cap() {
     // Closed is closed even with no floor asked for.
     assert!(!POLICY.window_is_live(1, 1000, 1000, 0));
     assert!(!POLICY.window_is_live(1, 1000, 1001, 0));
+    // A clock past `Number.MAX_SAFE_INTEGER` is refused even inside an otherwise live window.
+    assert!(live(
+        MAX_SAFE_INTEGER - 1,
+        MAX_SAFE_INTEGER + 100,
+        MAX_SAFE_INTEGER
+    ));
+    assert!(!live(
+        MAX_SAFE_INTEGER,
+        MAX_SAFE_INTEGER + 101,
+        MAX_SAFE_INTEGER + 1
+    ));
 }
 
 #[test]

@@ -219,3 +219,43 @@ fn the_request_is_one_json_rpc_post_to_the_route() {
     assert_eq!(request.deadline_ms, POLICY.deadline_ms);
     assert_eq!(request.max_body_bytes, POLICY.max_body_bytes);
 }
+
+#[test]
+fn a_body_over_the_policys_budget_is_unread_even_with_a_2xx_result() {
+    let reply = outcome(200, &json!({"id": 1, "jsonrpc": "2.0", "result": true}));
+    let len = reply.body.as_ref().map_or(0, Vec::len) as u64;
+    let tight = GaslessPolicy {
+        max_body_bytes: len - 1,
+        ..POLICY
+    };
+    assert_eq!(classify(&reply, true, &tight), GaslessAnswer::Lost);
+    assert_eq!(
+        classify(&reply, false, &tight),
+        GaslessAnswer::Refused(GaslessCode::Unrecognised)
+    );
+    let exact = GaslessPolicy {
+        max_body_bytes: len,
+        ..POLICY
+    };
+    assert_eq!(
+        classify(&reply, true, &exact),
+        GaslessAnswer::Result(JsValue::Bool(true))
+    );
+}
+
+#[test]
+fn a_2xx_result_without_json_rpc_2_0_is_not_an_answer() {
+    for body in [
+        json!({"id": 1, "result": {"transaction_hash": "0x3"}}),
+        json!({"id": 1, "jsonrpc": "1.0", "result": {"transaction_hash": "0x3"}}),
+        json!({"id": 1, "jsonrpc": 2, "result": {"transaction_hash": "0x3"}}),
+    ] {
+        let reply = outcome(200, &body);
+        assert_eq!(execute(&reply), GaslessAnswer::Lost, "{body}");
+        assert_eq!(
+            quote(&reply),
+            GaslessAnswer::Refused(GaslessCode::Unrecognised),
+            "{body}"
+        );
+    }
+}

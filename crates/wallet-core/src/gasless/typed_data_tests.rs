@@ -398,3 +398,89 @@ fn rejects_a_nonce_outside_the_felt_grammar_and_a_zero_account() {
         Err(Refusal::Forwarder)
     );
 }
+
+// Each guard of the shape check refuses on its own: `shaped_message` is `None` before any hash,
+// which would also refuse most of these.
+#[test]
+fn each_shape_guard_refuses_a_body_on_its_own() {
+    type Mutation = fn(&mut serde_json::Value);
+    let mutations: [(&str, Mutation); 12] = [
+        ("envelope key", |b| b["extra"] = json!(1)),
+        ("primaryType", |b| b["primaryType"] = json!("Call")),
+        ("domain name", |b| b["domain"]["name"] = json!("Other")),
+        ("domain version", |b| b["domain"]["version"] = json!("1")),
+        ("domain revision", |b| b["domain"]["revision"] = json!("0")),
+        ("domain key", |b| b["domain"]["extra"] = json!("1")),
+        ("message key", |b| b["message"]["extra"] = json!("0x1")),
+        ("call key", |b| {
+            b["message"]["Calls"][0]["extra"] = json!("0x1")
+        }),
+        ("zero To", |b| b["message"]["Calls"][0]["To"] = json!("0x0")),
+        ("zero Caller", |b| b["message"]["Caller"] = json!("0x0")),
+        ("no calls", |b| b["message"]["Calls"] = json!([])),
+        ("missing Nonce", |b| {
+            b["message"].as_object_mut().unwrap().remove("Nonce");
+        }),
+    ];
+    assert!(shaped_message(&js(&standard()), NetworkId::Mainnet).is_some());
+    for (name, mutate) in mutations {
+        let mut body = standard();
+        mutate(&mut body);
+        let body = js(&body);
+        assert!(
+            shaped_message(&body, NetworkId::Mainnet).is_none(),
+            "{name}"
+        );
+        assert_eq!(
+            check_with(&body, Check::default()).err(),
+            Some(Refusal::Shape),
+            "{name}"
+        );
+    }
+}
+
+// The input checks come before the body is read: even an unreadable body is refused as
+// `Forwarder`, not `Shape`.
+#[test]
+fn a_zero_forwarder_or_gas_token_or_no_reviewed_calls_refuses_before_the_body() {
+    for (name, check) in [
+        (
+            "forwarder",
+            Check {
+                forwarder: "0x0",
+                ..Check::default()
+            },
+        ),
+        (
+            "gas token",
+            Check {
+                gas_token: "0x0",
+                ..Check::default()
+            },
+        ),
+        (
+            "calls",
+            Check {
+                calls: vec![],
+                ..Check::default()
+            },
+        ),
+    ] {
+        assert_eq!(
+            check_with(&JsValue::Null, check).err(),
+            Some(Refusal::Forwarder),
+            "{name}"
+        );
+    }
+    let valid = js(&standard());
+    let gas = Check {
+        gas_token: "0x0",
+        ..Check::default()
+    };
+    assert_eq!(check_with(&valid, gas).err(), Some(Refusal::Forwarder));
+    let calls = Check {
+        calls: vec![],
+        ..Check::default()
+    };
+    assert_eq!(check_with(&valid, calls).err(), Some(Refusal::Forwarder));
+}

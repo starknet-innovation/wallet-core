@@ -190,3 +190,70 @@ fn a_quote_must_be_the_build_asked_for_with_every_fee_field_a_felt() {
     let decimal = json::parse(&quote("invoke", "").to_json().replace("0x3e8", "1000")).unwrap();
     assert_eq!(read(&decimal), None);
 }
+
+#[test]
+fn a_quote_needs_exactly_the_five_fee_fields_each_a_felt() {
+    let calls = [call(USDC, "transfer", &[USER, "0x1", "0x0"])];
+    let session = GaslessSession::open(
+        &POLICY,
+        &account(NetworkId::Mainnet, felt_of(USER), true),
+        &calls,
+        &v2_classes(),
+    )
+    .unwrap();
+    let read = |fee: &str| {
+        let text =
+            format!(r#"{{"fee":{{{fee}}},"parameters":{{}},"type":"invoke","typed_data":{{}}}}"#);
+        session
+            .read_quote(&json::parse(&text).unwrap())
+            .map(|(max, _)| max)
+    };
+    let max = r#""suggested_max_fee_in_gas_token":"0x3e8""#;
+    let rest = r#""estimated_fee_in_gas_token":"0x1","gas_token_price_in_strk":"0x1","suggested_max_fee_in_strk":"0x1""#;
+    assert_eq!(
+        read(&format!(r#"{rest},"estimated_fee_in_strk":"0x1",{max}"#)),
+        Some(U256::from_u128(1000))
+    );
+    // An unknown fee field, a missing one, and one outside the felt grammar.
+    assert_eq!(
+        read(&format!(
+            r#"{rest},"estimated_fee_in_strk":"0x1",{max},"tip":"0x0""#
+        )),
+        None
+    );
+    assert_eq!(read(&format!("{rest},{max}")), None);
+    assert_eq!(
+        read(&format!(r#"{rest},"estimated_fee_in_strk":"1",{max}"#)),
+        None
+    );
+    assert_eq!(
+        read(&format!(r#"{rest},"estimated_fee_in_strk":1,{max}"#)),
+        None
+    );
+}
+
+#[test]
+fn a_call_to_the_zero_address_or_with_a_zero_selector_is_refused() {
+    let open = |calls: &[Call]| {
+        GaslessSession::open(
+            &POLICY,
+            &account(NetworkId::Mainnet, felt_of(USER), true),
+            calls,
+            &v2_classes(),
+        )
+        .err()
+    };
+    assert_eq!(open(&[call(USDC, "transfer", &[])]), None);
+    assert_eq!(
+        open(&[call("0x0", "transfer", &[])]),
+        Some(GaslessCode::Unavailable)
+    );
+    assert_eq!(
+        open(&[call(USDC, "0x0", &[])]),
+        Some(GaslessCode::Unavailable)
+    );
+    assert_eq!(
+        open(&[call(USDC, "transfer", &[]), call("0x0", "transfer", &[])]),
+        Some(GaslessCode::Unavailable)
+    );
+}
