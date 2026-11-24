@@ -344,6 +344,10 @@ fn a_stale_quote_or_a_step_out_of_turn_ends_the_swap() {
         other.accept_quote(ok(&wrong), None).err(),
         Some(refused("swap quote does not match the requested pair"))
     );
+    assert_eq!(
+        other.accept_quote(ok(&quote_reply()), None).err(),
+        Some(SwapError::NotFound)
+    );
 }
 
 #[test]
