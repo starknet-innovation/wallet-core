@@ -23,6 +23,7 @@ mod request;
 mod round;
 mod rpc;
 mod submit;
+mod submit_round;
 mod typed_data;
 
 pub use offer::{strk_affordability, token_spend, GaslessFeeOffer, GaslessHeldToken};
@@ -34,6 +35,7 @@ pub use request::{
 pub use round::{OfferRound, RoundStep};
 pub use rpc::{classify, Exchange, Exchanged, GaslessAnswer};
 pub use submit::{held_for, CheckedQuote, GaslessSubmission, PendingOffer, PendingSubmit, UserFee};
+pub use submit_round::{SubmitRound, SubmitStep};
 pub use typed_data::{
     validate_typed_data, Accepted, Refusal, TypedDataCheck, OUTSIDE_EXECUTION_DOMAIN,
 };

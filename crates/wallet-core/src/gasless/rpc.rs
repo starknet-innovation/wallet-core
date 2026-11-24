@@ -195,6 +195,11 @@ impl Exchange {
         }
     }
 
+    /// Whether this is an execute, whose failed answers are lost rather than refused.
+    pub fn executes(&self) -> bool {
+        self.executes
+    }
+
     /// The request to post, the same on every repeat.
     pub fn request(&self) -> &HttpRequest {
         &self.request
