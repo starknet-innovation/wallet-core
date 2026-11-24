@@ -32,6 +32,7 @@ pub mod catalog;
 pub mod container;
 pub mod envelope;
 pub mod felt;
+pub mod gasless;
 pub mod history;
 pub mod host;
 pub mod js;

@@ -47,6 +47,7 @@ uniffi::setup_scaffolding!();
 
 pub mod catalogs;
 pub mod coordination;
+pub mod gasless;
 pub mod ledger;
 pub mod staking;
 pub mod swap;
