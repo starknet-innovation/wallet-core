@@ -238,11 +238,13 @@ fn a_plan_needs_a_finished_verified_read() {
     }
     prepared.restart();
     assert_eq!(plan(&prepared), unreadable);
-    // A restart after a finished read keeps none of its facts, for the plan or the rows.
+    // A restart after a finished read keeps none of its facts, for the plan or the rows, and
+    // a refused plan spends nothing.
     run(&chain, || prepared.next_calls(), |r| prepared.accept(r));
-    assert!(prepared.plan(NOW_S, None).is_ok());
     prepared.restart();
     assert_eq!(plan(&prepared), unreadable);
+    run(&chain, || prepared.next_calls(), |r| prepared.accept(r));
+    assert!(prepared.plan(NOW_S, None).is_ok());
     let read = wallet
         .core
         .staking_overview(wallet.id.clone(), STAKER.into(), wallet.prefs.clone())
@@ -276,6 +278,23 @@ fn a_plan_needs_a_finished_verified_read() {
         .err()
         .map(refused);
     assert_eq!(unstake.as_deref(), Some("Nothing staked to unstake."));
+}
+
+// `stakingPreparations.claim`: a double tap or a host retry gets one plan, so one signature.
+#[test]
+fn a_preparation_plans_once() {
+    let wallet = mainnet();
+    let chain = Chain::new(&wallet.address);
+    let prepared = wallet.prepare(StakingAction::Stake, Some("1")).unwrap();
+    run(&chain, || prepared.next_calls(), |r| prepared.accept(r));
+    let plan = prepared.plan(NOW_S, Some(BALANCE.into())).unwrap().plan;
+    let again = prepared.plan(NOW_S, Some(BALANCE.into()));
+    let again = again.err().map(refused);
+    assert_eq!(again.as_deref(), Some("Review this staking action again."));
+    signed_calldata(&wallet, &plan);
+    assert_eq!(plan.signatures_made(), 1);
+    assert_eq!(wallet.core.activity(wallet.id.clone()).unwrap().len(), 1);
+    assert_eq!(wallet.allowance_log().len(), 1);
 }
 
 // A plan holds the session it was prepared in: a lock and a fresh unlock void it.

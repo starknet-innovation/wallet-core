@@ -7,8 +7,12 @@
 //! exact-amount STRK approval filed in the allowance log before its activity row
 //! (`TransferPlan::record_pending`).
 //!
-//! The plan is the one-time preparation: bound to the account, network and session it was
-//! prepared in, so a lock voids it, and it signs at most once. Mainnet only.
+//! The preparation is single use, as the extension's `stakingPreparations.claim` is: the first
+//! `plan` that succeeds spends it, so a double tap or a host retry cannot get a second plan to
+//! sign, and every later call is "Review this staking action again." A refused `plan` (an
+//! unfinished or failed read, an unverified pool, an action the position does not allow) spends
+//! nothing, as the extension's refusals come before it holds a preparation. The plan is bound to
+//! the account, network and session it was prepared in, so a lock voids it. Mainnet only.
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
@@ -54,6 +58,8 @@ pub struct StakingPreparation {
     /// The trusted tokens the review reads and a write evicts by.
     trusted: Vec<TokenConfig>,
     read: Mutex<StakingRead>,
+    /// Set by the first `plan` that succeeds; held across `plan` so two calls cannot both pass.
+    spent: Mutex<bool>,
 }
 
 impl StakingPreparation {
@@ -84,12 +90,18 @@ impl StakingPreparation {
     /// and reviewed as the extension's `verifyCalls` reviews them, with fee affordability over
     /// `fee_balance` (STRK base units the host last read; `None` is `Unknown`). Refused with the
     /// extension's sentence when the read is unfinished or failed, the pool unverified, or the
-    /// action not allowed in the account's position. A lock since `prepare_staking` voids it.
+    /// action not allowed in the account's position; such a refusal spends nothing. Once a plan
+    /// is returned, every later call is refused with "Review this staking action again." A lock
+    /// since `prepare_staking` voids it.
     pub fn plan(
         &self,
         now_seconds: u64,
         fee_balance: Option<String>,
     ) -> Result<StakingPlan, StakingError> {
+        let mut spent = self.spent.lock().unwrap_or_else(PoisonError::into_inner);
+        if *spent {
+            return Err(StakingRefusal::ReviewAgain.into());
+        }
         let core = self.core.upgrade().ok_or(StakingError::Locked)?;
         let network = self.acting.network;
         let reading = self.read().finish();
@@ -126,6 +138,7 @@ impl StakingPreparation {
         if let Some(balance) = fee_balance.as_deref().and_then(U256::from_decimal) {
             invoke = invoke.with_fee_balance(balance);
         }
+        *spent = true;
         Ok(StakingPlan {
             plan: TransferPlan::new(
                 &core,
@@ -168,6 +181,7 @@ impl WalletCore {
             core: Arc::downgrade(&self),
             dir: self.data_dir.clone(),
             read: Mutex::new(read),
+            spent: Mutex::new(false),
             trusted: trusted_tokens(&tokens, network),
             acting,
             input,
