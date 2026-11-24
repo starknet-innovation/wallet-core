@@ -12,7 +12,7 @@ use wallet_core::Felt;
 use wallet_core::accounts::constructor_calldata;
 use wallet_core::allowances::retention::Ranking;
 use wallet_core::send::calls;
-use wallet_core::send::plan::{Account, Kind, Token, Transfer, TransferRefusal};
+use wallet_core::send::plan::{Account, Authorization, Kind, Token, Transfer, TransferRefusal};
 use wallet_core::send::sign::Deployment;
 use wallet_core::send::u256::U256;
 
@@ -198,6 +198,40 @@ impl WalletCore {
         outcome.unwrap_or(Err(SendError::Locked))
     }
 
+    /// The account whose activity is read: a vault record (`plan_account_for`, `Use::Read`), or
+    /// else a saved multisig, whose submitted intents are filed under its id
+    /// (`multisig_guard::journal`). A multisig's account holds no key: nothing reading it signs,
+    /// and `Plan` refuses a multisig invoke anyway.
+    pub(crate) fn activity_account_for(&self, account_id: &str) -> Result<PlanAccount, SendError> {
+        match self.plan_account_for(account_id, Use::Read) {
+            Err(SendError::UnknownAccount) => {}
+            outcome => return outcome,
+        }
+        let generation = self.session_generation().ok_or(SendError::Locked)?;
+        let record = multisig_store::load(&self.data_dir)
+            .ok()
+            .and_then(|file| file.records.into_iter().find(|r| r.id == account_id))
+            .ok_or(SendError::UnknownAccount)?;
+        let network =
+            NetworkId::from_catalog_id(&record.network_id).ok_or(SendError::UnknownAccount)?;
+        let address = felt::parse_non_zero(&record.address).ok_or(SendError::UnknownAccount)?;
+        Ok(PlanAccount {
+            account: Account {
+                network,
+                address,
+                public_key: Felt::ZERO,
+                authorization: Authorization::ArgentMultisig {
+                    class_hash: crate::multisig_constants::argent_multisig_class().hash(),
+                    query_signer: Felt::ZERO,
+                },
+                deployment: None,
+            },
+            account_id: record.id,
+            network,
+            generation,
+        })
+    }
+
     /// Signs a hash for a plan, only while the session generation is still `generation` and the
     /// record still passes the signing gate. `Err(CoreError::Locked)` when the wallet was locked,
     /// idle-locked, or re-unlocked since the plan was prepared (every lock and every new session
@@ -290,7 +324,7 @@ impl WalletCore {
     /// the on-chain history rows merged into the same log. Requires an unlocked wallet (the record
     /// lives in the vault). Any family may be read.
     pub fn activity(&self, account_id: String) -> Result<Vec<ActivityEntry>, SendError> {
-        let acting = self.plan_account_for(&account_id, Use::Read)?;
+        let acting = self.activity_account_for(&account_id)?;
         Ok(with_log(&self.data_dir, |log| {
             log.scope(&acting.account_id)
         }))
@@ -307,7 +341,7 @@ impl WalletCore {
         account_id: String,
         now_ms: u64,
     ) -> Result<Vec<String>, SendError> {
-        let acting = self.plan_account_for(&account_id, Use::Read)?;
+        let acting = self.activity_account_for(&account_id)?;
         let taken = with_log(&self.data_dir, |log| {
             log.retire_expired(&acting.account_id, now_ms);
             log.take_failure_notices(&acting.account_id)
@@ -322,12 +356,14 @@ impl WalletCore {
     }
 
     /// A plan that reads one recorded transaction's status and settles its record; never signs.
+    /// `account_id` is a vault record or a saved multisig: a multisig's submitted intent settles
+    /// from the row this updates, the next time its intents are read.
     pub fn refresh_activity(
         self: Arc<Self>,
         account_id: String,
         hash: String,
     ) -> Result<Arc<TransferPlan>, SendError> {
-        let acting = self.plan_account_for(&account_id, Use::Read)?;
+        let acting = self.activity_account_for(&account_id)?;
         let hash = felt::parse_non_zero(&hash).ok_or(SendError::UnknownTransaction)?;
         let known = with_log(&self.data_dir, |log| log.list(&acting.account_id))
             .iter()
