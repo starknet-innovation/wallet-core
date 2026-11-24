@@ -18,11 +18,9 @@ use wallet_core::accounts::multisig_records::{self, Record};
 use wallet_core::send::call_decode::Known;
 use wallet_core::send::calls::{self, SendAmountError};
 use wallet_core::send::multisig_deploy::{deployment_plan, MultisigDeployRefusal};
-use wallet_core::send::multisig_import::{
-    held_config, import_intent, require_current, ImportContext, ImportError,
-};
+use wallet_core::send::multisig_import::{held_config, import_intent, ImportContext, ImportError};
 use wallet_core::send::multisig_intent::{
-    ConfigSnapshot, IntentPackage, IntentState, SigningIntent, StaleReason,
+    ConfigSnapshot, IntentPackage, IntentState, SigningIntent,
 };
 use wallet_core::send::multisig_invoke::{normalize_calls, MultisigSignature};
 use wallet_core::send::multisig_invoke_plan::{ProposePlan, SubmitPlan};
@@ -31,6 +29,7 @@ use wallet_core::Felt;
 
 use crate::allowances::{token_infos, trusted_tokens};
 use crate::argent_multisig::ArgentMultisigConfig;
+use crate::multisig_guard::{settle, SubmitClaim};
 use crate::multisig_rpc::{MultisigAuthorityRead, MultisigStateRead};
 use crate::multisig_tx::{
     intent_view, MultisigCall, MultisigCallReview, MultisigIntent, MultisigProposal,
@@ -106,7 +105,7 @@ fn proposal_call(
 }
 
 impl WalletCore {
-    fn multisig_record(&self, id: &str) -> Result<Record, CoreError> {
+    pub(crate) fn multisig_record(&self, id: &str) -> Result<Record, CoreError> {
         multisig_store::load(self.data_dir())?
             .records
             .into_iter()
@@ -125,40 +124,18 @@ impl WalletCore {
             })
     }
 
-    /// `currentArgentIntentContext` for a local sign or submit: the chain still holds `intent`'s
-    /// snapshot and nonce, and an intent the chain has moved past is stored stale.
-    fn require_chain(
-        &self,
-        intent: &SigningIntent,
-        record: &Record,
-        state: &MultisigStateRead,
-    ) -> Result<(), CoreError> {
-        let unavailable = || refused(ImportError::AuthorityUnavailable.message());
-        let (read, nonce) = state.finished().ok_or_else(unavailable)?;
-        require_current(intent, record, &read, &nonce, class()).map_err(|error| {
-            let reason = match error {
-                ImportError::ConfigChanged => Some(StaleReason::Config),
-                ImportError::NonceNotCurrent => Some(StaleReason::Nonce),
-                _ => None,
-            };
-            if let Some(reason) = reason {
-                // Best effort: the refusal stands whether or not the mark is stored.
-                let _ = multisig_intents::upsert(self.data_dir(), &intent.marked_stale(reason));
-            }
-            refused(error.message())
-        })
-    }
-
-    fn stored_intent(&self, id: &str) -> Result<SigningIntent, CoreError> {
+    pub(crate) fn stored_intent(&self, id: &str) -> Result<SigningIntent, CoreError> {
         multisig_intents::get(self.data_dir(), id)?.ok_or_else(|| refused(INTENT_NOT_FOUND))
     }
 }
 
 #[uniffi::export]
 impl WalletCore {
-    /// The signing intents stored for one multisig, newest first.
+    /// The signing intents stored for one multisig, newest first. A submitted intent whose
+    /// activity row reached a terminal status is settled accepted or rejected first.
     pub fn multisig_intents(&self, multisig_id: String) -> Result<Vec<MultisigIntent>, CoreError> {
         self.require_unlocked()?;
+        settle(self.data_dir(), &multisig_id)?;
         Ok(multisig_intents::load(self.data_dir())?
             .iter()
             .rev()
@@ -221,12 +198,15 @@ impl WalletCore {
     /// the chain's signers, and its threshold and GUIDs become the intent's snapshot. The call is
     /// built and reviewed here (`review()`), over the person's trusted tracked `tokens` on the
     /// multisig's network (a transfer's token is one of them), so nothing unsafe or poisoned is
-    /// ever frozen.
+    /// ever frozen. Before it is stored, every stale version of the same calls is looked up:
+    /// one on chain refuses it (`AlreadySent`), and one at another nonce that may have sent them
+    /// refuses it unless `confirm_resend` (`ResendUnconfirmed`, the extension's `confirmResend`).
     pub fn propose_multisig_transaction(
         self: Arc<Self>,
         read: Arc<MultisigAuthorityRead>,
         request: MultisigProposalRequest,
         tokens: Arc<TokenPreferences>,
+        confirm_resend: bool,
     ) -> Result<Arc<MultisigProposal>, CoreError> {
         let unavailable = || refused(ImportError::AuthorityUnavailable.message());
         let network = read.network();
@@ -284,16 +264,17 @@ impl WalletCore {
             &self,
             generation,
             plan,
-            record.id,
+            record,
             snapshot,
             call_review,
+            confirm_resend,
         ))
     }
 
     /// Co-signs a collecting intent with the vault record `signer_account_id` (`signIntent`):
     /// the record must be on the multisig's network, its key a member of the snapshot that has
-    /// not signed yet, and `state` (a fresh read of the multisig) must show the snapshot and the
-    /// prepared nonce. The key signs the frozen hash inside the core; the intent is stored with
+    /// not signed yet, and `state` (`multisig_intent_read` of this intent, driven to its end) must
+    /// show the snapshot and the prepared nonce, and no stale version of the calls on chain. The key signs the frozen hash inside the core; the intent is stored with
     /// the signature in GUID order, ready at the threshold.
     pub fn sign_multisig_intent(
         &self,
@@ -357,8 +338,10 @@ impl WalletCore {
     }
 
     /// Submits a ready (or fee-stale) intent with its threshold signature (`submitIntent`).
-    /// `state` must show the snapshot and the prepared nonce. An intent already broadcast is
-    /// refused: its outcome is read from the chain, never sent again.
+    /// `state` (`multisig_intent_read` of this intent) must show the snapshot and the prepared
+    /// nonce; a nonce moved past it means it may have been sent, and its hash found on chain
+    /// refuses it as already sent. An intent already broadcast is refused: its outcome is read
+    /// from the chain, never sent again. One submission of an intent runs at a time.
     pub fn submit_multisig_intent(
         self: Arc<Self>,
         intent_id: String,
@@ -387,7 +370,11 @@ impl WalletCore {
         let plan = SubmitPlan::new(&intent, &config, class(), summary_length())
             .map_err(|error| refused(&error.to_string()))?;
         let generation = self.session_generation().ok_or(CoreError::Locked)?;
-        Ok(MultisigSubmission::new(&self, generation, plan, intent))
+        let claim = SubmitClaim::take(self.data_dir(), &intent.id)
+            .ok_or_else(|| refused("Argent multisig submission claim exists"))?;
+        Ok(MultisigSubmission::new(
+            &self, generation, plan, intent, record, claim,
+        ))
     }
 
     /// Imports a co-signer's package (`importIntent`) for a saved multisig: `state` is a fresh

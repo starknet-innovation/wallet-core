@@ -8,21 +8,20 @@
 //! Every refusal is a fixed variant or one of the extension's fixed sentences; none carries a
 //! key, a call's calldata or node text.
 
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
+use std::sync::{Arc, Mutex, MutexGuard, Weak};
 
 pub use wallet_core::accounts::multisig_change::ConfigChange;
 use wallet_core::send::fees::{fee_amount, FeeAmount};
-pub use wallet_core::send::multisig_intent::IntentState;
-use wallet_core::send::multisig_intent::{ConfigSnapshot, SigningIntent, StaleReason};
+use wallet_core::send::multisig_intent::SigningIntent;
+pub use wallet_core::send::multisig_intent::{IntentState, StaleReason};
 pub use wallet_core::send::multisig_invoke::MultisigCall;
-use wallet_core::send::multisig_invoke_plan::{
-    MultisigFailure, MultisigStep, ProposePlan, SubmitPlan,
-};
+use wallet_core::send::multisig_invoke_plan::{MultisigFailure, MultisigStep};
 
 use crate::argent_multisig::ArgentMultisigConfig;
-use crate::multisig_intents;
-use crate::send::types::{RpcPurpose, SendError, StepReply};
+use crate::send::types::{RpcPurpose, SendError};
 use crate::wallet::WalletCore;
+
+pub use crate::multisig_tx_plans::{MultisigProposal, MultisigSubmission};
 
 /// One call of a multisig transaction, as the extension's `PreparedArgentMultisigCall`.
 #[uniffi::remote(Record)]
@@ -41,6 +40,18 @@ pub enum IntentState {
     Rejected,
     Stale,
     Submitted,
+}
+
+/// Why an intent went stale (`ArgentMultisigStaleReason`): the signer set changed (`Config`),
+/// the chain nonce moved past it (`Nonce`: a co-signer may have sent it), or the node refused its
+/// fee while the nonce held (`Fee`). `Proof` is the extension's privacy pool, which mobile never
+/// writes.
+#[uniffi::remote(Enum)]
+pub enum StaleReason {
+    Config,
+    Fee,
+    Nonce,
+    Proof,
 }
 
 /// One signer-management operation (`ArgentMultisigConfigChange`). Keys are public keys.
@@ -87,6 +98,8 @@ pub struct MultisigIntent {
     pub id: String,
     pub multisig_id: String,
     pub state: IntentState,
+    /// Why it went stale, once it is.
+    pub stale_reason: Option<StaleReason>,
     /// This wallet's own review of the calls, never a co-signer's text.
     pub summary: String,
     pub transaction_hash: String,
@@ -109,6 +122,7 @@ pub(crate) fn intent_view(intent: &SigningIntent) -> MultisigIntent {
         id: intent.id.clone(),
         multisig_id: intent.account_id.clone(),
         state: intent.state,
+        stale_reason: intent.stale_reason,
         summary: intent.summary.clone(),
         transaction_hash: prepared.transaction_hash.clone(),
         nonce: prepared.nonce.clone(),
@@ -154,6 +168,11 @@ pub enum MultisigTxFailure {
     SubmissionIndeterminate,
     /// The proposal could not be stored (the store is full, or the session moved).
     NotStored,
+    /// A stale version of these calls is on chain: proposing them again would pay twice.
+    AlreadySent,
+    /// A stale version of these calls at another nonce may have sent them; propose again with
+    /// `confirm_resend` once the person confirms.
+    ResendUnconfirmed,
 }
 
 impl From<MultisigFailure> for MultisigTxFailure {
@@ -191,7 +210,7 @@ pub enum MultisigTxStep {
     Failed { failure: MultisigTxFailure },
 }
 
-fn rpc_step(step: MultisigStep) -> Result<MultisigTxStep, MultisigStep> {
+pub(crate) fn rpc_step(step: MultisigStep) -> Result<MultisigTxStep, MultisigStep> {
     match step {
         MultisigStep::Rpc {
             id,
@@ -212,20 +231,20 @@ fn rpc_step(step: MultisigStep) -> Result<MultisigTxStep, MultisigStep> {
 }
 
 /// A plan, closed once it reaches a terminal step, is cancelled, or its wallet is gone.
-struct Driven<P> {
-    plan: P,
-    closed: bool,
+pub(crate) struct Driven<P> {
+    pub(crate) plan: P,
+    pub(crate) closed: bool,
 }
 
 /// What every plan shares: the wallet, the session generation it was made in, and the plan.
-struct Bound<P> {
-    core: Weak<WalletCore>,
+pub(crate) struct Bound<P> {
+    pub(crate) core: Weak<WalletCore>,
     generation: u64,
     plan: Mutex<Driven<P>>,
 }
 
 impl<P> Bound<P> {
-    fn new(core: &Arc<WalletCore>, generation: u64, plan: P) -> Self {
+    pub(crate) fn new(core: &Arc<WalletCore>, generation: u64, plan: P) -> Self {
         Self {
             core: Arc::downgrade(core),
             generation,
@@ -237,7 +256,7 @@ impl<P> Bound<P> {
     }
 
     // A poisoned lock means a panic mid-step: close the plan rather than continue.
-    fn lock(&self) -> MutexGuard<'_, Driven<P>> {
+    pub(crate) fn lock(&self) -> MutexGuard<'_, Driven<P>> {
         self.plan.lock().unwrap_or_else(|poisoned| {
             let mut guard = poisoned.into_inner();
             guard.closed = true;
@@ -246,14 +265,14 @@ impl<P> Bound<P> {
     }
 
     /// The wallet, while its session is still the one the plan was made in.
-    fn current(&self) -> Option<Arc<WalletCore>> {
+    pub(crate) fn current(&self) -> Option<Arc<WalletCore>> {
         self.core
             .upgrade()
             .filter(|core| core.session_generation() == Some(self.generation))
     }
 
     /// Runs one step, closing the plan when it ends or the wallet is gone.
-    fn step(
+    pub(crate) fn step(
         &self,
         run: impl FnOnce(&mut P, &Self) -> Result<MultisigTxStep, SendError>,
     ) -> Result<MultisigTxStep, SendError> {
@@ -267,164 +286,5 @@ impl<P> Bound<P> {
             driven.closed = true;
         }
         step
-    }
-}
-
-/// A proposal (`prepareIntent`): chain id, nonce and one validated estimate, then the frozen
-/// transaction, stored as a collecting intent under this wallet's own summary.
-#[derive(uniffi::Object)]
-pub struct MultisigProposal {
-    bound: Bound<ProposePlan>,
-    multisig_id: String,
-    snapshot: ConfigSnapshot,
-    review: MultisigCallReview,
-    stored: Mutex<Option<MultisigIntent>>,
-}
-
-impl MultisigProposal {
-    pub(crate) fn new(
-        core: &Arc<WalletCore>,
-        generation: u64,
-        plan: ProposePlan,
-        multisig_id: String,
-        snapshot: ConfigSnapshot,
-        review: MultisigCallReview,
-    ) -> Arc<Self> {
-        Arc::new(Self {
-            bound: Bound::new(core, generation, plan),
-            multisig_id,
-            snapshot,
-            review,
-            stored: Mutex::new(None),
-        })
-    }
-}
-
-#[uniffi::export]
-impl MultisigProposal {
-    /// What the person confirms before the plan starts.
-    pub fn review(&self) -> MultisigCallReview {
-        self.review.clone()
-    }
-
-    /// The intent this proposal stored, once it reached `Proposed`.
-    pub fn intent(&self) -> Option<MultisigIntent> {
-        self.stored
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clone()
-    }
-
-    /// Feeds the last reply (`Start` first) and returns the next step. A reply that does not
-    /// answer the outstanding request is `OutOfOrder`; it and every terminal step close the plan.
-    pub fn advance(&self, reply: StepReply) -> Result<MultisigTxStep, SendError> {
-        self.bound.step(|plan, bound| {
-            let prepared = match rpc_step(plan.advance(reply)?) {
-                Ok(step) => return Ok(step),
-                Err(MultisigStep::Prepared(prepared)) => *prepared,
-                Err(_) => return Err(SendError::OutOfOrder),
-            };
-            let failure = |failure| Ok(MultisigTxStep::Failed { failure });
-            // `authorized.isCurrent()` before the store, as the extension checks it.
-            let Some(core) = bound.current() else {
-                return failure(MultisigTxFailure::Locked);
-            };
-            let Some(intent) = SigningIntent::proposed(
-                &self.multisig_id,
-                self.snapshot.clone(),
-                prepared,
-                &self.review.summary,
-            ) else {
-                return failure(MultisigTxFailure::NotStored);
-            };
-            match multisig_intents::upsert(core.data_dir(), &intent) {
-                Ok(()) => {
-                    *self.stored.lock().unwrap_or_else(PoisonError::into_inner) =
-                        Some(intent_view(&intent));
-                    Ok(MultisigTxStep::Proposed {
-                        intent_id: intent.id,
-                    })
-                }
-                Err(_) => failure(MultisigTxFailure::NotStored),
-            }
-        })
-    }
-
-    /// Stops the plan. Idempotent; nothing is stored after it.
-    #[uniffi::method(name = "cancel")]
-    pub fn close(&self) {
-        self.bound.lock().closed = true;
-    }
-}
-
-/// A submission (`submitIntent`): proves the chain, then sends the frozen transaction with the
-/// intent's threshold signature exactly once. On acceptance the intent is stored submitted; on
-/// the node's fee refusal it is stored stale.
-#[derive(uniffi::Object)]
-pub struct MultisigSubmission {
-    bound: Bound<SubmitPlan>,
-    intent: SigningIntent,
-}
-
-impl MultisigSubmission {
-    pub(crate) fn new(
-        core: &Arc<WalletCore>,
-        generation: u64,
-        plan: SubmitPlan,
-        intent: SigningIntent,
-    ) -> Arc<Self> {
-        Arc::new(Self {
-            bound: Bound::new(core, generation, plan),
-            intent,
-        })
-    }
-}
-
-#[uniffi::export]
-impl MultisigSubmission {
-    /// The intent being submitted, as it was when the plan was made.
-    pub fn intent(&self) -> MultisigIntent {
-        intent_view(&self.intent)
-    }
-
-    /// Feeds the last reply (`Start` first). The session is checked once more after the chain is
-    /// proven and before the write leaves; a lock ends the plan `Locked`.
-    pub fn advance(&self, reply: StepReply) -> Result<MultisigTxStep, SendError> {
-        self.bound.step(|plan, bound| {
-            let step = plan.advance(reply, &|| bound.current().is_some())?;
-            // Best effort, as the extension's: the node's answer stands whatever the store says.
-            let store = |next: SigningIntent| {
-                if let Some(core) = bound.core.upgrade() {
-                    let _ = multisig_intents::upsert(core.data_dir(), &next);
-                }
-            };
-            match rpc_step(step) {
-                Ok(step) => {
-                    if step
-                        == (MultisigTxStep::Failed {
-                            failure: MultisigTxFailure::FeeExpired,
-                        })
-                    {
-                        store(self.intent.marked_stale(StaleReason::Fee));
-                    }
-                    Ok(step)
-                }
-                Err(MultisigStep::Submitted { hash }) => {
-                    store(SigningIntent {
-                        broadcast_transaction_hash: Some(hash.clone()),
-                        state: IntentState::Submitted,
-                        ..self.intent.clone()
-                    });
-                    Ok(MultisigTxStep::Submitted { hash })
-                }
-                Err(_) => Err(SendError::OutOfOrder),
-            }
-        })
-    }
-
-    /// Stops the plan. Idempotent; once the write was handed out its outcome is the chain's.
-    #[uniffi::method(name = "cancel")]
-    pub fn close(&self) {
-        self.bound.lock().closed = true;
     }
 }

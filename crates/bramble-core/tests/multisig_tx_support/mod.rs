@@ -207,9 +207,54 @@ impl Wallet {
         read
     }
 
+    /// `multisig_intent_read` of `intent_id` answered with `threshold`, `guids` and `nonce`, then
+    /// every status lookup it asks answered by `status` (given the hash, a JSON-RPC `result` or
+    /// `error` member as an object).
+    pub fn intent_state_with(
+        &self,
+        intent_id: &str,
+        threshold: u32,
+        guids: &[String],
+        nonce: &str,
+        status: &dyn Fn(&str) -> Value,
+    ) -> Arc<MultisigStateRead> {
+        let read = self
+            .core
+            .multisig_intent_read(intent_id.into(), NOW_MS)
+            .unwrap();
+        let mut replies = self.authority_replies(threshold, guids);
+        replies.push(json!(nonce));
+        for result in replies {
+            let request = read.next_request().unwrap();
+            read.accept_response(request.id, body(request.id, result))
+                .unwrap();
+        }
+        while let Some(request) = read.next_request() {
+            let sent: Value = serde_json::from_str(&request.body).unwrap();
+            assert_eq!(sent["method"], "starknet_getTransactionStatus");
+            let mut reply = status(sent["params"]["transaction_hash"].as_str().unwrap());
+            reply["jsonrpc"] = json!("2.0");
+            reply["id"] = json!(request.id);
+            read.accept_response(request.id, reply.to_string()).unwrap();
+        }
+        assert_eq!(read.status(), Some(MultisigAuthorityStatus::Available));
+        read
+    }
+
+    /// `intent_state_with`, the node knowing none of the hashes it is asked about.
+    pub fn intent_state(
+        &self,
+        intent_id: &str,
+        threshold: u32,
+        guids: &[String],
+        nonce: &str,
+    ) -> Arc<MultisigStateRead> {
+        self.intent_state_with(intent_id, threshold, guids, nonce, &|_| not_found())
+    }
+
     /// The state an intent was frozen against: the fixture's authority and its nonce.
     pub fn current_state(&self, intent: &MultisigIntent) -> Arc<MultisigStateRead> {
-        self.state(self.threshold(), &self.guids(), &intent.nonce)
+        self.intent_state(&intent.id, self.threshold(), &self.guids(), &intent.nonce)
     }
 
     pub fn authority_replies(&self, threshold: u32, guids: &[String]) -> Vec<Value> {
@@ -229,7 +274,12 @@ impl Wallet {
         let proposal = self
             .core
             .clone()
-            .propose_multisig_transaction(self.current_authority(), self.transfer(), self.tokens())
+            .propose_multisig_transaction(
+                self.current_authority(),
+                self.transfer(),
+                self.tokens(),
+                false,
+            )
             .unwrap();
         let step = proposal.advance(StepReply::Start).unwrap();
         match drive(step, &phase(&self.net["proposal"]["prepare"]), |reply| {
@@ -271,6 +321,19 @@ impl Wallet {
         self.core.lock();
         self.core.unlock(common::PASSWORD.into()).unwrap();
     }
+}
+
+/// The wall clock the host reports to a read.
+pub const NOW_MS: u64 = 1_790_000_000_000;
+
+/// `TXN_HASH_NOT_FOUND`.
+pub fn not_found() -> Value {
+    json!({"error": {"code": 29, "message": "Transaction hash not found"}})
+}
+
+/// A status a node reports for a hash it holds.
+pub fn status(finality: &str, execution: &str) -> Value {
+    json!({"result": {"finality_status": finality, "execution_status": execution}})
 }
 
 pub fn body(id: u64, result: Value) -> String {

@@ -171,6 +171,7 @@ fn signer_changes_are_proposed_as_the_extension_proposes_them() {
                 wallet.current_authority(),
                 MultisigProposalRequest::ChangeSigners { change },
                 wallet.tokens(),
+                false,
             )
             .unwrap();
         let review = proposal.review();

@@ -121,7 +121,7 @@ fn a_read_of_another_network_or_account_is_refused() {
     let refused = wallet
         .core
         .clone()
-        .propose_multisig_transaction(read, wallet.transfer(), wallet.tokens())
+        .propose_multisig_transaction(read, wallet.transfer(), wallet.tokens(), false)
         .err()
         .unwrap();
     assert_eq!(reason(refused), "Argent multisig not found");
@@ -132,7 +132,7 @@ fn a_read_of_another_network_or_account_is_refused() {
 fn a_stale_intent_short_of_its_threshold_is_not_submitted() {
     let wallet = sepolia();
     let intent = wallet.propose();
-    let moved = wallet.state(wallet.threshold(), &wallet.guids(), "0x99");
+    let moved = wallet.intent_state(&intent.id, wallet.threshold(), &wallet.guids(), "0x99");
     let cosigner = wallet.signer_id(
         wallet.net["proposal"]["cosignerAccountIndexes"][0]
             .as_u64()

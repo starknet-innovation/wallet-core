@@ -43,7 +43,7 @@ fn a_proposal_needs_the_stored_signers_on_chain() {
     let refused = wallet
         .core
         .clone()
-        .propose_multisig_transaction(changed, wallet.transfer(), wallet.tokens())
+        .propose_multisig_transaction(changed, wallet.transfer(), wallet.tokens(), false)
         .err()
         .unwrap();
     assert_eq!(
@@ -57,7 +57,7 @@ fn a_proposal_needs_the_stored_signers_on_chain() {
     let refused = wallet
         .core
         .clone()
-        .propose_multisig_transaction(unread, wallet.transfer(), wallet.tokens())
+        .propose_multisig_transaction(unread, wallet.transfer(), wallet.tokens(), false)
         .err()
         .unwrap();
     assert_eq!(reason(refused), "Argent multisig config unavailable");
@@ -76,6 +76,7 @@ fn a_proposal_holds_a_signer_change_to_the_review() {
             wallet.current_authority(),
             MultisigProposalRequest::ChangeSigners { change },
             wallet.tokens(),
+            false,
         )
         .err()
         .unwrap();
@@ -105,7 +106,12 @@ fn a_transfer_proposal_refuses_what_the_extension_refuses() {
             wallet
                 .core
                 .clone()
-                .propose_multisig_transaction(wallet.current_authority(), request, wallet.tokens())
+                .propose_multisig_transaction(
+                    wallet.current_authority(),
+                    request,
+                    wallet.tokens(),
+                    false,
+                )
                 .err()
                 .unwrap(),
         )
@@ -154,6 +160,7 @@ fn a_lock_before_the_estimate_returns_stores_nothing() {
             wallet.current_authority(),
             wallet.transfer(),
             wallet.tokens(),
+            false,
         )
         .unwrap();
     let exchanges = phase(&wallet.net["proposal"]["prepare"]);
@@ -220,8 +227,13 @@ fn a_moved_chain_refuses_signing_and_leaves_the_intent_stale() {
         let wallet = sepolia();
         let intent = wallet.propose();
         let state = match moved {
-            "config" => wallet.state(wallet.threshold(), &other_guids(&wallet), &intent.nonce),
-            _ => wallet.state(wallet.threshold(), &wallet.guids(), "0x99"),
+            "config" => wallet.intent_state(
+                &intent.id,
+                wallet.threshold(),
+                &other_guids(&wallet),
+                &intent.nonce,
+            ),
+            _ => wallet.intent_state(&intent.id, wallet.threshold(), &wallet.guids(), "0x99"),
         };
         let signer = wallet.signer_id(
             wallet.net["proposal"]["cosignerAccountIndexes"][0]
@@ -286,7 +298,7 @@ fn only_a_ready_unsent_intent_is_submitted() {
         .clone()
         .submit_multisig_intent(
             ready.id.clone(),
-            wallet.state(wallet.threshold(), &wallet.guids(), "0x99"),
+            wallet.intent_state(&ready.id, wallet.threshold(), &wallet.guids(), "0x99"),
         )
         .err()
         .unwrap();

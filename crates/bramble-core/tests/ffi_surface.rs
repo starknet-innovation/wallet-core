@@ -267,7 +267,10 @@ fn a_private_key_enters_mobile_only_through_its_import_and_never_leaves() {
 fn multisig_transactions_take_and_return_no_key() {
     let mut seen = Vec::new();
     for (file, source) in sources() {
-        if !file.starts_with("multisig_tx") && file != "multisig_rpc.rs" {
+        if !file.starts_with("multisig_tx")
+            && file != "multisig_rpc.rs"
+            && file != "multisig_guard.rs"
+        {
             continue;
         }
         for exported in exported_signatures(&source) {
@@ -295,6 +298,7 @@ fn multisig_transactions_take_and_return_no_key() {
         "sign_multisig_intent",
         "submit_multisig_intent",
         "import_multisig_intent",
+        "multisig_intent_read",
     ] {
         assert!(
             seen.iter().any(|seen| seen == name),
