@@ -23,6 +23,7 @@ pub mod multisig_intent;
 pub mod multisig_invoke;
 pub mod multisig_invoke_plan;
 pub mod multisig_review;
+pub mod multisig_stale;
 pub mod plan;
 mod plan_deploy;
 pub mod plan_probe;
