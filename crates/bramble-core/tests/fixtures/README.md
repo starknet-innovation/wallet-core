@@ -8,12 +8,12 @@ network, privacy-routing and token tables into `mobile/core/generated/`. Syncing
 unchanged, all at one Bramble commit. `tests/fixtures.rs` checks this table against the directory:
 every file must be listed, and its sha256 must match.
 
-All files: Bramble commit `c43b1a3d3d81410788effc74a413c8aba5e777ea` (`feature/mobile-wallet`,
-2026-11-20: G5's merge, #998, which added the three `extension-multisig-transactions*.json`, each
-byte-identical to its head `7d4cd801`). Every other file is byte-identical to its earlier copy:
-`extension-activity-detail.jsonl` from G6's merge (#999, `8b729036`), the rest from G4's merge
-(#947, `008f2968`, 2026-11-13; all but its `vault-v13.json` as first copied from the G1–G3 stack
-at `7293d188`), where re-running `mobile:parity` and `mobile:assets` left no diff; privacy SDK
+All files: Bramble commit `1771d951a5b23669455b6b31caed137abe251684` (`feature/mobile-wallet`,
+2026-11-24, after the G7 merges #1013–#1018 of 2026-11-23, which added
+`vault-v13-imported.json`, `extension-settings-parity.jsonl`, `extension-stark-name.jsonl`,
+`extension-activity-feed.jsonl`, `extension-call-review.jsonl`, `extension-allowances.jsonl`,
+`extension-swap.jsonl` and `extension-staking.jsonl`). Every file is byte-identical to its copy at
+that commit, and re-running `mobile:parity` and `mobile:assets` there left no diff; privacy SDK
 `vendor/starknet-privacy` at `b40bf109` (Bramble's pin).
 Generators are under `scripts/` in Bramble; each fixture's is reached from
 `generate-mobile-parity-vectors.ts`.
@@ -53,10 +53,18 @@ Generators are under `scripts/` in Bramble; each fixture's is reached from
 | `extension-transactions-verification.json` | `generate-mobile-transaction-vectors.ts` | `44253f028a3caaf4ea896b6c09afec5c3b512cce729ccabe43e4422f712385be` |
 | `extension-transactions-wire.json` | `generate-mobile-transaction-vectors.ts` | `a4e8085ad6b5e14f05c66f291b8198a167cae729e639a812c7af908d412d8e3d` |
 | `extension-activity-detail.jsonl` | `mobile-parity-activity/` | `bcbf5b06b4eeab27bfe9b30961985397386cb2159a917667a40dc8cd768d227f` |
+| `extension-activity-feed.jsonl` | `mobile-parity-activity-feed/` | `109a0a25356ef2ada1a27eb5e09509b894cdb24763ce102d02f5db052d1fbbe9` |
+| `extension-allowances.jsonl` | `mobile-parity-allowances/` | `11085ef20db40299f91af82512afb9db25e3d0b0150220e350352c436e673d3b` |
+| `extension-swap.jsonl` | `mobile-parity-swap/` | `fa129926965653cbc3caf87471845f95f299cc298ef85335ab02d0b568badb21` |
+| `extension-staking.jsonl` | `mobile-parity-staking/` | `fa543124c8224ebe0e0942857398490d022dc5891fdf8ae43dc328de844b2182` |
 | `extension-multisig-transactions.json` | `generate-mobile-parity-vectors.ts` (`mobile-multisig-*.ts`) | `32d850be66c25149257f61e343dbcaa6bc404209b6c7371475926cb745b17f8c` |
 | `extension-multisig-transactions-refusals.json` | `generate-mobile-parity-vectors.ts` (`mobile-multisig-*.ts`) | `99bb711e77ac5af4e518cab4d727555d958544d24074965d6de80797c24d08f8` |
 | `extension-multisig-transactions-signers.json` | `generate-mobile-parity-vectors.ts` (`mobile-multisig-*.ts`) | `78ad15af9b68692724cdb1e84118591870f545db892eeaf40ff1e92fe2d9a5b3` |
+| `extension-call-review.jsonl` | `mobile-parity-calls/` | `6c1d06220f87ce13c23af341eb2a535983f332cdd747e094094a1b65ce659cd8` |
 | `vault-v13.json` | `generate-mobile-parity-vectors.ts` (`mobile-parity-vault.ts`) | `d4f0cf2a62d209cd05286a6d81b372bdaf1d356ba273b41e3e8ed2437912977f` |
+| `vault-v13-imported.json` | `generate-mobile-parity-vectors.ts` (`mobile-parity-vault.ts`) | `099ced8a46789f9d3cf7d3c679d5c5287876ccab618b7e7674c9ef65c774da97` |
+| `extension-settings-parity.jsonl` | `mobile-parity-settings.ts` | `dfa7f7248b284bac56f1cafa261b7d6941d777bcbe6ea171ae26484d23c395a3` |
+| `extension-stark-name.jsonl` | `mobile-parity-stark-name.ts` | `6b12f77b5f9393c078019d671d13b4965cedcf24e0e0bc387ae29814b328ee79` |
 
 Read today: `extension-parity.json` (`parity.rs`, `vault_parity.rs`),
 `accounts-parity-families-sepolia.json` and `nostr-multisig-parity.json` (`parity.rs`;
@@ -78,7 +86,17 @@ read) with `networks.json` and
 `nostr-coordination-parity-*.json` with `multisig.json`'s coordination, relay and Nostr values and
 `nostr-multisig-parity.json`'s `relayUrls` (`nostr_coordination_parity.rs`), and `vault-v13.json`
 (`vault_v13.rs`), and `extension-activity-detail.jsonl` (`activity_parity.rs`; its `receiptFee`
-block's `throughProvider` records the extension's starknet.js path, which no test reads).
+block's `throughProvider` records the extension's starknet.js path, which no test reads), and
+`vault-v13-imported.json` (`vault_v13_imported.rs`), `extension-settings-parity.jsonl`
+(`settings_parity.rs`), `extension-stark-name.jsonl` (`stark_name_parity.rs`),
+`extension-activity-feed.jsonl` with `networks.json` for the explorer links
+(`activity_feed_parity.rs`), `extension-call-review.jsonl` (`calls_review_parity.rs`: the call
+summaries, the review flags, a multicall on the wire and the batches refused up front),
+`extension-allowances.jsonl` (`allowances_parity.rs`; its `log` and `recording` blocks
+`allowances_log_parity.rs`, its `scan` and `tracked` transcripts `allowances_scan_parity.rs`),
+`extension-swap.jsonl` (`swap_parity.rs`; an accepted build's `executed` reply is the extension's
+submit, which no test reads) and `extension-staking.jsonl` (`staking_parity.rs`, and its `action`
+block `staking_action_parity.rs`).
 `extension-privacy-copy.json` is the source of
 Bramble's generated Swift and Kotlin privacy copy; no Rust function returns those sentences, so
 no test here reads it. `extension-multisig-transactions.json` is read by
