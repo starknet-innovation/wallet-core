@@ -16,6 +16,7 @@ use wallet_core::accounts::multisig::{signer_guid, ArgentMultisigClass};
 use wallet_core::accounts::multisig_change::config_change_call;
 use wallet_core::accounts::multisig_records::{self, Record};
 use wallet_core::send::call_decode::Known;
+use wallet_core::send::calls::{self, SendAmountError};
 use wallet_core::send::multisig_deploy::{deployment_plan, MultisigDeployRefusal};
 use wallet_core::send::multisig_import::{
     held_config, import_intent, require_current, ImportContext, ImportError,
@@ -31,11 +32,13 @@ use wallet_core::Felt;
 use crate::argent_multisig::ArgentMultisigConfig;
 use crate::multisig_rpc::{MultisigAuthorityRead, MultisigStateRead};
 use crate::multisig_tx::{
-    intent_view, ConfigChange, MultisigCall, MultisigCallReview, MultisigIntent, MultisigProposal,
-    MultisigSubmission,
+    intent_view, MultisigCall, MultisigCallReview, MultisigIntent, MultisigProposal,
+    MultisigProposalRequest, MultisigSubmission,
 };
-use crate::networks::{self, NetworkId, TokenInfo};
-use crate::portfolio::registry;
+use crate::allowances::{token_infos, trusted_tokens};
+use crate::networks::NetworkId;
+use crate::portfolio::model::TokenConfig;
+use crate::portfolio::tokens::TokenPreferences;
 use crate::send::plan::TransferPlan;
 use crate::send::wallet_ext::Use;
 use wallet_core::allowances::retention::Ranking;
@@ -62,34 +65,44 @@ fn summary_length() -> usize {
     multisig_constants::get().limits.summary_length
 }
 
-/// `argentMultisigConfigChangeCall`: the self-call that makes `change` to the multisig at
-/// `account_address`. Propose it like any call; the proposal's review names the configuration
-/// it leaves.
-#[uniffi::export]
-pub fn argent_multisig_config_change_call(
-    account_address: String,
-    change: ConfigChange,
+/// The one call `request` names, built here from `record` (the multisig that sends it).
+fn proposal_call(
+    record: &Record,
+    trusted: &[TokenConfig],
+    request: &MultisigProposalRequest,
 ) -> Result<MultisigCall, CoreError> {
-    config_change_call(&account_address, &change, class()).map_err(|error| refused(error.message()))
-}
-
-/// The tokens a call review names amounts in: the network's bundled tokens and the curated
-/// registry.
-fn review_tokens(network: NetworkId) -> Vec<TokenInfo> {
-    let curated = registry::known_tokens(network)
-        .into_iter()
-        .map(|token| TokenInfo {
-            address: token.address,
-            decimals: token.decimals,
-            name: token.name,
-            symbol: token.symbol,
-        });
-    networks::info(network)
-        .tokens
+    let (token_id, recipient, amount) = match request {
+        MultisigProposalRequest::ChangeSigners { change } => {
+            return config_change_call(&record.address, change, class())
+                .map_err(|error| refused(error.message()));
+        }
+        MultisigProposalRequest::Transfer {
+            token_id,
+            recipient,
+            amount,
+        } => (token_id, recipient, amount),
+    };
+    let token = trusted
         .iter()
-        .cloned()
-        .chain(curated)
-        .collect()
+        .find(|token| token.id == *token_id)
+        .and_then(|token| Some((felt::parse(&token.address)?, token.decimals)))
+        .ok_or_else(|| refused("unknown token"))?;
+    let recipient = calls::validate_recipient(recipient)
+        .filter(|recipient| *recipient != Felt::ZERO)
+        .ok_or_else(|| refused("Invalid transfer address"))?;
+    let amount = calls::parse_token_amount(amount, token.1).map_err(|error| {
+        refused(match error {
+            SendAmountError::TooManyDecimals => "Too many decimal places",
+            SendAmountError::NotPositive => "Transfer amount must be greater than zero",
+            SendAmountError::Invalid | SendAmountError::TooLarge => "Invalid transfer amount",
+        })
+    })?;
+    let calldata = [recipient, Felt::from(amount.low), Felt::from(amount.high)];
+    Ok(MultisigCall {
+        calldata: calldata.iter().map(felt::canonical).collect(),
+        contract_address: felt::canonical(&token.0),
+        entrypoint: "transfer".into(),
+    })
 }
 
 impl WalletCore {
@@ -112,14 +125,13 @@ impl WalletCore {
             })
     }
 
-    /// `currentArgentIntentContext`: the chain still holds `intent`'s snapshot and nonce. With
-    /// `mark_stale` (a local sign or submit), an intent the chain has moved past is stored stale.
+    /// `currentArgentIntentContext` for a local sign or submit: the chain still holds `intent`'s
+    /// snapshot and nonce, and an intent the chain has moved past is stored stale.
     fn require_chain(
         &self,
         intent: &SigningIntent,
         record: &Record,
         state: &MultisigStateRead,
-        mark_stale: bool,
     ) -> Result<(), CoreError> {
         let unavailable = || refused(ImportError::AuthorityUnavailable.message());
         let (read, nonce) = state.finished().ok_or_else(unavailable)?;
@@ -129,7 +141,7 @@ impl WalletCore {
                 ImportError::NonceNotCurrent => Some(StaleReason::Nonce),
                 _ => None,
             };
-            if let Some(reason) = reason.filter(|_| mark_stale) {
+            if let Some(reason) = reason {
                 // Best effort: the refusal stands whether or not the mark is stored.
                 let _ = multisig_intents::upsert(self.data_dir(), &intent.marked_stale(reason));
             }
@@ -199,14 +211,17 @@ impl WalletCore {
         Ok(TransferPlan::with_plan(&self, acting, plan, Ranking::default()))
     }
 
-    /// Proposes `calls` from the saved multisig `read` describes (`prepareIntent`). `read` is a
-    /// fresh authority read of it, driven to `Available`: the stored public keys must still be
-    /// the chain's signers, and its threshold and GUIDs become the intent's snapshot. The calls
-    /// are reviewed here (`review()`), so nothing unsafe or poisoned is ever frozen.
+    /// Proposes `request` from the saved multisig `read` describes (`prepareIntent`). `read` is
+    /// a fresh authority read of it, driven to `Available`: the stored public keys must still be
+    /// the chain's signers, and its threshold and GUIDs become the intent's snapshot. The call is
+    /// built and reviewed here (`review()`), over the person's trusted tracked `tokens` on the
+    /// multisig's network (a transfer's token is one of them), so nothing unsafe or poisoned is
+    /// ever frozen.
     pub fn propose_multisig_transaction(
         self: Arc<Self>,
         read: Arc<MultisigAuthorityRead>,
-        calls: Vec<MultisigCall>,
+        request: MultisigProposalRequest,
+        tokens: Arc<TokenPreferences>,
     ) -> Result<Arc<MultisigProposal>, CoreError> {
         let unavailable = || refused(ImportError::AuthorityUnavailable.message());
         let network = read.network();
@@ -221,10 +236,12 @@ impl WalletCore {
         }
         let current = held_config(&record, &snapshot, class())
             .ok_or_else(|| refused("Argent multisig signer configuration changed on-chain"))?;
-        let calls = normalize_calls(&calls).map_err(|error| refused(&error.to_string()))?;
-        let tokens = review_tokens(network);
+        let trusted = trusted_tokens(&tokens, network);
+        let call = proposal_call(&record, &trusted, &request)?;
+        let calls = normalize_calls(&[call]).map_err(|error| refused(&error.to_string()))?;
+        let infos = token_infos(&trusted);
         let known = Known {
-            tokens: &tokens,
+            tokens: &infos,
             nft_contracts: &[],
         };
         let review = review_calls(
@@ -286,7 +303,7 @@ impl WalletCore {
             ));
         }
         let record = self.multisig_record(&intent.account_id)?;
-        self.require_chain(&intent, &record, &state, true)?;
+        self.require_chain(&intent, &record, &state)?;
         let guid_of = |public_key: &str| felt::parse(public_key).and_then(|k| signer_guid(&k).ok());
         let signature = self.with_session(true, |session| {
             let signer = signing_record(&session.payload, &signer_account_id)
@@ -350,7 +367,7 @@ impl WalletCore {
             return Err(refused("Argent multisig intent is not ready"));
         }
         let record = self.multisig_record(&intent.account_id)?;
-        self.require_chain(&intent, &record, &state, true)?;
+        self.require_chain(&intent, &record, &state)?;
         if intent.signatures.len() != intent.config_snapshot.threshold as usize {
             return Err(refused("Argent multisig threshold is not satisfied"));
         }
@@ -370,12 +387,14 @@ impl WalletCore {
 
     /// Imports a co-signer's package (`importIntent`) for a saved multisig: `state` is a fresh
     /// read of that multisig. The package's own lifecycle claims and summary are dropped; the
-    /// summary is this wallet's review of the calls, and a review refusal refuses the import. A
+    /// summary is this wallet's review of the calls over its trusted tracked `tokens`, and a
+    /// review refusal refuses the import. A
     /// stored intent under the same id is merged into, never replaced by another transaction.
     pub fn import_multisig_intent(
         &self,
         package: String,
         state: Arc<MultisigStateRead>,
+        tokens: Arc<TokenPreferences>,
     ) -> Result<MultisigIntent, CoreError> {
         if package.len() > multisig_constants::get().nostr.max_application_data_bytes {
             return Err(refused(INVALID_PACKAGE));
@@ -391,9 +410,10 @@ impl WalletCore {
             .finished()
             .ok_or_else(|| refused(ImportError::AuthorityUnavailable.message()))?;
         let stored = multisig_intents::get(self.data_dir(), &parsed.intent.id)?;
-        let tokens = review_tokens(network);
+        let trusted = trusted_tokens(&tokens, network);
+        let infos = token_infos(&trusted);
         let known = Known {
-            tokens: &tokens,
+            tokens: &infos,
             nft_contracts: &[],
         };
         let trusted = self.review_trusted(network)?;

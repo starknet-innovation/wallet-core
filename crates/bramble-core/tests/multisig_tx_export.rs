@@ -10,9 +10,7 @@ mod common;
 mod multisig_support;
 mod multisig_tx_support;
 
-use bramble_core::{
-    argent_multisig_config_change_call, IntentState, MultisigTxStep, SendStep, StepReply,
-};
+use bramble_core::{IntentState, MultisigProposalRequest, MultisigTxStep, SendStep, StepReply};
 use multisig_support::fixture;
 use multisig_tx_support::*;
 use serde_json::{json, Value};
@@ -127,14 +125,18 @@ fn a_cosigner_imports_the_proposal_and_then_the_ready_package() {
 
         let imported = wallet
             .core
-            .import_multisig_intent(package.clone(), state())
+            .import_multisig_intent(package.clone(), state(), wallet.tokens())
             .unwrap();
         assert_eq!(imported.package, package);
         assert_eq!(imported.state, IntentState::Collecting);
 
         let ready = wallet
             .core
-            .import_multisig_intent(text(&proposal["readyPackage"]).into(), state())
+            .import_multisig_intent(
+                text(&proposal["readyPackage"]).into(),
+                state(),
+                wallet.tokens(),
+            )
             .unwrap();
         assert_eq!(ready.package, text(&proposal["readyPackage"]));
         assert_eq!(ready.state, IntentState::Ready);
@@ -145,9 +147,9 @@ fn a_cosigner_imports_the_proposal_and_then_the_ready_package() {
     }
 }
 
-/// A signer change is proposed like any call: `extension-multisig-transactions-signers.json`'s
-/// four changes, each the self-call `argentMultisigConfigChangeCall` builds, reviewed as the
-/// configuration it leaves, and frozen to the transaction the extension prepared.
+/// A signer change is proposed by name: `extension-multisig-transactions-signers.json`'s four
+/// changes, each frozen as the self-call `argentMultisigConfigChangeCall` builds, reviewed as the
+/// configuration it leaves, and prepared as the extension prepared it.
 #[test]
 fn signer_changes_are_proposed_as_the_extension_proposes_them() {
     let wallet = wallet(&networks()[0]);
@@ -162,12 +164,14 @@ fn signer_changes_are_proposed_as_the_extension_proposes_them() {
     for case in cases {
         let name = text(&case["name"]);
         let change = serde_json::from_value(case["change"].clone()).unwrap();
-        let call = argent_multisig_config_change_call(wallet.address(), change).unwrap();
-        assert_eq!(serde_json::to_value(&call).unwrap(), case["call"], "{name}");
         let proposal = wallet
             .core
             .clone()
-            .propose_multisig_transaction(wallet.current_authority(), vec![call])
+            .propose_multisig_transaction(
+                wallet.current_authority(),
+                MultisigProposalRequest::ChangeSigners { change },
+                wallet.tokens(),
+            )
             .unwrap();
         let review = proposal.review();
         let expected = &case["review"]["config"];
@@ -194,6 +198,11 @@ fn signer_changes_are_proposed_as_the_extension_proposes_them() {
             "{name}: {step:?}"
         );
         let intent = proposal.intent().unwrap();
+        assert_eq!(
+            serde_json::to_value(&intent.calls).unwrap(),
+            json!([case["call"]]),
+            "{name}"
+        );
         let prepared: Value = serde_json::from_str(text(&case["prepared"])).unwrap();
         assert_eq!(
             intent.transaction_hash,

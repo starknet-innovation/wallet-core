@@ -9,7 +9,10 @@ mod common;
 mod multisig_support;
 mod multisig_tx_support;
 
-use bramble_core::{CoreError, IntentState, MultisigTxFailure, MultisigTxStep, StepReply};
+use bramble_core::{
+    ConfigChange, CoreError, IntentState, MultisigProposalRequest, MultisigTxFailure,
+    MultisigTxStep, StepReply,
+};
 use multisig_support::fixture;
 use multisig_tx_support::*;
 use serde_json::Value;
@@ -40,7 +43,7 @@ fn a_proposal_needs_the_stored_signers_on_chain() {
     let refused = wallet
         .core
         .clone()
-        .propose_multisig_transaction(changed, wallet.calls())
+        .propose_multisig_transaction(changed, wallet.transfer(), wallet.tokens())
         .err()
         .unwrap();
     assert_eq!(
@@ -54,28 +57,91 @@ fn a_proposal_needs_the_stored_signers_on_chain() {
     let refused = wallet
         .core
         .clone()
-        .propose_multisig_transaction(unread, wallet.calls())
+        .propose_multisig_transaction(unread, wallet.transfer(), wallet.tokens())
         .err()
         .unwrap();
     assert_eq!(reason(refused), "Argent multisig config unavailable");
 }
 
 #[test]
-fn a_proposal_holds_unsafe_calls_to_the_review() {
+fn a_proposal_holds_a_signer_change_to_the_review() {
     let wallet = sepolia();
-    let mut calls = wallet.calls();
-    calls[0].contract_address = wallet.address();
-    calls[0].entrypoint = "perform_upgrade".into();
+    let change = ConfigChange::ChangeThreshold {
+        threshold: wallet.threshold(),
+    };
     let refused = wallet
         .core
         .clone()
-        .propose_multisig_transaction(wallet.current_authority(), calls)
+        .propose_multisig_transaction(
+            wallet.current_authority(),
+            MultisigProposalRequest::ChangeSigners { change },
+            wallet.tokens(),
+        )
         .err()
         .unwrap();
+    assert_eq!(reason(refused), "Argent multisig threshold is unchanged");
+}
+
+/// A transfer request is built in the core, so each of its parts is checked there: a token the
+/// wallet does not know, a zero or malformed recipient, and an amount the extension refuses.
+#[test]
+fn a_transfer_proposal_refuses_what_the_extension_refuses() {
+    let wallet = sepolia();
+    let MultisigProposalRequest::Transfer {
+        token_id,
+        recipient,
+        amount,
+    } = wallet.transfer()
+    else {
+        unreachable!()
+    };
+    let propose = |token: &str, to: &str, value: &str| {
+        let request = MultisigProposalRequest::Transfer {
+            token_id: token.into(),
+            recipient: to.into(),
+            amount: value.into(),
+        };
+        reason(
+            wallet
+                .core
+                .clone()
+                .propose_multisig_transaction(wallet.current_authority(), request, wallet.tokens())
+                .err()
+                .unwrap(),
+        )
+    };
+    assert_eq!(propose("0x1234", &recipient, &amount), "unknown token");
+    // Ids are per network: Mainnet's STRK is no token on Sepolia.
+    let mainnet = wallet.tokens().tracked(bramble_core::NetworkId::Mainnet);
     assert_eq!(
-        reason(refused),
-        "Argent multisig internal upgrade callbacks cannot be called directly"
+        propose(&mainnet[0].token.id, &recipient, &amount),
+        "unknown token"
     );
+    assert_eq!(
+        propose(&token_id, "0x0", &amount),
+        "Invalid transfer address"
+    );
+    assert_eq!(
+        propose(&token_id, "0xnope", &amount),
+        "Invalid transfer address"
+    );
+    assert_eq!(
+        propose(&token_id, &recipient, "0"),
+        "Transfer amount must be greater than zero"
+    );
+    assert_eq!(
+        propose(&token_id, &recipient, "0.0000000000000000001"),
+        "Too many decimal places"
+    );
+    assert_eq!(
+        propose(&token_id, &recipient, "1e18"),
+        "Invalid transfer amount"
+    );
+    assert!(wallet
+        .core
+        .multisig_intents(wallet.multisig_id())
+        .unwrap()
+        .is_empty());
 }
 
 #[test]
@@ -84,7 +150,11 @@ fn a_lock_before_the_estimate_returns_stores_nothing() {
     let proposal = wallet
         .core
         .clone()
-        .propose_multisig_transaction(wallet.current_authority(), wallet.calls())
+        .propose_multisig_transaction(
+            wallet.current_authority(),
+            wallet.transfer(),
+            wallet.tokens(),
+        )
         .unwrap();
     let exchanges = phase(&wallet.net["proposal"]["prepare"]);
     let mut relocked = false;
@@ -306,7 +376,7 @@ fn an_import_replaces_a_lying_summary_with_the_wallets_review() {
     let state = wallet.state(wallet.threshold(), &wallet.guids(), nonce);
     let imported = wallet
         .core
-        .import_multisig_intent(package.to_string(), state)
+        .import_multisig_intent(package.to_string(), state, wallet.tokens())
         .unwrap();
     assert_eq!(imported.summary, honest.as_str().unwrap());
     assert_eq!(imported.package, proposal["readyPackage"].as_str().unwrap());
@@ -325,7 +395,7 @@ fn an_import_needs_the_chain_a_saved_multisig_and_a_bounded_package() {
     let moved = wallet.state(wallet.threshold(), &wallet.guids(), "0x99");
     let refused = wallet
         .core
-        .import_multisig_intent(package.clone(), moved)
+        .import_multisig_intent(package.clone(), moved, wallet.tokens())
         .err()
         .unwrap();
     assert_eq!(
@@ -337,7 +407,7 @@ fn an_import_needs_the_chain_a_saved_multisig_and_a_bounded_package() {
     let state = wallet.state(wallet.threshold(), &wallet.guids(), nonce);
     let refused = wallet
         .core
-        .import_multisig_intent(oversized, state.clone())
+        .import_multisig_intent(oversized, state.clone(), wallet.tokens())
         .err()
         .unwrap();
     assert_eq!(reason(refused), "invalid Argent multisig intent package");
@@ -345,7 +415,7 @@ fn an_import_needs_the_chain_a_saved_multisig_and_a_bounded_package() {
     wallet.core.remove_multisig(wallet.multisig_id()).unwrap();
     let refused = wallet
         .core
-        .import_multisig_intent(package, state)
+        .import_multisig_intent(package, state, wallet.tokens())
         .err()
         .unwrap();
     assert_eq!(reason(refused), "Argent multisig not found");

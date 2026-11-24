@@ -6,9 +6,9 @@
 use std::sync::Arc;
 
 use bramble_core::{
-    ArgentMultisigConfig, MultisigAuthorityRead, MultisigAuthorityStatus, MultisigCall,
-    MultisigIntent, MultisigStateRead, MultisigTxStep, NetworkId, SendStep, StepReply,
-    TransferPlan, WalletCore,
+    ArgentMultisigConfig, MultisigAuthorityRead, MultisigAuthorityStatus, MultisigIntent,
+    MultisigProposalRequest, MultisigStateRead, MultisigTxStep, NetworkId, SendStep, StepReply,
+    TokenPreferences, TransferPlan, WalletCore,
 };
 use serde_json::{json, Value};
 
@@ -133,17 +133,46 @@ impl Wallet {
             .unwrap() as u32
     }
 
-    pub fn calls(&self) -> Vec<MultisigCall> {
-        self.net["proposal"]["calls"]
-            .as_array()
-            .unwrap()
+    /// The person's tracked tokens: the defaults.
+    pub fn tokens(&self) -> Arc<TokenPreferences> {
+        TokenPreferences::new(None)
+    }
+
+    /// The fixture's proposal, one STRK transfer, as the request a screen sends: the amount
+    /// is the call's u256 written as decimal STRK text.
+    pub fn transfer(&self) -> MultisigProposalRequest {
+        let calls = self.net["proposal"]["calls"].as_array().unwrap();
+        assert_eq!(calls.len(), 1);
+        let call = &calls[0];
+        assert_eq!(call["entrypoint"], "transfer");
+        let calldata = strings(&call["calldata"]);
+        assert_eq!(calldata[2], "0x0");
+        let low = u128::from_str_radix(&calldata[1][2..], 16).unwrap();
+        let unit = 10u128.pow(18);
+        let fraction = format!("{:018}", low % unit);
+        let fraction = fraction.trim_end_matches('0');
+        let whole = low / unit;
+        let token = call["contractAddress"].as_str().unwrap();
+        let tracked = self.tokens().tracked(self.network);
+        let token_id = tracked
             .iter()
-            .map(|call| MultisigCall {
-                calldata: strings(&call["calldata"]),
-                contract_address: call["contractAddress"].as_str().unwrap().into(),
-                entrypoint: call["entrypoint"].as_str().unwrap().into(),
+            .find(|tracked| {
+                let digits = |hex: &str| hex[2..].trim_start_matches('0').to_lowercase();
+                digits(&tracked.token.address) == digits(token)
             })
-            .collect()
+            .expect("the fixture's token is tracked")
+            .token
+            .id
+            .clone();
+        MultisigProposalRequest::Transfer {
+            token_id,
+            recipient: calldata[0].clone(),
+            amount: if fraction.is_empty() {
+                whole.to_string()
+            } else {
+                format!("{whole}.{fraction}")
+            },
+        }
     }
 
     /// An authority read of the multisig answered with `threshold` and `guids`.
@@ -200,7 +229,7 @@ impl Wallet {
         let proposal = self
             .core
             .clone()
-            .propose_multisig_transaction(self.current_authority(), self.calls())
+            .propose_multisig_transaction(self.current_authority(), self.transfer(), self.tokens())
             .unwrap();
         let step = proposal.advance(StepReply::Start).unwrap();
         match drive(step, &phase(&self.net["proposal"]["prepare"]), |reply| {

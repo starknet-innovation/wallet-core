@@ -63,6 +63,22 @@ pub enum ConfigChange {
     },
 }
 
+/// What a proposal freezes. The host names a transfer or a signer change and the core builds
+/// the call, so no export signs calls the host supplies (P9's rule, `ffi_surface.rs`).
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum MultisigProposalRequest {
+    /// An ERC-20 `transfer` from the multisig: one of the person's trusted tracked tokens on its
+    /// network by id (`TokenConfig::id`), any recipient spelling `validate_recipient` accepts, and
+    /// decimal text as typed.
+    Transfer {
+        token_id: String,
+        recipient: String,
+        amount: String,
+    },
+    /// `argentMultisigConfigChangeCall`: the self-call that makes `change`.
+    ChangeSigners { change: ConfigChange },
+}
+
 /// A stored signing intent as the screens show it. Everything here is public: the frozen
 /// transaction, the snapshot the co-signers sign against, and who has signed.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]

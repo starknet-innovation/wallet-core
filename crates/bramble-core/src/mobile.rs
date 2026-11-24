@@ -104,9 +104,8 @@ pub use groups::AccountGroup;
 pub use multisig_rpc::{MultisigAuthorityRead, MultisigAuthorityStatus, MultisigStateRead};
 pub use multisig_tx::{
     ConfigChange, IntentState, MultisigCall, MultisigCallReview, MultisigIntent, MultisigProposal,
-    MultisigSubmission, MultisigTxFailure, MultisigTxStep,
+    MultisigProposalRequest, MultisigSubmission, MultisigTxFailure, MultisigTxStep,
 };
-pub use multisig_tx_ops::argent_multisig_config_change_call;
 pub use networks::{NetworkInfo, TokenInfo};
 pub use nostr_relay::RelayStep;
 pub use privacy::plan::PrivacyReadPlan;

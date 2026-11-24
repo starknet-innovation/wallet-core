@@ -295,7 +295,6 @@ fn multisig_transactions_take_and_return_no_key() {
         "sign_multisig_intent",
         "submit_multisig_intent",
         "import_multisig_intent",
-        "argent_multisig_config_change_call",
     ] {
         assert!(
             seen.iter().any(|seen| seen == name),
