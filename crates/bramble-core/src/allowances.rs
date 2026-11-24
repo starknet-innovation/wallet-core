@@ -19,11 +19,12 @@ use wallet_core::allowances::record::AllowanceRecord;
 use wallet_core::allowances::retention::{RankToken, Ranking};
 use wallet_core::allowances::revoke::revoke_outcomes;
 use wallet_core::allowances::scan::{ExternalAllowanceScan, ExternalAllowanceScanResult};
-use wallet_core::allowances::store::{retention_full, AllowanceLog, RevokeOutcome};
+use wallet_core::allowances::store::{retention_full, AllowanceLog, RevokeOutcome, RevokeStatus};
 use wallet_core::allowances::tracked::{tracked_pairs, TrackedAllowanceRead};
 use wallet_core::allowances::AllowancePolicy;
 use wallet_core::catalog::TokenInfo;
 use wallet_core::history::events::ScanStep;
+use wallet_core::js::felt::canonical_felt;
 
 use crate::activity::with_log;
 use crate::files::Directory;
@@ -154,6 +155,9 @@ struct Listing {
     stored: Vec<AllowanceRecord>,
     scoped: Vec<AllowanceRecord>,
     outcomes: Vec<RevokeOutcome>,
+    // Pending revokes (record id, hash) with no activity row: mobile files a revoke when it is
+    // signed, before the node accepts it, so a lost row must not leave the mark for good.
+    rowless: Vec<(String, String)>,
     multisig_unread: bool,
     phase: Phase,
     external: ExternalAllowanceScan,
@@ -163,6 +167,22 @@ struct Listing {
 }
 
 impl Listing {
+    // Moves past every read that has finished, without issuing any.
+    fn advance(&mut self) {
+        if let Phase::External = self.phase {
+            if let Ok(result) = self.external.finish() {
+                self.scanned = result;
+                self.phase = Phase::Tracked;
+            }
+        }
+        if let Phase::Tracked = self.phase {
+            if let Ok(readings) = self.tracked.finish() {
+                self.readings = readings;
+                self.phase = Phase::Done;
+            }
+        }
+    }
+
     // Moves past every read that has finished; stops at one still waiting.
     fn next_calls(&mut self) -> Vec<RpcRequest> {
         loop {
@@ -198,10 +218,23 @@ impl Listing {
     // the list cannot vouch for.
     fn finish(&self, dir: &Path) -> AllowanceList {
         let owner = &self.owner;
+        // A rowless revoke the chain still reports as a grant (a zero reading already drops it)
+        // did not land, or landed nowhere the wallet can see: it settles as failed, so the grant
+        // is offered for revoking again. With no reading, nothing is known and the mark stays.
+        let mut outcomes = self.outcomes.clone();
+        outcomes.extend(
+            self.rowless
+                .iter()
+                .filter(|(id, _)| self.readings.iter().any(|reading| reading.id == *id))
+                .map(|(_, hash)| RevokeOutcome {
+                    hash: hash.clone(),
+                    status: RevokeStatus::Failed,
+                }),
+        );
         let settled = with_allowance_log(dir, |log| {
             // Best effort: the listing does not depend on it.
-            let _ = log.settle_revocations(&self.readings, &self.outcomes);
-            if self.outcomes.is_empty() {
+            let _ = log.settle_revocations(&self.readings, &outcomes);
+            if outcomes.is_empty() {
                 return self.scoped.clone();
             }
             log.list()
@@ -316,7 +349,7 @@ impl AllowanceListing {
     /// once every read was answered or given up.
     pub fn finish(&self) -> Result<AllowanceList, CoreError> {
         let mut listing = self.lock();
-        listing.next_calls();
+        listing.advance();
         match listing.phase {
             Phase::Done => Ok(listing.finish(&self.dir)),
             _ => Err(CoreError::Rpc {
@@ -360,6 +393,16 @@ impl WalletCore {
             .collect();
         let rows = with_log(&self.data_dir, |log| log.scope(&acting.account_id));
         let outcomes = revoke_outcomes(&scoped, network, &rows);
+        let rowless = scoped
+            .iter()
+            .filter_map(|record| {
+                let hash = record.revoke_hash.as_deref()?;
+                let has_row = rows
+                    .iter()
+                    .any(|row| canonical_felt(&row.hash).as_deref() == Some(hash));
+                (!has_row).then(|| (record.id.clone(), hash.to_string()))
+            })
+            .collect();
         let catalog_id = network.catalog_id();
         let multisig_unread = multisig_store::load(&self.data_dir).map_or(true, |file| {
             file.records.iter().any(|r| r.network_id == catalog_id)
@@ -378,6 +421,7 @@ impl WalletCore {
                 stored,
                 scoped,
                 outcomes,
+                rowless,
                 multisig_unread,
                 phase: Phase::External,
                 scanned: ExternalAllowanceScanResult::unavailable(),

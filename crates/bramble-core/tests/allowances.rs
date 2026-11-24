@@ -223,18 +223,16 @@ fn a_reverted_revoke_clears_its_mark_on_its_own_outcome() {
 // The log is what keeps a residual grant visible and revokable, so it is filed before the row
 // and never depends on the row's write: here the activity file cannot be written at all, and
 // the revoke is in the log under the hash before the write is handed out.
-#[test]
-fn a_revoke_is_filed_before_its_row_and_without_it() {
-    let (dir, core) = wallet();
-    seed(dir.path(), &account(), "1000");
-    std::fs::create_dir(dir.path().join("activity.v1.json.tmp")).unwrap();
+/// Signs the revoke of the seeded grant and runs it to its broadcast, checking it is in the log
+/// before the write leaves.
+fn broadcast_revoke(core: &Arc<WalletCore>, dir: &Path) {
     let mut node = sepolia(true);
-    let plan = reviewed_revoke(&core, &mut node, &id(&account(), STRK_ID));
+    let plan = reviewed_revoke(core, &mut node, &id(&account(), STRK_ID));
     let mut step = plan.advance(StepReply::Confirm).unwrap();
     while let SendStep::Rpc { .. } = &step {
         let (id, method, params, is_write) = rpc_parts(&step);
         let signed = is_write.then(|| {
-            let filed = log(dir.path());
+            let filed = log(dir);
             assert_eq!(
                 filed[0]["revoking"],
                 json!(true),
@@ -246,10 +244,76 @@ fn a_revoke_is_filed_before_its_row_and_without_it() {
         step = plan.advance(rpc_reply(id, &answer)).unwrap();
     }
     assert!(matches!(step, SendStep::Broadcast { .. }), "{step:?}");
+}
+
+#[test]
+fn a_revoke_is_filed_before_its_row_and_without_it() {
+    let (dir, core) = wallet();
+    seed(dir.path(), &account(), "1000");
+    std::fs::create_dir(dir.path().join("activity.v1.json.tmp")).unwrap();
+    broadcast_revoke(&core, dir.path());
     assert!(
         core.activity(account()).unwrap().is_empty(),
         "the row could not be written"
     );
+}
+
+// Mobile files a revoke when it signs it, before the node accepts it. With no row there is no
+// outcome to clear the mark, so a reading that still shows the grant settles it as failed and
+// the grant is offered again.
+#[test]
+fn a_rowless_revoke_the_chain_still_reports_is_offered_again() {
+    let (dir, core) = wallet();
+    seed(dir.path(), &account(), "1000");
+    std::fs::create_dir(dir.path().join("activity.v1.json.tmp")).unwrap();
+    broadcast_revoke(&core, dir.path());
+    assert!(core.activity(account()).unwrap().is_empty());
+    let listed = list(&core, "0x3e8");
+    assert_eq!(listed.allowances.len(), 1);
+    assert_eq!(
+        (
+            listed.allowances[0].revoking,
+            listed.allowances[0].amount.as_str()
+        ),
+        (false, "1000")
+    );
+    assert_eq!(log(dir.path())[0].get("revoking"), None);
+}
+
+// Without a reading nothing is known, so a rowless revoke keeps its mark.
+#[test]
+fn a_rowless_revoke_with_no_reading_keeps_its_mark() {
+    let (dir, core) = wallet();
+    seed(dir.path(), &account(), "1000");
+    std::fs::create_dir(dir.path().join("activity.v1.json.tmp")).unwrap();
+    broadcast_revoke(&core, dir.path());
+    let listing = core.allowance_listing(account(), prefs()).unwrap();
+    while let Some(request) = listing.next_calls().first() {
+        if method(request) == "starknet_call" {
+            listing.give_up();
+        } else {
+            listing.accept(reply(request, chain(request, "0x3e8")));
+        }
+    }
+    let listed = listing.finish().unwrap();
+    assert!(listed.allowances[0].revoking, "{listed:?}");
+    assert_eq!(log(dir.path())[0]["revoking"], json!(true));
+}
+
+// A revoke whose row is still pending keeps its mark while the chain shows the grant: only its
+// own outcome or a zero reading settles it.
+#[test]
+fn a_pending_revoke_keeps_its_mark_while_the_grant_stands() {
+    let (dir, core) = wallet();
+    seed(dir.path(), &account(), "1000");
+    broadcast_revoke(&core, dir.path());
+    assert_eq!(
+        core.activity(account()).unwrap()[0].status,
+        TxStatus::Pending
+    );
+    let listed = list(&core, "0x3e8");
+    assert!(listed.allowances[0].revoking, "{listed:?}");
+    assert_eq!(log(dir.path())[0]["revoking"], json!(true));
 }
 
 #[test]
@@ -354,6 +418,8 @@ fn a_listing_without_an_endpoint_says_its_scan_is_incomplete() {
     assert_eq!(method(&listing.next_calls()[0]), "starknet_getEvents");
     assert!(listing.finish().is_err(), "not before its reads");
     listing.give_up();
+    // An early finish issues nothing, so the tracked read is still handed out.
+    assert!(listing.finish().is_err(), "not before its tracked read");
     // One tracked read, this account's grant; the stored amount stands with no answer.
     let read = listing.next_calls().remove(0);
     assert_eq!(method(&read), "starknet_call");

@@ -46,8 +46,7 @@ pub enum InvokeRefusal {
     /// A call with more calldata than the wallet's `Policy::max_call_calldata_felts`.
     #[error("calldata too long")]
     CalldataTooLong,
-    /// A zero contract, an entrypoint outside the grammar, or one the selector primitive could
-    /// not name.
+    /// A zero contract or an entrypoint outside the grammar.
     #[error("invalid call")]
     InvalidCall,
     /// The call review refused the batch.
