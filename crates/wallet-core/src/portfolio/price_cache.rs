@@ -146,7 +146,7 @@ pub(super) fn parse_price_cache(value: Option<&JsValue>) -> Option<PriceCache> {
 }
 
 // `withinWindow`: a time not in the future and less than `window_ms` old.
-pub(super) fn within_window(at: Option<&f64>, now_ms: f64, window_ms: f64) -> bool {
+pub(crate) fn within_window(at: Option<&f64>, now_ms: f64, window_ms: f64) -> bool {
     at.is_some_and(|at| *at <= now_ms && now_ms - *at < window_ms)
 }
 

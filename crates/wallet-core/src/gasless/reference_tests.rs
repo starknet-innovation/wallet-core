@@ -4,7 +4,7 @@
 use super::*;
 use crate::gasless::tests::POLICY;
 use crate::portfolio::model::DisplayCurrency;
-use crate::portfolio::prices::PricePoint;
+use crate::portfolio::prices::{PricePoint, PRICE_TTL_MS};
 
 const STRK: &str = "0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d";
 const USDC: &str = "0x33068f6539f8e6e6b131e6b2b814e6c34a5224bc66947c47dab9dfee93b35fb";
@@ -28,7 +28,7 @@ fn view(prices: &[(&str, f64)]) -> PriceView {
             })
             .collect(),
         changes: Vec::new(),
-        as_of_ms: Some(1_790_000_000_000.0),
+        as_of_ms: Some(AS_OF as f64),
         stale: false,
     }
 }
@@ -40,8 +40,12 @@ fn reference(prices: &PriceView) -> Option<U256> {
         (felt_of(STRK), 18),
         (felt_of(USDC), 6),
         fee(),
+        AS_OF + 1,
     )
 }
+
+/// When the test answer was captured, in ms.
+const AS_OF: u64 = 1_790_000_000_000;
 
 #[test]
 fn a_fresh_usd_answer_converts_the_fee_rounding_down() {
@@ -71,12 +75,26 @@ fn an_answer_the_feed_does_not_vouch_for_is_no_reference() {
         as_of_ms: None,
         ..fresh.clone()
     };
+    // The price book's TTL bounds the answer's age against the clock, both ways.
+    let old = PriceView {
+        as_of_ms: Some((AS_OF + 1) as f64 - PRICE_TTL_MS),
+        ..fresh.clone()
+    };
+    let edge = PriceView {
+        as_of_ms: Some((AS_OF + 2) as f64 - PRICE_TTL_MS),
+        ..fresh.clone()
+    };
+    let future = PriceView {
+        as_of_ms: Some((AS_OF + 2) as f64),
+        ..fresh.clone()
+    };
+    assert!(reference(&edge).is_some());
     let euros = PriceView {
         currency: DisplayCurrency::Eur,
         ..fresh.clone()
     };
     assert!(reference(&fresh).is_some());
-    for refused in [stale, undated, euros] {
+    for refused in [stale, undated, euros, old, future] {
         assert_eq!(reference(&refused), None);
     }
 }

@@ -9,6 +9,7 @@ pub mod fiat;
 pub mod model;
 pub(crate) mod ordered;
 mod price_cache;
+pub(crate) use price_cache::within_window;
 pub mod prices;
 pub mod registry;
 pub mod snapshots;

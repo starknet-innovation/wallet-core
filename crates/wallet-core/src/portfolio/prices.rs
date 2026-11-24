@@ -19,7 +19,7 @@ use crate::NetworkId;
 
 const CHART_DAYS: u32 = 7;
 pub use super::price_cache::PRICE_CHART_POINT_LIMIT;
-const PRICE_TTL_MS: f64 = 5.0 * 60.0 * 1000.0;
+pub const PRICE_TTL_MS: f64 = 5.0 * 60.0 * 1000.0;
 const PRICE_RETRY_BACKOFF_MS: f64 = 60_000.0;
 const CHART_TTL_MS: f64 = 30.0 * 60.0 * 1000.0;
 const MAX_CHART_ENTRIES: usize = 50;

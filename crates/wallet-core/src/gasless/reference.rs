@@ -7,7 +7,8 @@
 //! `Unverifiable`.
 
 use super::GaslessPolicy;
-use crate::portfolio::prices::PriceView;
+use crate::portfolio::prices::{PriceView, PRICE_TTL_MS};
+use crate::portfolio::within_window;
 use crate::send::u256::U256;
 use crate::{felt, Felt};
 
@@ -62,7 +63,9 @@ pub fn scaled_price(value: f64, scale: u64) -> Option<u64> {
 
 /// `createStrk20FeeReference`'s answer for `token`: `strk_fee` FRI converted at `prices`, a
 /// price answer in the policy's reference currency (pinned, so a display choice cannot move a
-/// security bound) that the feed vouches for as current. A stale or undated answer, a missing or
+/// security bound) that the feed vouches for as current at `now_ms`: captured within the price
+/// book's TTL (`PRICE_TTL_MS`, as the extension reads prices at submit under `PriceService`'s).
+/// A stale, undated or older answer (or one from the future), a missing or
 /// non-positive price for either token, or a zero fee is `None`. Prices are matched by felt, so
 /// a padded address is not "unpriced". `strk` and `token` are `(address, decimals)` from the
 /// wallet's own registry, never the paymaster's list.
@@ -72,8 +75,10 @@ pub fn fee_reference(
     strk: (Felt, u8),
     token: (Felt, u8),
     strk_fee: U256,
+    now_ms: u64,
 ) -> Option<U256> {
-    if prices.currency != policy.reference_currency || prices.stale || prices.as_of_ms.is_none() {
+    let fresh = within_window(prices.as_of_ms.as_ref(), now_ms as f64, PRICE_TTL_MS);
+    if prices.currency != policy.reference_currency || prices.stale || !fresh {
         return None;
     }
     let price = |address: &Felt| {
