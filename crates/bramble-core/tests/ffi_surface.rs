@@ -427,3 +427,25 @@ fn no_export_takes_calls_to_sign() {
         }
     }
 }
+
+/// P16: a site's requests reach the wallet only through `DappSession`, and none of its exports
+/// signs yet. When typed data and invoke review land, each signing export must take a queued,
+/// approved card's id; widen this list deliberately then.
+#[test]
+fn the_dapp_session_exports_only_the_connect_slice() {
+    let names: Vec<String> = exported_signatures(include_str!("../src/dapp_session.rs"))
+        .iter()
+        .map(|exported| exported.name().to_owned())
+        .collect();
+    assert_eq!(
+        names,
+        [
+            "new",
+            "request",
+            "pending_approvals",
+            "approve_connect",
+            "deny_connect",
+            "settle_expired"
+        ]
+    );
+}

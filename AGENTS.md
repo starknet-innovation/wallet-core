@@ -231,6 +231,9 @@ Grep first; extend in place rather than adding a sibling.
     in the extension's gate order: blocklist, lock, grant.
   Bramble's budgets, advertised versions and `mc_*` methods are `bramble-core`'s `dapp.rs`
   (`DAPP_POLICY`, `DAPP_QUEUE_LIMITS`, `read_page_request`).
+  The apps reach all of it through `bramble-core`'s `dapp_session::DappSession` (the request,
+  the cards, their decisions and expiry; grants are written to the vault's `kept.origin_grants`
+  through `WalletCore::commit`).
 - Only `wallet-core` depends on Krusty (`kms.rs`, `nostr.rs`, `accounts/`, `send/`);
   `bramble-core` goes through `wallet-core` and never names `krusty_kms`.
 
