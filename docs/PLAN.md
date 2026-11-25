@@ -1014,9 +1014,12 @@ Features, smallest and least dependent first:
       connect card survives a lock, as the extension's does, since a site asking while locked
       is approved after unlock; the spike's "a lock rejects every pending approval" applies
       from the first card that holds session-bound review (invoke, typed data).
-    - Next here, in order: the blocklist, feed and insights (Bramble must not ship the browser
-      before it);
-      the remaining methods' gates and results; typed-data review and SNIP-12 signing at
+    - Open: the blocklist, the phishing feed and site warnings as core mechanism (#141), and
+      stacked on it and #144, `DappSession` checking them: a blocked site learns nothing and its
+      card cannot be approved, the host refreshes the feed (`refresh_phishing_feed`,
+      `answer_phishing_feed`), each card carries `blocked` and its warnings, and a decided card
+      records the site's first sighting (deleted with the wallet).
+    - Next here, in order: the remaining methods' gates and results; typed-data review and SNIP-12 signing at
       approval; the full export.
     - *Proposed*: export a connect-only slice first (connect, accounts, chain id, versions,
       permissions) once grants and the queue land, so Bramble can build and test the WebView

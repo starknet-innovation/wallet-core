@@ -35,6 +35,7 @@ mod contact_card;
 mod contacts;
 mod container;
 mod dapp_session;
+mod dapp_sites;
 mod ffi_coordination;
 mod ffi_nostr_multisig;
 mod ffi_staking;
@@ -163,6 +164,7 @@ pub use send::{
 pub use stark_name::{
     stark_name_address_request, stark_name_judge_address, stark_name_normalize, StarkNameAnswer,
 };
+pub use starknet_wallet_core::dapp::SiteWarning;
 pub use ui::{PassphraseLevel, PassphraseStrength};
 pub use wallet::{AccountInfo, RecoveryPhrase, SecurityStatus, WalletCore, WalletStatus};
 pub use wallet_accounts::AccountRecord;

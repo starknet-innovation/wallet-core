@@ -237,7 +237,8 @@ Grep first; extend in place rather than adding a sibling.
   `SITE_LISTS`, `PHISHING_FEED`).
   The apps reach all of it through `bramble-core`'s `dapp_session::DappSession` (the request,
   the cards, their decisions and expiry; grants are written to the vault's `kept.origin_grants`
-  through `WalletCore::commit`).
+  through `WalletCore::commit`); its blocklist, feed refresh and card warnings are
+  `dapp_sites.rs`.
 - Only `wallet-core` depends on Krusty (`kms.rs`, `nostr.rs`, `accounts/`, `send/`);
   `bramble-core` goes through `wallet-core` and never names `krusty_kms`.
 
