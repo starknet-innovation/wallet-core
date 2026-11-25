@@ -107,7 +107,7 @@ pub(crate) fn next(
     state.network = network;
     let step = state
         .scan
-        .next(&payload.mnemonic, None, &config, manual_index)?;
+        .next(payload.phrase()?, None, &config, manual_index)?;
     Ok(worded(step))
 }
 
@@ -124,7 +124,7 @@ pub(crate) fn submit(
     let config = config(state.network)?;
     let step = state
         .scan
-        .submit(&payload.mnemonic, None, &config, responses)?;
+        .submit(payload.phrase()?, None, &config, responses)?;
     Ok(worded(step))
 }
 

@@ -6,8 +6,9 @@
 //! and maintained as the extension's service maintains it (`vault_provenance`).
 //!
 //! Reading accepts every vault the extension's v13 or v14 validator accepts (`vault_rules`,
-//! `vault_budget`), with one exception: a vault with no phrase (a Ledger-only or key-only wallet)
-//! is refused, since this wallet has nothing to run without one (until P8). Mobile operates the
+//! `vault_budget`), a vault with no phrase (a Ledger-only or key-only wallet) among them: it
+//! operates what needs no phrase, and everything that does is refused (`VaultPayload::phrase`).
+//! Mobile operates the
 //! records it can sign for: phrase-derived accounts (`starknet-bip44` on either of its two
 //! ladders, Ready's `argentx-bip44`) and accounts imported from a raw key (`imported-raw-key`,
 //! PLAN.md P3), on the networks it has, up to `MAX_ACCOUNT_RECORDS`, each only when it re-derives
@@ -139,6 +140,24 @@ impl Derivation {
     }
 }
 
+/// The vault's phrase, which a Ledger-only or key-only wallet does not have.
+impl VaultPayload {
+    /// An imported wallet waits for discovery until it holds an account (restore never writes
+    /// none); a wallet with no phrase has nothing to discover.
+    pub(crate) fn recovery_pending(&self) -> bool {
+        self.accounts.is_empty() && self.mnemonic.is_some()
+    }
+
+    /// The phrase every phrase-derived key comes from; refused for a wallet without one.
+    pub(crate) fn phrase(&self) -> Result<&str, CoreError> {
+        self.mnemonic
+            .as_deref()
+            .ok_or_else(|| CoreError::InvalidInput {
+                reason: "this wallet has no recovery phrase".into(),
+            })
+    }
+}
+
 /// Counts what `serde_json` writes, so `encode` can size its buffer exactly.
 #[derive(Default)]
 struct Counter(usize);
@@ -209,7 +228,7 @@ pub(crate) fn encode(payload: &VaultPayload) -> Result<Zeroizing<Vec<u8>>, CoreE
         account_secrets: kept.account_secrets.clone(),
         active_account_id: payload.active_account_id.clone(),
         imported_seeds: kept.imported_seeds.clone(),
-        mnemonic: Some(payload.mnemonic.clone()),
+        mnemonic: payload.mnemonic.clone(),
         multisig_strk20_key_conflicts: kept.multisig_strk20_key_conflicts.clone(),
         multisig_strk20_viewing_keys: kept.multisig_strk20_viewing_keys.clone(),
         origin_grants: kept.origin_grants.clone(),
@@ -243,7 +262,8 @@ pub(crate) fn decode(plaintext: &[u8]) -> Result<VaultPayload, CoreError> {
     if !vault_rules::is_valid(&vault) {
         return Err(invalid());
     }
-    let mnemonic = vault.mnemonic.take().ok_or_else(invalid)?;
+    // A wallet with no phrase (Ledger-only) operates only what needs none.
+    let mnemonic = vault.mnemonic.take();
     let mut kept = Kept {
         key_order: vault
             .signing_keys
@@ -258,7 +278,7 @@ pub(crate) fn decode(plaintext: &[u8]) -> Result<VaultPayload, CoreError> {
         shadow_account_scopes: std::mem::take(&mut vault.shadow_account_scopes),
         ..Kept::default()
     };
-    if !kms::validate_mnemonic(&mnemonic) {
+    if !mnemonic.as_deref().is_none_or(kms::validate_mnemonic) {
         return Err(invalid());
     }
     // Each record mobile could operate is admitted or kept (`vault_admit`); every other record
@@ -272,7 +292,7 @@ pub(crate) fn decode(plaintext: &[u8]) -> Result<VaultPayload, CoreError> {
             .flatten();
         let admission = match &candidate {
             Some(record) => vault_admit::admit(
-                &mnemonic,
+                mnemonic.as_deref(),
                 record,
                 &vault.signing_keys,
                 account.public_key_y.as_ref(),

@@ -102,8 +102,9 @@ fn not_found() -> CoreError {
 }
 
 impl WalletCore {
+    /// Whether the wallet is unlocked; a wallet with no phrase passes too.
     pub(crate) fn require_unlocked(&self) -> Result<(), CoreError> {
-        self.with_phrase(|_| Ok(()))
+        self.with_session(false, |_| Ok(()))
     }
 
     /// `(record id, public key)` of every account record on `network` that may co-sign a

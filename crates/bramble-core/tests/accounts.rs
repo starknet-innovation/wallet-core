@@ -403,7 +403,19 @@ fn a_vault_the_extension_refuses_fails_closed() {
         "unknown active account",
     );
     reject(&|p| p["activeAccountId"] = Value::Null, "no active account");
-    reject(&|p| p["mnemonic"] = Value::Null, "no phrase");
+    // Not refused: the extension keeps a vault with no phrase valid (`schema-types.ts`: a
+    // v1-migrated wallet's seed records stay signable through their retained keys). It opens
+    // here with those records kept unused, since nothing derives them.
+    let mut no_phrase = good.clone();
+    no_phrase["mnemonic"] = Value::Null;
+    seal_container_vault(&path, PASSWORD, 14, &no_phrase.to_string()).unwrap();
+    let reopened = open(dir.path(), &clock);
+    reopened.unlock(PASSWORD.into()).unwrap();
+    assert!(reopened.all_account_records().unwrap().is_empty());
+    assert_eq!(
+        reopened.unusable_accounts().unwrap().len(),
+        good["accounts"].as_array().unwrap().len()
+    );
     reject(
         &|p| {
             let key = p["signingKeys"][0]["privateKey"]
