@@ -13,57 +13,18 @@ pub use super::invoke::{ActivityAsset, Invoke, InvokeRefusal};
 use super::judge::{self, Observation, TxStatus};
 use super::review_flags::RiskFlag;
 pub use super::types::{
-    Account, ArgentClass, Authorization, Kind, Policy, Token, Transfer, TransferRefusal,
+    Account, ArgentClass, Authorization, Kind, PendingKind, PendingRecord, Policy, SignRefusal,
+    Token, Transfer, TransferRefusal,
 };
 use super::types::{
     RpcPurpose, SendError, SendFailure, SendFailureCode, SendStep, StepReply, TransferReview,
 };
-use crate::allowances::calls::AllowanceChange;
 use crate::kms::StarkSignature;
 use crate::{felt, Felt};
 
 /// starknet.js `waitForTransaction`: poll interval and attempt budget for a deployment.
 pub const DEPLOY_POLL_INTERVAL_MS: u32 = 5_000;
 pub const DEPLOY_POLL_ATTEMPTS: u32 = 200;
-
-/// Why the host would not sign.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SignRefusal {
-    /// The session the plan was prepared in has ended.
-    Locked,
-    Failed,
-}
-
-/// What a pending activity record describes.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PendingKind {
-    Transfer {
-        amount: String,
-        recipient: Felt,
-        symbol: String,
-        token_address: Felt,
-    },
-    /// A call batch; the record's summary is its review's, or the text its builder named.
-    Invoke {
-        /// The amount and token the batch's builder named for the row (a swap, a stake).
-        asset: Option<ActivityAsset>,
-        /// Every allowance the batch changes. The host files them under the record's hash
-        /// (`allowances::calls::record_changes`) before it writes the row, as the extension
-        /// does for any hash that may be on chain: a row that fails to write must not lose a
-        /// grant from the list a person revokes from.
-        allowances: Vec<AllowanceChange>,
-    },
-    Deployment,
-}
-
-/// The record a wallet writes before a signed write leaves the core, keyed by its hash.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PendingRecord {
-    pub hash: Felt,
-    pub kind: PendingKind,
-    pub summary: String,
-    pub submitted_at: u64,
-}
 
 /// The wallet behind a plan: its session, its key custody for the plan's account, and its
 /// activity log. Lent to every `advance`, so a plan holds no reference to the wallet.
@@ -158,8 +119,13 @@ pub(crate) enum AfterWait {
 
 pub(super) enum Stage {
     Fresh,
-    Awaiting { id: u64, expect: Expect },
+    Awaiting {
+        id: u64,
+        expect: Expect,
+    },
     Waiting(AfterWait),
+    /// A Ledger account's signature in progress (`plan_device`).
+    Device(Box<super::plan_device::DeviceWait>),
     Reviewed,
     Broadcasted,
     Finished(TxStatus),
@@ -205,6 +171,8 @@ pub struct Plan {
     pub(crate) work: Work,
     pub(crate) signatures: u32,
     review: Option<TransferReview>,
+    /// The device a Ledger account signs on; `None` signs through `PlanHost::sign`.
+    pub(super) device: Option<super::plan_device::DeviceKey>,
 }
 
 impl Plan {
@@ -223,6 +191,7 @@ impl Plan {
             work: Work::default(),
             signatures: 0,
             review: None,
+            device: None,
         }
     }
 
@@ -324,6 +293,12 @@ impl Plan {
                 Ok(self.on_reply(host, expect, None))
             }
             (Stage::Waiting(after), StepReply::WaitElapsed) => Ok(self.after_wait(after)),
+            (Stage::Device(wait), StepReply::Device { reply }) => {
+                Ok(self.on_device(host, *wait, Ok(&reply)))
+            }
+            (Stage::Device(wait), StepReply::DeviceFailure { failure }) => {
+                Ok(self.on_device(host, *wait, Err(failure)))
+            }
             (Stage::Reviewed, StepReply::Confirm) => self.confirm(host),
             (Stage::Broadcasted, StepReply::Proceed)
             | (Stage::Finished(TxStatus::Pending), StepReply::CheckAgain) => {
