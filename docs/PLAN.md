@@ -176,7 +176,7 @@ step starts.
 | M17 | Bramble | — | done (#1027): analytics consent and diagnostics screens; nothing here |
 | Extension Krusty 3 | Bramble, `main` | — | `main` pins `@starknetfoundation/krusty-kms-wasm` `3.1.0` (checked 2026-11-25); confirm the migration below shipped with it before Phase 3. It had pinned `@starknetfoundation/krusty-kms-wasm` `0.11.0`, which predates the fix (Krusty 3.0 changed the derivation; 2.0.0 and earlier kept the leading zero bytes), so its keys and mobile's parted for affected phrases. Its users have funds, so it follows Krusty's [migration guide](https://github.com/starknet-innovation/krusty-kms/blob/v3.0.0/docs/migration-3.0.md): keep the old key for any existing account whose public key differs. Needed before Phase 3, where the extension takes this crate's Krusty |
 | P7 migrate | here | v0.10.11 on the extension's `main`, G7b | done (#116, `v0.8.0`): `NEW_VAULT_SCHEMA` to 14 and raising a v13 vault on unlock, as the extension's migration does. v0.10.11, which reads 14, was released 2026-11-24 |
-| D2 | — | — | the dapp transport above; D1 and D3 are settled |
+| D2 | — | — | the dapp transport above; D1 and D3 are settled. Spiked 2026-11-25 (see "P16 spike findings" under P16 in [Parity](#parity)): an in-app browser on `WKWebView` and Android `WebView` with `androidx.webkit`, injecting the extension's `starknet_bramble` at document start in the main frame only, each request bound natively to the main frame's committed `https` origin; the core takes the extension's gate order, queue, grants and blocklist sans-IO. Awaits the product owner's decision |
 | P15 spike | here | — | done 2026-11-23: see "P15 spike findings" under P15 in [Parity](#parity). The account key stays in Rust (the SDK only asks for a `CallSet` signature the core can compute and sign); the viewing key crosses into the runtime and on to StarkWare's prover and discovery service, as in the extension; a hidden WebView on both apps runs the pinned bundle unchanged behind a native fetch bridge; no StarkWare Rust client exists or is announced; the core's first P15 PR (the `PrivacyEngine` trait, `CallSet` signing, result judging) can start now |
 
 **Wave 1: krusty-kms#257 shipped (Krusty 3.2.0).** In order; each export is one PR here and one tag.
@@ -889,6 +889,107 @@ Features, smallest and least dependent first:
   and the blocklist and phishing feed: `background/provider/` (2,453), `background/approvals/`
   (4,169), `packages/features/permissions/` (905). The transport is Bramble's and differs by
   platform: mobile has no injected provider, and #990 leaves WalletConnect open.
+
+  **P16 spike findings (2026-11-25): an in-app browser.** Read from Bramble `main` (`898879ff5`)
+  and `feature/mobile-wallet` (`caea55300`); platform and library claims are from their public
+  docs and source as of this date. Nothing here is built yet; the apps have no WebView, deep link
+  or dapp code today.
+  - *What the extension injects.* One MV3 content script at `document_start`, top frame only (no
+    `all_frames`, no `world: "MAIN"`; `apps/extension/public/manifest.json:34-40`), which adds
+    `provider/inpage.js` (`content/index.ts:46-56`). That script defines two frozen globals,
+    `window.bramble` and `window.starknet_bramble` (a `StarknetWindowObject`, `id: "bramble"`), and
+    fires `bramble#initialized` and `starknet#initialized` (`provider/inpage.ts:159-216`). No
+    wallet-standard registration. It reports wallet API `0.10.5` and JSON-RPC `0.10.0`
+    (`wallet-protocol/src/provider/versions.ts:20,32`). Events reaching the page are
+    `accountsChanged` and `networkChanged` only, and only for a granted origin
+    (`content/index.ts:29-44,111-117`).
+  - *How dapps find it.* get-starknet v4 and v6, and starknet-react, scan `window` for keys
+    starting `starknet` once at load (v6 also listens for wallet-standard); none detects an
+    in-app browser. starknetkit does: Argent's by `window.starknet_argentX.isInAppBrowser`,
+    Braavos's and Keplr's by user agent, and then hides every other wallet. So the app injects
+    `starknet_bramble` at document start, never aliases `starknet_argentX`, and keeps `braavos`
+    out of its user agent. starknet-react 5's guard also wants a `provider` key the extension's
+    object lacks; that is the extension's gap too, not mobile's.
+  - *Gate order.* Every provider handler runs: parse under the JSON budget (1 MiB, depth 32;
+    `wallet-protocol/src/provider/bridge.ts:207-228`), the origin check
+    (`background/routing/senders.ts:49-111`), the blocklist, admission (100 in flight per page,
+    queue 50 global and 5 per origin, 5-minute TTL, connect, switch-chain and watch-asset deduped
+    per origin; `background/approvals/approval-limits.ts`), lock, grant (the vault's
+    `originGrants`; a page sees at most the active account,
+    `vault/src/service/origin-grants.ts:29-39`), review, queue. Invoke, typed data and declare
+    review run the same `verifyCalls` and self-call refusal as the wallet's own sends; a poisoned
+    payee is flagged at queue time and refused only at execution, so the answer cannot leak the
+    address book (`background/provider/provider-ops.ts:149-180,393-398`). A SNIP-9 outside
+    execution in typed data goes through the same review (`outside-execution-review.ts`). The
+    phishing feed is MetaMask's `eth-phishing-detect` `config.json`, 6 h TTL, stale after 24 h,
+    capped at 150k domains, exact host or subdomain match; lookalike and first-seen checks only
+    warn (`permissions/src/{phishing-feed,blocklist,origin-history}.ts`).
+  - *The core's half.* A `dapp` module in `wallet-core`, sans-IO, whatever carried the request:
+    `(origin, method, params JSON, now)` in, an answer, a review card or a refusal out; the queue,
+    its caps, TTL and dedupe over the host's clock; grants and `withoutOriginAccess` over the
+    vault; the blocklist and the feed as a body, a judge and a cache over `host::Storage`. Review
+    reuses `Invoke::reviewed`, `review_flags` and `call_decode`; typed data hashes through Krusty
+    (P14 found its SNIP-12 hash agrees with starknet.js); signing happens only at approval, inside
+    the core. Bramble's numbers (budgets, caps, TTL, feed URL) go in a `DAPP_POLICY` in
+    `bramble-core`. The pure TypeScript to port is about 7,000 lines (`wallet-protocol/provider`
+    about 2,050, `permissions` about 990, the approval queue about 1,300, review and typed data
+    about 2,600 of which `verify*` is mostly ported). The extension transport (`inpage.ts`, the
+    content script, the side panel's approval surface, the MV3 keepalive, about 1,750 lines)
+    stays the extension's.
+  - *The app's half: the bridge.* *Recommended*:
+    - **iOS.** `WKWebView` (iOS 17, no dependency). The same `inpage.js`, adapted only at its
+      `postMessage` seam, as a `WKUserScript` at document start, `forMainFrameOnly: true`, in
+      `.page` (dapps must see it, so any page script can call the handler and the message body is
+      never trusted). Requests come in over `WKScriptMessageHandlerWithReply`. A request is
+      admitted only if `message.frameInfo.isMainFrame`, its `securityOrigin` is `https`, and it
+      equals the committed `webView.url`'s origin. Each committed navigation gets an epoch, and
+      replies for an older epoch are dropped. iframes can post to handlers even with a main-frame
+      script (Chrome iOS now drops them), so a subframe's message is refused, never answered.
+    - **Android.** Platform `WebView` plus `androidx.webkit` (a new dependency, pinned exactly).
+      It is the only safe bridge: `addWebMessageListener` with `onPostMessage(sourceOrigin,
+      isMainFrame, replyProxy)`, and `addDocumentStartJavaScript` (stable since 1.9.0). Both
+      are gated on `WebViewFeature.isFeatureSupported`, and the browser is unavailable (fail
+      closed) when either is missing. The admission rule is the same: main frame, `https`, equal
+      to the committed URL, current epoch. `addJavascriptInterface` is refused: every frame gets
+      it and it carries no origin.
+    - **Both.** Cleartext is already off on both apps, so there is no `http://localhost` dapp.
+      Use a non-persistent website data store to start with: nothing the web writes outlives the
+      session, and connections persist anyway through `originGrants`. Keep the platform's own
+      warnings on (WebKit's fraudulent-website warning, Android Safe Browsing). The blocklist
+      also gates top-level navigation with an interstitial, which the extension cannot do.
+      App-Bound Domains do not fit an open-web browser; leave them undeclared.
+  - *Lock.* Both apps lock and zeroize on leaving the foreground, and a core call that finishes
+    after a lock drops its result (`SessionGuard.kt:5-33`). So a lock rejects every pending
+    approval. While locked, passive reads answer as the extension's do: the same as unconnected
+    (`background/routing/messages.ts:173-187`). The browser keeps the session where WalletConnect's
+    app switch would lock it, which is one more reason to put the browser first.
+  - *Mobile gaps.* No screen reviews a call batch today (`SendReviewView` is a transfer). The
+    dapp invoke card reuses M19–M21's, so P16's mobile PR follows them. Mobile's threat model
+    says links open in the system browser, "never an in-app web view" (`mobile/docs/
+    portfolio-activity.md:44,299`, T5). Explorer links stay that way; the browser is a new
+    surface that Bramble's threat model must take on deliberately. `mobile/docs/privacy.md` §9
+    still says STRK20 writes wait on a Rust client, which D3 superseded.
+  - *Store policy (to confirm before release, with legal).* Apple 2.5.6 requires WebKit (met).
+    4.7 is what removed Trust Wallet's and Coinbase Wallet's iOS dapp browsers (2019–2020).
+    imToken kept URL entry but dropped its dapp list, and Argent and Braavos ship browsers today.
+    *Proposed*: URL entry and the person's own history only, with no curated dapp list at
+    first. 3.1.1 (NFTs through in-app purchase) does not bite while NFTs are parked. Play has no
+    in-app-browser rule. `eth-phishing-detect` is under the DBAD licence, not OSI; the extension
+    already ships it, so legal reviews it once for both.
+  - *PRs.* A generator first (Bramble): request-to-outcome transcripts through the extension's
+    real gate order for each method, including the refusals, caps, TTL and blocklist. Then here:
+    (1) request parsing, budgets, methods, errors and versions; (2) grants and the queue; (3) the
+    blocklist, feed and insights; (4) invoke and typed-data review and signing at approval; (5)
+    the export, with `ffi_surface.rs` holding the line that no export signs without a queued,
+    approved request. In Bramble: the browser shell and bridge on each app (needs nothing here
+    but the inpage script), then the approval screens over M19–M21's card. Not now: WalletConnect
+    (same core, another transport), wallet-standard registration (the extension has none), dapp
+    privacy flows and shadow accounts (P15's fifth PR).
+  - *Unknowns.* Whether `WKScriptMessage.frameInfo` reflects send or delivery time across a
+    main-frame navigation (the epoch check covers either); the minimum Android WebView for
+    `DOCUMENT_START_SCRIPT`; Apple's review outcome. The extension's switch-chain comment says no
+    grant is needed, but its code requires one (`approval-limits.ts:7-8`,
+    `chain-ops.ts:349-356`). The code is what gets ported.
 
 Bramble's alone, with nothing needed here: Android's token management, its multisig stepper,
 participant picker and shared-account home, the analytics consent and diagnostics screens, and
