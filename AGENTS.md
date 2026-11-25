@@ -220,8 +220,10 @@ Grep first; extend in place rather than adding a sibling.
     `add_chain` (URLs through `relay_url::is_custom_rpc_url`), an asset by `watch_asset`.
   - which accounts a site may see (`grants`: `OriginGrant`, the vault's record, and
     `granted_account`, `with_origin_grant`, `without_origin_access`, `connected_sites`).
+  - the approval queue (`queue::ApprovalQueue`: caps, eviction, TTL over the host's monotonic
+    clock, dedupe and waiters, reservations, fee revisions; dropped ids via `take_dropped`).
   Bramble's budgets, advertised versions and `mc_*` methods are `bramble-core`'s `dapp.rs`
-  (`DAPP_POLICY`, `read_page_request`).
+  (`DAPP_POLICY`, `DAPP_QUEUE_LIMITS`, `read_page_request`).
 - Only `wallet-core` depends on Krusty (`kms.rs`, `nostr.rs`, `accounts/`, `send/`);
   `bramble-core` goes through `wallet-core` and never names `krusty_kms`.
 
