@@ -26,6 +26,7 @@ pub mod multisig_review;
 pub mod multisig_stale;
 pub mod plan;
 mod plan_deploy;
+pub mod plan_device;
 pub mod plan_gasless;
 pub mod plan_probe;
 mod plan_review;
