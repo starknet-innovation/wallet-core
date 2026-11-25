@@ -999,16 +999,23 @@ Features, smallest and least dependent first:
       method table, and the readers for accounts, permissions, chain id, the discovery methods,
       deployment data, switch-chain and typed data (#122); an invoke's calls, a `null` proof
       refused and any other proof held for P15 (#128); a declare's hashes and contract class
-      (#129). `bramble-core`'s `dapp.rs` holds `DAPP_POLICY` and the `mc_*` methods.
-    - Open: add-chain and watch-asset (#130), which also renames the policy record
-      `RequestPolicy` and reserves the extension's three built-in network names.
-    - Next here, in order: origin grants (`dapp::grants`, the vault's `OriginGrant` shared with
-      `vault_wire`; written, in review next); the approval queue (admission caps, the TTL, dedupe,
-      reservations, fee revisions, over the host's clock, dropped ids returned for the host to
-      answer); the blocklist, feed and insights (`dapp::blocklist`, `phishing_feed`,
-      `origin_history`; written, in review next); the gate order that runs a request through all of
-      them, and the replies' shapes (`results.ts`); typed-data review and SNIP-12 signing at
-      approval; the export.
+      (#129); add-chain and watch-asset (#130); origin grants (`dapp::grants`, #134); the
+      approval queue (#136). `bramble-core`'s `dapp.rs` holds `DAPP_POLICY` and the `mc_*`
+      methods.
+    - Open: connecting a site (`dapp::connect`, #139): `wallet_requestAccounts`,
+      `getPermissions`, `requestChainId` and the discovery methods through the blocklist, lock
+      and grant gates, the connect decision, and the results' shapes for them. The blocklist is
+      an input (`blocked`) until the blocklist PR fills it. Stacked on it, the connect-only
+      export: `bramble-core`'s `DappSession` (`request`, `pending_approvals`,
+      `approve_connect`, `deny_connect`, `settle_expired`), with grants written to the vault,
+      the origin checked against `isWalletOrigin`, and `ffi_surface.rs` pinning its exports. A
+      connect card survives a lock, as the extension's does, since a site asking while locked
+      is approved after unlock; the spike's "a lock rejects every pending approval" applies
+      from the first card that holds session-bound review (invoke, typed data).
+    - Next here, in order: the blocklist, feed and insights (Bramble must not ship the browser
+      before it);
+      the remaining methods' gates and results; typed-data review and SNIP-12 signing at
+      approval; the full export.
     - *Proposed*: export a connect-only slice first (connect, accounts, chain id, versions,
       permissions) once grants and the queue land, so Bramble can build and test the WebView
       bridge against real dapps while review, signing and the blocklist follow. Connect's card is

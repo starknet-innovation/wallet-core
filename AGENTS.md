@@ -226,12 +226,18 @@ Grep first; extend in place rather than adding a sibling.
     `granted_account`, `with_origin_grant`, `without_origin_access`, `connected_sites`).
   - the approval queue (`queue::ApprovalQueue`: caps, eviction, TTL over the host's monotonic
     clock, dedupe and waiters, reservations, fee revisions; dropped ids via `take_dropped`).
+  - connecting a site and the passive reads around it (`connect`: `Site`, `answer`,
+    `request_accounts`, `approve_connect`, the result shapes `addresses` and `accounts_view`),
+    in the extension's gate order: blocklist, lock, grant.
   - whether a site is blocked and its warnings (`blocklist`: `origin_host`, `is_blocked_origin`,
     `origin_insights` over `SiteLists`), the live feed (`phishing_feed::PhishingFeed`: request,
     judge, cache, health) and when a site was first seen (`origin_history::OriginHistory`).
   Bramble's budgets, advertised versions, `mc_*` methods, site lists and feed are
   `bramble-core`'s `dapp.rs` (`DAPP_POLICY`, `DAPP_QUEUE_LIMITS`, `read_page_request`,
   `SITE_LISTS`, `PHISHING_FEED`).
+  The apps reach all of it through `bramble-core`'s `dapp_session::DappSession` (the request,
+  the cards, their decisions and expiry; grants are written to the vault's `kept.origin_grants`
+  through `WalletCore::commit`).
 - Only `wallet-core` depends on Krusty (`kms.rs`, `nostr.rs`, `accounts/`, `send/`);
   `bramble-core` goes through `wallet-core` and never names `krusty_kms`.
 

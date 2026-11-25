@@ -5,14 +5,15 @@
 //!
 //! So far: the hostile-JSON budget (`budget`), the wallet API's error codes (`error`), and
 //! reading a request's method and params (`request`; an invoke's calls in `invoke`, a chain in
-//! `add_chain`, an asset in `watch_asset`), and which accounts a site may see (`grants`), and the
-//! approval queue (`queue`); whether a site is blocked and what else the wallet warns about it
-//! (`blocklist`, over the live feed in `phishing_feed` and the first-seen record in
-//! `origin_history`). Review follows.
+//! `add_chain`, an asset in `watch_asset`), which accounts a site may see (`grants`), the
+//! approval queue (`queue`), connecting a site with the passive reads around it (`connect`), and
+//! whether a site is blocked and what else the wallet warns about it (`blocklist`, over the live
+//! feed in `phishing_feed` and the first-seen record in `origin_history`). Review follows.
 
 pub mod add_chain;
 pub mod blocklist;
 pub mod budget;
+pub mod connect;
 pub mod error;
 pub mod grants;
 pub mod invoke;
@@ -25,6 +26,7 @@ pub mod watch_asset;
 pub use add_chain::ChainRequest;
 pub use blocklist::{SiteContext, SiteInsight, SiteLists, SiteWarning};
 pub use budget::JsonBudget;
+pub use connect::{Answer, DappAccount, Site, Unlocked, Versions};
 pub use error::WalletRpcError;
 pub use grants::OriginGrant;
 pub use invoke::InvokeLimits;
