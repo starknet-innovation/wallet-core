@@ -5,7 +5,8 @@
 //! also checks the asking origin against the vault's origin grammar before reading anything.
 
 use starknet_wallet_core::dapp::{
-    read_request, InvokeLimits, JsonBudget, QueueLimits, Request, RequestPolicy, WalletRpcError,
+    read_request, FeedPolicy, InvokeLimits, JsonBudget, QueueLimits, Request, RequestPolicy,
+    SiteLists, WalletRpcError,
 };
 
 /// `JSON_BUDGETS.provider`.
@@ -113,6 +114,59 @@ pub fn read_page_request(
     }
 }
 
+/// The extension's site lists (`packages/features/permissions/src/blocklist.ts`): the bundled
+/// known-bad domains, which block even when the feed is unreachable; the sites phishing domains
+/// imitate, for the lookalike warning; and the top-level domains that only warn.
+pub const SITE_LISTS: SiteLists = SiteLists {
+    blocked: &[
+        "airdrop-starknet.com",
+        "argent-claim.com",
+        "argent-wallet-verify.com",
+        "braavos-airdrop.com",
+        "braavos-wallet-verify.com",
+        "claim-starknet.com",
+        "connect-wallet-verify.com",
+        "starknet-airdrop.com",
+        "starknet-claim.app",
+        "starknet-rewards.com",
+        "starknet-token.com",
+        "starkware-airdrop.com",
+        "wallet-connect-verify.com",
+        "web3-drainer.com",
+    ],
+    protected: &[
+        "argent.xyz",
+        "braavos.app",
+        "cartridge.gg",
+        "ethereum.org",
+        "starknet.io",
+    ],
+    risky_tlds: &[
+        "cf", "click", "country", "ga", "gdn", "gq", "kim", "link", "ml", "mov", "rest", "review",
+        "tk", "top", "work", "xin", "zip",
+    ],
+};
+
+const FEED_TTL_MS: f64 = 6.0 * 60.0 * 60.0 * 1_000.0;
+
+/// The extension's live feed (`phishing-feed.ts`, `phishing-feed-cache.ts`): MetaMask's
+/// `eth-phishing-detect` list, refetched after six hours and reported stale after four missed
+/// refreshes. 150,000 domains (the list held about 110,000 in October 2026) and 4 MiB of them at
+/// most; an 8 MiB body (`HTTP_BODY_LIMITS.phishingFeed`).
+pub const PHISHING_FEED: FeedPolicy = FeedPolicy {
+    url: "https://raw.githubusercontent.com/MetaMask/eth-phishing-detect/main/src/config.json",
+    file: "phishing-feed.json",
+    ttl_ms: FEED_TTL_MS,
+    stale_after_ms: 4.0 * FEED_TTL_MS,
+    max_domains: 150_000,
+    max_domain_chars: 4 * 1024 * 1024,
+    max_body_bytes: 8 * 1024 * 1024,
+};
+
+/// Where the first-seen record lives, and `origin-history.ts`'s `MAX_ORIGINS`.
+pub const ORIGIN_HISTORY_FILE: &str = "origin-history.json";
+pub const MAX_ORIGIN_HISTORY: usize = 500;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -191,5 +245,26 @@ mod tests {
         for version in SUPPORTED_WALLET_API.iter().chain(SUPPORTED_SPECS) {
             assert!(starknet_wallet_core::dapp::request::is_api_version(version));
         }
+    }
+
+    #[test]
+    fn site_lists_hold_normalized_names_and_never_block_a_protected_site() {
+        for domain in SITE_LISTS.blocked.iter().chain(SITE_LISTS.protected) {
+            assert_eq!(
+                starknet_wallet_core::dapp::phishing_feed::normalize_domain(domain).as_deref(),
+                Some(*domain)
+            );
+        }
+        let feed = std::collections::HashSet::new();
+        for domain in SITE_LISTS.protected {
+            let origin = format!("https://{domain}");
+            let blocked = starknet_wallet_core::dapp::blocklist::is_blocked_origin(
+                &SITE_LISTS,
+                &feed,
+                &origin,
+            );
+            assert!(!blocked, "{origin}");
+        }
+        assert!(PHISHING_FEED.url.starts_with("https://"));
     }
 }

@@ -1005,7 +1005,8 @@ Features, smallest and least dependent first:
     - Next here, in order: origin grants (`dapp::grants`, the vault's `OriginGrant` shared with
       `vault_wire`; written, in review next); the approval queue (admission caps, the TTL, dedupe,
       reservations, fee revisions, over the host's clock, dropped ids returned for the host to
-      answer); the blocklist, feed and insights; the gate order that runs a request through all of
+      answer); the blocklist, feed and insights (`dapp::blocklist`, `phishing_feed`,
+      `origin_history`; written, in review next); the gate order that runs a request through all of
       them, and the replies' shapes (`results.ts`); typed-data review and SNIP-12 signing at
       approval; the export.
     - *Proposed*: export a connect-only slice first (connect, accounts, chain id, versions,
