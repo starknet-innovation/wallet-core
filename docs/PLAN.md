@@ -905,13 +905,17 @@ Features, smallest and least dependent first:
     (`content/index.ts:29-44,111-117`).
   - *How dapps find it.* get-starknet v4 and v6, and starknet-react, scan `window` for keys
     starting `starknet` once at load (v6 also listens for wallet-standard); none detects an
-    in-app browser. starknetkit does: Argent's by `window.starknet_argentX.isInAppBrowser`,
-    Braavos's and Keplr's by user agent, and then hides every other wallet. So the app injects
-    `starknet_bramble` at document start, never aliases `starknet_argentX`, and keeps `braavos`
-    out of its user agent. starknet-react 5's guard also wants a `provider` key the extension's
-    object lacks; that is the extension's gap too, not mobile's.
+    in-app browser. starknetkit does. It spots Argent's by `window.starknet_argentX.isInAppBrowser`,
+    and its modal then lists no wallets at all (`src/helpers/mapModalWallets.ts`). It spots
+    Braavos's and Keplr's by user agent (`braavos`, `KeplrWalletMobile`), and their connectors
+    then switch to in-app mode. So the app injects `starknet_bramble` at document start, never
+    aliases `starknet_argentX`, and keeps `braavos` out of its user agent. starknet-react 5.0.3's
+    discovery guard (`isWalletObject` in `src/connectors/discovery.ts`) also requires a
+    `provider` key, which the extension's object lacks. So starknet-react's injected discovery
+    does not list Bramble today, in the extension either; the fix belongs in `inpage.ts`, for both.
   - *Gate order.* Every provider handler runs: parse under the JSON budget (1 MiB, depth 32;
-    `wallet-protocol/src/provider/bridge.ts:207-228`), the origin check
+    `core/src/json.ts:26-33`, applied in `wallet-protocol/src/provider/bridge.ts:207-228`), the
+    origin check
     (`background/routing/senders.ts:49-111`), the blocklist, admission (100 in flight per page,
     queue 50 global and 5 per origin, 5-minute TTL, connect, switch-chain and watch-asset deduped
     per origin; `background/approvals/approval-limits.ts`), lock, grant (the vault's
@@ -931,11 +935,11 @@ Features, smallest and least dependent first:
     reuses `Invoke::reviewed`, `review_flags` and `call_decode`; typed data hashes through Krusty
     (P14 found its SNIP-12 hash agrees with starknet.js); signing happens only at approval, inside
     the core. Bramble's numbers (budgets, caps, TTL, feed URL) go in a `DAPP_POLICY` in
-    `bramble-core`. The pure TypeScript to port is about 7,000 lines (`wallet-protocol/provider`
-    about 2,050, `permissions` about 990, the approval queue about 1,300, review and typed data
-    about 2,600 of which `verify*` is mostly ported). The extension transport (`inpage.ts`, the
-    content script, the side panel's approval surface, the MV3 keepalive, about 1,750 lines)
-    stays the extension's.
+    `bramble-core`. The pure TypeScript to port is about 6,500 lines. That is `wallet-protocol`'s
+    provider and add-chain (about 2,050), `permissions` (990), the approval queue (about 1,300),
+    and review and typed data (about 2,100, of which the `verify*` files are mostly ported). The
+    extension transport, about 1,950 lines, stays the extension's: `inpage.ts`, the content
+    script, the side panel's approval surface and the MV3 keepalive.
   - *The app's half: the bridge.* *Recommended*:
     - **iOS.** `WKWebView` (iOS 17, no dependency). The same `inpage.js`, adapted only at its
       `postMessage` seam, as a `WKUserScript` at document start, `forMainFrameOnly: true`, in
@@ -959,7 +963,7 @@ Features, smallest and least dependent first:
       also gates top-level navigation with an interstitial, which the extension cannot do.
       App-Bound Domains do not fit an open-web browser; leave them undeclared.
   - *Lock.* Both apps lock and zeroize on leaving the foreground, and a core call that finishes
-    after a lock drops its result (`SessionGuard.kt:5-33`). So a lock rejects every pending
+    after a lock drops its result (`SessionGuard.kt:5-33`). So a lock should reject every pending
     approval. While locked, passive reads answer as the extension's do: the same as unconnected
     (`background/routing/messages.ts:173-187`). The browser keeps the session where WalletConnect's
     app switch would lock it, which is one more reason to put the browser first.
