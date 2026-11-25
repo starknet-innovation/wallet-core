@@ -1,9 +1,9 @@
 //! The vault payload: the extension's schema v13 (`packages/platform/vault/src/schema/`) or v14
 //! (`release/v0.10.11`: v13 and `accountProvenance`), sealed in mobile's DEK container
-//! (`container.rs`), whose `version` is the schema version. A vault is written back at the schema
-//! it was read at (the released extension reads only 13, so mobile does not migrate), and a new
-//! one at `NEW_VAULT_SCHEMA`. A v14 vault's provenance is kept, and maintained as the extension's
-//! service maintains it (`vault_provenance`).
+//! (`container.rs`), whose `version` is the schema version. A new vault is written at
+//! `NEW_VAULT_SCHEMA`, 14; a v13 vault is raised to 14 on unlock and written back
+//! (`WalletCore::install`), as the extension's migration does. A v14 vault's provenance is kept,
+//! and maintained as the extension's service maintains it (`vault_provenance`).
 //!
 //! Reading accepts every vault the extension's v13 or v14 validator accepts (`vault_rules`,
 //! `vault_budget`), with one exception: a vault with no phrase (a Ledger-only or key-only wallet)
@@ -25,7 +25,7 @@
 //! and a pre-fix Ready account's, is the only copy, so it is held in the session
 //! (`VaultPayload::held_keys`) and signs.
 //!
-//! There is no migration, from 13 to 14 or from anything older. Mobile's earlier vault versions
+//! The only migration is 13 to 14, a version bump. Mobile's earlier vault versions
 //! 1 to 5 were developer builds holding no funds (`docs/PLAN.md`, Vault switch): any of them fails
 //! closed with `outdated()`, after the password is proven, and the user resets the wallet.
 
@@ -43,9 +43,9 @@ use crate::vault_admit::{self, Admission};
 use crate::vault_wire::{Account, Derivation, Kept, SigningKey, Vault};
 use crate::{kms, vault, vault_budget, vault_rules, CoreError};
 
-/// The schema a new vault is written at (Bramble's choice): 13, the one the released extension
-/// (v0.10.10) reads, until v0.10.11, whose `CURRENT_SCHEMA_VERSION` is 14, is released.
-pub(crate) const NEW_VAULT_SCHEMA: u32 = 13;
+/// The schema a new vault is written at (Bramble's choice): the extension's
+/// `CURRENT_SCHEMA_VERSION`, 14 since v0.10.11.
+pub(crate) const NEW_VAULT_SCHEMA: u32 = PROVENANCE_SCHEMA;
 /// The extension's schema 14, which adds `accountProvenance`; the newest one mobile reads.
 pub(crate) const PROVENANCE_SCHEMA: u32 = 14;
 /// The schemas mobile reads, as the payload's `schemaVersion` and the container's `version`.

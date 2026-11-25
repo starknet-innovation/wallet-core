@@ -146,8 +146,8 @@ pub(crate) struct VaultPayload {
     /// preference). May carry an API key: never logged or put in an error.
     #[zeroize(skip)]
     pub rpc_overrides: BTreeMap<String, String>,
-    /// The schema the vault was read at, and is written back at (13 or 14; a new vault's is
-    /// `NEW_VAULT_SCHEMA`).
+    /// The schema the vault is written back at: 14 (`NEW_VAULT_SCHEMA`), or 13 only between
+    /// reading a v13 vault and raising it on unlock.
     #[zeroize(skip)]
     pub schema_version: u32,
     /// Catalog ids whose refused override was dropped on load (`public_store::load_preferences`):

@@ -142,6 +142,14 @@ pub fn full() -> Value {
 }
 
 /// Reads `payload` as the core does on unlock and writes it back.
+/// `payload` as the extension's 13→14 step writes it back (`schema/migrations.ts`): the version
+/// alone; what an unlock of a v13 vault leaves on disk.
+pub fn migrated(payload: &Value) -> Value {
+    let mut payload = payload.clone();
+    payload["schemaVersion"] = 14.into();
+    payload
+}
+
 pub fn round_trip(payload: &Value) -> Result<Value, CoreError> {
     v13_round_trip(&payload.to_string()).map(|json| serde_json::from_str(&json).unwrap())
 }

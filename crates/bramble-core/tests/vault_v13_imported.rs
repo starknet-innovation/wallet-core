@@ -136,6 +136,10 @@ fn importing_the_same_key_here_seals_the_extensions_record() {
     assert_eq!(record.id, text(&oz_import["id"]));
 
     let mut expected = payload.clone();
+    // A new wallet here is written at 14, where the pasted key is recorded `imported`, as the
+    // extension's `importRawKeyAccount` records it at 14.
+    expected["schemaVersion"] = 14.into();
+    expected["accountProvenance"] = serde_json::json!({ text(&oz_import["id"]): "imported" });
     let argent_id = text(&argent_import["id"]).to_string();
     for (collection, field) in [("accounts", "id"), ("signingKeys", "accountId")] {
         expected[collection]
