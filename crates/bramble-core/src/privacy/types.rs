@@ -208,6 +208,10 @@ pub enum PrivacyError {
     /// A release build of the core never takes a discovery override.
     #[error("privacy endpoint overrides are debug-only")]
     OverrideUnavailable,
+    /// A Ledger account: its viewing key is the device's (the extension caches it in
+    /// `accountSecrets`), which this wallet does not read yet.
+    #[error("private balances of a Ledger account are not read here yet")]
+    LedgerAccount,
 }
 
 impl From<wallet_core::privacy::types::PrivacyError> for PrivacyError {

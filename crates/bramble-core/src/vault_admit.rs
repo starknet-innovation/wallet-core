@@ -7,7 +7,8 @@
 //! earlier Krusty derived (`ready-key-drift.ts`: Krusty 2.0 and earlier kept the ETH key's
 //! leading zero bytes, about 1 phrase in 256) is operated with that sealed key, as the extension
 //! keeps signing with it, when the record is what the sealed key derives. An imported record is
-//! operated with its sealed key on the same condition. Anything else (a record at a coordinate,
+//! operated with its sealed key on the same condition, and a Ledger record, which holds none, when
+//! its stored public key places it: it signs only on its device. Anything else (a record at a coordinate,
 //! class or index mobile does not derive, one whose address or key does not match, or past
 //! `MAX_ACCOUNT_RECORDS`) is kept: listed as not usable here, never signed with.
 
@@ -26,6 +27,8 @@ pub(crate) enum Admission {
     Derived,
     /// Operated with the key the vault sealed for it, which the session holds.
     Held(Box<SecretFelt>),
+    /// Operated on its Ledger: the vault holds no key for it.
+    Device,
     /// Kept unused.
     Kept,
 }
@@ -68,6 +71,16 @@ pub(crate) fn admit(
     if !is_well_formed(record) {
         return Ok(Admission::Kept);
     }
+    // A Ledger record holds no key (`vault_rules` already refuses one bound to it): operated when
+    // its own stored key places it, so the device the plan asks for is the address's.
+    if let KeySource::Ledger(_) = record.key {
+        let unsealed = keys.iter().all(|key| key.account_id != record.id);
+        return Ok(if unsealed && placed_by(record, &record.public_key) {
+            Admission::Device
+        } else {
+            Admission::Kept
+        });
+    }
     let mut sealed = keys.iter().filter(|key| key.account_id == record.id);
     let (Some(sealed), None) = (sealed.next(), sealed.next()) else {
         return Ok(Admission::Kept);
@@ -78,6 +91,7 @@ pub(crate) fn admit(
         KeySource::Imported => {
             return Ok(held(record, sealed)?.map_or(Admission::Kept, Admission::Held));
         }
+        KeySource::Ledger(_) => return Ok(Admission::Kept),
     };
     let (pair, derived_y) =
         wallet_core::account_keypair(mnemonic, None, ladder, record.account_index)?;

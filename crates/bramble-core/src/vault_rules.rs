@@ -369,10 +369,8 @@ pub(crate) fn is_valid(vault: &Vault) -> bool {
         )
 }
 
-/// Whether mobile operates `account`: one of the vault's own phrase records or an imported key,
-/// on a network mobile has. Every other record is kept unused (`vault_wire::Kept`).
+/// Whether mobile operates `account`: one of the vault's own phrase records, an imported key or a
+/// Ledger account, on a network mobile has. Every other record is kept unused (`vault_wire::Kept`).
 pub(crate) fn is_operable(account: &Account) -> bool {
-    NetworkId::from_catalog_id(&account.network_id).is_some()
-        && !is_ledger(account)
-        && seed_id(account).is_none()
+    NetworkId::from_catalog_id(&account.network_id).is_some() && seed_id(account).is_none()
 }

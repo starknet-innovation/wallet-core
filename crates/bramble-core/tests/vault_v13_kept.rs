@@ -1,8 +1,9 @@
 //! P7: the reader accepts every collection of the extension's schema v13, operates only the
 //! records mobile holds keys for, and writes back unchanged everything it keeps unused. The vault
 //! is built in test code over G4's payload (`vault_v13_support`); G4's own fixture test
-//! (`vault_v13.rs`) is untouched. A kept record is one mobile holds no usable key for: a Ledger
-//! account, an account derived from an imported phrase, one on the extension's devnet.
+//! (`vault_v13.rs`) is untouched. A kept record is one mobile holds no usable key for: an account
+//! derived from an imported phrase, one on the extension's devnet. A Ledger account whose stored
+//! key places it is operated, signing only on its device (P8).
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
 mod common;
@@ -62,10 +63,12 @@ fn every_collection_opens_and_writes_back_unchanged() {
     let mut reordered = full.clone();
     reordered["signingKeys"].as_array_mut().unwrap().reverse();
     assert_eq!(round_trip(&reordered).unwrap(), reordered);
-    // A kept record may be the active one.
-    let mut ledger_active = full.clone();
-    ledger_active["activeAccountId"] = kept_ids(&full).ledger.into();
-    assert_eq!(round_trip(&ledger_active).unwrap(), ledger_active);
+    // A kept record may be the active one, and so may a Ledger one.
+    for id in [kept_ids(&full).seeded, kept_ids(&full).ledger] {
+        let mut active = full.clone();
+        active["activeAccountId"] = id.into();
+        assert_eq!(round_trip(&active).unwrap(), active);
+    }
     // G4 with no kept record still round-trips as before.
     assert_eq!(round_trip(&g4()).unwrap(), g4());
 }
@@ -82,10 +85,13 @@ fn kept_records_are_never_listed_selected_or_signed() {
         .into_iter()
         .map(|record| record.id)
         .collect();
-    assert_eq!(listed, ids(&g4()["accounts"]));
+    // G4's records, and the Ledger record where the vault lists it.
+    let mut expected = ids(&g4()["accounts"]);
+    expected.insert(2, kept.ledger.clone());
+    assert_eq!(listed, expected);
     let token = networks::info(NetworkId::Sepolia).tokens[0].address.clone();
     let recipient = text(&g4()["accounts"][0]["address"]);
-    for id in [&kept.ledger, &kept.seeded, &kept.devnet] {
+    for id in [&kept.seeded, &kept.devnet] {
         assert!(core.select_account(id.clone()).is_err(), "{id}");
         assert!(matches!(
             core.sign_hash_for_account(id.clone(), "0x1".into()),
@@ -140,14 +146,15 @@ fn a_write_keeps_everything_kept_and_takes_no_kept_id() {
 fn an_active_kept_record_leaves_no_account_active() {
     let mut full = full();
     let kept = kept_ids(&full);
-    full["activeAccountId"] = kept.ledger.clone().into();
+    full["activeAccountId"] = kept.seeded.clone().into();
     let (dir, core) = unlocked(&full);
     assert_eq!(core.active_account().unwrap(), None);
+    // The first visible Sepolia record is the Ledger one, which mobile operates.
     let picked = core.ensure_network_account(NetworkId::Sepolia).unwrap();
-    assert_eq!(picked.unwrap().id, text(&g4()["accounts"][5]["id"]));
+    assert_eq!(picked.unwrap().id, kept.ledger);
     let written = on_disk(&dir);
     let mut expected = migrated(&full);
-    expected["activeAccountId"] = g4()["accounts"][5]["id"].clone();
+    expected["activeAccountId"] = kept.ledger.clone().into();
     assert_eq!(written, expected);
 }
 
@@ -161,14 +168,13 @@ fn a_vault_of_kept_records_only_waits_for_discovery_and_keeps_them() {
         only[collection]
             .as_array_mut()
             .unwrap()
-            .retain(|entry| entry[field] == kept.ledger);
+            .retain(|entry| entry[field] == kept.devnet);
     }
-    only["activeAccountId"] = kept.ledger.clone().into();
-    only["originGrants"] = json!([{ "accountIds": [kept.ledger], "origin": support::ORIGIN }]);
-    only["shadowAccountScopes"]
-        .as_array_mut()
-        .unwrap()
-        .remove(0);
+    only["activeAccountId"] = kept.devnet.clone().into();
+    only["originGrants"] = json!([{ "accountIds": [kept.devnet], "origin": support::ORIGIN }]);
+    // The Ledger record's viewing keys and scope, and the main account's scope, go with them.
+    only["accountSecrets"] = json!([]);
+    only["shadowAccountScopes"] = json!([]);
     assert_eq!(round_trip(&only).unwrap(), only);
     let (dir, core) = unlocked(&only);
     assert!(core.recovery_pending().unwrap());

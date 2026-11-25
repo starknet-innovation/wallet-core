@@ -25,6 +25,7 @@ pub(crate) use crate::account_validate::check_consistent;
 use crate::files::storage;
 use crate::groups::StoredGroup;
 use crate::kms::Ladder;
+use crate::ledger::LedgerScheme;
 use crate::networks::NetworkId;
 use crate::vault_provenance::{Origin, Provenance};
 use crate::vault_v13::NEW_VAULT_SCHEMA;
@@ -51,6 +52,9 @@ pub(crate) enum KeySource {
     /// A raw key the user imported (the extension's `imported-raw-key`): sealed in the vault and
     /// held in the session (`VaultPayload::held_keys`). The record's index is 0 and unused.
     Imported,
+    /// A Ledger account (the extension's `ledger` derivation): the key never leaves the device,
+    /// which signs at the scheme's path for the record's index. The vault holds no key for it.
+    Ledger(LedgerScheme),
 }
 
 /// One account record. Public data only.
@@ -91,11 +95,12 @@ impl StoredAccount {
             .map(|salt| felt::parse(salt).expect("validated on open"))
     }
 
-    /// The phrase coordinate the record's key is derived at; `None` for an imported key.
+    /// The phrase coordinate the record's key is derived at; `None` for an imported key or a
+    /// Ledger account.
     pub(crate) fn phrase_path(&self) -> Option<(Ladder, u32)> {
         match self.key {
             KeySource::Phrase(ladder) => Some((ladder, self.account_index)),
-            KeySource::Imported => None,
+            KeySource::Imported | KeySource::Ledger(_) => None,
         }
     }
 }
@@ -244,6 +249,10 @@ impl VaultPayload {
                 record.account_index,
             )?),
             KeySource::Imported => Err(invalid_payload()),
+            // A Ledger account signs only on its device (`send::plan_device`), never here.
+            KeySource::Ledger(_) => Err(CoreError::InvalidInput {
+                reason: "a Ledger account signs on its device".into(),
+            }),
         }
     }
 
@@ -261,8 +270,15 @@ impl VaultPayload {
         source: &StoredAccount,
         network: NetworkId,
     ) -> Result<(StoredAccount, Option<Box<SecretFelt>>), CoreError> {
-        let (pair, _) = self.signing_key(source)?;
-        let public_key = felt::parse_non_zero(&pair.public_key_x).ok_or_else(invalid_payload)?;
+        // A Ledger account carries its public key over and holds no key (`deriveLedgerAccount`).
+        let pair = match source.key {
+            KeySource::Ledger(_) => None,
+            _ => Some(self.signing_key(source)?.0),
+        };
+        let public_key = pair
+            .as_ref()
+            .map_or(&source.public_key, |pair| &pair.public_key_x);
+        let public_key = felt::parse_non_zero(public_key).ok_or_else(invalid_payload)?;
         let family = source.family();
         let class_hash = (family != AccountFamily::OpenZeppelin).then(|| source.class_felt());
         let record = record_at(
@@ -274,10 +290,9 @@ impl VaultPayload {
             &public_key,
             network,
         )?;
-        let sealed = self
-            .held_keys
-            .contains_key(&source.id)
-            .then(|| Box::new(pair.private_key));
+        let sealed = pair
+            .filter(|_| self.held_keys.contains_key(&source.id))
+            .map(|pair| Box::new(pair.private_key));
         Ok((record, sealed))
     }
 

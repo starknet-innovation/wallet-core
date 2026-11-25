@@ -13,6 +13,7 @@ use crate::account_store::{
     MAX_ACCOUNT_RECORDS,
 };
 use crate::kms::Ladder;
+use crate::ledger::LedgerScheme;
 use crate::networks::NetworkId;
 use crate::{felt, groups, kms, rpc_override, CoreError};
 
@@ -38,6 +39,10 @@ pub(crate) fn is_well_formed(record: &StoredAccount) -> bool {
     let key_ok = match record.key {
         KeySource::Phrase(ladder) => ladder_fits(family, ladder),
         KeySource::Imported => record.account_index == 0,
+        // `isLedgerApplicationForFamily`: Braavos derives its Ledger key only at Ready's scheme.
+        KeySource::Ledger(scheme) => {
+            family != AccountFamily::Braavos || scheme == LedgerScheme::Ready
+        }
     };
     record.account_index <= MAX_ACCOUNT_INDEX
         && key_ok
@@ -69,7 +74,7 @@ fn is_consistent(payload: &VaultPayload) -> bool {
         && payload.accounts.iter().all(|record| match record.key {
             KeySource::Imported => held(record),
             KeySource::Phrase(Ladder::ArgentX) => true,
-            KeySource::Phrase(_) => !held(record),
+            KeySource::Phrase(_) | KeySource::Ledger(_) => !held(record),
         })
         && payload.accounts.len() <= MAX_ACCOUNT_RECORDS
         && all.len() == payload.record_count()
