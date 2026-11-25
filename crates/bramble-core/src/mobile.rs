@@ -34,6 +34,7 @@ mod clock;
 mod contact_card;
 mod contacts;
 mod container;
+mod dapp_session;
 mod ffi_coordination;
 mod ffi_nostr_multisig;
 mod ffi_staking;
@@ -44,6 +45,7 @@ mod history;
 pub(crate) use wallet_core::js;
 mod key_import;
 mod kms;
+mod ledger_reader;
 mod ledger_wallet;
 pub use kms::Ladder;
 mod multisig_guard;
@@ -99,6 +101,7 @@ pub use class_declared::ClassDeclaredRead;
 pub use clock::HostClock;
 pub use contact_card::{ContactCardParse, WalletContactCard};
 pub use contacts::Contact;
+pub use dapp_session::{DappApproval, DappReply, DappSession, DappSettled};
 pub use ffi_coordination::{CoordinationSyncOutcome, NostrSyncPlan, RelayPolicy};
 pub use ffi_nostr_multisig::{
     argent_multisig_normalize, argent_multisig_predict, argent_signer_guid, multisig_limits,
@@ -112,6 +115,9 @@ pub use ffi_staking::{
 };
 pub use ffi_staking_action::{StakingPlan, StakingPreparation};
 pub use groups::AccountGroup;
+pub use ledger_reader::{
+    ledger_account_candidates, LedgerCandidate, LedgerKey, LedgerKeyReader, LedgerReadStep,
+};
 pub use ledger_wallet::LedgerAccountRequest;
 pub use multisig_rpc::{MultisigAuthorityRead, MultisigAuthorityStatus, MultisigStateRead};
 pub use multisig_tx::{

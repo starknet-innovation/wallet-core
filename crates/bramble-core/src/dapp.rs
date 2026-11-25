@@ -5,7 +5,7 @@
 //! also checks the asking origin against the vault's origin grammar before reading anything.
 
 use starknet_wallet_core::dapp::{
-    read_request, InvokeLimits, JsonBudget, Request, RequestPolicy, WalletRpcError,
+    read_request, InvokeLimits, JsonBudget, QueueLimits, Request, RequestPolicy, WalletRpcError,
 };
 
 /// `JSON_BUDGETS.provider`.
@@ -66,6 +66,15 @@ pub const DAPP_POLICY: RequestPolicy = RequestPolicy {
 /// not in mobile's catalog but keeps its name reserved, as in the extension.
 const RESERVED_NETWORK_NAMES: &[&str] = &["Starknet Mainnet", "Starknet Sepolia", "Local Devnet"];
 
+/// The extension's approval queue limits (`approval-limits.ts`, `signature-waiters.ts`): five
+/// pending per site and fifty in all, five minutes each, eight requests waiting on one.
+pub const DAPP_QUEUE_LIMITS: QueueLimits = QueueLimits {
+    max_pending: 50,
+    max_per_origin: 5,
+    ttl_ms: 5 * 60 * 1_000,
+    max_waiters: 8,
+};
+
 /// `SUPPORTED_SPECS`: the Starknet JSON-RPC versions `wallet_supportedSpecs` reports.
 pub const SUPPORTED_SPECS: &[&str] = &["0.10.0"];
 
@@ -79,10 +88,13 @@ pub enum PageRequest {
     Spec(Request),
     /// `mc_accounts`: the granted account, without asking (`wallet.getGrantedAccounts`).
     GrantedAccounts,
+    /// `mc_requestAccounts`: `wallet_requestAccounts`, answered with the accounts view
+    /// (`{ accounts, ok }`) rather than addresses.
+    RequestAccounts,
 }
 
 /// Reads a page's request as `readProviderRequestArguments` and `toRuntimeMessage` do. The
-/// `mc_*` methods take no params at all; `mc_requestAccounts` is `wallet_requestAccounts`.
+/// `mc_*` methods take no params at all; `mc_requestAccounts` asks as `wallet_requestAccounts`.
 /// `mc_strk20Register` waits for STRK20 (P15) and is refused as unknown until then.
 pub fn read_page_request(
     method: &str,
@@ -96,9 +108,7 @@ pub fn read_page_request(
     };
     match method {
         "mc_accounts" => no_params().map(|()| PageRequest::GrantedAccounts),
-        "mc_requestAccounts" => {
-            no_params().map(|()| PageRequest::Spec(Request::RequestAccounts { silent: false }))
-        }
+        "mc_requestAccounts" => no_params().map(|()| PageRequest::RequestAccounts),
         "mc_strk20Register" => Err(WalletRpcError::unknown_error()),
         _ => read_request(method, params, &DAPP_POLICY).map(PageRequest::Spec),
     }
@@ -117,9 +127,7 @@ mod tests {
         );
         assert_eq!(
             read_page_request("mc_requestAccounts", None),
-            Ok(PageRequest::Spec(Request::RequestAccounts {
-                silent: false
-            }))
+            Ok(PageRequest::RequestAccounts)
         );
         for method in ["mc_accounts", "mc_requestAccounts"] {
             for params in ["[]", "{}", "null"] {

@@ -29,7 +29,7 @@ use crate::ledger::LedgerScheme;
 use crate::networks::NetworkId;
 use crate::vault_provenance::{Origin, Provenance};
 use crate::vault_v13::NEW_VAULT_SCHEMA;
-use crate::vault_wire::Kept;
+use crate::vault_wire::{Kept, OriginGrant};
 use crate::{felt, kms, CoreError};
 
 /// Records mobile operates across networks (mobile policy; bounds unlock work, since each is
@@ -171,6 +171,7 @@ pub(crate) struct PublicState {
     groups: Vec<StoredGroup>,
     hidden_account_ids: Vec<String>,
     labels: BTreeMap<String, String>,
+    origin_grants: Vec<OriginGrant>,
     rpc_overrides: BTreeMap<String, String>,
 }
 
@@ -350,14 +351,17 @@ impl VaultPayload {
             groups: self.groups.clone(),
             hidden_account_ids: self.hidden_account_ids.clone(),
             labels: self.labels.clone(),
+            origin_grants: self.kept.origin_grants.clone(),
             rpc_overrides: self.rpc_overrides.clone(),
         }
     }
 
-    /// Whether the sealed part (accounts, active account) moved since `before`. An origin is only
-    /// ever recorded beside a new account.
+    /// Whether the sealed part (accounts, active account, the sites granted access) moved since
+    /// `before`. An origin is only ever recorded beside a new account.
     pub(crate) fn vault_changed(&self, before: &PublicState) -> bool {
-        self.accounts != before.accounts || self.active_account_id != before.active_account_id
+        self.accounts != before.accounts
+            || self.active_account_id != before.active_account_id
+            || self.kept.origin_grants != before.origin_grants
     }
 
     /// Whether the preferences (labels, groups, hidden accounts, RPC overrides, backup flag) moved
@@ -382,6 +386,7 @@ impl VaultPayload {
         let accounts = &self.accounts;
         self.held_keys
             .retain(|id, _| accounts.iter().any(|record| &record.id == id));
+        self.kept.origin_grants = state.origin_grants;
         self.rpc_overrides = state.rpc_overrides;
     }
 }

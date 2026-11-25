@@ -58,7 +58,7 @@ pub struct WalletCore {
     pub(crate) lock_epoch: AtomicU64,
 }
 
-fn guard<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+pub(crate) fn guard<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())

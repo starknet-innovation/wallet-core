@@ -147,7 +147,9 @@ Grep first; extend in place rather than adding a sibling.
   `KeySource::Ledger`, admitted when its stored key places it, and reaches a plan only through
   `ledger::record_device` (`signing_key` refuses it). Creating a Ledger-only wallet and adding a
   Ledger account are `bramble-core`'s `ledger_wallet.rs`; a vault's phrase is read only through
-  `VaultPayload::phrase`, which refuses a wallet without one.
+  `VaultPayload::phrase`, which refuses a wallet without one. A page of public keys for the
+  account picker is `ledger::KeyEnumeration`, exported as `ledger_reader::LedgerKeyReader`
+  beside `ledger_account_candidates`.
 - AVNU swaps are `crates/wallet-core/src/swap/`: the quote (`quote.rs`: `PendingQuote`,
   `SwapQuote`, the value check), the build and its reply judge (`build.rs`: `PendingBuild`), the
   build policy and floor (`policy.rs`: `build_policy`, `reviewed_min_buy_amount`) and the frozen
@@ -220,8 +222,18 @@ Grep first; extend in place rather than adding a sibling.
   - the method table and each method's param reader (`request::{Method, read_request}`), an
     invoke's calls read into `send::calls::Call` by `invoke` under `InvokeLimits`, a chain by
     `add_chain` (URLs through `relay_url::is_custom_rpc_url`), an asset by `watch_asset`.
+  - which accounts a site may see (`grants`: `OriginGrant`, the vault's record, and
+    `granted_account`, `with_origin_grant`, `without_origin_access`, `connected_sites`).
+  - the approval queue (`queue::ApprovalQueue`: caps, eviction, TTL over the host's monotonic
+    clock, dedupe and waiters, reservations, fee revisions; dropped ids via `take_dropped`).
+  - connecting a site and the passive reads around it (`connect`: `Site`, `answer`,
+    `request_accounts`, `approve_connect`, the result shapes `addresses` and `accounts_view`),
+    in the extension's gate order: blocklist, lock, grant.
   Bramble's budgets, advertised versions and `mc_*` methods are `bramble-core`'s `dapp.rs`
-  (`DAPP_POLICY`, `read_page_request`).
+  (`DAPP_POLICY`, `DAPP_QUEUE_LIMITS`, `read_page_request`).
+  The apps reach all of it through `bramble-core`'s `dapp_session::DappSession` (the request,
+  the cards, their decisions and expiry; grants are written to the vault's `kept.origin_grants`
+  through `WalletCore::commit`).
 - Only `wallet-core` depends on Krusty (`kms.rs`, `nostr.rs`, `accounts/`, `send/`);
   `bramble-core` goes through `wallet-core` and never names `krusty_kms`.
 

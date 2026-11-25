@@ -72,7 +72,7 @@ v13 payload.
 | 2.7 Swap | done (#50), behind the `mobile` feature | done (M13, Bramble #929), at `v0.3.0`: `mobile/core` is a shell over this crate |
 | Vault switch | done (V1 #58) | G4 done (Bramble #947); M14 done (Bramble #980): mobile pins `v0.4.0` |
 | [Mobile parity](#mobile-parity) | P6 done (#65), P2 done (#68); P1 done (P1a #70, P1b #71, P1c #72) and exported (X1 #111); P3 done (#80), P4 done (#78), P5 done (#83), each with its fixture copied (G7, #109) | M15 (Bramble #1007–#1010) took `v0.6.0` and shipped P2, P4–P6 and P10; M16 (#1019) shipped P3's screens. P1's screens are M18, not started |
-| [Parity](#parity) P7–P16 | P7 done for reading (#87, #92): every v13 and v14 collection is read, every vault the extension opens opens here, and what mobile does not operate is kept unused and listed; new vaults are written at 14 and a v13 vault is raised on unlock (#116, `v0.8.0`). P9 done (#84, #91, #104) and exported with P12's revoke (X2+X3 #106). P10 done (#86). P11 exported (X4 #107), P13 exported (X5 #110). P14 done and exported (#108, #117, `v0.8.0`). Fixtures for P3–P5, P7 and P9–P14 copied (G7, #109, #117). P8's core done and exported (#101, #123, #126, #132; the key picker #135 open), not yet tagged; P15 spiked (#102); P16 not started. See [Road to parity](#road-to-parity) | Mobile takes `v0.7.0` (Bramble #1032). P7's kept accounts (#1009) and P10 (#1008) shipped; the screens for P12 (M19), P11 (M20), P13 (M21) and P14 are not started |
+| [Parity](#parity) P7–P16 | P7 done for reading (#87, #92): every v13 and v14 collection is read, every vault the extension opens opens here, and what mobile does not operate is kept unused and listed; new vaults are written at 14 and a v13 vault is raised on unlock (#116, `v0.8.0`). P9 done (#84, #91, #104) and exported with P12's revoke (X2+X3 #106). P10 done (#86). P11 exported (X4 #107), P13 exported (X5 #110). P14 done and exported (#108, #117, `v0.8.0`). Fixtures for P3–P5, P7 and P9–P14 copied (G7, #109, #117). P8's core done and exported (#101, #123, #126, #132, #135, #138), not yet tagged; P15 spiked (#102); P16 in progress: D2 settled 2026-11-25 (an in-app browser); request reading, add-chain and watch-asset, grants, the queue, connecting a site and its export (`DappSession`) merged (#122, #128, #129, #130, #134, #136, #139, #140); see "P16 progress" under P16 in [Parity](#parity) and [Road to parity](#road-to-parity) | Mobile takes `v0.7.0` (Bramble #1032). P7's kept accounts (#1009) and P10 (#1008) shipped; the screens for P12 (M19), P11 (M20), P13 (M21) and P14 are not started |
 | 3 Extension | not started, and waits for parity; `js/package.json` is private | n/a |
 
 `v0.1.0` is tagged at `35abc8b` (GitHub release only) and was what M2 and M3 pinned. `v0.2.0`
@@ -127,7 +127,8 @@ tests ported from the extension's own, with its generator owed. M15 (Bramble #10
 2026-11-22) takes `v0.6.0` and ships P2, P4–P6 and P10 on both apps; P3's screens were left out,
 then shipped as M16 (Bramble #1019). Since `v0.7.0`, `main` adds X1's settle (#115), P7's
 migration (#116) and P14's export (#117), all in `v0.8.0`. Since `v0.8.0`, `main` adds P8's core
-and exports (#123, #126, #132; #135, the key picker, open); see P8 in [Parity](#parity).
+and exports (#123, #126, #132, #135, #138), and P16's connect slice (#139, #140); see P8 and
+P16 in [Parity](#parity).
 
 #### Road to parity
 
@@ -203,7 +204,7 @@ step starts.
 | PR | Repo | Needs | What it is |
 | --- | --- | --- | --- |
 | P8 Ledger | here, then both | D1 (settled) | as the extension's v1: blind signing only. The Starknet app's version, public-key and `signHash` commands with the extension's minimum app version and its status-word catalogue (`ledger-protocol/`, 1,096; `background/ledger/`, 847), as sans-IO APDU bytes here; a signing step in `Plan` that hands the hash to the host's device and takes a signature back, verified against the record's stored `publicKeyX` before anything is broadcast, and never falls back to a key (`account-hash-signer.ts`); Ledger records made operable; and a vault with no phrase opened and created, for Ledger-only onboarding. The apps link to the device through Ledger's Device Management Kit (`LedgerHQ/device-sdk-mobile`, Kotlin Multiplatform; Android native, iOS through Objective-C interop; 0.0.x as of 2026-11, so pinned exactly and checked for maintenance first). It has no Starknet signer module, so it only scans, pairs and moves the core's APDUs (its raw APDU call). Bluetooth first; Android USB a follow-up. Later: Ledger's Bluetooth framing moves into the core and the kit goes. The generator records APDU transcripts against the Starknet Ledger app; *proposed*: under Ledger's Speculos emulator, so CI needs no device |
-| P16 Dapp connect | here, then both | D2 (settled), X2 | request validation, grants (the vault's `originGrants`, and the per-account revocation P7 left, `withoutOriginAccess`), the approval queue and its review budget, typed-data review and signing (SNIP-12), add-chain and watch-asset, the blocklist and phishing feed as a sans-IO body and judge (`background/provider/`, 2,453; `background/approvals/`, 4,169; `permissions/`, 905). The core takes a request (origin, method, params) and returns a review, a grant or a refusal, whatever carried it. Mobile builds the transport: for a browser, a WebView whose bridge binds every request to the top frame's origin as the platform reports it and refuses frames it cannot attribute. P9's poisoned-payee refusal must not reach the site before the person acts |
+| P16 Dapp connect | here, then both | D2 (settled), X2 | in progress (see "P16 progress" under P16 in [Parity](#parity)). request validation, grants (the vault's `originGrants`, and the per-account revocation P7 left, `withoutOriginAccess`), the approval queue and its review budget, typed-data review and signing (SNIP-12), add-chain and watch-asset, the blocklist and phishing feed as a sans-IO body and judge (`background/provider/`, 2,453; `background/approvals/`, 4,169; `permissions/`, 905). The core takes a request (origin, method, params) and returns a review, a grant or a refusal, whatever carried it. Mobile builds the transport: for a browser, a WebView whose bridge binds every request to the top frame's origin as the platform reports it and refuses frames it cannot attribute. P9's poisoned-payee refusal must not reach the site before the person acts |
 | P15 STRK20 | here, then both | D3 (settled), the P15 spike | activate, shield, unshield and private send; then shadow accounts and multisig STRK20 (`privacy/`, 9,279; `background/privacy/`, 5,872), over 2.4d's read plan. The core owns the policy, the review and the extension's own rules around the SDK; the SDK is an engine the core drives through a trait, and each app runs the same pinned bundle the extension vendors (its pin, its digests) in a sandboxed runtime the spike picks. The largest step: six PRs in that order. Later: the SDK's client ported to Rust, once upstream leaves release candidates or StarkWare ships one, with its crypto from Krusty (the core adds none of its own), and the embedded runtime goes |
 
 Done means #990's every shipped row on both apps, each proved against the extension by its
@@ -536,7 +537,7 @@ Foundations, which the features need, and Ledger, which needs only the first:
   - a vault with no phrase opened, a Ledger-only wallet created and a Ledger account added
     (#132: `create_ledger_wallet`, `add_ledger_account`, `has_recovery_phrase`); everything that
     needs a phrase fails closed through `VaultPayload::phrase`;
-  - the key picker (#135, open): `LedgerKeyReader` reads a page of up to five keys and
+  - the key picker (#135): `LedgerKeyReader` reads a page of up to five keys and
     `ledger_account_candidates` places their addresses.
   Deliberate departures from the extension: the device OS gate is the host's connect flow; the
   app version is read on every signature; a Braavos Ledger account's deployment, and adding a
@@ -1019,6 +1020,37 @@ Features, smallest and least dependent first:
     but the inpage script), then the approval screens over M19–M21's card. Not now: WalletConnect
     (same core, another transport), wallet-standard registration (the extension has none), dapp
     privacy flows and shadow accounts (P15's fifth PR).
+  - *P16 progress (2026-11-25).* The core reads every request the extension accepts except the
+    STRK20 methods, which wait on P15; nothing is exported yet, and nothing is built in Bramble.
+    - Merged: the hostile-JSON budget over the params text, the wallet API's error codes, the
+      method table, and the readers for accounts, permissions, chain id, the discovery methods,
+      deployment data, switch-chain and typed data (#122); an invoke's calls, a `null` proof
+      refused and any other proof held for P15 (#128); a declare's hashes and contract class
+      (#129); add-chain and watch-asset (#130); origin grants (`dapp::grants`, #134); the
+      approval queue (#136). `bramble-core`'s `dapp.rs` holds `DAPP_POLICY` and the `mc_*`
+      methods.
+    - Open: connecting a site (`dapp::connect`, #139): `wallet_requestAccounts`,
+      `getPermissions`, `requestChainId` and the discovery methods through the blocklist, lock
+      and grant gates, the connect decision, and the results' shapes for them. The blocklist is
+      an input (`blocked`) until the blocklist PR fills it. Stacked on it, the connect-only
+      export: `bramble-core`'s `DappSession` (`request`, `pending_approvals`,
+      `approve_connect`, `deny_connect`, `settle_expired`), with grants written to the vault,
+      the origin checked against `isWalletOrigin`, and `ffi_surface.rs` pinning its exports. A
+      connect card survives a lock, as the extension's does, since a site asking while locked
+      is approved after unlock; the spike's "a lock rejects every pending approval" applies
+      from the first card that holds session-bound review (invoke, typed data).
+    - Next here, in order: the blocklist, feed and insights (Bramble must not ship the browser
+      before it);
+      the remaining methods' gates and results; typed-data review and SNIP-12 signing at
+      approval; the full export.
+    - *Proposed*: export a connect-only slice first (connect, accounts, chain id, versions,
+      permissions) once grants and the queue land, so Bramble can build and test the WebView
+      bridge against real dapps while review, signing and the blocklist follow. Connect's card is
+      a site and an account, so the slice does not wait on M19–M21.
+    - Owed outside this repo: P16's generator in Bramble (each PR so far is on unit tests ported
+      from the extension's own); a `provider` key on the extension's `starknet_bramble`, without
+      which starknet-react 5's discovery lists no Bramble wallet, in the extension or the app;
+      the threat-model update for an in-app web view; and legal and store-policy review.
   - *Unknowns.* Whether `WKScriptMessage.frameInfo` reflects send or delivery time across a
     main-frame navigation (the epoch check covers either); the minimum Android WebView for
     `DOCUMENT_START_SCRIPT`; Apple's review outcome. The extension's switch-chain comment says no

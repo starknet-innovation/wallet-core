@@ -85,11 +85,6 @@ impl TransferPlan {
         ranking: Ranking,
     ) -> Arc<Self> {
         let plan = Plan::new(acting.account.clone(), kind, SEND_POLICY);
-        // A Ledger account signs on its device, never through `sign_for_plan`.
-        let plan = match acting.device {
-            Some(device) => plan.with_device(device),
-            None => plan,
-        };
         Self::with_plan(core, acting, plan, ranking)
     }
 
@@ -100,6 +95,12 @@ impl TransferPlan {
         plan: Plan,
         ranking: Ranking,
     ) -> Arc<Self> {
+        // A Ledger account signs on its device, never through `sign_for_plan`, whoever built the
+        // plan (a multisig deployment's deployer too).
+        let plan = match acting.device {
+            Some(device) => plan.with_device(device),
+            None => plan,
+        };
         Arc::new(Self {
             core: Arc::downgrade(core),
             account_id: acting.account_id,
