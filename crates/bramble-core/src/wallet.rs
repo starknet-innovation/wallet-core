@@ -26,9 +26,7 @@ use crate::clock::{ClockReading, HostClock};
 use crate::container::{self, Dek, Randomness, StoredVault, VaultFile};
 use crate::files::{storage, Directory};
 use crate::networks::NetworkId;
-pub use crate::records::{
-    AccountInfo, RecoveryPhrase, SecurityStatus, StarkSignature, WalletStatus,
-};
+pub use crate::records::{AccountInfo, RecoveryPhrase, SecurityStatus, WalletStatus};
 use crate::recovery_scan::ScanState;
 use crate::security;
 use crate::vault::{self, Envelope, SealingKey};

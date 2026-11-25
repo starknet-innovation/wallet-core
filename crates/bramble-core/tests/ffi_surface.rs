@@ -260,6 +260,29 @@ fn a_private_key_enters_mobile_only_through_its_import_and_never_leaves() {
         .contains("Result<AccountRecord, CoreError>"));
 }
 
+/// AGENTS.md: mobile returns nothing a key can be recovered from, and a raw signature over a hash
+/// the host picks is such a thing: an account's STRK20 viewing key is one deterministic signature
+/// over a public pool scope hash. So no mobile export hands out a `StarkSignature`; signatures
+/// stay inside the plans that made them. Only the extension's `raw-keys` `sign_stark_hash` does.
+#[test]
+fn mobile_hands_out_no_raw_signature() {
+    let mut extension = Vec::new();
+    for (file, source) in sources() {
+        for exported in exported_signatures(&source) {
+            if !exported.outgoing().contains("StarkSignature") {
+                continue;
+            }
+            assert!(
+                exported.extension_only,
+                "{file}: `{}` is a signing oracle on mobile's surface",
+                exported.signature
+            );
+            extension.push(exported.name().to_string());
+        }
+    }
+    assert_eq!(extension, ["sign_stark_hash"]);
+}
+
 /// P1's multisig transaction exports sign by vault record and judge reads the host drove: none
 /// takes or returns a key, a phrase or a raw signature, so a co-signer's key never crosses the
 /// FFI (AGENTS.md). Their files are named so a new export there is scanned here.

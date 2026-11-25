@@ -27,9 +27,6 @@ pub struct AccountInfo {
     pub network: NetworkId,
 }
 
-/// A Stark signature record: wallet-core's, which `lib.rs` exports for both surfaces.
-pub use wallet_core::StarkSignature;
-
 /// Lock and backoff state for the Security screen. Carries no secret and no vault bytes.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct SecurityStatus {
