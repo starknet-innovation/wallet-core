@@ -12,6 +12,7 @@
 //!   embedded from `generated/`) and its portfolio, history and allowance choices
 //!   (`PORTFOLIO_POLICY`, `HISTORY_POLICY`, `ALLOWANCE_POLICY`, `swap::SWAP_POLICY`,
 //!   `staking::STAKING_POLICY`), plain Rust until the swap;
+//! - its dapp provider budgets, advertised versions and own `mc_*` methods (`dapp`);
 //! - its Ledger minimum versions and path schemes (`ledger`), plain Rust until the swap;
 //! - the extension's v13 vault schema, which mobile writes (`vault_v13`, behind `mobile`).
 //!
@@ -47,6 +48,7 @@ uniffi::setup_scaffolding!();
 
 pub mod catalogs;
 pub mod coordination;
+pub mod dapp;
 pub mod gasless;
 pub mod ledger;
 pub mod staking;
