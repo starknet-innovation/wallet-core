@@ -220,6 +220,8 @@ Grep first; extend in place rather than adding a sibling.
   - the method table and each method's param reader (`request::{Method, read_request}`), an
     invoke's calls read into `send::calls::Call` by `invoke` under `InvokeLimits`, a chain by
     `add_chain` (URLs through `relay_url::is_custom_rpc_url`), an asset by `watch_asset`.
+  - which accounts a site may see (`grants`: `OriginGrant`, the vault's record, and
+    `granted_account`, `with_origin_grant`, `without_origin_access`, `connected_sites`).
   Bramble's budgets, advertised versions and `mc_*` methods are `bramble-core`'s `dapp.rs`
   (`DAPP_POLICY`, `read_page_request`).
 - Only `wallet-core` depends on Krusty (`kms.rs`, `nostr.rs`, `accounts/`, `send/`);
