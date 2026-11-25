@@ -13,6 +13,7 @@ use super::error::WalletRpcError;
 use super::invoke::{invoke_params, InvokeLimits};
 use crate::js::json::JsValue;
 use crate::send::calls::Call;
+use starknet_types_core::felt::Felt;
 
 /// A wallet API method the wallet accepts from a page (`PROVIDER_METHOD_POLICY`'s spec names).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -154,13 +155,19 @@ pub enum Request {
     AddInvoke {
         calls: Vec<Call>,
     },
+    /// `wallet_addDeclareTransaction`'s declare: the hashes as felts and the contract class
+    /// carried as given, a non-empty object the review never shows.
+    AddDeclare {
+        class_hash: Option<Felt>,
+        compiled_class_hash: Felt,
+        contract_class: JsValue,
+    },
 }
 
 /// Reads a page's request: `method` as named, `params` as the JSON text of its params, or `None`
 /// where the page passed none (`params: undefined` included).
 ///
-/// Methods whose params are not read here yet (declare, add-chain, watch-asset and the STRK20
-/// methods) are refused with UNKNOWN_ERROR (163) until their readers land, so nothing acts on
+/// Methods whose params are not read here yet (add-chain, watch-asset and the STRK20 methods) are refused with UNKNOWN_ERROR (163) until their readers land, so nothing acts on
 /// params no grammar has checked. So is an invoke that carries a STRK20 proof (P15), once its
 /// calls have parsed.
 pub fn read_request(
@@ -199,8 +206,8 @@ pub fn read_request(
                 calls: invoke.calls,
             }),
         },
-        Method::AddDeclareTransaction
-        | Method::AddStarknetChain
+        Method::AddDeclareTransaction => declare(params).ok_or_else(invalid),
+        Method::AddStarknetChain
         | Method::Strk20Balances
         | Method::Strk20InvokeTransaction
         | Method::Strk20PrepareInvoke
@@ -296,6 +303,39 @@ fn is_hex_chain_id(value: &str) -> bool {
             && digits
                 .bytes()
                 .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+    })
+}
+
+/// `readProviderDeclare`: `{ declare_transaction: { compiled_class_hash, contract_class,
+/// class_hash? }, api_version? }`, each hash in the lowercase-hex felt grammar and the contract
+/// class a non-empty object. The extension also re-checks the class against the contract-class
+/// budget; the whole params already passed that budget, and no part can exceed its whole.
+fn declare(params: Option<&JsValue>) -> Option<Request> {
+    let params = params?;
+    only_keys(params, &["api_version", "declare_transaction"])?;
+    if !optional_api_version(params.get("api_version")) {
+        return None;
+    }
+    let declare = params.get("declare_transaction")?;
+    only_keys(
+        declare,
+        &["class_hash", "compiled_class_hash", "contract_class"],
+    )?;
+    let felt = |key: &str| declare.get(key)?.as_str().and_then(crate::felt::parse);
+    let compiled_class_hash = felt("compiled_class_hash")?;
+    // A present `class_hash`, `null` included, must be a felt.
+    let class_hash = match declare.get("class_hash") {
+        None => None,
+        Some(_) => Some(felt("class_hash")?),
+    };
+    let contract_class = declare.get("contract_class")?;
+    if contract_class.as_object()?.is_empty() {
+        return None;
+    }
+    Some(Request::AddDeclare {
+        class_hash,
+        compiled_class_hash,
+        contract_class: contract_class.clone(),
     })
 }
 

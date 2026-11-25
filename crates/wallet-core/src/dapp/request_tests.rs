@@ -283,7 +283,6 @@ fn params_are_held_to_the_method_budget() {
 #[test]
 fn methods_not_read_yet_are_refused_as_unknown() {
     for name in [
-        "wallet_addDeclareTransaction",
         "wallet_addStarknetChain",
         "wallet_strk20Balances",
         "wallet_strk20InvokeTransaction",
@@ -297,4 +296,89 @@ fn methods_not_read_yet_are_refused_as_unknown() {
             "{name}"
         );
     }
+}
+
+// `provider-add-chain-declare-bridge.test.ts`: "wallet_addDeclareTransaction bridge mapping".
+#[test]
+fn declare_reads_its_hashes_and_carries_the_class() {
+    use starknet_types_core::felt::Felt;
+    const DECLARE: &str = r#"{"class_hash":"0x5abc","compiled_class_hash":"0x6def","contract_class":{"sierra_program":["0x1"]}}"#;
+    let declare = |params: &str| read("wallet_addDeclareTransaction", Some(params));
+    let expected = Ok(Request::AddDeclare {
+        class_hash: Some(Felt::from(0x5abc_u64)),
+        compiled_class_hash: Felt::from(0x6def_u64),
+        contract_class: crate::js::json::parse(r#"{"sierra_program":["0x1"]}"#).unwrap(),
+    });
+    // "maps valid params to a safe runtime message"
+    assert_eq!(
+        declare(&format!(r#"{{"declare_transaction":{DECLARE}}}"#)),
+        expected
+    );
+    // "accepts the optional top-level api_version and drops it"
+    for version in ["0.10", "0.10.4", "0.10.5"] {
+        assert_eq!(
+            declare(&format!(
+                r#"{{"declare_transaction":{DECLARE},"api_version":"{version}"}}"#
+            )),
+            expected
+        );
+    }
+    // `class_hash` is optional.
+    assert_eq!(
+        declare(
+            r#"{"declare_transaction":{"compiled_class_hash":"0x6def","contract_class":{"a":1}}}"#
+        ),
+        Ok(Request::AddDeclare {
+            class_hash: None,
+            compiled_class_hash: Felt::from(0x6def_u64),
+            contract_class: crate::js::json::parse(r#"{"a":1}"#).unwrap(),
+        })
+    );
+    let refused = |params: &str| {
+        assert!(
+            invalid("wallet_addDeclareTransaction", Some(params)),
+            "{params}"
+        )
+    };
+    // "rejects a malformed api_version, or one nested inside the declare"
+    for bad in [
+        r#""not.a.version.x""#,
+        r#""""#,
+        r#""v0.10.4""#,
+        r#""0.10.4-rc.0""#,
+        "10",
+        "null",
+    ] {
+        refused(&format!(
+            r#"{{"declare_transaction":{DECLARE},"api_version":{bad}}}"#
+        ));
+    }
+    refused(
+        r#"{"declare_transaction":{"compiled_class_hash":"0x6def","contract_class":{"a":1},"api_version":"0.10.4"}}"#,
+    );
+    // "rejects a declare missing its contract class"
+    refused(r#"{"declare_transaction":{"compiled_class_hash":"0x6def"}}"#);
+    // "rejects declare hashes outside the canonical Stark-field grammar"
+    for hash in [format!("0x{}", "f".repeat(64)), "0xABC".into(), "1".into()] {
+        refused(&format!(
+            r#"{{"declare_transaction":{{"compiled_class_hash":"{hash}","contract_class":{{"a":1}}}}}}"#
+        ));
+        refused(&format!(
+            r#"{{"declare_transaction":{{"class_hash":"{hash}","compiled_class_hash":"0x1","contract_class":{{"a":1}}}}}}"#
+        ));
+    }
+    // A null class hash, an empty or non-object class, a missing or non-object declare, extra keys.
+    for bad in [
+        r#"{"declare_transaction":{"class_hash":null,"compiled_class_hash":"0x1","contract_class":{"a":1}}}"#,
+        r#"{"declare_transaction":{"compiled_class_hash":"0x1","contract_class":{}}}"#,
+        r#"{"declare_transaction":{"compiled_class_hash":"0x1","contract_class":["a"]}}"#,
+        r#"{"declare_transaction":{"compiled_class_hash":"0x1","contract_class":"{}"}}"#,
+        r#"{"declare_transaction":null}"#,
+        r#"{"api_version":"0.10"}"#,
+        r#"{"declare_transaction":{"compiled_class_hash":"0x1","contract_class":{"a":1}},"extra":1}"#,
+        r#"[]"#,
+    ] {
+        refused(bad);
+    }
+    assert!(invalid("wallet_addDeclareTransaction", None));
 }
