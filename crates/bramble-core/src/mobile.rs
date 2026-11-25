@@ -91,7 +91,8 @@ pub use account_names::{
     is_account_label,
 };
 pub use allowances::{
-    AllowanceList, AllowanceListing, AllowanceNotice, AllowanceSource, AllowanceView,
+    allowance_entries_per_scope, AllowanceList, AllowanceListing, AllowanceNotice, AllowanceSource,
+    AllowanceView,
 };
 pub use argent_multisig::{ArgentMultisigConfig, ArgentMultisigPrediction};
 pub use avatar::{AccountAvatar, AvatarPaint, AvatarPart, AvatarShape};
