@@ -115,6 +115,13 @@ fn exported_signatures(source: &str) -> Vec<Exported> {
         }) else {
             panic!("an export attribute ends the file");
         };
+        // A builtin trait exported on a type (`#[uniffi::export(Display)]` on a refusal) hands
+        // out only that impl's text, which the no-secret rule already bounds: no function here.
+        if line.trim_start().starts_with("#[uniffi::export(Display)]")
+            && (lines[head].starts_with("pub enum ") || lines[head].starts_with("pub struct "))
+        {
+            continue;
+        }
         let before = signatures.len();
         let extension_only = lines[..head]
             .iter()
