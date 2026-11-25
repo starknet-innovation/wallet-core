@@ -136,9 +136,9 @@ Written 2026-11-23, against #990's table; updated 2026-11-25. With M15–M17 mer
 - exported, screens only: multisig transactions (M18), allowances and revoke (M19), swap (M20),
   staking (M21), and gasless and sponsored (`v0.8.0`);
 - core work left: Ledger (P8), STRK20 actions, then shadow accounts and multisig STRK20 (P15),
-  dapp connect and anti-phishing (P16, waiting on D2).
+  dapp connect and anti-phishing (P16; D2 settled 2026-11-25, core started in #122).
 
-The porting is mostly done; what decides the pace now is the mobile screens and D2:
+The porting is mostly done; what decides the pace now is the mobile screens:
 
 - **krusty-kms#257** (a selector from an entrypoint name and Stark signature verification).
   Closed: Krusty 3.2.0 shipped it and K2 (#105) took it, which unblocked P1, P9 and every
@@ -148,7 +148,8 @@ The porting is mostly done; what decides the pace now is the mobile screens and 
   Ledger over USB at all; Ledger's own mobile SDK for the link to start with, ported into the core
   later; Ledger-only wallets (no phrase) at full parity.
 - **D2 Dapp transport** (P16): an in-app browser that injects the extension's provider, or
-  WalletConnect, or both. *Proposed*: the browser first, since every Starknet dapp already speaks
+  WalletConnect, or both. *Decided* 2026-11-25: an in-app browser, as the P16 spike recommends
+  (see "P16 spike findings" under P16 in [Parity](#parity)), since every Starknet dapp already speaks
   to an injected wallet through `get-starknet` and the extension's provider and approval rules
   carry over unchanged; WalletConnect later, for a desktop dapp signing with a phone, once it is
   known which Starknet dapps would find Bramble through it. The core half is the same for both.
@@ -176,7 +177,7 @@ step starts.
 | M17 | Bramble | — | done (#1027): analytics consent and diagnostics screens; nothing here |
 | Extension Krusty 3 | Bramble, `main` | — | `main` pins `@starknetfoundation/krusty-kms-wasm` `3.1.0` (checked 2026-11-25); confirm the migration below shipped with it before Phase 3. It had pinned `@starknetfoundation/krusty-kms-wasm` `0.11.0`, which predates the fix (Krusty 3.0 changed the derivation; 2.0.0 and earlier kept the leading zero bytes), so its keys and mobile's parted for affected phrases. Its users have funds, so it follows Krusty's [migration guide](https://github.com/starknet-innovation/krusty-kms/blob/v3.0.0/docs/migration-3.0.md): keep the old key for any existing account whose public key differs. Needed before Phase 3, where the extension takes this crate's Krusty |
 | P7 migrate | here | v0.10.11 on the extension's `main`, G7b | done (#116, `v0.8.0`): `NEW_VAULT_SCHEMA` to 14 and raising a v13 vault on unlock, as the extension's migration does. v0.10.11, which reads 14, was released 2026-11-24 |
-| D2 | — | — | the dapp transport above; D1 and D3 are settled. Spiked 2026-11-25 (see "P16 spike findings" under P16 in [Parity](#parity)): an in-app browser on `WKWebView` and Android `WebView` with `androidx.webkit`, injecting the extension's `starknet_bramble` at document start in the main frame only, each request bound natively to the main frame's committed `https` origin; the core takes the extension's gate order, queue, grants and blocklist sans-IO. Awaits the product owner's decision |
+| D2 | — | — | done: decided 2026-11-25, an in-app browser. Spiked 2026-11-25 (see "P16 spike findings" under P16 in [Parity](#parity)): an in-app browser on `WKWebView` and Android `WebView` with `androidx.webkit`, injecting the extension's `starknet_bramble` at document start in the main frame only, each request bound natively to the main frame's committed `https` origin; the core takes the extension's gate order, queue, grants and blocklist sans-IO |
 | P15 spike | here | — | done 2026-11-23: see "P15 spike findings" under P15 in [Parity](#parity). The account key stays in Rust (the SDK only asks for a `CallSet` signature the core can compute and sign); the viewing key crosses into the runtime and on to StarkWare's prover and discovery service, as in the extension; a hidden WebView on both apps runs the pinned bundle unchanged behind a native fetch bridge; no StarkWare Rust client exists or is announced; the core's first P15 PR (the `PrivacyEngine` trait, `CallSet` signing, result judging) can start now |
 
 **Wave 1: krusty-kms#257 shipped (Krusty 3.2.0).** In order; each export is one PR here and one tag.
@@ -200,7 +201,7 @@ step starts.
 | PR | Repo | Needs | What it is |
 | --- | --- | --- | --- |
 | P8 Ledger | here, then both | D1 (settled) | as the extension's v1: blind signing only. The Starknet app's version, public-key and `signHash` commands with the extension's minimum app version and its status-word catalogue (`ledger-protocol/`, 1,096; `background/ledger/`, 847), as sans-IO APDU bytes here; a signing step in `Plan` that hands the hash to the host's device and takes a signature back, verified against the record's stored `publicKeyX` before anything is broadcast, and never falls back to a key (`account-hash-signer.ts`); Ledger records made operable; and a vault with no phrase opened and created, for Ledger-only onboarding. The apps link to the device through Ledger's Device Management Kit (`LedgerHQ/device-sdk-mobile`, Kotlin Multiplatform; Android native, iOS through Objective-C interop; 0.0.x as of 2026-11, so pinned exactly and checked for maintenance first). It has no Starknet signer module, so it only scans, pairs and moves the core's APDUs (its raw APDU call). Bluetooth first; Android USB a follow-up. Later: Ledger's Bluetooth framing moves into the core and the kit goes. The generator records APDU transcripts against the Starknet Ledger app; *proposed*: under Ledger's Speculos emulator, so CI needs no device |
-| P16 Dapp connect | here, then both | D2, X2 | request validation, grants (the vault's `originGrants`, and the per-account revocation P7 left, `withoutOriginAccess`), the approval queue and its review budget, typed-data review and signing (SNIP-12), add-chain and watch-asset, the blocklist and phishing feed as a sans-IO body and judge (`background/provider/`, 2,453; `background/approvals/`, 4,169; `permissions/`, 905). The core takes a request (origin, method, params) and returns a review, a grant or a refusal, whatever carried it. Mobile builds the transport: for a browser, a WebView whose bridge binds every request to the top frame's origin as the platform reports it and refuses frames it cannot attribute. P9's poisoned-payee refusal must not reach the site before the person acts |
+| P16 Dapp connect | here, then both | D2 (settled), X2 | request validation, grants (the vault's `originGrants`, and the per-account revocation P7 left, `withoutOriginAccess`), the approval queue and its review budget, typed-data review and signing (SNIP-12), add-chain and watch-asset, the blocklist and phishing feed as a sans-IO body and judge (`background/provider/`, 2,453; `background/approvals/`, 4,169; `permissions/`, 905). The core takes a request (origin, method, params) and returns a review, a grant or a refusal, whatever carried it. Mobile builds the transport: for a browser, a WebView whose bridge binds every request to the top frame's origin as the platform reports it and refuses frames it cannot attribute. P9's poisoned-payee refusal must not reach the site before the person acts |
 | P15 STRK20 | here, then both | D3 (settled), the P15 spike | activate, shield, unshield and private send; then shadow accounts and multisig STRK20 (`privacy/`, 9,279; `background/privacy/`, 5,872), over 2.4d's read plan. The core owns the policy, the review and the extension's own rules around the SDK; the SDK is an engine the core drives through a trait, and each app runs the same pinned bundle the extension vendors (its pin, its digests) in a sandboxed runtime the spike picks. The largest step: six PRs in that order. Later: the SDK's client ported to Rust, once upstream leaves release candidates or StarkWare ships one, with its crypto from Krusty (the core adds none of its own), and the embedded runtime goes |
 
 Done means #990's every shipped row on both apps, each proved against the extension by its
@@ -1998,8 +1999,8 @@ Added 2026-11-09 after reviewing the first day's work. Items marked *proposed* a
   [Road to parity](#road-to-parity), D3).
 - What carries a dapp's requests on mobile (P16): WalletConnect, as #990 assumes, or something
   else. It decides which of the extension's provider rules the core can share unchanged.
-  *Proposed* 2026-11-23: an in-app browser first, WalletConnect later (see
-  [Road to parity](#road-to-parity), D2).
+  Settled 2026-11-25: an in-app browser, WalletConnect later (see
+  [Road to parity](#road-to-parity), D2, and the P16 spike findings).
 - Whether Ledger on mobile is Bluetooth only, and whether iOS can reach the device at all the way
   the app needs (P8). Settled 2026-11-23: Bluetooth first on both apps, Android USB later (iOS
   has no USB route to a Ledger), through Ledger's Device Management Kit until the framing moves
