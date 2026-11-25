@@ -226,6 +226,9 @@ Grep first; extend in place rather than adding a sibling.
     `granted_account`, `with_origin_grant`, `without_origin_access`, `connected_sites`).
   - the approval queue (`queue::ApprovalQueue`: caps, eviction, TTL over the host's monotonic
     clock, dedupe and waiters, reservations, fee revisions; dropped ids via `take_dropped`).
+  - connecting a site and the passive reads around it (`connect`: `Site`, `answer`,
+    `request_accounts`, `approve_connect`, the result shapes `addresses` and `accounts_view`),
+    in the extension's gate order: blocklist, lock, grant.
   Bramble's budgets, advertised versions and `mc_*` methods are `bramble-core`'s `dapp.rs`
   (`DAPP_POLICY`, `DAPP_QUEUE_LIMITS`, `read_page_request`).
 - Only `wallet-core` depends on Krusty (`kms.rs`, `nostr.rs`, `accounts/`, `send/`);
