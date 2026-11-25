@@ -29,6 +29,9 @@ cargo test -p bramble-core <name>   # narrow loop while iterating
 - The toolchain is pinned in `rust-toolchain.toml` and repeated as `RUST_TOOLCHAIN` in each
   workflow; change them together (also checked).
 - `deny` needs network for the advisory DB. Offline, run the rest and say so.
+- A fresh worktree starts with an empty `target/`. To reuse the main checkout's build, set
+  `CARGO_TARGET_DIR=<main checkout>/target` for checks and pushes. Cargo locks the shared
+  directory, so two sessions building at once wait on each other.
 - `secrets` needs `gitleaks` (CI pins the version and sha256 in `ci.yml`). `.gitleaks.toml`
   exempts only the broad `generic-api-key` rule, only under `tests/fixtures/`; never widen it
   to `src/`, and never add a key there that is not derived from the published parity phrase.

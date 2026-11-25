@@ -24,3 +24,12 @@ strip = "symbols"
 # real KDF, so dependencies are optimised even in debug.
 [profile.dev.package."*"]
 opt-level = 3
+
+# Generic code (pbkdf2_hmac::<Sha256>) is compiled in the crate that instantiates it, so the line
+# above does not reach the KDF loop. opt-level 1 cuts the test run ~3x at no incremental-build
+# cost; overflow checks and debug assertions stay on.
+[profile.dev.package.starknet-wallet-core]
+opt-level = 1
+
+[profile.dev.package.bramble-core]
+opt-level = 1
