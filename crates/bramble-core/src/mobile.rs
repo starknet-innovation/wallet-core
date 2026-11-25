@@ -44,6 +44,7 @@ mod history;
 pub(crate) use wallet_core::js;
 mod key_import;
 mod kms;
+mod ledger_reader;
 mod ledger_wallet;
 pub use kms::Ladder;
 mod multisig_guard;
@@ -112,6 +113,9 @@ pub use ffi_staking::{
 };
 pub use ffi_staking_action::{StakingPlan, StakingPreparation};
 pub use groups::AccountGroup;
+pub use ledger_reader::{
+    ledger_account_candidates, LedgerCandidate, LedgerKey, LedgerKeyReader, LedgerReadStep,
+};
 pub use ledger_wallet::LedgerAccountRequest;
 pub use multisig_rpc::{MultisigAuthorityRead, MultisigAuthorityStatus, MultisigStateRead};
 pub use multisig_tx::{
