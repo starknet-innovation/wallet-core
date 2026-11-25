@@ -14,7 +14,7 @@ use std::fmt;
 use serde::Serialize;
 use starknet_types_core::felt::Felt;
 
-use super::call_decode::{call_summary, recipient_for_flags, Known};
+use super::call_decode::{call_summary, recipient_for_flags, spender_for_flags, Known};
 use super::calls::{is_lookalike_address, Call};
 use super::multisig_invoke::{is_calls, MultisigCall};
 use crate::accounts::multisig::ArgentMultisigClass;
@@ -50,6 +50,8 @@ pub enum CallReviewError {
     MissingCurrentConfig,
     /// A payee closely mimics an address the person trusts.
     PoisonedRecipient,
+    /// A grant's spender or operator closely mimics an address the person trusts (Bramble #1038).
+    PoisonedSpender,
     /// A single-signer batch calls the account itself (`refuseOnAccountSelfCall`).
     AccountSelfCall,
 }
@@ -68,6 +70,10 @@ impl CallReviewError {
             }
             Self::PoisonedRecipient => {
                 "The recipient closely mimics an address you saved or paid but is a different account. Re-check every character before sending."
+            }
+            // `review.flag.spenderPoisoning`, verbatim.
+            Self::PoisonedSpender => {
+                "The address this allows closely mimics an address you saved or paid but is a different account. Re-check every character before approving."
             }
             Self::AccountSelfCall => "Dapps cannot call the wallet account contract itself",
         }
@@ -192,7 +198,7 @@ pub(crate) fn summarise_calls(
     summary_length: usize,
     empty: &str,
 ) -> Result<String, CallReviewError> {
-    refuse_poisoned(account, calls, trusted)?;
+    refuse_poisoned(account, calls, known, &[], trusted)?;
     let summaries: Vec<String> = calls
         .iter()
         .map(|call| {
@@ -207,20 +213,36 @@ pub(crate) fn summarise_calls(
     Ok(batch_line(&summaries, summary_length, empty))
 }
 
-/// `refuseOnPoisonedRecipient`: a payee that mimics `account` or an address in `trusted`.
+/// `refuseOnPoisonedRecipient`: a payee, or a grant's spender or operator (not a revoke's,
+/// `spender_for_flags`, with `confirmed` its read-proved tokens), that mimics `account` or an
+/// address in `trusted`.
 pub(crate) fn refuse_poisoned(
     account: &Felt,
     calls: &[Call],
+    known: &Known,
+    confirmed: &[Felt],
     trusted: &[Felt],
 ) -> Result<(), CallReviewError> {
-    for call in calls {
-        if let Some(recipient) = recipient_for_flags(&call.entrypoint, &call.calldata) {
-            if std::iter::once(account)
+    let poisoned = |address: Option<Felt>| {
+        address.is_some_and(|address| {
+            std::iter::once(account)
                 .chain(trusted)
-                .any(|address| is_lookalike_address(&recipient, address))
-            {
-                return Err(CallReviewError::PoisonedRecipient);
-            }
+                .any(|trusted| is_lookalike_address(&address, trusted))
+        })
+    };
+    for call in calls {
+        if poisoned(recipient_for_flags(&call.entrypoint, &call.calldata)) {
+            return Err(CallReviewError::PoisonedRecipient);
+        }
+        let spender = spender_for_flags(
+            &call.contract_address,
+            &call.entrypoint,
+            &call.calldata,
+            known,
+            confirmed,
+        );
+        if poisoned(spender) {
+            return Err(CallReviewError::PoisonedSpender);
         }
     }
     Ok(())
@@ -246,3 +268,7 @@ pub(crate) fn batch_line<S: AsRef<str>>(
 #[cfg(test)]
 #[path = "multisig_review_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "spender_poisoning_tests.rs"]
+mod spender_poisoning_tests;

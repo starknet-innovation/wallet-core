@@ -22,13 +22,14 @@ use starknet_wallet_core::dapp::connect::{
 };
 use starknet_wallet_core::dapp::queue::Refusal;
 use starknet_wallet_core::dapp::{
-    Answer, ApprovalId, ApprovalQueue, DappAccount, Request, Site, Unlocked, Versions,
-    WalletRpcError,
+    Answer, ApprovalId, ApprovalQueue, DappAccount, PhishingFeed, Request, Site, SiteWarning,
+    Unlocked, Versions, WalletRpcError,
 };
 use starknet_wallet_core::js::json::JsValue;
 
 use crate::dapp::{
-    read_page_request, PageRequest, DAPP_QUEUE_LIMITS, SUPPORTED_SPECS, SUPPORTED_WALLET_API,
+    read_page_request, PageRequest, DAPP_QUEUE_LIMITS, PHISHING_FEED, SUPPORTED_SPECS,
+    SUPPORTED_WALLET_API,
 };
 use crate::networks::NetworkId;
 use crate::vault_rules::is_wallet_origin;
@@ -64,12 +65,15 @@ pub struct DappSettled {
     pub reply: DappReply,
 }
 
-/// A connect card: the site asking. The account it would see is the active one, which the host
-/// reads beside it and echoes back on approval.
+/// A connect card: the site asking, and what the wallet warns about it. The account it would
+/// see is the active one, which the host reads beside it and echoes back on approval. A blocked
+/// site's card can only be denied.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct DappApproval {
     pub approval_id: String,
     pub origin: String,
+    pub blocked: bool,
+    pub warnings: Vec<SiteWarning>,
 }
 
 /// Which result shape a held connect request wants.
@@ -110,8 +114,10 @@ struct State {
 /// The dapp requests of one wallet. Thread-safe; every method takes `&self`.
 #[derive(uniffi::Object)]
 pub struct DappSession {
-    wallet: Arc<WalletCore>,
+    pub(crate) wallet: Arc<WalletCore>,
     state: Mutex<State>,
+    /// Never held while taking `state` or the wallet's session.
+    pub(crate) feed: Mutex<PhishingFeed>,
 }
 
 fn error(error: WalletRpcError) -> DappReply {
@@ -165,9 +171,7 @@ impl DappSession {
         f: impl FnOnce(&Site<'_>, Option<&mut Session>) -> Result<T, CoreError>,
     ) -> Result<T, CoreError> {
         let chain_id = |network: NetworkId| felt::canonical(&network.chain_id());
-        // ponytail: no blocklist yet; its PR makes this a lookup. Bramble must not ship the
-        // browser before it lands.
-        let blocked = false;
+        let blocked = self.blocked(origin);
         let mut f = Some(f);
         let unlocked = self.wallet.with_session(renew, |session| {
             let active = active(session);
@@ -255,6 +259,7 @@ impl DappSession {
                 queue: ApprovalQueue::new(DAPP_QUEUE_LIMITS),
                 waiters: HashMap::new(),
             }),
+            feed: Mutex::new(PhishingFeed::new(PHISHING_FEED)),
         })
     }
 
@@ -300,32 +305,47 @@ impl DappSession {
         })
     }
 
-    /// The cards waiting for the person, oldest first.
-    pub fn pending_approvals(&self) -> Vec<DappApproval> {
-        let mut state = crate::wallet::guard(&self.state);
-        let now = self.wallet.now().monotonic_ms;
-        state
-            .queue
-            .list(now)
+    /// The cards waiting for the person, oldest first, each with its site's warnings as of
+    /// `now_ms` (the host's wall clock).
+    pub fn pending_approvals(&self, now_ms: f64) -> Vec<DappApproval> {
+        let listed: Vec<(String, String)> = {
+            let mut state = crate::wallet::guard(&self.state);
+            let now = self.wallet.now().monotonic_ms;
+            state
+                .queue
+                .list(now)
+                .into_iter()
+                .map(|approval| (approval.id.as_str().to_owned(), approval.origin.clone()))
+                .collect()
+        };
+        listed
             .into_iter()
-            .map(|approval| DappApproval {
-                approval_id: approval.id.as_str().to_owned(),
-                origin: approval.origin.clone(),
+            .map(|(approval_id, origin)| {
+                let insight = self.insight(&origin, now_ms);
+                DappApproval {
+                    approval_id,
+                    origin,
+                    blocked: insight.blocked,
+                    warnings: insight.warnings,
+                }
             })
             .collect()
     }
 
     /// The person approved `approval_id`'s card, reviewed with `reviewed_account_id` active.
     /// Grants the site that account, written to the vault, and answers every request waiting on
-    /// the card. A card already settled or expired answers nothing. Renews.
+    /// the card. A card already settled or expired answers nothing; a site blocked since it asked
+    /// is refused. Renews. `now_ms` is the host's wall clock, for the site's first-seen record.
     pub fn approve_connect(
         &self,
         approval_id: String,
         reviewed_account_id: String,
+        now_ms: f64,
     ) -> Vec<DappSettled> {
         let Some((origin, waiters)) = self.claim(&approval_id) else {
             return Vec::new();
         };
+        self.record_seen(&origin, now_ms);
         // Approving needs an unlocked wallet, whose network is the active account's: the shown
         // network only answers a locked `requestChainId`, so any value serves here.
         let granted = self.with_site(&origin, NetworkId::Mainnet, true, |site, session| {
@@ -348,10 +368,11 @@ impl DappSession {
     }
 
     /// The person declined `approval_id`'s card: every request waiting on it is told so.
-    pub fn deny_connect(&self, approval_id: String) -> Vec<DappSettled> {
-        let Some((_, waiters)) = self.claim(&approval_id) else {
+    pub fn deny_connect(&self, approval_id: String, now_ms: f64) -> Vec<DappSettled> {
+        let Some((origin, waiters)) = self.claim(&approval_id) else {
             return Vec::new();
         };
+        self.record_seen(&origin, now_ms);
         settled(waiters, |_| error(deny_connect()))
     }
 

@@ -441,10 +441,14 @@ fn no_export_takes_calls_to_sign() {
 /// approved card's id; widen this list deliberately then.
 #[test]
 fn the_dapp_session_exports_only_the_connect_slice() {
-    let names: Vec<String> = exported_signatures(include_str!("../src/dapp_session.rs"))
-        .iter()
-        .map(|exported| exported.name().to_owned())
-        .collect();
+    let names: Vec<String> = [
+        include_str!("../src/dapp_session.rs"),
+        include_str!("../src/dapp_sites.rs"),
+    ]
+    .into_iter()
+    .flat_map(exported_signatures)
+    .map(|exported| exported.name().to_owned())
+    .collect();
     assert_eq!(
         names,
         [
@@ -453,7 +457,9 @@ fn the_dapp_session_exports_only_the_connect_slice() {
             "pending_approvals",
             "approve_connect",
             "deny_connect",
-            "settle_expired"
+            "settle_expired",
+            "refresh_phishing_feed",
+            "answer_phishing_feed"
         ]
     );
 }

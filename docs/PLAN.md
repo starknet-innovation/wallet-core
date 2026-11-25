@@ -1081,10 +1081,12 @@ Features, smallest and least dependent first:
       (`PhishingFeed`, a request and judge with a one-file cache over `host::Storage`) and
       `dapp::origin_history`; Bramble's lists and feed are `SITE_LISTS` and `PHISHING_FEED` in
       `bramble-core`'s `dapp.rs`.
-    - Next here, in order: wire the blocklist and feed into `DappSession`, which still passes
-      `blocked = false` (Bramble must not ship the browser before it), and export the feed's
-      refresh and the site warnings; the remaining methods' gates and results; typed-data
-      review and SNIP-12 signing at approval; the full export.
+    - Open (#152): `DappSession` checking them: a blocked site learns nothing and its card
+      cannot be approved, the host refreshes the feed (`refresh_phishing_feed`,
+      `answer_phishing_feed`), each card carries `blocked` and its warnings, and a decided card
+      records the site's first sighting (deleted with the wallet).
+    - Next here, in order: the remaining methods' gates and results; typed-data review and
+      SNIP-12 signing at approval; the full export.
     - *Done* (#140): the connect-only slice is exported first, so Bramble can build and test
       the WebView bridge against real dapps while review and signing follow. Connect's card is
       a site and an account, so the slice does not wait on M19–M21.
