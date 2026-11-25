@@ -2,8 +2,15 @@ name: CI
 
 on:
   pull_request:
+    paths-ignore: ['docs/**']
   push:
     branches: [main]
+    paths-ignore: ['docs/**']
+
+# A newer push to the same PR or to main supersedes the run in progress.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -33,6 +40,12 @@ jobs:
           rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component rustfmt,clippy \
             --target wasm32-unknown-unknown
           rustup default "$RUST_TOOLCHAIN"
+      # Compiling dependencies (opt-level 3) is most of each job. Only main saves, so PRs restore
+      # its cache and cannot evict it from the repository's 10 GB.
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: ${{ matrix.mode }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       # Unquoted on purpose: "quick lint" is two modes.
       - run: bash tools/check.sh $MODE
         env:
@@ -99,7 +112,14 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
+      # Compiling dependencies (opt-level 3) is most of each job. Only main saves, so PRs restore
+      # its cache and cannot evict it from the repository's 10 GB.
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: wasm
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       # Must equal the `wasm-bindgen` version in Cargo.lock; ubrn runs it over the module.
+      # --force is off, so a cached binary of this version is kept and the install is skipped.
       - run: cargo install wasm-bindgen-cli --version 0.2.130 --locked
       - run: bash tools/check.sh wasm
       - run: sha256sum js/dist/generated/bramble_core.wasm js/dist/generated/bramble_core_bg.js
