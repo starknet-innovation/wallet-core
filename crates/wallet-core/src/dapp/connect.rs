@@ -29,7 +29,7 @@ pub struct DappAccount {
     /// `network:address`, the vault's account id. Never shown to the page.
     pub id: String,
     pub address: String,
-    /// The extension's network id (`mainnet`, `sepolia`).
+    /// The extension's network id (`SN_MAIN`, `SN_SEPOLIA`).
     pub network_id: String,
 }
 

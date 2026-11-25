@@ -6,9 +6,8 @@
 use super::*;
 use crate::catalog::testing::STRK;
 use crate::catalog::TokenInfo;
-use crate::kms::NetworkId;
 use crate::send::call_decode::decode_call;
-use crate::send::types::Authorization;
+use crate::send::types::{Account, Authorization};
 
 const ACCOUNT: &str = "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcde";
 const ETH: &str = "0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7";
@@ -70,7 +69,7 @@ fn flags_from(actor: &Account, calls: &[Call], context: &ReviewContext) -> Vec<V
             )
         })
         .collect();
-    call_flags(calls, &decoded, actor, context)
+    call_flags(calls, &decoded, (actor.network, &actor.address), context)
 }
 
 /// Each call's flag codes, under `context`.

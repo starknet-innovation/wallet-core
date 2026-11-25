@@ -17,9 +17,25 @@ pub use wallet_core::send::multisig_intent::{IntentState, StaleReason};
 pub use wallet_core::send::multisig_invoke::MultisigCall;
 use wallet_core::send::multisig_invoke_plan::{MultisigFailure, MultisigStep};
 
+use wallet_core::accounts::multisig_change::review_config_change;
+use wallet_core::js::felt::same_felt;
+use wallet_core::send::call_decode::Known;
+use wallet_core::send::invoke::{batch_flags, verify_calls};
+use wallet_core::send::multisig_import::{held_config, ImportError};
+use wallet_core::send::multisig_intent::ConfigSnapshot;
+use wallet_core::send::multisig_invoke::as_calls;
+use wallet_core::send::review_flags::ReviewContext;
+use wallet_core::Felt;
+
+use crate::allowances::{token_infos, trusted_tokens};
 use crate::argent_multisig::ArgentMultisigConfig;
-use crate::send::types::{RpcPurpose, SendError};
+use crate::multisig_rpc::MultisigAuthorityRead;
+use crate::networks::NetworkId;
+use crate::portfolio::tokens::TokenPreferences;
+use crate::send::types::{ReviewedCall, RiskFlag, RpcPurpose, SendError};
+use crate::send::wallet_ext::known_token_addresses;
 use crate::wallet::WalletCore;
+use crate::{felt, multisig_constants, CoreError};
 
 pub use crate::multisig_tx_plans::{MultisigProposal, MultisigSubmission};
 
@@ -103,6 +119,9 @@ pub struct MultisigIntent {
     /// This wallet's own review of the calls, never a co-signer's text.
     pub summary: String,
     pub transaction_hash: String,
+    /// The multisig the frozen transaction is from (`prepared.senderAddress`), canonical; the
+    /// card shows it as `address_label` and copies it as `address_text`.
+    pub sender: String,
     pub nonce: String,
     pub threshold: u32,
     pub signer_guids: Vec<String>,
@@ -125,6 +144,7 @@ pub(crate) fn intent_view(intent: &SigningIntent) -> MultisigIntent {
         stale_reason: intent.stale_reason,
         summary: intent.summary.clone(),
         transaction_hash: prepared.transaction_hash.clone(),
+        sender: prepared.sender_address.clone(),
         nonce: prepared.nonce.clone(),
         threshold: intent.config_snapshot.threshold,
         signer_guids: intent.config_snapshot.signer_guids.clone(),
@@ -138,6 +158,23 @@ pub(crate) fn intent_view(intent: &SigningIntent) -> MultisigIntent {
         broadcast_transaction_hash: intent.broadcast_transaction_hash.clone(),
         package: intent.package().to_json(),
     }
+}
+
+/// What the extension's intent card (`intentCard`) shows of an intent beyond the stored record,
+/// read at render time against the person's tokens and a fresh authority read
+/// (`WalletCore::multisig_intent_review`).
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct MultisigIntentReview {
+    /// `verifyCalls(..).calls`: each frozen call, in order, with its `decodeCall` summary and the
+    /// flags it raises.
+    pub calls: Vec<ReviewedCall>,
+    /// `verifyCalls(..).flags`: every call's flags, each line once, as the card's panel lists them.
+    pub risk_flags: Vec<RiskFlag>,
+    /// `configMatchesIntent`: the read is `Available` and the chain's threshold and signer GUIDs
+    /// are the intent's snapshot. When false the card's panel adds
+    /// `review.multisig.card.signersChanged` ("The on-chain signers no longer match this
+    /// transaction. Signing and submission are disabled.") after the flags, and offers neither.
+    pub has_fresh_authority: bool,
 }
 
 /// The wallet's review of a proposal's calls, before anything is read
@@ -286,5 +323,80 @@ impl<P> Bound<P> {
             driven.closed = true;
         }
         step
+    }
+}
+
+#[uniffi::export]
+impl WalletCore {
+    /// The intent card's review of the stored intent `intent_id` (`intentCard`): its calls and
+    /// flags under the person's trusted tracked `tokens` on the multisig's network (as the
+    /// extension's `verificationContext`, with no allowance log and no watched collections), and
+    /// whether `read`, a fresh authority read of the multisig driven to its end, still holds the
+    /// intent's snapshot. A signer change the stored configuration still reviews pins the
+    /// multisig itself (`knownContracts`), as the extension's card does. Refuses a read of another
+    /// account; reads nothing and writes nothing.
+    pub fn multisig_intent_review(
+        &self,
+        intent_id: String,
+        tokens: Arc<TokenPreferences>,
+        read: Arc<MultisigAuthorityRead>,
+    ) -> Result<MultisigIntentReview, CoreError> {
+        self.require_unlocked()?;
+        let intent = self.stored_intent(&intent_id)?;
+        let record = self.multisig_record(&intent.account_id)?;
+        let invalid = |reason: &str| CoreError::InvalidInput {
+            reason: reason.into(),
+        };
+        let network = NetworkId::from_catalog_id(&record.network_id)
+            .ok_or_else(|| invalid("Argent multisig not found"))?;
+        if !same_felt(&read.address(), &record.address) || read.network() != network {
+            return Err(invalid(ImportError::ReadForAnotherAccount.message()));
+        }
+        let (sender, calls) = felt::parse(&record.address)
+            .zip(as_calls(&intent.prepared.calls))
+            .ok_or_else(|| invalid("invalid Argent multisig intent"))?;
+        let class = multisig_constants::argent_multisig_class();
+        // `configReviewFor`: the stored configuration matches the snapshot and the lone call is
+        // a change of it. The stored configuration is `held_config`'s, as a proposal's review
+        // reads it: a record mobile deployed keeps only its `deployment`.
+        let config_change = match intent.prepared.calls.as_slice() {
+            [call] => held_config(&record, &intent.config_snapshot, class).is_some_and(|current| {
+                review_config_change(&record.address, &current, call, class).is_ok()
+            }),
+            _ => false,
+        };
+        let trusted = trusted_tokens(&tokens, network);
+        let infos = token_infos(&trusted);
+        let token_contracts: Vec<Felt> = known_token_addresses(network)
+            .into_iter()
+            .chain(trusted.iter().filter_map(|t| felt::parse(&t.address)))
+            .collect();
+        let pinned = [sender];
+        let context = ReviewContext {
+            known: Known {
+                tokens: &infos,
+                nft_contracts: &[],
+            },
+            trusted: &[],
+            known_contracts: if config_change { &pinned } else { &[] },
+            token_contracts: &token_contracts,
+            standing: &[],
+        };
+        let reviewed = verify_calls(network, &sender, &calls, &context);
+        let has_fresh_authority = read.authority().is_some_and(|(threshold, guids)| {
+            ConfigSnapshot::new(class, threshold, &guids) == intent.config_snapshot
+        });
+        Ok(MultisigIntentReview {
+            calls: calls
+                .iter()
+                .zip(&reviewed)
+                .map(|(call, reviewed)| ReviewedCall::new(call, reviewed))
+                .collect(),
+            risk_flags: batch_flags(&reviewed)
+                .into_iter()
+                .map(RiskFlag::from)
+                .collect(),
+            has_fresh_authority,
+        })
     }
 }

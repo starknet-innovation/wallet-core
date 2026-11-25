@@ -113,6 +113,16 @@ vault raised to 14 on unlock, #116; the extension reads 14 since v0.10.11, relea
 and P14's export (`TransferPlan::gasless_offers`, `GaslessFee`, the sponsored and gasless rows,
 #117). It only adds to the bindings: `ActivityEntry`'s `feePayer`, `relay` and `userFee` default
 to nil. One behaviour change: the first unlock of a v13 vault rewrites it at 14.
+`v0.9.0` carries #122–#148: P8's core and exports (device signing for sends and deploys, Ledger
+records, a vault with no phrase and Ledger-only wallets, the key picker, a Ledger deployer for an
+Argent multisig: #123, #124, #126, #132, #135, #138, and the review fixes in #148), P16's request
+reading, origin grants, approval queue and the connect slice exported as `DappSession` (#122,
+#128–#130, #134, #136, #139, #140), a stake's pool named by a second source (#131), and an unlock
+that never installs a stale vault over newer state (#125). Mobile adopts, with the bump:
+`sign_hash_for_account` is gone from the FFI (#127; Bramble #1045 drops the bridge tests' calls),
+and `SendStep::Device` and `DeviceRetry` join each app's exhaustive switch before any Ledger screen
+exists. `LedgerKey` carries its scheme and `ledger_account_candidates` takes none (#148); nothing
+in the apps calls either yet.
 
 ### Next PRs
 
@@ -1035,7 +1045,9 @@ Features, smallest and least dependent first:
       and grant gates, the connect decision, and the results' shapes for them. The connect-only
       export (#140): `bramble-core`'s `DappSession` (`request`, `pending_approvals`,
       `approve_connect`, `deny_connect`, `settle_expired`), with grants written to the vault,
-      the origin checked against `isWalletOrigin`, and `ffi_surface.rs` pinning its exports. A
+      the origin checked against `isWalletOrigin`, and `ffi_surface.rs` pinning its exports
+      (#140; follow-ups: a dropped card answers 113 as the extension's does, and the network is
+      the active account's, the browser's shown network serving only a locked chain-id read). A
       connect card survives a lock, as the extension's does, since a site asking while locked
       is approved after unlock; the spike's "a lock rejects every pending approval" applies
       from the first card that holds session-bound review (invoke, typed data).

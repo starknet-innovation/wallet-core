@@ -198,13 +198,7 @@ impl TransferPlan {
             .signed_calls()
             .iter()
             .zip(invoke.calls())
-            .map(|(call, reviewed)| ReviewedCall {
-                contract_address: felt::canonical(&call.contract_address),
-                entrypoint: call.entrypoint.clone(),
-                kind: reviewed.kind,
-                summary: reviewed.summary.clone(),
-                flags: reviewed.flags.iter().map(RiskFlag::from).collect(),
-            })
+            .map(|(call, reviewed)| ReviewedCall::new(call, reviewed))
             .collect()
     }
 
