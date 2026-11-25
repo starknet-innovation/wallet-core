@@ -183,6 +183,8 @@ impl Wallet {
     ) -> Result<StakingPlan, StakingError> {
         let prepared = self.prepare(action, amount)?;
         run(chain, || prepared.next_calls(), |r| prepared.accept(r));
+        let check = || prepared.check_next_calls();
+        run(chain, check, |r| prepared.check_accept(r));
         prepared.plan(NOW_S, Some(BALANCE.into()))
     }
 

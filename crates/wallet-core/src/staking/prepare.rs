@@ -3,8 +3,10 @@
 //!
 //! Prepare: the staker is the person's pick (from the directory or pasted) and only a candidate;
 //! the token is a tracked token the staking contract accepts; the pool is verified on chain at
-//! one pinned block (`read`). The calls are built from those facts alone, reviewed as every
-//! batch is (`send::invoke::Invoke::reviewed`, which refuses a poisoned payee) with the verified
+//! one pinned block (`read`). A stake approves funds to that pool, so it also needs a second
+//! reading of the same pair from another source (`PrepareContext::check`) naming the same pool:
+//! one node alone could list its own contract and answer for it. The calls are built from those
+//! facts alone, reviewed as every batch is (`send::invoke::Invoke::reviewed`, which refuses a poisoned payee) with the verified
 //! pool the one pinned contract (`assetsFor`'s `knownContracts: [pool]`), and frozen with the
 //! sentence the person confirms. The invoke names its own activity row
 //! (`recordStakingSubmission`'s summary, amount and token) and carries the stake's exact-amount
@@ -118,6 +120,10 @@ pub struct PrepareContext<'a> {
     /// `known_contracts` are not read: `prepare` pins the verified pool alone, as the extension
     /// does, so a contract pinned for another flow is not vouched for here.
     pub review: &'a ReviewContext<'a>,
+    /// For a stake, a second finished `PrepareInput::read` of the same pair from an independent
+    /// source (the network's bundled endpoints, never the person's RPC override). It must verify
+    /// the same pool, or the stake is refused. Not read for any other action.
+    pub check: Option<&'a StakingReading>,
 }
 
 /// `StakingPreparation`: a reviewed action, frozen until one confirm. `invoke` is bound to the
@@ -149,23 +155,20 @@ pub fn prepare(
         .network(account.network)
         .and_then(|staking| felt::parse_non_zero(staking.staking_contract))
         .ok_or(StakingRefusal::Unavailable)?;
-    let reading = reading
-        .filter(|r| r.is_for(&account.address, account.network))
-        .filter(|r| r.staking_contract == contract)
-        .ok_or(StakingRefusal::Unreadable)?;
-    if reading.facts.is_none() {
-        return Err(StakingRefusal::TokenNotStakeable);
-    }
-    let pool = reading
-        .pools
-        .iter()
-        .find(|pool| pool.pair == pair)
-        .ok_or(StakingRefusal::Unreadable)?;
-    let (verified, member) = match &pool.outcome {
+    let (reading, outcome) = pool_outcome(reading, account, &contract, &pair)?;
+    let (verified, member) = match outcome {
         PoolOutcome::Verified { pool, member } => (pool, member.as_ref()),
         PoolOutcome::Refused(refusal) => return Err(*refusal),
         PoolOutcome::Inactive => return Err(StakingRefusal::TokenNotStakeable),
     };
+    if input.action == StakingAction::Stake {
+        // Missing or unfinished is worth a retry; any other answer disagrees with the first.
+        match pool_outcome(context.check, account, &contract, &pair) {
+            Ok((_, PoolOutcome::Verified { pool, .. })) if pool.pool == verified.pool => {}
+            Err(StakingRefusal::Unreadable) => return Err(StakingRefusal::Unreadable),
+            _ => return Err(StakingRefusal::Unverified),
+        }
+    }
     let token = context.token;
     let calls = build_staking_calls(&BuildInput {
         account: account.address,
@@ -221,6 +224,28 @@ pub fn prepare(
         ),
         invoke,
     })
+}
+
+/// `pair`'s outcome in `reading`, which must have been made for `account` against `contract`.
+fn pool_outcome<'r>(
+    reading: Option<&'r StakingReading>,
+    account: &Account,
+    contract: &Felt,
+    pair: &StakingPair,
+) -> Result<(&'r StakingReading, &'r PoolOutcome), StakingRefusal> {
+    let reading = reading
+        .filter(|r| r.is_for(&account.address, account.network))
+        .filter(|r| r.staking_contract == *contract)
+        .ok_or(StakingRefusal::Unreadable)?;
+    if reading.facts.is_none() {
+        return Err(StakingRefusal::TokenNotStakeable);
+    }
+    let pool = reading
+        .pools
+        .iter()
+        .find(|pool| pool.pair == *pair)
+        .ok_or(StakingRefusal::Unreadable)?;
+    Ok((reading, &pool.outcome))
 }
 
 /// `createStakingPreparationStore`: the one-time preparations, at most the policy's

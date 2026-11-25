@@ -7,6 +7,11 @@
 //! exact-amount STRK approval filed in the allowance log before its activity row
 //! (`TransferPlan::record_pending`).
 //!
+//! A stake approves funds to the pool, so one node must not choose it: a stake also runs a check
+//! read (`check_next_calls`), which the host sends only to the network's bundled endpoints
+//! (`supported_networks`), never the person's RPC override. `plan` refuses the stake unless both
+//! reads verify the same pool. Other actions move nothing to the pool and need no check.
+//!
 //! The preparation is single use, as the extension's `stakingPreparations.claim` is: the first
 //! `plan` that succeeds spends it, so a double tap or a host retry cannot get a second plan to
 //! sign, and every later call is "Review this staking action again." A refused `plan` (an
@@ -47,7 +52,8 @@ pub struct StakingPlan {
 }
 
 /// One staking action, bound to the account, network and session it was prepared in. Ask
-/// `next_calls` until it is empty (the pinned pool read), then `plan`.
+/// `next_calls` until it is empty (the pinned pool read), and the same for `check_next_calls`,
+/// then `plan`.
 #[derive(uniffi::Object)]
 pub struct StakingPreparation {
     core: Weak<WalletCore>,
@@ -58,14 +64,20 @@ pub struct StakingPreparation {
     /// The trusted tokens the review reads and a write evicts by.
     trusted: Vec<TokenConfig>,
     read: Mutex<StakingRead>,
+    /// A stake's second read of the same pool, from the bundled endpoints only.
+    check: Option<Mutex<StakingRead>>,
     /// Set by the first `plan` that succeeds; held across `plan` so two calls cannot both pass.
     spent: Mutex<bool>,
 }
 
 impl StakingPreparation {
     fn read(&self) -> MutexGuard<'_, StakingRead> {
-        self.read.lock().unwrap_or_else(PoisonError::into_inner)
+        lock(&self.read)
     }
+}
+
+fn lock(read: &Mutex<StakingRead>) -> MutexGuard<'_, StakingRead> {
+    read.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 #[uniffi::export]
@@ -86,13 +98,38 @@ impl StakingPreparation {
         self.read().restart();
     }
 
+    /// A stake's check read, to send now to one of the network's bundled endpoints
+    /// (`supported_networks`), never the RPC override; empty while waiting, when done, or for any
+    /// other action.
+    pub fn check_next_calls(&self) -> Vec<RpcRequest> {
+        self.check
+            .as_ref()
+            .map_or_else(Vec::new, |check| lock(check).next_calls())
+    }
+
+    /// Judges one reply to the check read. `Transport`: `check_restart` on the next bundled
+    /// endpoint.
+    pub fn check_accept(&self, reply: RpcReply) -> ScanStep {
+        self.check
+            .as_ref()
+            .map_or(ScanStep::Continue, |check| lock(check).accept(reply))
+    }
+
+    /// Discards the check read so it replays on another bundled endpoint.
+    pub fn check_restart(&self) {
+        if let Some(check) = &self.check {
+            lock(check).restart();
+        }
+    }
+
     /// The action's plan at Unix second `now_seconds`: its calls built from the finished read
     /// and reviewed as the extension's `verifyCalls` reviews them, with fee affordability over
     /// `fee_balance` (STRK base units the host last read; `None` is `Unknown`). Refused with the
     /// extension's sentence when the read is unfinished or failed, the pool unverified, or the
-    /// action not allowed in the account's position; such a refusal spends nothing. Once a plan
-    /// is returned, every later call is refused with "Review this staking action again." A lock
-    /// since `prepare_staking` voids it.
+    /// action not allowed in the account's position, or (a stake) the check read unfinished or
+    /// naming another pool; such a refusal spends nothing. Once a plan is returned, every later
+    /// call is refused with "Review this staking action again." A lock since `prepare_staking`
+    /// voids it.
     pub fn plan(
         &self,
         now_seconds: u64,
@@ -105,6 +142,7 @@ impl StakingPreparation {
         let core = self.core.upgrade().ok_or(StakingError::Locked)?;
         let network = self.acting.network;
         let reading = self.read().finish();
+        let check = self.check.as_ref().and_then(|check| lock(check).finish());
         let infos = token_infos(&self.trusted);
         let trusted = core.trusted_recipients(network)?;
         let token_contracts: Vec<_> = known_token_addresses(network)
@@ -132,6 +170,7 @@ impl StakingPreparation {
                 now: now_seconds,
                 policy: &SEND_POLICY,
                 review: &review,
+                check: check.as_ref(),
             },
         )?;
         let mut invoke = prepared.invoke;
@@ -176,11 +215,22 @@ impl WalletCore {
             .into_iter()
             .find(|token| token.id == token_id)
             .ok_or(StakingRefusal::OptionUnavailable)?;
-        let read = input.read(staking, rewards_token(network)?, &acting.account, &token)?;
+        let rewards = rewards_token(network)?;
+        let read = input.read(staking, rewards, &acting.account, &token)?;
+        let check = match action {
+            StakingAction::Stake => Some(Mutex::new(input.read(
+                staking,
+                rewards,
+                &acting.account,
+                &token,
+            )?)),
+            _ => None,
+        };
         Ok(Arc::new(StakingPreparation {
             core: Arc::downgrade(&self),
             dir: self.data_dir.clone(),
             read: Mutex::new(read),
+            check,
             spent: Mutex::new(false),
             trusted: trusted_tokens(&tokens, network),
             acting,

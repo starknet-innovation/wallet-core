@@ -92,6 +92,8 @@ fn each_action_is_prepared_as_the_extension_does() {
             now: now(&case),
             policy: &SEND_POLICY,
             review: &review,
+            // The extension reads one node; its fixtures have no second source to disagree.
+            check: reading.as_ref(),
         };
         let preparation = match prepare(&input, reading.as_ref(), &context) {
             Err(refusal) => {
