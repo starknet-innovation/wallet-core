@@ -5,7 +5,7 @@
 //! also checks the asking origin against the vault's origin grammar before reading anything.
 
 use starknet_wallet_core::dapp::{
-    read_request, InvokeLimits, JsonBudget, Request, RequestPolicy, WalletRpcError,
+    read_request, InvokeLimits, JsonBudget, QueueLimits, Request, RequestPolicy, WalletRpcError,
 };
 
 /// `JSON_BUDGETS.provider`.
@@ -65,6 +65,15 @@ pub const DAPP_POLICY: RequestPolicy = RequestPolicy {
 /// chain it asks to add, so an attacker's RPC cannot be added as "Starknet Mainnet". Devnet is
 /// not in mobile's catalog but keeps its name reserved, as in the extension.
 const RESERVED_NETWORK_NAMES: &[&str] = &["Starknet Mainnet", "Starknet Sepolia", "Local Devnet"];
+
+/// The extension's approval queue limits (`approval-limits.ts`, `signature-waiters.ts`): five
+/// pending per site and fifty in all, five minutes each, eight requests waiting on one.
+pub const DAPP_QUEUE_LIMITS: QueueLimits = QueueLimits {
+    max_pending: 50,
+    max_per_origin: 5,
+    ttl_ms: 5 * 60 * 1_000,
+    max_waiters: 8,
+};
 
 /// `SUPPORTED_SPECS`: the Starknet JSON-RPC versions `wallet_supportedSpecs` reports.
 pub const SUPPORTED_SPECS: &[&str] = &["0.10.0"];
