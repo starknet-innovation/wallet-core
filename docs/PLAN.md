@@ -113,23 +113,25 @@ vault raised to 14 on unlock, #116; the extension reads 14 since v0.10.11, relea
 and P14's export (`TransferPlan::gasless_offers`, `GaslessFee`, the sponsored and gasless rows,
 #117). It only adds to the bindings: `ActivityEntry`'s `feePayer`, `relay` and `userFee` default
 to nil. One behaviour change: the first unlock of a v13 vault rewrites it at 14.
-`v0.9.0` carries #122–#153: P8's core and exports (device signing for sends and deploys, Ledger
+`v0.9.0` carries #122–#154: P8's core and exports (device signing for sends and deploys, Ledger
 records, a vault with no phrase and Ledger-only wallets, the key picker, a Ledger deployer for an
 Argent multisig: #123, #124, #126, #132, #135, #138, and the review fixes in #148), P16's request
 reading, origin grants, approval queue, the connect slice exported as `DappSession` and its
 follow-ups (#122, #128–#130, #134, #136, #139, #140, #144), the blocklist, phishing feed and site
-warnings, not yet exported (#141), the multisig intent card's review for co-signing
-(`WalletCore::multisig_intent_review`, `MultisigIntent.sender`, #146), the revoke refusal text,
-`AllowanceView.unlimited` and `allowance_entries_per_scope()` (#143), no explorer link on a relay
-row before it has a transaction (#145), a stake's pool named by a second source (#131), and an
-unlock that never installs a stale vault over newer state (#125). Mobile adopts, with the bump:
+warnings, checked by `DappSession` with the feed's refresh exported (#141, #152), the multisig
+intent card's review for co-signing (`WalletCore::multisig_intent_review`, `MultisigIntent.sender`,
+#146), the revoke refusal text, `AllowanceView.unlimited` and `allowance_entries_per_scope()`
+(#143), no explorer link on a relay row before it has a transaction (#145), a lookalike spender
+refused as a payee is (#147), a stake's pool named by a second source (#131), and an unlock that
+never installs a stale vault over newer state (#125). Mobile adopts, with the bump:
 `sign_hash_for_account` is gone from the FFI (#127; Bramble #1045 drops the bridge tests' calls),
 and `SendStep::Device` and `DeviceRetry` join each app's exhaustive switch before any Ledger screen
 exists. `LedgerKey` carries its scheme and `ledger_account_candidates` takes none (#148), and
-`DappSession::approve_connect` no longer takes a network (#144); nothing in the apps calls any of
-them yet. `AllowanceView`'s initialiser gains `unlimited`, and the apps' hand-copied revoke
-sentences, unlimited floor and retention cap give way to the core's (#143). `DappSession` does not
-consult the blocklist yet (it passes `blocked = false`), so no app ships the browser on `v0.9.0`.
+`DappSession::approve_connect` no longer takes a network (#144), and `pending_approvals`,
+`approve_connect` and `deny_connect` take `now_ms` (#152); nothing in the apps calls any of them
+yet. `AllowanceView`'s initialiser gains `unlimited`, and the apps' hand-copied revoke sentences,
+unlimited floor and retention cap give way to the core's (#143). A browser on `v0.9.0` must call
+`refresh_phishing_feed` at start and on a timer; until then only the bundled list blocks.
 
 ### Next PRs
 
@@ -1081,7 +1083,7 @@ Features, smallest and least dependent first:
       (`PhishingFeed`, a request and judge with a one-file cache over `host::Storage`) and
       `dapp::origin_history`; Bramble's lists and feed are `SITE_LISTS` and `PHISHING_FEED` in
       `bramble-core`'s `dapp.rs`.
-    - Open (#152): `DappSession` checking them: a blocked site learns nothing and its card
+    - Merged (#152): `DappSession` checking them: a blocked site learns nothing and its card
       cannot be approved, the host refreshes the feed (`refresh_phishing_feed`,
       `answer_phishing_feed`), each card carries `blocked` and its warnings, and a decided card
       records the site's first sighting (deleted with the wallet).
