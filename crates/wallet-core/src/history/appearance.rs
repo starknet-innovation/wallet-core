@@ -260,11 +260,13 @@ fn row(
         hash: entry.hash.clone(),
         hash_label: address_label(&entry.hash),
         hash_copy_label: HASH_COPY_LABEL.into(),
-        explorer_url: explorer_transaction_url(
-            catalogs.networks,
-            entry.network,
-            entry.hash.clone(),
-        ),
+        // A row signed for the relay holds its message's hash, not a transaction's: no explorer
+        // page until the relay answers with one (`relay-rows.ts`).
+        explorer_url: entry
+            .relay
+            .is_none()
+            .then(|| explorer_transaction_url(catalogs.networks, entry.network, entry.hash.clone()))
+            .flatten(),
         status_word: (entry.status != TxStatus::Accepted).then(|| capitalise(label)),
         avatar,
         timing,
