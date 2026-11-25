@@ -181,7 +181,9 @@ impl WalletCore {
 #[uniffi::export]
 impl WalletCore {
     /// Whether an imported wallet still waits for discovery. The host routes to "Find your
-    /// accounts" while this is true; there is no way into the wallet with zero accounts.
+    /// accounts" while this is true. A wallet with no phrase never waits; if it holds no account
+    /// mobile operates (every one kept), the host offers `add_ledger_account` or
+    /// `import_private_key` instead.
     pub fn recovery_pending(&self) -> Result<bool, CoreError> {
         self.with_session(false, |session| Ok(session.payload.recovery_pending()))
     }

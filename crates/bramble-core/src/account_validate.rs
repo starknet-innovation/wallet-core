@@ -69,7 +69,10 @@ fn is_consistent(payload: &VaultPayload) -> bool {
         .iter()
         .filter(|record| held(record))
         .count();
-    kms::validate_mnemonic(&payload.mnemonic)
+    payload
+        .mnemonic
+        .as_deref()
+        .is_none_or(kms::validate_mnemonic)
         && holders == payload.held_keys.len()
         && payload.accounts.iter().all(|record| match record.key {
             KeySource::Imported => held(record),

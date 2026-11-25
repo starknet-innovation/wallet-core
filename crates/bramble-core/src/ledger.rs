@@ -63,9 +63,11 @@ pub fn ledger_account_path(application: &str, account_index: u64) -> Option<Ledg
 /// A Ledger record's path scheme (`LedgerEip2645Application`): Bramble's own (`LedgerW`) or
 /// Ready's (`argentx`). A record's path is always its scheme's path at its index.
 #[cfg(feature = "mobile")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LedgerScheme {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum LedgerScheme {
+    /// Bramble's own accounts (`LedgerW`).
     Bramble,
+    /// Accounts Ready (Argent X) created (`argentx`).
     Ready,
 }
 

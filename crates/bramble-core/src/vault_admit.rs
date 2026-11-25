@@ -61,9 +61,10 @@ fn held(record: &StoredAccount, sealed: &SigningKey) -> Result<Option<Box<Secret
     Ok(placed_by(record, &public_key).then(|| Box::new(key)))
 }
 
-/// Decides one record: `keys` is the vault's `signingKeys`, `public_key_y` the record's own.
+/// Decides one record: `mnemonic` is the vault's phrase (`None` in a Ledger-only vault), `keys`
+/// its `signingKeys`, `public_key_y` the record's own.
 pub(crate) fn admit(
-    mnemonic: &str,
+    mnemonic: Option<&str>,
     record: &StoredAccount,
     keys: &[SigningKey],
     public_key_y: Option<&String>,
@@ -92,6 +93,10 @@ pub(crate) fn admit(
             return Ok(held(record, sealed)?.map_or(Admission::Kept, Admission::Held));
         }
         KeySource::Ledger(_) => return Ok(Admission::Kept),
+    };
+    // A phrase record in a vault with no phrase derives from nothing here.
+    let Some(mnemonic) = mnemonic else {
+        return Ok(Admission::Kept);
     };
     let (pair, derived_y) =
         wallet_core::account_keypair(mnemonic, None, ladder, record.account_index)?;

@@ -254,17 +254,16 @@ impl WalletCore {
         &self,
         f: impl FnOnce(&str) -> Result<T, CoreError>,
     ) -> Result<T, CoreError> {
-        self.with_session(false, |session| f(&session.payload.mnemonic))
+        self.with_session(false, |session| f(session.payload.phrase()?))
     }
 
-    fn create_vault(
+    /// Seals `payload` as a new wallet under `password` and unlocks it.
+    pub(crate) fn create_vault(
         &self,
         password: &str,
-        mnemonic: Zeroizing<String>,
-        first_account: Option<NetworkId>,
+        payload: VaultPayload,
     ) -> Result<(), CoreError> {
         let epoch = self.lock_epoch.load(Ordering::SeqCst);
-        let payload = VaultPayload::new(mnemonic.to_string(), first_account)?;
         account_store::check_consistent(&payload)?;
         let sealed = vault_v13::encode(&payload)?;
         // The shared core's `SealingKey::create` takes any passphrase, so the rule is held here,
@@ -341,7 +340,10 @@ impl WalletCore {
         vault::check_password(&password)?;
         let mnemonic = kms::generate_mnemonic(word_count)?;
         let words = mnemonic.split(' ').map(str::to_string).collect();
-        self.create_vault(&password, mnemonic, Some(network))?;
+        self.create_vault(
+            &password,
+            VaultPayload::new(mnemonic.to_string(), Some(network))?,
+        )?;
         Ok(RecoveryPhrase { words })
     }
 
@@ -367,7 +369,7 @@ impl WalletCore {
                 reason: "invalid recovery phrase".into(),
             });
         }
-        self.create_vault(&password, mnemonic, None)
+        self.create_vault(&password, VaultPayload::new(mnemonic.to_string(), None)?)
     }
 
     /// Decrypts the vault into memory: throttled and counted. A vault an earlier test build wrote
@@ -432,7 +434,7 @@ impl WalletCore {
         let words = self.passphrase_attempt(&password, |opened| {
             Ok(opened
                 .payload
-                .mnemonic
+                .phrase()?
                 .split(' ')
                 .map(str::to_string)
                 .collect())

@@ -146,7 +146,8 @@ pub(crate) struct VaultPayload {
     pub kept: Kept,
     #[zeroize(skip)]
     pub labels: BTreeMap<String, String>,
-    pub mnemonic: String,
+    /// `None` for a wallet with no phrase (Ledger-only); read through `phrase`.
+    pub mnemonic: Option<String>,
     /// Each network's custom RPC endpoint, keyed by catalog id (the extension's `rpcOverrides`, a
     /// preference). May carry an API key: never logged or put in an error.
     #[zeroize(skip)]
@@ -181,7 +182,7 @@ impl VaultPayload {
         mnemonic: String,
         first_account: Option<NetworkId>,
     ) -> Result<Self, CoreError> {
-        let mut payload = Self::opened(mnemonic, Vec::new(), None);
+        let mut payload = Self::opened(Some(mnemonic), Vec::new(), None);
         payload.backup_pending = first_account.is_some();
         if let Some(network) = first_account {
             let record = payload.derive(
@@ -199,7 +200,7 @@ impl VaultPayload {
 
     /// A vault's records as read, before validation, with no preferences yet.
     pub(crate) fn opened(
-        mnemonic: String,
+        mnemonic: Option<String>,
         accounts: Vec<StoredAccount>,
         active_account_id: Option<String>,
     ) -> Self {
@@ -220,14 +221,8 @@ impl VaultPayload {
         }
     }
 
-    /// An imported wallet waits for discovery until it holds an account (restore never writes
-    /// none).
-    pub(crate) fn recovery_pending(&self) -> bool {
-        self.accounts.is_empty()
-    }
-
     pub(crate) fn public_key(&self, path: Ladder, index: u32) -> Result<Felt, CoreError> {
-        kms::public_key(&self.mnemonic, None, path, index)
+        kms::public_key(self.phrase()?, None, path, index)
     }
 
     /// `record`'s key, for the caller to use and drop: a copy of the key the session holds for it
@@ -243,7 +238,7 @@ impl VaultPayload {
         }
         match record.key {
             KeySource::Phrase(ladder) => Ok(wallet_core::account_keypair(
-                &self.mnemonic,
+                self.phrase()?,
                 None,
                 ladder,
                 record.account_index,
