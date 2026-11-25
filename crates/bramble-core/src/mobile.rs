@@ -93,7 +93,8 @@ pub use account_names::{
     is_account_label,
 };
 pub use allowances::{
-    AllowanceList, AllowanceListing, AllowanceNotice, AllowanceSource, AllowanceView,
+    allowance_entries_per_scope, AllowanceList, AllowanceListing, AllowanceNotice, AllowanceSource,
+    AllowanceView,
 };
 pub use argent_multisig::{ArgentMultisigConfig, ArgentMultisigPrediction};
 pub use avatar::{AccountAvatar, AvatarPaint, AvatarPart, AvatarShape};
@@ -122,8 +123,9 @@ pub use ledger_reader::{
 pub use ledger_wallet::LedgerAccountRequest;
 pub use multisig_rpc::{MultisigAuthorityRead, MultisigAuthorityStatus, MultisigStateRead};
 pub use multisig_tx::{
-    ConfigChange, IntentState, MultisigCall, MultisigCallReview, MultisigIntent, MultisigProposal,
-    MultisigProposalRequest, MultisigSubmission, MultisigTxFailure, MultisigTxStep, StaleReason,
+    ConfigChange, IntentState, MultisigCall, MultisigCallReview, MultisigIntent,
+    MultisigIntentReview, MultisigProposal, MultisigProposalRequest, MultisigSubmission,
+    MultisigTxFailure, MultisigTxStep, StaleReason,
 };
 pub use networks::{NetworkInfo, TokenInfo};
 pub use nostr_relay::RelayStep;

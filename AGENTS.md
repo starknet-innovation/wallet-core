@@ -29,6 +29,9 @@ cargo test -p bramble-core <name>   # narrow loop while iterating
 - The toolchain is pinned in `rust-toolchain.toml` and repeated as `RUST_TOOLCHAIN` in each
   workflow; change them together (also checked).
 - `deny` needs network for the advisory DB. Offline, run the rest and say so.
+- A fresh worktree starts with an empty `target/`. To reuse the main checkout's build, set
+  `CARGO_TARGET_DIR=<main checkout>/target` for checks and pushes. Cargo locks the shared
+  directory, so two sessions building at once wait on each other.
 - `secrets` needs `gitleaks` (CI pins the version and sha256 in `ci.yml`). `.gitleaks.toml`
   exempts only the broad `generic-api-key` rule, only under `tests/fixtures/`; never widen it
   to `src/`, and never add a key there that is not derived from the published parity phrase.
@@ -134,7 +137,8 @@ Grep first; extend in place rather than adding a sibling.
   ordinary-call review both batches share is `multisig_review::summarise_calls`. A batch's
   annotation flags (`verifyCalls`) are `send::review_flags` (`RiskFlag`, `ReviewContext`), over
   `call_decode::decode_call`'s `CallKind`; the full review is `Invoke::reviewed`, the only
-  constructor; the plan's card reads its flags through `Plan::risk_flags()`, and a batch's
+  constructor, over `invoke::verify_calls` (the unrefused per-call review a stored multisig
+  intent's card reads too, `WalletCore::multisig_intent_review`) and `invoke::batch_flags`; the plan's card reads its flags through `Plan::risk_flags()`, and a batch's
   activity text is `Invoke::with_activity_summary` or `with_dapp_origin`. A batch's allowance
   changes and its row's amount and token (`ActivityAsset`) reach the host in the plan's pending
   record (`PendingKind::Invoke`). The approve spellings are `call_decode::{APPROVE,
