@@ -64,6 +64,10 @@ pub struct AccountRecord {
     /// warns, as the extension does. The vault still holds and signs with its key.
     #[uniffi(default = false)]
     pub pre_fix_ready_key: bool,
+    /// A Ledger account: its key never leaves the device, so every signature it makes is the
+    /// device's, and the phrase does not recover it. `account_index` is its index on the device.
+    #[uniffi(default = false)]
+    pub ledger: bool,
 }
 
 fn invalid(reason: &str) -> CoreError {
@@ -98,6 +102,7 @@ pub(crate) fn render(payload: &VaultPayload, record: &StoredAccount) -> AccountR
         hidden: payload.hidden_account_ids.contains(&record.id),
         imported: record.key == KeySource::Imported,
         pre_fix_ready_key: payload.is_pre_fix_ready(record),
+        ledger: matches!(record.key, KeySource::Ledger(_)),
     }
 }
 

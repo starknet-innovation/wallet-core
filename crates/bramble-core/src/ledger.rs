@@ -1,8 +1,11 @@
 //! Bramble's Ledger choices over `wallet-core`'s device protocol (`wallet_core::ledger`): the
 //! minimum Starknet app and device OS it accepts (`client.ts`), and the two path schemes it signs
-//! at (`ledger-path.ts`), which the vault also validates. Plain Rust; nothing is exported yet.
+//! at (`ledger-path.ts`), which the vault also validates, and the device a Ledger record signs
+//! on (`LedgerScheme::device`).
 
 use starknet_wallet_core::ledger::{DeviceModel, LedgerPath, PathComponent, Version};
+#[cfg(feature = "mobile")]
+use starknet_wallet_core::send::plan_device::DeviceKey;
 
 const fn version(major: u16, minor: u16, patch: u16) -> Version {
     Version {
@@ -53,6 +56,41 @@ pub fn ledger_account_path(application: &str, account_index: u64) -> Option<Ledg
         _ => return None,
     };
     LedgerPath::new(components)
+}
+
+/// A Ledger record's path scheme (`LedgerEip2645Application`): Bramble's own (`LedgerW`) or
+/// Ready's (`argentx`). A record's path is always its scheme's path at its index.
+#[cfg(feature = "mobile")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LedgerScheme {
+    Bramble,
+    Ready,
+}
+
+#[cfg(feature = "mobile")]
+impl LedgerScheme {
+    pub(crate) fn from_application(application: &str) -> Option<Self> {
+        match application {
+            "LedgerW" => Some(Self::Bramble),
+            "argentx" => Some(Self::Ready),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn application(self) -> &'static str {
+        match self {
+            Self::Bramble => "LedgerW",
+            Self::Ready => "argentx",
+        }
+    }
+
+    /// The device a record at `account_index` signs on, with Bramble's app minimum.
+    pub(crate) fn device(self, account_index: u32) -> Option<DeviceKey> {
+        Some(DeviceKey {
+            path: ledger_account_path(self.application(), account_index.into())?,
+            app_minimum: LEDGER_APP_MIN,
+        })
+    }
 }
 
 #[cfg(test)]

@@ -13,6 +13,7 @@ use wallet_core::accounts::constructor_calldata;
 use wallet_core::allowances::retention::Ranking;
 use wallet_core::send::calls;
 use wallet_core::send::plan::{Account, Authorization, Kind, Token, Transfer, TransferRefusal};
+use wallet_core::send::plan_device::DeviceKey;
 use wallet_core::send::sign::Deployment;
 use wallet_core::send::u256::U256;
 
@@ -97,6 +98,8 @@ pub(crate) struct PlanAccount {
     pub(crate) account_id: String,
     pub(crate) network: NetworkId,
     pub(crate) generation: u64,
+    /// The device a Ledger account signs on (`Plan::with_device`); `None` for any other.
+    pub(crate) device: Option<DeviceKey>,
 }
 
 fn plan_account(record: &StoredAccount) -> Result<Account, SendError> {
@@ -192,6 +195,7 @@ impl WalletCore {
                     account_id: record.id.clone(),
                     network: record.network(),
                     generation: self.lock_epoch.load(Ordering::SeqCst),
+                    device: record.device(),
                 })
             }))
         });
@@ -229,6 +233,7 @@ impl WalletCore {
             account_id: record.id,
             network,
             generation,
+            device: None,
         })
     }
 

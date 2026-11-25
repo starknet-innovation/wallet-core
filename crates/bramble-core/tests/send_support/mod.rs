@@ -45,6 +45,11 @@ pub fn wallet_with_clock() -> (tempfile::TempDir, Arc<FakeClock>, Arc<WalletCore
     (dir, clock, core)
 }
 
+/// A core over a fresh directory with no wallet yet, for a test that seals its own vault.
+pub fn empty_core() -> (tempfile::TempDir, Arc<FakeClock>, Arc<WalletCore>) {
+    common::core()
+}
+
 /// A wallet imported from the published phrase and still waiting for discovery.
 pub fn common_pending() -> (tempfile::TempDir, Arc<FakeClock>, Arc<WalletCore>) {
     common::pending()

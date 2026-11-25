@@ -171,19 +171,18 @@ fn a_projection_takes_its_sources_origin() {
 fn a_restore_records_no_origin() {
     let full = full();
     let kept = kept_ids(&full);
-    let mut only = at_14(&full, Some(json!({ kept.ledger.clone(): "imported" })));
+    let mut only = at_14(&full, Some(json!({ kept.devnet.clone(): "imported" })));
     for (collection, field) in [("accounts", "id"), ("signingKeys", "accountId")] {
         only[collection]
             .as_array_mut()
             .unwrap()
-            .retain(|entry| entry[field] == kept.ledger);
+            .retain(|entry| entry[field] == kept.devnet);
     }
-    only["activeAccountId"] = kept.ledger.clone().into();
-    only["originGrants"] = json!([{ "accountIds": [kept.ledger], "origin": support::ORIGIN }]);
-    only["shadowAccountScopes"]
-        .as_array_mut()
-        .unwrap()
-        .remove(0);
+    only["activeAccountId"] = kept.devnet.clone().into();
+    only["originGrants"] = json!([{ "accountIds": [kept.devnet], "origin": support::ORIGIN }]);
+    // The Ledger record's viewing keys and scope, and the main account's scope, go with them.
+    only["accountSecrets"] = json!([]);
+    only["shadowAccountScopes"] = json!([]);
     let (dir, core) = unlocked(&only);
     assert!(core.recovery_pending().unwrap());
     let restored = core
