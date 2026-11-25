@@ -32,8 +32,10 @@ use crate::portfolio::wire::{RpcReply, RpcRequest};
 use crate::wallet::WalletCore;
 
 /// Why a revoke was refused before a plan exists. Each is a fixed sentence (the extension's,
-/// where it has one); none carries an id, an address or an amount.
+/// where it has one); none carries an id, an address or an amount. The apps read it through
+/// `Display` (Swift `description`, Kotlin `toString()`), so they keep no copy of their own.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error, uniffi::Error)]
+#[uniffi::export(Display)]
 pub enum RevokeError {
     #[error("wallet is locked")]
     Locked,
