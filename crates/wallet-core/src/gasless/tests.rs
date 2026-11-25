@@ -32,6 +32,8 @@ pub(crate) const POLICY: GaslessPolicy = GaslessPolicy {
     screening_retries: 2,
     deadline_ms: 20_000,
     max_body_bytes: 1024 * 1024,
+    reference_currency: crate::portfolio::model::DisplayCurrency::Usd,
+    price_scale: 1_000_000,
 };
 
 pub(crate) fn felt_of(text: &str) -> Felt {

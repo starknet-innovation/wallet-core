@@ -239,8 +239,12 @@ fn outside_call_json(to: &Felt, selector: &Felt, calldata: &[Felt]) -> String {
 }
 
 /// `outsideExecution.getTypedData(chainId, {caller, execute_after, execute_before}, nonce,
-/// [...calls, fee], V2)`: the reviewed calls by name (`getSelectorFromName`, so always hashed)
-/// and the fee transfer, under the message's own nonce and bounds.
+/// [...calls, fee], V2)`: the reviewed calls and the fee transfer, under the message's own nonce
+/// and bounds. Each call's selector is `selector_of` its entrypoint, as the gateway's build
+/// encodes it, so a felt entrypoint is its own selector. starknet.js's builder runs every
+/// entrypoint through `getSelectorFromName`, hashing a felt's text as a name, so the extension
+/// refuses an honest body for such a call; Bramble #1039 sets the selector from the felt, as
+/// this does.
 fn rebuilt(
     message: &Message<'_>,
     network: NetworkId,
@@ -253,7 +257,7 @@ fn rebuilt(
         .map(|call| {
             outside_call_json(
                 &call.contract_address,
-                &kms::selector(&call.entrypoint),
+                &selector_of(&call.entrypoint),
                 &call.calldata,
             )
         })

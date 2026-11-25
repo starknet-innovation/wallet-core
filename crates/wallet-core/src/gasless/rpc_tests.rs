@@ -1,8 +1,8 @@
-//! `gasless-rpc.test.ts`. The repeats and the lock check between them are the host's; here each
-//! answer's judgement.
+//! `gasless-rpc.test.ts`: each answer's judgement, and the repeats `Exchange` asks for (the lock
+//! check between them is the host's).
 
 use super::*;
-use crate::gasless::tests::POLICY;
+use crate::gasless::tests::{MAINNET_URL, POLICY};
 use serde_json::json;
 
 fn outcome(status: u16, body: &serde_json::Value) -> HttpOutcome {
@@ -258,4 +258,44 @@ fn a_2xx_result_without_json_rpc_2_0_is_not_an_answer() {
             "{body}"
         );
     }
+}
+
+// `postGasless`'s loop: repeats only `screening_unavailable`, only while repeats remain, with the
+// pause growing by 250 ms; then the answer settles as `throwClassified` would throw it.
+#[test]
+fn an_exchange_repeats_screening_unavailable_only_up_to_the_policys_retries() {
+    let request = super::post(&POLICY, MAINNET_URL, "paymaster_isAvailable", "[]");
+    let unavailable = gateway(503, "screening_unavailable");
+    let none = GaslessPolicy {
+        screening_retries: 0,
+        ..POLICY
+    };
+    let mut exchange = Exchange::new(request.clone(), false);
+    assert_eq!(
+        exchange.judge(&unavailable, &none),
+        Exchanged::Settled(Err(GaslessError::Refused {
+            code: GaslessCode::ScreeningUnavailable,
+            retryable: true
+        }))
+    );
+    let mut exchange = Exchange::new(request.clone(), true);
+    assert_eq!(
+        exchange.judge(&unavailable, &POLICY),
+        Exchanged::Repeat { delay_ms: 250 }
+    );
+    assert_eq!(exchange.request(), &request);
+    // Any other answer settles at once, a lost execute included.
+    assert_eq!(
+        exchange.judge(&gateway(502, "gasless_disabled"), &POLICY),
+        Exchanged::Settled(Err(GaslessError::Lost))
+    );
+    let mut quote = Exchange::new(request, false);
+    let result = outcome(
+        200,
+        &serde_json::json!({"id": 1, "jsonrpc": "2.0", "result": true}),
+    );
+    assert_eq!(
+        quote.judge(&result, &POLICY),
+        Exchanged::Settled(Ok(JsValue::Bool(true)))
+    );
 }

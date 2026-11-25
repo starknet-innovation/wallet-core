@@ -277,7 +277,7 @@ impl Account {
 
     /// `serializeAccountSignature` for this account's family (a multisig's deployment:
     /// `serializeArgentMultisigDeploySignature`, the same one-signer array).
-    pub(crate) fn signature(&self, r: Felt, s: Felt) -> Vec<Felt> {
+    pub fn signature(&self, r: Felt, s: Felt) -> Vec<Felt> {
         if self.is_argent() || self.is_multisig() {
             // One signer, `Signer::Starknet` (variant 0), its public key, then `(r, s)`.
             vec![Felt::ONE, Felt::ZERO, self.public_key, r, s]

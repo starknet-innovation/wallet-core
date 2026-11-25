@@ -18,23 +18,30 @@
 //! list too ([`signs_gasless_v2`]).
 
 mod offer;
+mod reference;
 mod request;
+mod round;
 mod rpc;
 mod submit;
+mod submit_round;
 mod typed_data;
 
 pub use offer::{strk_affordability, token_spend, GaslessFeeOffer, GaslessHeldToken};
+pub use reference::{convert_strk_fee_to_token, fee_reference, scaled_price, MAX_TOKEN_DECIMALS};
 pub use request::{
-    read_available, read_supported_tokens, read_transaction_hash, GaslessAccount, GaslessKind,
-    GaslessSession, ListedToken,
+    read_available, read_quote, read_supported_tokens, read_transaction_hash, GaslessAccount,
+    GaslessKind, GaslessSession, ListedToken,
 };
-pub use rpc::{classify, GaslessAnswer};
+pub use round::{OfferRound, RoundStep};
+pub use rpc::{classify, Exchange, Exchanged, GaslessAnswer};
 pub use submit::{held_for, CheckedQuote, GaslessSubmission, PendingOffer, PendingSubmit, UserFee};
+pub use submit_round::{SubmitRound, SubmitStep};
 pub use typed_data::{
     validate_typed_data, Accepted, Refusal, TypedDataCheck, OUTSIDE_EXECUTION_DOMAIN,
 };
 
 use crate::accounts::AccountFamily;
+use crate::portfolio::model::DisplayCurrency;
 use crate::send::u256::U256;
 use crate::{Felt, NetworkId};
 
@@ -72,6 +79,11 @@ pub struct GaslessPolicy {
     pub deadline_ms: u64,
     /// The largest reply read (`PAYMASTER_MAX_RESPONSE_BYTES`).
     pub max_body_bytes: u64,
+    /// The currency both legs of the reference are priced in (`REFERENCE_CURRENCY`). It cancels,
+    /// so it is pinned rather than the person's display choice.
+    pub reference_currency: DisplayCurrency,
+    /// What a fiat price is multiplied by before it is rounded to an integer (`PRICE_SCALE`).
+    pub price_scale: u64,
 }
 
 impl GaslessPolicy {

@@ -87,6 +87,27 @@ pub fn is_expired(status: TxStatus, has_notice: bool, submitted_at_ms: u64, now_
         && now_ms.saturating_sub(submitted_at_ms) >= UNRESOLVED_WINDOW_MS
 }
 
+/// `monotonicTxStatus`: terminal failures stick, and progress never moves backwards.
+pub fn monotonic(current: TxStatus, observed: TxStatus) -> TxStatus {
+    let terminal = |s: TxStatus| matches!(s, TxStatus::Rejected | TxStatus::Reverted);
+    if terminal(current) {
+        return current;
+    }
+    if terminal(observed) {
+        return observed;
+    }
+    let progress = |s: TxStatus| match s {
+        TxStatus::Accepted => 2,
+        TxStatus::Preconfirmed => 1,
+        _ => 0,
+    };
+    if progress(observed) >= progress(current) {
+        observed
+    } else {
+        current
+    }
+}
+
 #[cfg(test)]
 #[path = "observation_tests.rs"]
 mod tests;

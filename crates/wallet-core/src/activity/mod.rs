@@ -8,6 +8,7 @@ pub mod csv;
 pub mod detail;
 pub mod feed;
 pub mod observation;
+pub mod relay;
 pub mod store;
 
 pub use store::ActivityLog;

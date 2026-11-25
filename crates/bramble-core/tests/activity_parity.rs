@@ -189,7 +189,7 @@ fn the_expanded_row_shows_the_extension_text() {
             continue;
         };
         let text = |key: &str| case.get(key).and_then(JsValue::as_str).map(str::to_string);
-        assert_eq!(fee_text(&entry), text("fee"), "{}", name(&case));
+        assert_eq!(fee_text(&entry, |_| None), text("fee"), "{}", name(&case));
         assert_eq!(
             submitted_value_text(&entry),
             text("value"),

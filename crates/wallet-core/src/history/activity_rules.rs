@@ -1,7 +1,7 @@
 //! The extension's per-field activity rules split from `activity.rs`: the token-address and
 //! direction grammars (`isRecordedTokenAddress`, `activityToken`), the fee and price shapes
-//! (`isTransactionFee`, `isSubmittedPrice`), and the planted-row cleanup of stored rows
-//! (`withoutPlantedRows`, audit #163).
+//! (`isTransactionFee`, `isSubmittedPrice`), who paid the fee (`feePayer`, `userFee`), and the
+//! planted-row cleanup of stored rows (`withoutPlantedRows`, audit #163).
 
 use serde_json::{json, Map, Value};
 
@@ -32,6 +32,82 @@ pub fn transaction_fee(value: &Value) -> Option<TransactionFee> {
             unit,
         },
     )
+}
+
+/// The fee the person signed in a token other than STRK (`ActivityEntry.userFee`): a gasless
+/// transaction's fee transfer, whose base units `amount` holds as decimal digits. The receipt's
+/// STRK is the relayer's, so such a row never takes a receipt fee.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UserFee {
+    pub amount: String,
+    pub token: String,
+    pub token_address: String,
+}
+
+/// Who paid a row's network fee when the account did not (`ActivityEntry.feePayer`): a sponsor,
+/// such as a sponsored deployment's relay. Such a row never takes a receipt fee either.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FeePayer {
+    Sponsor,
+}
+
+/// `isUserFee`: exactly `{amount, token, tokenAddress}`, `amount` 1 to 78 digits without a
+/// leading zero, `token` 1 to 32 of `[A-Za-z0-9.]`, `tokenAddress` a canonical non-zero felt.
+pub fn user_fee(value: &Value) -> Option<UserFee> {
+    let map = only_keys(value, &["amount", "token", "tokenAddress"])?;
+    let (amount, token) = (map.get("amount")?.as_str()?, map.get("token")?.as_str()?);
+    let address = map.get("tokenAddress")?.as_str()?;
+    let digits = amount.as_bytes();
+    let amount_ok = (1..=78).contains(&digits.len())
+        && digits[0] != b'0'
+        && digits.iter().all(u8::is_ascii_digit);
+    let token_ok = (1..=32).contains(&token.len())
+        && token
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'.');
+    let address_ok =
+        is_non_zero_felt(address) && canonical_felt(address).as_deref() == Some(address);
+    (amount_ok && token_ok && address_ok).then(|| UserFee {
+        amount: amount.into(),
+        token: token.into(),
+        token_address: address.into(),
+    })
+}
+
+/// A gasless execution signed and about to be posted to the relay (the extension's
+/// `RelaySignature`, `relay-record.ts`), kept on its row until the relay answers with a
+/// transaction hash. While it is set the row's `hash` is the signed message's hash, which no
+/// node knows, so the row is never observed as a transaction; past `execute_before` (Unix
+/// seconds) the execution can no longer run, though whether it did is not known here.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RelayExecution {
+    pub nonce: String,
+    pub execute_before: u64,
+}
+
+/// `isRelaySignature`'s share that a row carries: exactly `{executeBefore, nonce}`, a safe
+/// integer and a canonical felt.
+pub fn relay_execution(value: &Value) -> Option<RelayExecution> {
+    let map = only_keys(value, &["executeBefore", "nonce"])?;
+    let nonce = map.get("nonce")?.as_str()?;
+    let before = map
+        .get("executeBefore")?
+        .as_u64()
+        .filter(|b| *b < 1 << 53)?;
+    (is_stark_field_element(nonce) && canonical_felt(nonce).as_deref() == Some(nonce)).then(|| {
+        RelayExecution {
+            nonce: nonce.into(),
+            execute_before: before,
+        }
+    })
+}
+
+pub fn relay_json(relay: &RelayExecution) -> Value {
+    json!({"executeBefore": relay.execute_before, "nonce": relay.nonce})
+}
+
+pub fn user_fee_json(fee: &UserFee) -> Value {
+    json!({"amount": fee.amount, "token": fee.token, "tokenAddress": fee.token_address})
 }
 
 /// `isSubmittedPrice`: exactly `{currency, pricedAt, unitPrice}`, a display currency, a safe
@@ -152,6 +228,9 @@ mod tests {
             counterparty: Some("0x5".into()),
             direction: None,
             failure_notice: None,
+            fee_payer: None,
+            user_fee: None,
+            relay: None,
             fee_paid: None,
             origin: None,
             submitted_price: None,

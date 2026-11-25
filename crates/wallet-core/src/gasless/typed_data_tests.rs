@@ -305,18 +305,18 @@ fn rejects_an_execution_window_longer_than_ten_minutes() {
     assert!(check_with(&js(&standard()), cap).is_ok());
 }
 
-// The rebuild names every reviewed call by `getSelectorFromName`, so a call whose entrypoint is
-// spelled as its selector matches the body felt for felt but not the rebuilt hash.
+// A reviewed call whose entrypoint is spelled as its selector felt is the same call: the rebuild
+// takes the felt as the selector, so the honest body is accepted and signed as the gateway built
+// it. The extension refuses it (starknet.js hashes the felt's text as a name; Bramble #1039).
 #[test]
-fn refuses_when_the_rebuilt_execution_hashes_differently() {
+fn a_felt_entrypoint_is_its_own_selector_in_the_rebuild() {
     let spelled = Check {
         calls: vec![call(USDC, TRANSFER, &[RECIPIENT, "0x10", "0x0"])],
         ..Check::default()
     };
-    assert_eq!(
-        check_with(&js(&standard()), spelled).err(),
-        Some(Refusal::Calls)
-    );
+    let by_name = check_with(&js(&standard()), Check::default()).unwrap();
+    let by_felt = check_with(&js(&standard()), spelled).unwrap();
+    assert_eq!(by_felt.message_hash, by_name.message_hash);
 }
 
 #[test]

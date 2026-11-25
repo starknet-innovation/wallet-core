@@ -27,7 +27,8 @@ use super::observation;
 use crate::felt;
 use crate::history::activity::ActivityKind;
 use crate::history::activity_rules::{
-    is_recorded_token_address, parse_direction, submitted_price, transaction_fee,
+    is_recorded_token_address, parse_direction, relay_execution, submitted_price, transaction_fee,
+    user_fee,
 };
 use crate::host::Storage;
 use crate::js::num::utf16_len;
@@ -60,6 +61,9 @@ pub struct Entry {
     /// `feePaid`, as stored (`transaction_fee` judges it).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fee_paid: Option<serde_json::Value>,
+    /// `feePayer` (`"sponsor"` only), `relay` and `userFee` are judged as `isActivityEntry` does.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fee_payer: Option<String>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -74,6 +78,8 @@ pub struct Entry {
     /// `"wallet"` only on rows this wallet recorded for its own submission.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub origin: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub relay: Option<serde_json::Value>,
     pub status: String,
     pub submitted_at: u64,
     /// `submittedPrice`, as stored (`submitted_price` judges it).
@@ -84,6 +90,8 @@ pub struct Entry {
     pub token: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub token_address: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_fee: Option<serde_json::Value>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -150,26 +158,7 @@ pub fn parse_kind(text: &str) -> Option<ActivityKind> {
     }
 }
 
-/// `monotonicTxStatus`: terminal failures stick, and progress never moves backwards.
-pub fn monotonic(current: TxStatus, observed: TxStatus) -> TxStatus {
-    let terminal = |s: TxStatus| matches!(s, TxStatus::Rejected | TxStatus::Reverted);
-    if terminal(current) {
-        return current;
-    }
-    if terminal(observed) {
-        return observed;
-    }
-    let progress = |s: TxStatus| match s {
-        TxStatus::Accepted => 2,
-        TxStatus::Preconfirmed => 1,
-        _ => 0,
-    };
-    if progress(observed) >= progress(current) {
-        observed
-    } else {
-        current
-    }
-}
+pub use super::observation::monotonic;
 
 fn detail_ok(value: &Option<String>) -> bool {
     value
@@ -210,10 +199,14 @@ fn valid(entry: &Entry, scope: &str) -> bool {
             .fee_paid
             .as_ref()
             .is_none_or(|fee| transaction_fee(fee).is_some())
+        && [(&entry.fee_payer, "sponsor"), (&entry.origin, "wallet")]
+            .iter()
+            .all(|(field, only)| field.as_deref().is_none_or(|text| text == *only))
+        && entry.user_fee.iter().all(|fee| user_fee(fee).is_some())
         && entry
-            .origin
-            .as_deref()
-            .is_none_or(|origin| origin == "wallet")
+            .relay
+            .iter()
+            .all(|relay| relay_execution(relay).is_some())
         && entry
             .submitted_price
             .as_ref()
@@ -358,7 +351,7 @@ impl<'a> ActivityLog<'a> {
         for entry in scopes
             .get_mut(account_id)?
             .iter_mut()
-            .filter(|e| felt::parse(&e.hash).as_ref() == Some(hash))
+            .filter(|e| e.relay.is_none() && felt::parse(&e.hash).as_ref() == Some(hash))
         {
             let Some(status) = observe_entry(entry, observation) else {
                 continue;

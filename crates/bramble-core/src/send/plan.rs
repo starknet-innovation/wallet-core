@@ -12,10 +12,12 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 use wallet_core::activity::detail::submitted_price;
 use wallet_core::allowances::calls::record_changes;
 use wallet_core::allowances::retention::Ranking;
-use wallet_core::history::activity_rules::price_json;
+use wallet_core::history::activity::{RelayExecution, UserFee};
+use wallet_core::history::activity_rules::{price_json, relay_json, user_fee_json};
 use wallet_core::send::fees::TransactionFee;
 use wallet_core::send::judge::{Observation, TxStatus};
 use wallet_core::send::plan::{Kind, PendingKind, PendingRecord, Plan, PlanHost, SignRefusal};
+use wallet_core::send::plan_gasless::GaslessBasis;
 use wallet_core::{Felt, StarkSignature};
 
 use super::types::{
@@ -59,13 +61,13 @@ pub(crate) const SEND_POLICY: wallet_core::send::plan::Policy = wallet_core::sen
 /// One plan. Dropped on any edit, lock or dismissal; a new plan means a new review.
 #[derive(uniffi::Object)]
 pub struct TransferPlan {
-    core: Weak<WalletCore>,
+    pub(crate) core: Weak<WalletCore>,
     /// The vault record's id, `<networkId>:<address>` (the extension's account id). It scopes
     /// activity and is what every signature for this plan is requested by.
-    account_id: String,
-    network: NetworkId,
+    pub(crate) account_id: String,
+    pub(crate) network: NetworkId,
     /// The session generation (`lock_epoch`) the plan was prepared in.
-    generation: u64,
+    pub(crate) generation: u64,
     plan: Mutex<Plan>,
     /// Where a public send's price at submission comes from (`price_with`).
     prices: Mutex<Option<(Arc<PriceBook>, DisplayCurrency)>>,
@@ -111,6 +113,16 @@ impl TransferPlan {
             guard.close();
             guard
         })
+    }
+
+    /// The reviewed transfer the gasless path may take (`Plan::gasless_basis`).
+    pub(crate) fn gasless_basis(&self) -> Option<GaslessBasis> {
+        self.lock_plan().gasless_basis()
+    }
+
+    /// Hands the reviewed transfer to the gasless path, closing this plan (`Plan::take_for_gasless`).
+    pub(crate) fn take_for_gasless(&self) -> Option<GaslessBasis> {
+        self.lock_plan().take_for_gasless()
     }
 
     /// How many hashes this plan has signed; for tests that prove a refusal reached no signer.
@@ -199,6 +211,46 @@ impl TransferPlan {
 }
 
 impl TransferPlan {
+    /// Files `record`'s row (`recordSubmittedActivity`): this wallet's, pending, priced as a send
+    /// is. `user_fee` is a gasless send's signed fee (`userFee`), whose row takes no receipt fee;
+    /// `relay` marks it as filed before its execute was posted (`record.hash` is then the signed
+    /// message's). Whether the row is stored; a plan's own rows are best effort and ignore it.
+    pub(crate) fn record_row(
+        &self,
+        core: &WalletCore,
+        record: PendingRecord,
+        user_fee: Option<&UserFee>,
+        relay: Option<&RelayExecution>,
+    ) -> bool {
+        let (kind, amount, counterparty, token, token_address, outgoing) = row(record.kind);
+        let mut entry = Entry {
+            account_id: self.account_id.clone(),
+            amount,
+            counterparty,
+            direction: outgoing.then(|| direction_text(TransferDirection::Out).into()),
+            failure_notice: None,
+            relay: relay.map(relay_json),
+            fee_paid: None,
+            fee_payer: None,
+            finalized_on_l1: None,
+            hash: felt::canonical(&record.hash),
+            kind: kind_text(kind).into(),
+            network_id: self.network.catalog_id().into(),
+            not_found_count: None,
+            // The one writer of this marker (`recordSubmittedActivity`, audit #163).
+            origin: Some("wallet".into()),
+            status: "pending".into(),
+            submitted_at: record.submitted_at,
+            submitted_price: None,
+            summary: record.summary,
+            token,
+            token_address,
+            user_fee: user_fee.map(user_fee_json),
+        };
+        entry.submitted_price = self.price_at_submission(&entry).map(|p| price_json(&p));
+        with_log(&core.data_dir, |log| log.record(entry))
+    }
+
     // The cached-only read the extension's `capturePrice` makes, at the record's own time.
     fn price_at_submission(
         &self,
@@ -291,30 +343,7 @@ impl PlanHost for TransferPlan {
                 });
             }
         }
-        let (kind, amount, counterparty, token, token_address, outgoing) = row(record.kind);
-        let mut entry = Entry {
-            account_id: self.account_id.clone(),
-            amount,
-            counterparty,
-            direction: outgoing.then(|| direction_text(TransferDirection::Out).into()),
-            failure_notice: None,
-            fee_paid: None,
-            finalized_on_l1: None,
-            hash: felt::canonical(&record.hash),
-            kind: kind_text(kind).into(),
-            network_id: self.network.catalog_id().into(),
-            not_found_count: None,
-            // The one writer of this marker (`recordSubmittedActivity`, audit #163).
-            origin: Some("wallet".into()),
-            status: "pending".into(),
-            submitted_at: record.submitted_at,
-            submitted_price: None,
-            summary: record.summary,
-            token,
-            token_address,
-        };
-        entry.submitted_price = self.price_at_submission(&entry).map(|p| price_json(&p));
-        with_log(&core.data_dir, |log| log.record(entry));
+        self.record_row(&core, record, None, None);
     }
 
     fn wants_fee(&self, hash: &Felt) -> bool {

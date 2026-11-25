@@ -166,6 +166,60 @@ pub fn classify(outcome: &HttpOutcome, executes: bool, policy: &GaslessPolicy) -
         .unwrap_or_else(|| result_class(&body, executes))
 }
 
+/// One paymaster exchange and its screening repeats (`postGasless`): the request, whether it
+/// executes, and how many repeats it has had.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Exchange {
+    request: HttpRequest,
+    executes: bool,
+    repeats: u32,
+}
+
+/// What the host does after [`Exchange::judge`].
+#[derive(Debug, Clone, PartialEq)]
+pub enum Exchanged {
+    /// Wait `delay_ms`, then post [`Exchange::request`] again. Before an execute's repeat the
+    /// host checks the session is still unlocked; a lock refuses (`postGasless`'s
+    /// `isAuthorized`), and nothing more is posted.
+    Repeat { delay_ms: u64 },
+    /// The exchange is over: its result, or why it failed ([`GaslessAnswer::settle`]).
+    Settled(Result<JsValue, GaslessError>),
+}
+
+impl Exchange {
+    pub fn new(request: HttpRequest, executes: bool) -> Self {
+        Self {
+            request,
+            executes,
+            repeats: 0,
+        }
+    }
+
+    /// Whether this is an execute, whose failed answers are lost rather than refused.
+    pub fn executes(&self) -> bool {
+        self.executes
+    }
+
+    /// The request to post, the same on every repeat.
+    pub fn request(&self) -> &HttpRequest {
+        &self.request
+    }
+
+    /// Judges one answer ([`classify`]): `screening_unavailable` is repeated up to the policy's
+    /// `screening_retries`, the n-th after `250 * n` ms, and then settles as a retryable refusal.
+    pub fn judge(&mut self, outcome: &HttpOutcome, policy: &GaslessPolicy) -> Exchanged {
+        match classify(outcome, self.executes, policy) {
+            GaslessAnswer::Retry if self.repeats < policy.screening_retries => {
+                self.repeats += 1;
+                Exchanged::Repeat {
+                    delay_ms: 250 * u64::from(self.repeats),
+                }
+            }
+            answer => Exchanged::Settled(answer.settle()),
+        }
+    }
+}
+
 #[cfg(test)]
 #[path = "rpc_tests.rs"]
 mod tests;

@@ -15,7 +15,7 @@
 //!
 //! The `reference` both builds take is the network fee in the fee token's base units by the
 //! wallet's own price book: its STRK fee estimate converted at its own fiat prices for STRK and
-//! the token (the extension's `convertStrkFeeToToken`, `gasless-ceiling.ts`). It must never come
+//! the token ([`super::fee_reference`], the extension's `convertStrkFeeToToken`). It must never come
 //! from the paymaster's reply (`gas_token_price_in_strk`, a listed `price_in_strk` or any fee it
 //! quotes): the ceiling exists to bound the paymaster, so a reference it supplied bounds nothing.
 //! No reference means no offer and an `Unverifiable` submission.
@@ -37,12 +37,7 @@ use serde_json::{json, Value};
 
 /// The signed fee a submission records (`GaslessSubmission.userFee`): the base units in the
 /// signed transfer as decimal digits, which may be below the reviewed maximum.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UserFee {
-    pub amount: String,
-    pub token: String,
-    pub token_address: String,
-}
+pub use crate::history::activity::UserFee;
 
 /// `GaslessSubmission`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -257,6 +252,17 @@ impl CheckedQuote<'_> {
     /// The gateway's body, unchanged: what the host persists (its nonce) before the execute.
     pub fn typed_data(&self) -> &JsValue {
         &self.accepted.typed_data
+    }
+
+    /// The execution's `Execute Before`, Unix seconds: after it the execution cannot run.
+    pub fn execute_before(&self) -> u64 {
+        self.accepted.execute_before
+    }
+
+    /// The execution's SNIP-9 nonce, which the check required to be a felt.
+    pub fn nonce(&self) -> Option<Felt> {
+        let message = self.accepted.typed_data.get("message")?;
+        felt::parse(message.get("Nonce")?.as_str()?)
     }
 
     pub fn user_fee(&self) -> &UserFee {

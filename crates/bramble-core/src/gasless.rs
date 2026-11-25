@@ -4,6 +4,7 @@
 use crate::catalogs::accounts::catalog;
 use starknet_wallet_core::accounts::AccountFamily;
 use starknet_wallet_core::gasless::{GaslessPolicy, GaslessRoute};
+use starknet_wallet_core::portfolio::model::DisplayCurrency;
 use starknet_wallet_core::{Felt, NetworkId};
 
 /// `GASLESS_PAYMASTER_URLS`, `GASLESS_FEES_ENABLED` and `GASLESS_FORWARDER_ADDRESS`
@@ -31,8 +32,10 @@ const ROUTES: [GaslessRoute; 2] = [
 
 /// `GASLESS_MAX_WINDOW_SECONDS`, `GASLESS_SIGN_WINDOW_SECONDS`, the 7/2 margin
 /// (`GASLESS_FEE_CEILING_NUMERATOR`/`DENOMINATOR`), `MAX_GASLESS_OFFERS`,
-/// `GASLESS_SCREENING_RETRIES`, and the shared paymaster deadline and reply bound
-/// (`PAYMASTER_TIMEOUT_MS`, `PAYMASTER_MAX_RESPONSE_BYTES`).
+/// `GASLESS_SCREENING_RETRIES`, the shared paymaster deadline and reply bound
+/// (`PAYMASTER_TIMEOUT_MS`, `PAYMASTER_MAX_RESPONSE_BYTES`), and the reference's pinned currency
+/// and price scale (`REFERENCE_CURRENCY`, `PRICE_SCALE` in `strk20-fee-reference.ts`: 1e6 keeps
+/// six significant figures on a sub-dollar token and a five-figure one inside the safe range).
 pub const GASLESS_POLICY: GaslessPolicy = GaslessPolicy {
     routes: &ROUTES,
     max_window_seconds: 600,
@@ -43,6 +46,8 @@ pub const GASLESS_POLICY: GaslessPolicy = GaslessPolicy {
     screening_retries: 2,
     deadline_ms: 20_000,
     max_body_bytes: 1024 * 1024,
+    reference_currency: DisplayCurrency::Usd,
+    price_scale: 1_000_000,
 };
 
 /// `accountSignsGaslessV2`'s classes: Argent 0.4 (Bramble's and Xverse's builds) and Bramble's
