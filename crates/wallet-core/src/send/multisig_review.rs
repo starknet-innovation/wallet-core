@@ -198,7 +198,7 @@ pub(crate) fn summarise_calls(
     summary_length: usize,
     empty: &str,
 ) -> Result<String, CallReviewError> {
-    refuse_poisoned(account, calls, known, trusted)?;
+    refuse_poisoned(account, calls, known, &[], trusted)?;
     let summaries: Vec<String> = calls
         .iter()
         .map(|call| {
@@ -214,11 +214,13 @@ pub(crate) fn summarise_calls(
 }
 
 /// `refuseOnPoisonedRecipient`: a payee, or a grant's spender or operator (not a revoke's,
-/// `spender_for_flags`), that mimics `account` or an address in `trusted`.
+/// `spender_for_flags`, with `confirmed` its read-proved tokens), that mimics `account` or an
+/// address in `trusted`.
 pub(crate) fn refuse_poisoned(
     account: &Felt,
     calls: &[Call],
     known: &Known,
+    confirmed: &[Felt],
     trusted: &[Felt],
 ) -> Result<(), CallReviewError> {
     let poisoned = |address: Option<Felt>| {
@@ -237,6 +239,7 @@ pub(crate) fn refuse_poisoned(
             &call.entrypoint,
             &call.calldata,
             known,
+            confirmed,
         );
         if poisoned(spender) {
             return Err(CallReviewError::PoisonedSpender);

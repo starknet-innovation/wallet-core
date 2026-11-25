@@ -40,7 +40,7 @@ fn refused(calls: &[Call]) -> Result<(), CallReviewError> {
         tokens: &tokens,
         nft_contracts: &nft_contracts,
     };
-    refuse_poisoned(&felt(ACCOUNT), calls, &known, &[felt(CONTACT)])
+    refuse_poisoned(&felt(ACCOUNT), calls, &known, &[], &[felt(CONTACT)])
 }
 
 const SPENDER: Result<(), CallReviewError> = Err(CallReviewError::PoisonedSpender);

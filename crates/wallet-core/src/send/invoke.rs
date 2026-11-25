@@ -160,8 +160,26 @@ impl Invoke {
         policy: &Policy,
         context: &ReviewContext,
     ) -> Result<Self, InvokeRefusal> {
+        Self::reviewed_with(account, calls, policy, context, &[])
+    }
+
+    /// `reviewed`, with `confirmed` the contracts the chain proved fungible for this batch, which
+    /// the poisoned-spender refusal counts as tracked tokens (the revoke's confirmation read).
+    pub(crate) fn reviewed_with(
+        account: &Account,
+        calls: Vec<Call>,
+        policy: &Policy,
+        context: &ReviewContext,
+        confirmed: &[Felt],
+    ) -> Result<Self, InvokeRefusal> {
         check(&account.address, &calls, policy)?;
-        refuse_poisoned(&account.address, &calls, &context.known, context.trusted)?;
+        refuse_poisoned(
+            &account.address,
+            &calls,
+            &context.known,
+            confirmed,
+            context.trusted,
+        )?;
         let decoded: Vec<_> = calls
             .iter()
             .map(|call| {

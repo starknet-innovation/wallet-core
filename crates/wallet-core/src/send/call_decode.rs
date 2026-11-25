@@ -119,12 +119,15 @@ pub fn spender_felt_index(entrypoint: &str) -> Option<usize> {
 /// (`isRevokingGrant`): `approve(spender, 0)` on a tracked token that is not a watched collection,
 /// or `set_approval_for_all(operator, false)`. Refusing those would leave a poisoned grant
 /// standing. An `approve(_, 0)` elsewhere is an ERC-721 approval of item #0, the same calldata, so
-/// it is checked; a revoke whose shape is not exact is checked too.
+/// it is checked; a revoke whose shape is not exact is checked too. `confirmed` are contracts the
+/// chain proved fungible for this batch (the revoke's confirmation read), which count as tracked
+/// tokens here and nowhere else.
 pub fn spender_for_flags(
     contract: &Felt,
     entrypoint: &str,
     calldata: &[Felt],
     known: &Known,
+    confirmed: &[Felt],
 ) -> Option<Felt> {
     let index = spender_felt_index(entrypoint)?;
     let revokes = if OPERATOR_APPROVAL.contains(&entrypoint) {
@@ -133,7 +136,7 @@ pub fn spender_for_flags(
         entrypoint == APPROVE_SET
             && calldata.len() == 3
             && uint256_at(calldata, 1) == Some(U256::ZERO)
-            && known.token(contract).is_some()
+            && (known.token(contract).is_some() || confirmed.contains(contract))
             && !known.watches_nft(contract)
     };
     if revokes {
