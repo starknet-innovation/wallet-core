@@ -19,8 +19,9 @@ Usage: bash tools/check.sh <mode>...
   guardrails  pins in sync, actions SHA-pinned, no print macros in src, 500-line cap
   lint        clippy: default features, mobile (with its tests), mobile profile
               (--no-default-features --features mobile), wasm32
-  test        cargo test: default features, then mobile's suite as it ships
-              (--no-default-features --features mobile,testing)
+  test        cargo test: test-default, then test-mobile
+  test-default  cargo test with default features
+  test-mobile   mobile's suite as it ships (--no-default-features --features mobile,testing)
   deny        cargo deny check
   secrets     gitleaks over the whole git history (CI pins the version and hash)
   package     cargo package: both crates build from what crates.io would receive
@@ -97,10 +98,11 @@ check_lint() {
   run cargo clippy --locked --target wasm32-unknown-unknown -- -D warnings
 }
 
-check_test() {
-  run cargo test --locked --no-fail-fast
+check_test_default() { run cargo test --locked --no-fail-fast; }
+check_test_mobile() {
   run cargo test --locked --no-fail-fast -p bramble-core --no-default-features --features mobile,testing
 }
+check_test() { check_test_default; check_test_mobile; }
 
 check_deny() { run cargo deny check; }
 check_secrets() { run gitleaks git --no-banner --redact --verbose .; }
@@ -133,13 +135,15 @@ check_wasm() {
 for mode in "$@"; do
   case "$mode" in
     quick) check_fmt; check_guardrails ;;
-    push) check_lint; run cargo test --locked --no-fail-fast ;;
+    push) check_lint; check_test_default ;;
     rust) check_fmt; check_lint; check_test ;;
     all) check_fmt; check_guardrails; check_lint; check_test; check_deny; check_secrets; check_package; check_wasm ;;
     fmt) check_fmt ;;
     guardrails) check_guardrails ;;
     lint) check_lint ;;
     test) check_test ;;
+    test-default) check_test_default ;;
+    test-mobile) check_test_mobile ;;
     deny) check_deny ;;
     secrets) check_secrets ;;
     package) check_package ;;
