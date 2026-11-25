@@ -330,3 +330,21 @@ fn refusals_carry_the_extensions_sentences() {
         assert_eq!(refusal.to_string(), sentence);
     }
 }
+
+// Review of #147 (Bramble #1038's exemption): the extension's revoke never refuses a poisoned
+// spender, so a grant to a twin of the account on a token only the chain read confirmed must
+// still be revocable here. A tracked token is exempt already (`spender_poisoning_tests`).
+#[test]
+fn a_lookalike_grant_on_a_read_confirmed_token_can_still_be_revoked() {
+    const TWIN: &str = "0x12340000000000000000000000000000000000000000000000000000000bcde";
+    let lists = Lists::standard();
+    let known = lists.known();
+    let row = AllowanceRecord {
+        id: format!("{ACCOUNT}:{UNKNOWN}:{TWIN}"),
+        spender: TWIN.into(),
+        ..stored(ACCOUNT, NetworkId::Mainnet, UNKNOWN, amount("5"))
+    };
+    let target = resolve(&row.id, std::slice::from_ref(&row), &known).unwrap();
+    let invoke = build(&target, &known, &[reading(&row.id, "5")]).unwrap();
+    assert_eq!(invoke.calls, [approve_zero(UNKNOWN, TWIN)]);
+}

@@ -187,11 +187,16 @@ impl RevokeTarget {
             known_contracts: &[],
             ..*context
         };
-        Ok(Invoke::reviewed(
+        // The extension's revoke never runs the poisoning refusal (`verifyCalls` for the summary
+        // only); a token the read confirmed is exempt from the spender check like a tracked one,
+        // or a poisoned grant on it could never be revoked here (review of #147).
+        let confirmed = if fungible { vec![] } else { vec![self.token] };
+        Ok(Invoke::reviewed_with(
             account,
             vec![self.call()],
             policy,
             &context,
+            &confirmed,
         )?)
     }
 }
