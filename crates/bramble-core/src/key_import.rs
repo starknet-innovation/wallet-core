@@ -83,3 +83,7 @@ impl WalletCore {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "key_import_tests.rs"]
+mod tests;
