@@ -44,7 +44,7 @@ fn invalid(reason: &str) -> CoreError {
 }
 
 /// `deriveLedgerAccount`: the record the request places, at Bramble's class for its family.
-fn record(request: &LedgerAccountRequest) -> Result<StoredAccount, CoreError> {
+pub(crate) fn record(request: &LedgerAccountRequest) -> Result<StoredAccount, CoreError> {
     if request.family == AccountFamily::Braavos {
         return Err(invalid("a Ledger account cannot be a Braavos account here"));
     }

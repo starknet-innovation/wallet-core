@@ -147,7 +147,9 @@ Grep first; extend in place rather than adding a sibling.
   `KeySource::Ledger`, admitted when its stored key places it, and reaches a plan only through
   `ledger::record_device` (`signing_key` refuses it). Creating a Ledger-only wallet and adding a
   Ledger account are `bramble-core`'s `ledger_wallet.rs`; a vault's phrase is read only through
-  `VaultPayload::phrase`, which refuses a wallet without one.
+  `VaultPayload::phrase`, which refuses a wallet without one. A page of public keys for the
+  account picker is `ledger::KeyEnumeration`, exported as `ledger_reader::LedgerKeyReader`
+  beside `ledger_account_candidates`.
 - AVNU swaps are `crates/wallet-core/src/swap/`: the quote (`quote.rs`: `PendingQuote`,
   `SwapQuote`, the value check), the build and its reply judge (`build.rs`: `PendingBuild`), the
   build policy and floor (`policy.rs`: `build_policy`, `reviewed_min_buy_amount`) and the frozen
