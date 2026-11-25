@@ -1002,11 +1002,18 @@ Features, smallest and least dependent first:
       (#129); add-chain and watch-asset (#130); origin grants (`dapp::grants`, #134); the
       approval queue (#136). `bramble-core`'s `dapp.rs` holds `DAPP_POLICY` and the `mc_*`
       methods.
-    - Open: connecting a site (`dapp::connect`): `wallet_requestAccounts`, `getPermissions`,
-      `requestChainId` and the discovery methods through the blocklist, lock and grant gates, the
-      connect decision, and the results' shapes for them. The blocklist is an input (`blocked`)
-      until the blocklist PR fills it.
-    - Next here, in order: the connect-only export (below); the blocklist, feed and insights;
+    - Open: connecting a site (`dapp::connect`, #139): `wallet_requestAccounts`,
+      `getPermissions`, `requestChainId` and the discovery methods through the blocklist, lock
+      and grant gates, the connect decision, and the results' shapes for them. The blocklist is
+      an input (`blocked`) until the blocklist PR fills it. Stacked on it, the connect-only
+      export: `bramble-core`'s `DappSession` (`request`, `pending_approvals`,
+      `approve_connect`, `deny_connect`, `settle_expired`), with grants written to the vault,
+      the origin checked against `isWalletOrigin`, and `ffi_surface.rs` pinning its exports. A
+      connect card survives a lock, as the extension's does, since a site asking while locked
+      is approved after unlock; the spike's "a lock rejects every pending approval" applies
+      from the first card that holds session-bound review (invoke, typed data).
+    - Next here, in order: the blocklist, feed and insights (Bramble must not ship the browser
+      before it);
       the remaining methods' gates and results; typed-data review and SNIP-12 signing at
       approval; the full export.
     - *Proposed*: export a connect-only slice first (connect, accounts, chain id, versions,

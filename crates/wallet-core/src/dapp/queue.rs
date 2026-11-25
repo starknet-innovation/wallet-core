@@ -41,6 +41,11 @@ impl ApprovalId {
         &self.0
     }
 
+    /// An id a host echoed back. One the queue never issued matches no approval.
+    pub fn from_echo(text: &str) -> Self {
+        Self(text.to_owned())
+    }
+
     fn new() -> Result<Self, Error> {
         let bytes = random::<16>()?;
         Ok(Self(bytes.iter().map(|b| format!("{b:02x}")).collect()))
