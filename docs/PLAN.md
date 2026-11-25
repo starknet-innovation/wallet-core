@@ -113,16 +113,22 @@ vault raised to 14 on unlock, #116; the extension reads 14 since v0.10.11, relea
 and P14's export (`TransferPlan::gasless_offers`, `GaslessFee`, the sponsored and gasless rows,
 #117). It only adds to the bindings: `ActivityEntry`'s `feePayer`, `relay` and `userFee` default
 to nil. One behaviour change: the first unlock of a v13 vault rewrites it at 14.
-`v0.9.0` carries #122–#148: P8's core and exports (device signing for sends and deploys, Ledger
+`v0.9.0` carries #122–#148 and #141, #144, #146: P8's core and exports (device signing for sends
+and deploys, Ledger
 records, a vault with no phrase and Ledger-only wallets, the key picker, a Ledger deployer for an
 Argent multisig: #123, #124, #126, #132, #135, #138, and the review fixes in #148), P16's request
-reading, origin grants, approval queue and the connect slice exported as `DappSession` (#122,
-#128–#130, #134, #136, #139, #140), a stake's pool named by a second source (#131), and an unlock
+reading, origin grants, approval queue, the connect slice exported as `DappSession` and its
+follow-ups (#122, #128–#130, #134, #136, #139, #140, #144), the blocklist, phishing feed and site
+warnings, not yet exported (#141), the multisig intent card's review for co-signing
+(`WalletCore::multisig_intent_review`, `MultisigIntent.sender`, #146), a stake's pool named by a
+second source (#131), and an unlock
 that never installs a stale vault over newer state (#125). Mobile adopts, with the bump:
 `sign_hash_for_account` is gone from the FFI (#127; Bramble #1045 drops the bridge tests' calls),
 and `SendStep::Device` and `DeviceRetry` join each app's exhaustive switch before any Ledger screen
-exists. `LedgerKey` carries its scheme and `ledger_account_candidates` takes none (#148); nothing
-in the apps calls either yet.
+exists. `LedgerKey` carries its scheme and `ledger_account_candidates` takes none (#148), and
+`DappSession::approve_connect` no longer takes a network (#144); nothing in the apps calls any of
+them yet. `DappSession` does not consult the blocklist yet (it passes `blocked = false`), so no app
+ships the browser on `v0.9.0`.
 
 ### Next PRs
 
@@ -137,7 +143,8 @@ tests ported from the extension's own, with its generator owed. M15 (Bramble #10
 2026-11-22) takes `v0.6.0` and ships P2, P4–P6 and P10 on both apps; P3's screens were left out,
 then shipped as M16 (Bramble #1019). Since `v0.7.0`, `main` adds X1's settle (#115), P7's
 migration (#116) and P14's export (#117), all in `v0.8.0`. Since `v0.8.0`, `main` adds P8's core
-and exports (#123, #126, #132, #135, #138), and P16's connect slice and blocklist (#139, #140, #141); see P8
+and exports (#123, #126, #132, #135, #138), and P16's connect slice and blocklist (#139, #140,
+#141); see P8
 and P16 in [Parity](#parity).
 
 #### Road to parity
