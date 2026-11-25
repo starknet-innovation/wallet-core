@@ -19,9 +19,11 @@ use crate::ledger_wallet::{record, LedgerAccountRequest};
 use crate::networks::NetworkId;
 use crate::{felt, CoreError};
 
-/// One key the device reported.
+/// One key the device reported, with the scheme and index it was read at, so the address placed
+/// from it is always recorded at the path the device holds it at.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct LedgerKey {
+    pub scheme: LedgerScheme,
     pub account_index: u32,
     pub public_key_x: String,
 }
@@ -39,13 +41,14 @@ pub enum LedgerReadStep {
     Refused { reason: String },
 }
 
-fn step(step: EnumerationStep) -> LedgerReadStep {
+fn step(scheme: LedgerScheme, step: EnumerationStep) -> LedgerReadStep {
     match step {
         EnumerationStep::Send(apdu) => LedgerReadStep::Send { apdu },
         EnumerationStep::Keys(keys) => LedgerReadStep::Keys {
             keys: keys
                 .into_iter()
                 .map(|key| LedgerKey {
+                    scheme,
                     account_index: key.index,
                     public_key_x: felt::canonical(&key.public_key_x),
                 })
@@ -66,6 +69,7 @@ fn invalid(reason: &str) -> CoreError {
 /// One page of public keys read off a device.
 #[derive(uniffi::Object)]
 pub struct LedgerKeyReader {
+    scheme: LedgerScheme,
     enumeration: Mutex<KeyEnumeration>,
     first: Mutex<Option<LedgerReadStep>>,
 }
@@ -91,8 +95,9 @@ impl LedgerKeyReader {
             .ok_or_else(|| invalid("Ledger account index out of range"))?;
         let (enumeration, first) = KeyEnumeration::start(page, LEDGER_APP_MIN);
         Ok(Arc::new(Self {
+            scheme,
             enumeration: Mutex::new(enumeration),
-            first: Mutex::new(Some(step(first))),
+            first: Mutex::new(Some(step(scheme, first))),
         }))
     }
 
@@ -136,7 +141,7 @@ impl LedgerKeyReader {
             .enumeration
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
-        step(enumeration.on_reply(reply))
+        step(self.scheme, enumeration.on_reply(reply))
     }
 }
 
@@ -147,14 +152,14 @@ pub struct LedgerCandidate {
     pub address: String,
 }
 
-/// `deriveLedgerAccounts`: each of up to five keys read at `scheme` placed as a `family` account
-/// on `network`, at Bramble's class. Refuses Braavos, a key that is not a non-zero felt, and an
-/// index of 2^31 or more, as `add_ledger_account` would.
+/// `deriveLedgerAccounts`: each of up to five keys a `LedgerKeyReader` read placed as a `family`
+/// account on `network`, at Bramble's class, recorded at the scheme and index the key was read
+/// at. Refuses Braavos, a key that is not a non-zero felt, and an index of 2^31 or more, as
+/// `add_ledger_account` would.
 #[uniffi::export]
 pub fn ledger_account_candidates(
     network: NetworkId,
     family: AccountFamily,
-    scheme: LedgerScheme,
     keys: Vec<LedgerKey>,
 ) -> Result<Vec<LedgerCandidate>, CoreError> {
     if keys.len() > MAX_PAGE {
@@ -165,7 +170,7 @@ pub fn ledger_account_candidates(
             let request = LedgerAccountRequest {
                 network,
                 family,
-                scheme,
+                scheme: key.scheme,
                 account_index: key.account_index,
                 public_key_x: key.public_key_x,
             };

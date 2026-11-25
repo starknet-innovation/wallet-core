@@ -147,7 +147,7 @@ pub enum SendStep {
     /// Wait, then reply `WaitElapsed`.
     Wait { delay_ms: u32 },
     /// A Ledger account: send `apdu` to the account's device and reply `Device` with its answer,
-    /// or `DeviceFailure` with what the transport reported. No account is signed this way yet.
+    /// or `DeviceFailure` with what the transport reported (`AccountRecord.ledger` accounts).
     Device { apdu: Vec<u8> },
     /// The device refused (`reason` is the extension's rejection code: `device-locked`,
     /// `wrong-device`, ...). Nothing was signed. Reply `RetryDevice` once the person has fixed
