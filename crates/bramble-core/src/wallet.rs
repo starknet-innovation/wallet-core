@@ -149,8 +149,8 @@ impl WalletCore {
         then(opened?)
     }
 
-    /// Installs a session unless `lock()` ran since `epoch` was read (lock always wins), with the
-    /// wallet's preferences loaded beside the vault.
+    /// Installs a session, with its preferences, unless `lock()` ran since `epoch` was read. A live
+    /// one is kept, as `opened` may predate a write made during the KDF; else it must be on disk.
     ///
     /// A v13 vault is first raised to 14 and written back, as the extension's unlock does
     /// (`schema/migrations.ts`, the `fromVersion: 13` step: the version alone, no provenance
@@ -158,16 +158,25 @@ impl WalletCore {
     /// vault is used). The write is `persist_payload`'s single atomic file, so a failure leaves
     /// the v13 vault on disk and the unlock fails, as the extension's does.
     pub(crate) fn install(&self, epoch: u64, mut opened: Opened) -> Result<(), CoreError> {
+        let mut session = self.lock_session();
+        if self.lock_epoch.load(Ordering::SeqCst) != epoch {
+            return Err(CoreError::Locked);
+        }
+        if expire(&mut session, &self.now()).is_some() {
+            return Ok(());
+        }
+        let file_lock = self.lock_file(); // None is live; idle expiry moves no epoch.
+        let on_disk = self.read_vault()?;
+        drop(file_lock); // `reseal` takes it again.
+        if !matches!(on_disk, StoredVault::Container(file) if *file == opened.container) {
+            return Err(storage("vault changed on disk"));
+        }
         if opened.payload.schema_version < PROVENANCE_SCHEMA {
             opened.payload.schema_version = PROVENANCE_SCHEMA;
             let slot = &opened.container.password_slot;
             self.reseal(&opened.dek, slot, &opened.payload)?;
         }
         public_store::load_preferences(&self.data_dir, &mut opened.payload)?;
-        let mut session = self.lock_session();
-        if self.lock_epoch.load(Ordering::SeqCst) != epoch {
-            return Err(CoreError::Locked);
-        }
         *session = Some(Session {
             payload: opened.payload,
             dek: opened.dek,
