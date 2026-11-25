@@ -215,7 +215,8 @@ Grep first; extend in place rather than adding a sibling.
 - A dapp's requests (P16) live in `crates/wallet-core/src/dapp/`:
   - the hostile-JSON budget over the text a bridge passes (`budget::parse_within`);
   - the wallet API's error codes (`WalletRpcError`);
-  - the method table and each method's param reader (`request::{Method, read_request}`).
+  - the method table and each method's param reader (`request::{Method, read_request}`), an
+    invoke's calls read into `send::calls::Call` by `invoke` under `InvokeLimits`.
   Bramble's budgets, advertised versions and `mc_*` methods are `bramble-core`'s `dapp.rs`
   (`DAPP_BUDGETS`, `read_page_request`).
 - Only `wallet-core` depends on Krusty (`kms.rs`, `nostr.rs`, `accounts/`, `send/`);

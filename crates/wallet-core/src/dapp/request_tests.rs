@@ -13,7 +13,7 @@ const PROVIDER: JsonBudget = JsonBudget {
     max_string_length: 512 * 1024,
 };
 
-const BUDGETS: RequestBudgets = RequestBudgets {
+pub(crate) const BUDGETS: RequestBudgets = RequestBudgets {
     default: PROVIDER,
     typed_data: JsonBudget {
         max_array_length: 1_024,
@@ -25,6 +25,12 @@ const BUDGETS: RequestBudgets = RequestBudgets {
     },
     declare: PROVIDER,
     invoke: PROVIDER,
+    invoke_limits: crate::dapp::InvokeLimits {
+        calls: 56,
+        calldata_felts: 4_096,
+        entrypoint_chars: 64,
+        felt_chars: 78,
+    },
 };
 
 fn read(method: &str, params: Option<&str>) -> Result<Request, WalletRpcError> {
@@ -278,7 +284,6 @@ fn params_are_held_to_the_method_budget() {
 fn methods_not_read_yet_are_refused_as_unknown() {
     for name in [
         "wallet_addDeclareTransaction",
-        "wallet_addInvokeTransaction",
         "wallet_addStarknetChain",
         "wallet_strk20Balances",
         "wallet_strk20InvokeTransaction",
