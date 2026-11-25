@@ -324,6 +324,7 @@ fn constructs_revision_0_cannot_encode_are_refused() {
 fn a_preset_name_is_an_ordinary_struct_on_revision_0_and_reserved_on_revision_1() {
     // Deviation: starknet.js hashes the declaration (`H_REV0_U256`); Krusty hashes something else,
     // so a signature would not verify against the dapp's hash. The gate refuses it instead.
+    // starknet-innovation/krusty-kms#275.
     assert!(raw_hash(P_REV0_U256).is_some_and(|h| h != felt(H_REV0_U256)));
     assert_eq!(hash(P_REV0_U256), Err(TypedDataRefusal::Invalid));
     let rev1 = format!(
@@ -372,6 +373,8 @@ fn describes_the_request_for_the_card() {
 
 // Shapes the extension accepts and starknet.js hashes that Krusty refuses: the gate passes them,
 // hashing fails closed, and the page sees 114 where the extension would have signed.
+// starknet-innovation/krusty-kms#276: when Krusty hashes these as starknet.js does, flip each
+// case to the starknet.js digest.
 #[test]
 fn krusty_refuses_shapes_the_extension_signs() {
     let (rev1_domain, rev1_type) = domain(true);
