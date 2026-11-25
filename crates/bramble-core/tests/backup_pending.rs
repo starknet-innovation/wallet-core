@@ -64,7 +64,7 @@ fn a_created_wallet_stays_backup_pending_until_confirmed() {
     let again = open(dir.path(), &clock);
     again.unlock(PASSWORD.into()).unwrap();
     assert!(!again.backup_pending().unwrap(), "cleared for good");
-    assert_eq!(read(&dir)["version"], 13);
+    assert_eq!(read(&dir)["version"], 14);
 }
 
 #[test]

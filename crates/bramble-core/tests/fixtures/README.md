@@ -110,9 +110,12 @@ summaries, the review flags, a multicall on the wire and the batches refused up 
 `allowances_log_parity.rs`, its `scan` and `tracked` transcripts `allowances_scan_parity.rs`),
 `extension-swap.jsonl` (`swap_parity.rs`; an accepted build's `executed` reply is the extension's
 submit, which no test reads), `extension-staking.jsonl` (`staking_parity.rs`, and its `action`
-block `staking_action_parity.rs`) and `extension-gasless.jsonl` (every line: `gasless_parity.rs`
-its `hash`, `review` and `offers` blocks, `gasless_reads_parity.rs` the rest; the lines the core
-departs from, its `knownExtensionBug` lines among them, are asserted as departures).
+block `staking_action_parity.rs`), `vault-v13-full.json`, `vault-v14.json` and
+`vault-v13-to-v14.json` (`vault_migration.rs`: each payload against its sealed copy, the first two
+written back unchanged, and unlocking the migration's input writing back its output), and
+`extension-gasless.jsonl` (every line: `gasless_parity.rs` its `hash`, `review` and `offers`
+blocks, `gasless_reads_parity.rs` the rest; the lines the core departs from, its
+`knownExtensionBug` lines among them, are asserted as departures).
 `extension-privacy-copy.json` is the source of
 Bramble's generated Swift and Kotlin privacy copy; no Rust function returns those sentences, so
 no test here reads it. `extension-multisig-transactions.json` is read by

@@ -315,7 +315,7 @@ fn an_imported_record_of_another_family_opens_when_its_sealed_key_derives_it() {
     account.as_object_mut().unwrap().remove("publicKeyY");
     let id = account["id"].as_str().unwrap().to_string();
     let path = dir.path().to_string_lossy().to_string();
-    seal_container_vault(&path, PASSWORD, 13, &vault.to_string()).unwrap();
+    seal_container_vault(&path, PASSWORD, 14, &vault.to_string()).unwrap();
     let core = open(dir.path(), &clock);
     core.unlock(PASSWORD.into()).unwrap();
     let record = record_by_id(&core, &id);
@@ -335,7 +335,7 @@ fn an_imported_record_its_sealed_key_does_not_place_is_kept() {
     let good = payload(&dir);
     let path = dir.path().to_string_lossy().to_string();
     let unlock = |payload: &Value| {
-        seal_container_vault(&path, PASSWORD, 13, &payload.to_string()).unwrap();
+        seal_container_vault(&path, PASSWORD, 14, &payload.to_string()).unwrap();
         open(dir.path(), &clock).unlock(PASSWORD.into())
     };
     unlock(&good).unwrap();

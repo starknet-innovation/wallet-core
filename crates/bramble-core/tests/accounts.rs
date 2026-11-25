@@ -350,12 +350,12 @@ fn a_vault_the_extension_refuses_fails_closed() {
         open(dir.path(), &clock).unlock(PASSWORD.into())
     };
     // The round trip itself opens: the cases below each fail for their own reason.
-    unlock(&good, 13).unwrap();
+    unlock(&good, 14).unwrap();
     let reject = |mutate: &dyn Fn(&mut Value), why: &str| {
         let mut payload = good.clone();
         mutate(&mut payload);
         assert!(
-            matches!(unlock(&payload, 13), Err(CoreError::Storage { .. })),
+            matches!(unlock(&payload, 14), Err(CoreError::Storage { .. })),
             "{why}"
         );
     };
@@ -450,7 +450,7 @@ fn a_vault_the_extension_refuses_fails_closed() {
     let kept = |mutate: &dyn Fn(&mut Value), why: &str| {
         let mut payload = good.clone();
         mutate(&mut payload);
-        unlock(&payload, 13).unwrap_or_else(|_| panic!("{why}"));
+        unlock(&payload, 14).unwrap_or_else(|_| panic!("{why}"));
         let core = open(dir.path(), &clock);
         core.unlock(PASSWORD.into()).unwrap();
         assert_eq!(core.unusable_accounts().unwrap().len(), 1, "{why}");

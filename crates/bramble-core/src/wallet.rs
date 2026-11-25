@@ -151,7 +151,18 @@ impl WalletCore {
 
     /// Installs a session unless `lock()` ran since `epoch` was read (lock always wins), with the
     /// wallet's preferences loaded beside the vault.
+    ///
+    /// A v13 vault is first raised to 14 and written back, as the extension's unlock does
+    /// (`schema/migrations.ts`, the `fromVersion: 13` step: the version alone, no provenance
+    /// inferred; `schema/store-migration.ts`'s `readMigratedVault` writes it back before the
+    /// vault is used). The write is `persist_payload`'s single atomic file, so a failure leaves
+    /// the v13 vault on disk and the unlock fails, as the extension's does.
     pub(crate) fn install(&self, epoch: u64, mut opened: Opened) -> Result<(), CoreError> {
+        if opened.payload.schema_version < PROVENANCE_SCHEMA {
+            opened.payload.schema_version = PROVENANCE_SCHEMA;
+            let slot = &opened.container.password_slot;
+            self.reseal(&opened.dek, slot, &opened.payload)?;
+        }
         public_store::load_preferences(&self.data_dir, &mut opened.payload)?;
         let mut session = self.lock_session();
         if self.lock_epoch.load(Ordering::SeqCst) != epoch {
@@ -210,14 +221,19 @@ impl WalletCore {
         if !session.payload.vault_changed(before) {
             return Ok(());
         }
-        let payload = vault_v13::encode(&session.payload)?;
+        self.reseal(&session.dek, &session.password_slot, &session.payload)
+    }
+
+    /// Re-seals `payload` at its schema under `dek` (no KDF) into the file on disk, one atomic
+    /// write with the file's slots kept; refuses a file whose passphrase slot is not `slot`.
+    fn reseal(&self, dek: &Dek, slot: &Envelope, payload: &VaultPayload) -> Result<(), CoreError> {
+        let json = vault_v13::encode(payload)?;
         let _file = self.lock_file();
         let base = match self.read_vault()? {
-            StoredVault::Container(file) if file.password_slot == session.password_slot => *file,
+            StoredVault::Container(file) if file.password_slot == *slot => *file,
             _ => return Err(storage("vault changed on disk")),
         };
-        let version = session.payload.schema_version;
-        self.write_vault(&base.with_payload(&session.dek, version, &payload)?)
+        self.write_vault(&base.with_payload(dek, payload.schema_version, &json)?)
     }
 
     /// The app-private directory the vault and the public metadata files live in.
