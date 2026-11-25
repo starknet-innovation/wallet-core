@@ -50,22 +50,19 @@ fn a_page_of_keys_becomes_candidates_and_a_wallet() {
         keys,
         vec![
             LedgerKey {
+                scheme: LedgerScheme::Bramble,
                 account_index: 0,
                 public_key_x: KEY_0.into(),
             },
             LedgerKey {
+                scheme: LedgerScheme::Bramble,
                 account_index: 1,
                 public_key_x: "0x1234".into(),
             },
         ]
     );
-    let candidates = ledger_account_candidates(
-        NetworkId::Sepolia,
-        AccountFamily::OpenZeppelin,
-        LedgerScheme::Bramble,
-        keys,
-    )
-    .unwrap();
+    let candidates =
+        ledger_account_candidates(NetworkId::Sepolia, AccountFamily::OpenZeppelin, keys).unwrap();
     assert_eq!(candidates.len(), 2);
     assert_eq!(candidates[0].address, ACCOUNT_0);
     // The picked candidate's request makes the wallet at the address the picker showed.
@@ -129,13 +126,9 @@ fn a_bad_reply_mid_page_returns_no_key() {
         panic!("expected the page's keys");
     };
     assert_eq!(keys[0].public_key_x, "0x0");
-    assert!(ledger_account_candidates(
-        NetworkId::Sepolia,
-        AccountFamily::OpenZeppelin,
-        LedgerScheme::Bramble,
-        keys
-    )
-    .is_err());
+    assert!(
+        ledger_account_candidates(NetworkId::Sepolia, AccountFamily::OpenZeppelin, keys).is_err()
+    );
 }
 
 #[test]
@@ -156,12 +149,11 @@ fn a_page_is_one_to_five_indexes_below_2_31() {
 #[test]
 fn candidates_refuse_what_add_ledger_account_would() {
     let key = |index| LedgerKey {
+        scheme: LedgerScheme::Ready,
         account_index: index,
         public_key_x: KEY_0.into(),
     };
-    let candidates = |family, keys| {
-        ledger_account_candidates(NetworkId::Sepolia, family, LedgerScheme::Ready, keys)
-    };
+    let candidates = |family, keys| ledger_account_candidates(NetworkId::Sepolia, family, keys);
     assert!(candidates(AccountFamily::Braavos, vec![key(0)]).is_err());
     assert!(candidates(AccountFamily::OpenZeppelin, (0..6).map(key).collect()).is_err());
     let mut zero = key(0);
@@ -171,4 +163,23 @@ fn candidates_refuse_what_add_ledger_account_would() {
     // An Argent account at Ready's scheme places at Bramble's Argent class.
     let argent = candidates(AccountFamily::Argent, vec![key(3)]).unwrap();
     assert_ne!(argent[0].address, ACCOUNT_0);
+}
+
+#[test]
+fn a_candidate_takes_the_scheme_its_key_was_read_at() {
+    let key = |scheme| LedgerKey {
+        scheme,
+        account_index: 0,
+        public_key_x: KEY_0.into(),
+    };
+    let place =
+        |keys| ledger_account_candidates(NetworkId::Sepolia, AccountFamily::OpenZeppelin, keys);
+    let ready = place(vec![key(LedgerScheme::Ready)]).unwrap();
+    assert_eq!(ready[0].request.scheme, LedgerScheme::Ready);
+    let bramble = place(vec![key(LedgerScheme::Bramble)]).unwrap();
+    assert_eq!(bramble[0].request.scheme, LedgerScheme::Bramble);
+    assert!(matches!(
+        place(vec![key(LedgerScheme::Bramble), key(LedgerScheme::Ready)]),
+        Err(CoreError::InvalidInput { .. })
+    ));
 }
