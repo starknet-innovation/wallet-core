@@ -4,15 +4,20 @@
 //! are passed in.
 //!
 //! So far: the hostile-JSON budget (`budget`), the wallet API's error codes (`error`), and
-//! reading a request's method and params (`request`, an invoke's calls in `invoke`). Grants, the approval queue, the blocklist
-//! and review follow.
+//! reading a request's method and params (`request`; an invoke's calls in `invoke`, a chain in
+//! `add_chain`, an asset in `watch_asset`). Grants, the approval queue, the blocklist and review
+//! follow.
 
+pub mod add_chain;
 pub mod budget;
 pub mod error;
 pub mod invoke;
 pub mod request;
+pub mod watch_asset;
 
+pub use add_chain::ChainRequest;
 pub use budget::JsonBudget;
 pub use error::WalletRpcError;
 pub use invoke::InvokeLimits;
-pub use request::{read_request, Method, Request, RequestBudgets};
+pub use request::{read_request, Method, Request, RequestPolicy};
+pub use watch_asset::{NftStandard, WatchAsset};

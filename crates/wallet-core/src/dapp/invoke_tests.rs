@@ -4,12 +4,12 @@
 
 use starknet_types_core::felt::Felt;
 
-use crate::dapp::request::tests::BUDGETS;
+use crate::dapp::request::tests::POLICY;
 use crate::dapp::{read_request, Request, WalletRpcError};
 use crate::send::calls::Call;
 
 fn invoke(params: &str) -> Result<Request, WalletRpcError> {
-    read_request("wallet_addInvokeTransaction", Some(params), &BUDGETS)
+    read_request("wallet_addInvokeTransaction", Some(params), &POLICY)
 }
 
 fn invalid(params: &str) -> bool {
@@ -79,7 +79,7 @@ fn malformed_and_both_shape_params_are_refused() {
         r#"{{"calls":[{LEGACY_CALL}],"extra":1}}"#
     )));
     assert_eq!(
-        read_request("wallet_addInvokeTransaction", None, &BUDGETS),
+        read_request("wallet_addInvokeTransaction", None, &POLICY),
         Err(WalletRpcError::invalid_request_payload())
     );
 }
@@ -184,7 +184,7 @@ fn call_and_calldata_caps() {
         let call = r#"{"calldata":[],"contractAddress":"0x1","entrypoint":"t"}"#;
         format!(r#"{{"calls":[{}]}}"#, vec![call; count].join(","))
     };
-    let limits = BUDGETS.invoke_limits;
+    let limits = POLICY.invoke_limits;
     assert_eq!(calls(&batch(limits.calls)).len(), limits.calls);
     assert!(invalid(&batch(limits.calls + 1)));
     let calldata = |count: usize| {

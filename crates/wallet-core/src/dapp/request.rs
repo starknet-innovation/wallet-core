@@ -8,9 +8,11 @@
 //! platform reports (the top frame's committed origin), and the wallet's to check against its
 //! origin grammar before any request is acted on.
 
+use super::add_chain::{add_chain, ChainRequest};
 use super::budget::{parse_within, JsonBudget};
 use super::error::WalletRpcError;
 use super::invoke::{invoke_params, InvokeLimits};
+use super::watch_asset::{watch_asset, WatchAsset};
 use crate::js::json::JsValue;
 use crate::send::calls::Call;
 use starknet_types_core::felt::Felt;
@@ -95,10 +97,10 @@ impl Method {
     }
 }
 
-/// The wallet's budgets for a request's params, by kind (`JSON_BUDGETS`, chosen per method as
-/// `readProviderParams` chooses them).
+/// The wallet's rules for reading a request: its params budgets by kind (`JSON_BUDGETS`, chosen
+/// per method as `readProviderParams` chooses them), an invoke's limits, and add-chain's rules.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RequestBudgets {
+pub struct RequestPolicy {
     /// Every method not named below.
     pub default: JsonBudget,
     /// `wallet_signTypedData`, tighter because hashing is the expensive part.
@@ -109,9 +111,13 @@ pub struct RequestBudgets {
     pub invoke: JsonBudget,
     /// The bounds on an invoke's calls, beyond its JSON budget.
     pub invoke_limits: InvokeLimits,
+    /// The wallet's built-in network names, which `wallet_addStarknetChain` may not reuse.
+    pub reserved_network_names: &'static [&'static str],
+    /// The most URLs in each of `wallet_addStarknetChain`'s lists (`MAX_CHAIN_URLS`).
+    pub max_chain_urls: usize,
 }
 
-impl RequestBudgets {
+impl RequestPolicy {
     fn for_method(&self, method: Method) -> &JsonBudget {
         match method {
             Method::AddDeclareTransaction => &self.declare,
@@ -162,24 +168,28 @@ pub enum Request {
         compiled_class_hash: Felt,
         contract_class: JsValue,
     },
+    /// `wallet_addStarknetChain`'s chain.
+    AddChain(ChainRequest),
+    /// `wallet_watchAsset`'s asset.
+    WatchAsset(WatchAsset),
 }
 
 /// Reads a page's request: `method` as named, `params` as the JSON text of its params, or `None`
 /// where the page passed none (`params: undefined` included).
 ///
-/// Methods whose params are not read here yet (add-chain, watch-asset and the STRK20 methods) are refused with UNKNOWN_ERROR (163) until their readers land, so nothing acts on
-/// params no grammar has checked. So is an invoke that carries a STRK20 proof (P15), once its
-/// calls have parsed.
+/// The STRK20 methods, whose params are P15's to read, are refused with UNKNOWN_ERROR (163)
+/// until their readers land, so nothing acts on params no grammar has checked. So is an invoke
+/// that carries a STRK20 proof, once its calls have parsed.
 pub fn read_request(
     method: &str,
     params: Option<&str>,
-    budgets: &RequestBudgets,
+    policy: &RequestPolicy,
 ) -> Result<Request, WalletRpcError> {
     let invalid = WalletRpcError::invalid_request_payload;
     let method = Method::from_name(method).ok_or_else(invalid)?;
     let params = match params {
         None => None,
-        Some(text) => Some(parse_within(text, budgets.for_method(method)).ok_or_else(invalid)?),
+        Some(text) => Some(parse_within(text, policy.for_method(method)).ok_or_else(invalid)?),
     };
     let params = params.as_ref();
     match method {
@@ -199,7 +209,7 @@ pub fn read_request(
         Method::SignTypedData => typed_data(params)
             .map(|typed_data| Request::SignTypedData { typed_data })
             .ok_or_else(invalid),
-        Method::AddInvokeTransaction => match invoke_params(params, &budgets.invoke_limits) {
+        Method::AddInvokeTransaction => match invoke_params(params, &policy.invoke_limits) {
             None => Err(invalid()),
             Some(invoke) if invoke.has_proof => Err(WalletRpcError::unknown_error()),
             Some(invoke) => Ok(Request::AddInvoke {
@@ -207,12 +217,18 @@ pub fn read_request(
             }),
         },
         Method::AddDeclareTransaction => declare(params).ok_or_else(invalid),
-        Method::AddStarknetChain
-        | Method::Strk20Balances
+        Method::AddStarknetChain => {
+            add_chain(params, policy.reserved_network_names, policy.max_chain_urls)
+                .map(Request::AddChain)
+                .ok_or_else(invalid)
+        }
+        Method::WatchAsset => watch_asset(params)
+            .map(Request::WatchAsset)
+            .ok_or_else(invalid),
+        Method::Strk20Balances
         | Method::Strk20InvokeTransaction
         | Method::Strk20PrepareInvoke
-        | Method::Strk20ShadowAccountCommitment
-        | Method::WatchAsset => Err(WalletRpcError::unknown_error()),
+        | Method::Strk20ShadowAccountCommitment => Err(WalletRpcError::unknown_error()),
     }
 }
 

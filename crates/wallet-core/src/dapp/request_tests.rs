@@ -13,7 +13,7 @@ const PROVIDER: JsonBudget = JsonBudget {
     max_string_length: 512 * 1024,
 };
 
-pub(crate) const BUDGETS: RequestBudgets = RequestBudgets {
+pub(crate) const POLICY: RequestPolicy = RequestPolicy {
     default: PROVIDER,
     typed_data: JsonBudget {
         max_array_length: 1_024,
@@ -31,10 +31,12 @@ pub(crate) const BUDGETS: RequestBudgets = RequestBudgets {
         entrypoint_chars: 64,
         felt_chars: 78,
     },
+    reserved_network_names: &["Starknet Mainnet", "Starknet Sepolia", "Local Devnet"],
+    max_chain_urls: 4,
 };
 
 fn read(method: &str, params: Option<&str>) -> Result<Request, WalletRpcError> {
-    read_request(method, params, &BUDGETS)
+    read_request(method, params, &POLICY)
 }
 
 fn invalid(method: &str, params: Option<&str>) -> bool {
@@ -283,12 +285,10 @@ fn params_are_held_to_the_method_budget() {
 #[test]
 fn methods_not_read_yet_are_refused_as_unknown() {
     for name in [
-        "wallet_addStarknetChain",
         "wallet_strk20Balances",
         "wallet_strk20InvokeTransaction",
         "wallet_strk20PrepareInvoke",
         "wallet_strk20ShadowAccountCommitment",
-        "wallet_watchAsset",
     ] {
         assert_eq!(
             read(name, Some("{}")),
