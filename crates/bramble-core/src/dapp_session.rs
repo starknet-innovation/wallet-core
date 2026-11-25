@@ -136,46 +136,50 @@ fn shaped(shape: Shape, account: Option<&DappAccount>) -> DappReply {
     })
 }
 
-/// The active account a site on `network` may be shown, from an unlocked session.
-fn active_on(session: &Session, network: NetworkId) -> Option<DappAccount> {
+/// The active account and its network, the wallet's active network (the extension's
+/// `activeNetworkId` and active account move together), from an unlocked session.
+fn active(session: &Session) -> Option<(DappAccount, NetworkId)> {
     let payload = &session.payload;
     let record = payload
         .active_account_id
         .as_deref()
-        .and_then(|id| payload.record(id))
-        .filter(|record| record.network() == network)?;
-    Some(DappAccount {
+        .and_then(|id| payload.record(id))?;
+    let account = DappAccount {
         id: record.id.clone(),
         address: record.address.clone(),
         network_id: record.network.clone(),
-    })
+    };
+    Some((account, record.network()))
 }
 
 impl DappSession {
-    /// Runs `f` over the wallet's state for `origin` on `network`: its grants and active account
-    /// while unlocked, nothing while locked (or with no wallet). Only the person's decisions pass
+    /// Runs `f` over the wallet's state for `origin`: its grants, active account and that
+    /// account's network while unlocked; while locked (or with no wallet, or no active account),
+    /// nothing but `shown`, the network the browser shows. Only the person's decisions pass
     /// `renew`; a page's requests never extend the idle window.
     fn with_site<T>(
         &self,
         origin: &str,
-        network: NetworkId,
+        shown: NetworkId,
         renew: bool,
         f: impl FnOnce(&Site<'_>, Option<&mut Session>) -> Result<T, CoreError>,
     ) -> Result<T, CoreError> {
-        let chain_id = felt::canonical(&network.chain_id());
+        let chain_id = |network: NetworkId| felt::canonical(&network.chain_id());
         // ponytail: no blocklist yet; its PR makes this a lookup. Bramble must not ship the
         // browser before it lands.
         let blocked = false;
         let mut f = Some(f);
         let unlocked = self.wallet.with_session(renew, |session| {
-            let active = active_on(session, network);
+            let active = active(session);
+            let network = active.as_ref().map_or(shown, |(_, network)| *network);
+            let chain_id = chain_id(network);
             let grants = session.payload.kept.origin_grants.clone();
             let site = Site {
                 origin,
                 blocked,
                 unlocked: Some(Unlocked {
                     grants: &grants,
-                    active: active.as_ref(),
+                    active: active.as_ref().map(|(account, _)| account),
                 }),
                 chain_id: &chain_id,
             };
@@ -186,6 +190,7 @@ impl DappSession {
         });
         match (unlocked, f) {
             (Err(CoreError::Locked | CoreError::NoWallet), Some(f)) => {
+                let chain_id = chain_id(shown);
                 let site = Site {
                     origin,
                     blocked,
@@ -253,14 +258,15 @@ impl DappSession {
         })
     }
 
-    /// Answers `method` from `origin`, with `params` as the page's JSON text, on the network the
-    /// browser shows. `request_id` is the host's, echoed when a `Pending` reply settles.
+    /// Answers `method` from `origin`, with `params` as the page's JSON text. The network is the
+    /// active account's; `shown`, the network the browser shows, answers `requestChainId` only
+    /// while locked. `request_id` is the host's, echoed when a `Pending` reply settles.
     pub fn request(
         &self,
         origin: String,
         method: String,
         params: Option<String>,
-        network: NetworkId,
+        shown: NetworkId,
         request_id: u64,
     ) -> Result<DappReply, CoreError> {
         // A request from an origin the vault could not store is one the host failed to attribute.
@@ -271,7 +277,7 @@ impl DappSession {
             Ok(page) => page,
             Err(refusal) => return Ok(error(refusal)),
         };
-        let outcome = self.with_site(&origin, network, false, |site, _| {
+        let outcome = self.with_site(&origin, shown, false, |site, _| {
             Ok(match &page {
                 PageRequest::GrantedAccounts => Outcome::Reply(shaped(Shape::View, site.granted())),
                 PageRequest::RequestAccounts => ask_accounts(site, false, Shape::View),
@@ -309,19 +315,20 @@ impl DappSession {
             .collect()
     }
 
-    /// The person approved `approval_id`'s card, reviewed with `reviewed_account_id` active on
-    /// `network`. Grants the site that account, written to the vault, and answers every request
-    /// waiting on the card. A card already settled or expired answers nothing. Renews.
+    /// The person approved `approval_id`'s card, reviewed with `reviewed_account_id` active.
+    /// Grants the site that account, written to the vault, and answers every request waiting on
+    /// the card. A card already settled or expired answers nothing. Renews.
     pub fn approve_connect(
         &self,
         approval_id: String,
         reviewed_account_id: String,
-        network: NetworkId,
     ) -> Vec<DappSettled> {
         let Some((origin, waiters)) = self.claim(&approval_id) else {
             return Vec::new();
         };
-        let granted = self.with_site(&origin, network, true, |site, session| {
+        // Approving needs an unlocked wallet, whose network is the active account's: the shown
+        // network only answers a locked `requestChainId`, so any value serves here.
+        let granted = self.with_site(&origin, NetworkId::Mainnet, true, |site, session| {
             let (Ok((grants, account)), Some(session)) =
                 (approve_connect(site, Some(&reviewed_account_id)), session)
             else {
@@ -348,7 +355,8 @@ impl DappSession {
         settled(waiters, |_| error(deny_connect()))
     }
 
-    /// The requests whose cards expired or were evicted since the last call, each refused. Call it
+    /// The requests whose cards expired or were evicted since the last call, each answered as a
+    /// deny is (USER_REFUSED_OP, `DROPPED_APPROVAL_RESPONSE`): consent was never given. Call it
     /// on a timer while any request is held, and after every other call.
     pub fn settle_expired(&self) -> Vec<DappSettled> {
         let mut state = crate::wallet::guard(&self.state);
@@ -360,7 +368,7 @@ impl DappSession {
             .flat_map(|id| state.waiters.remove(id.as_str()).unwrap_or_default())
             .map(|waiter| DappSettled {
                 request_id: waiter.request_id,
-                reply: error(WalletRpcError::unknown_error()),
+                reply: error(WalletRpcError::user_refused_op()),
             })
             .collect()
     }

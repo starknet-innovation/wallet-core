@@ -14,9 +14,9 @@ const VERSIONS: Versions = Versions {
 
 fn account(address: &str) -> DappAccount {
     DappAccount {
-        id: format!("mainnet:{address}"),
+        id: format!("SN_MAIN:{address}"),
         address: address.into(),
-        network_id: "mainnet".into(),
+        network_id: "SN_MAIN".into(),
     }
 }
 
@@ -53,7 +53,7 @@ fn accounts() -> Request {
 #[test]
 fn a_granted_site_sees_the_active_account_and_any_other_is_asked() {
     let active = account("0x1");
-    let grants = [grant(SITE, &["mainnet:0x1"])];
+    let grants = [grant(SITE, &["SN_MAIN:0x1"])];
     let connected = site(
         false,
         Some(Unlocked {
@@ -87,7 +87,7 @@ fn a_granted_site_sees_the_active_account_and_any_other_is_asked() {
 #[test]
 fn a_grant_for_another_account_asks_again() {
     let active = account("0x2");
-    let grants = [grant(SITE, &["mainnet:0x1"])];
+    let grants = [grant(SITE, &["SN_MAIN:0x1"])];
     let moved = site(
         false,
         Some(Unlocked {
@@ -122,7 +122,7 @@ fn a_locked_wallet_answers_as_an_unconnected_one() {
 #[test]
 fn a_blocked_site_learns_nothing() {
     let active = account("0x1");
-    let grants = [grant(SITE, &["mainnet:0x1"])];
+    let grants = [grant(SITE, &["SN_MAIN:0x1"])];
     let blocked = site(
         true,
         Some(Unlocked {
@@ -154,7 +154,7 @@ fn a_blocked_site_learns_nothing() {
 #[test]
 fn a_connected_site_holds_the_accounts_permission() {
     let active = account("0x1");
-    let grants = [grant(SITE, &["mainnet:0x1"])];
+    let grants = [grant(SITE, &["SN_MAIN:0x1"])];
     let connected = site(
         false,
         Some(Unlocked {
@@ -211,8 +211,8 @@ fn other_methods_are_not_this_slices() {
 fn approving_grants_the_reviewed_active_account() {
     let active = account("0x2");
     let grants = [
-        grant("https://other.example", &["mainnet:0x1"]),
-        grant(SITE, &["mainnet:0x1"]),
+        grant("https://other.example", &["SN_MAIN:0x1"]),
+        grant(SITE, &["SN_MAIN:0x1"]),
     ];
     let unlocked = site(
         false,
@@ -221,13 +221,13 @@ fn approving_grants_the_reviewed_active_account() {
             active: Some(&active),
         }),
     );
-    let (written, seen) = approve_connect(&unlocked, Some("mainnet:0x2")).unwrap();
+    let (written, seen) = approve_connect(&unlocked, Some("SN_MAIN:0x2")).unwrap();
     assert_eq!(seen, &active);
     assert_eq!(
         written,
         vec![
-            grant("https://other.example", &["mainnet:0x1"]),
-            grant(SITE, &["mainnet:0x1", "mainnet:0x2"]),
+            grant("https://other.example", &["SN_MAIN:0x1"]),
+            grant(SITE, &["SN_MAIN:0x1", "SN_MAIN:0x2"]),
         ]
     );
     // With no echo (Bramble's page asks with no card), the active account is granted.
@@ -245,7 +245,7 @@ fn approving_refuses_a_moved_account_a_blocked_site_and_a_lock() {
     };
     let refused = Err(WalletRpcError::unknown_error());
     assert_eq!(
-        approve_connect(&site(false, Some(unlocked)), Some("mainnet:0x1")),
+        approve_connect(&site(false, Some(unlocked)), Some("SN_MAIN:0x1")),
         refused
     );
     assert_eq!(approve_connect(&site(true, Some(unlocked)), None), refused);
@@ -271,7 +271,7 @@ fn the_accounts_view_carries_no_id() {
     let active = account("0x1");
     assert_eq!(
         accounts_view(&[&active]).to_json(),
-        r#"{"accounts":[{"address":"0x1","networkId":"mainnet"}],"ok":true}"#
+        r#"{"accounts":[{"address":"0x1","networkId":"SN_MAIN"}],"ok":true}"#
     );
     assert_eq!(accounts_view(&[]).to_json(), r#"{"accounts":[],"ok":true}"#);
 }

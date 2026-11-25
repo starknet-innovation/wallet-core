@@ -75,7 +75,7 @@ fn a_site_asked_while_locked_connects_after_unlock_and_stays_connected() {
     assert_eq!(listed[0].origin, SITE);
 
     core.unlock(PASSWORD.into()).unwrap();
-    let settled = dapp.approve_connect(card.clone(), id.clone(), NET);
+    let settled = dapp.approve_connect(card.clone(), id.clone());
     assert_eq!(
         settled,
         vec![
@@ -93,13 +93,13 @@ fn a_site_asked_while_locked_connects_after_unlock_and_stays_connected() {
     );
     assert!(dapp.pending_approvals().is_empty());
     // A card is decided once.
-    assert!(dapp.approve_connect(card, id, NET).is_empty());
+    assert!(dapp.approve_connect(card, id).is_empty());
 
     // The grant is in the vault: a restarted wallet answers without asking.
     drop(dapp);
     let core = open(dir.path(), &clock);
     core.unlock(PASSWORD.into()).unwrap();
-    let dapp = DappSession::new(core);
+    let dapp = DappSession::new(core.clone());
     assert_eq!(
         ask(&dapp, "wallet_requestAccounts", None, 5),
         ok(&format!(r#"["{address}"]"#))
@@ -108,16 +108,30 @@ fn a_site_asked_while_locked_connects_after_unlock_and_stays_connected() {
         ask(&dapp, "wallet_getPermissions", None, 6),
         ok(r#"["accounts"]"#)
     );
-    // Another network's page sees no account of this one.
+    // The network is the active account's, whatever the browser shows, so the chain a site is
+    // told and the account it sees never disagree.
+    let on_mainnet = |method: &str| {
+        dapp.request(SITE.into(), method.into(), None, NetworkId::Mainnet, 7)
+            .unwrap()
+    };
     assert_eq!(
-        dapp.request(
-            SITE.into(),
-            "mc_accounts".into(),
-            None,
-            NetworkId::Mainnet,
-            7
-        )
-        .unwrap(),
+        on_mainnet("mc_accounts"),
+        ok(&format!(
+            r#"{{"accounts":[{{"address":"{address}","networkId":"SN_SEPOLIA"}}],"ok":true}}"#
+        ))
+    );
+    assert_eq!(
+        on_mainnet("wallet_requestChainId"),
+        ok(r#""0x534e5f5345504f4c4941""#)
+    );
+    // Locked, only the shown network is known.
+    core.lock();
+    assert_eq!(
+        on_mainnet("wallet_requestChainId"),
+        ok(r#""0x534e5f4d41494e""#)
+    );
+    assert_eq!(
+        on_mainnet("mc_accounts"),
         ok(r#"{"accounts":[],"ok":true}"#)
     );
 }
@@ -127,10 +141,19 @@ fn denying_refuses_every_waiting_request() {
     let (_dir, _clock, core) = imported();
     let dapp = DappSession::new(core);
     let card = pending(ask(&dapp, "wallet_requestAccounts", None, 1));
-    pending(ask(&dapp, "wallet_requestAccounts", None, 2));
-    let settled = dapp.deny_connect(card);
-    assert_eq!(settled.len(), 2);
-    assert!(settled.iter().all(|done| code(&done.reply) == 113));
+    pending(ask(&dapp, "mc_requestAccounts", None, 2));
+    let refused = || DappReply::Error {
+        code: 113,
+        message: "The user refused the operation".into(),
+        data: None,
+    };
+    assert_eq!(
+        dapp.deny_connect(card),
+        [1, 2].map(|request_id| DappSettled {
+            request_id,
+            reply: refused()
+        })
+    );
     assert_eq!(ask(&dapp, "wallet_getPermissions", None, 3), ok("[]"));
 }
 
@@ -139,7 +162,7 @@ fn approving_for_an_account_no_longer_active_grants_nothing() {
     let (_dir, _clock, core) = imported();
     let dapp = DappSession::new(core.clone());
     let card = pending(ask(&dapp, "wallet_requestAccounts", None, 1));
-    let settled = dapp.approve_connect(card, "SN_SEPOLIA:0x1".into(), NET);
+    let settled = dapp.approve_connect(card, "SN_SEPOLIA:0x1".into());
     assert_eq!(code(&settled[0].reply), 163);
     assert_eq!(ask(&dapp, "wallet_getPermissions", None, 2), ok("[]"));
 
@@ -147,7 +170,7 @@ fn approving_for_an_account_no_longer_active_grants_nothing() {
     let card = pending(ask(&dapp, "wallet_requestAccounts", None, 3));
     let id = account_id(&core);
     core.lock();
-    let settled = dapp.approve_connect(card, id, NET);
+    let settled = dapp.approve_connect(card, id);
     assert_eq!(code(&settled[0].reply), 163);
     assert!(dapp.pending_approvals().is_empty());
 }
@@ -162,7 +185,8 @@ fn an_expired_card_refuses_its_requests() {
     let settled = dapp.settle_expired();
     assert_eq!(settled.len(), 1);
     assert_eq!(settled[0].request_id, 9);
-    assert_eq!(code(&settled[0].reply), 163);
+    // `DROPPED_APPROVAL_RESPONSE`: on the wire, an expiry is a deny.
+    assert_eq!(code(&settled[0].reply), 113);
     assert!(dapp.pending_approvals().is_empty());
 }
 
@@ -218,4 +242,58 @@ fn reads_refusals_and_what_this_slice_does_not_answer() {
         assert_eq!(code(&reply), 114, "{origin}");
     }
     assert!(dapp.pending_approvals().is_empty());
+}
+
+// `MAX_WAITERS_PER_APPROVAL`, and the queue's cap: a connect card is one per site, so a full
+// queue has no site holding two and nothing to evict; the newcomer is refused.
+#[test]
+fn a_card_holds_eight_requests_and_the_queue_fifty_sites() {
+    let (_dir, _clock, core) = imported();
+    let dapp = DappSession::new(core);
+    let card = pending(ask(&dapp, "wallet_requestAccounts", None, 1));
+    for request_id in 2..=8 {
+        assert_eq!(
+            pending(ask(&dapp, "wallet_requestAccounts", None, request_id)),
+            card
+        );
+    }
+    assert_eq!(code(&ask(&dapp, "wallet_requestAccounts", None, 9)), 163);
+    assert_eq!(dapp.deny_connect(card).len(), 8);
+
+    let from = |site: usize| {
+        dapp.request(
+            format!("https://app-{site}.example"),
+            "wallet_requestAccounts".into(),
+            None,
+            NET,
+            site as u64,
+        )
+        .unwrap()
+    };
+    for site in 0..50 {
+        pending(from(site));
+    }
+    assert_eq!(code(&from(50)), 163);
+    assert_eq!(dapp.pending_approvals().len(), 50);
+    assert!(dapp.settle_expired().is_empty());
+}
+
+// A grant whose vault write fails is rolled back: the site is not connected in the session
+// either, and its requests are refused.
+#[cfg(unix)]
+#[test]
+fn a_failed_grant_write_connects_nothing() {
+    use std::os::unix::fs::PermissionsExt;
+    let (dir, _clock, core) = imported();
+    let id = account_id(&core);
+    let dapp = DappSession::new(core.clone());
+    let card = pending(ask(&dapp, "wallet_requestAccounts", None, 1));
+    std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o555)).unwrap();
+    let settled = dapp.approve_connect(card, id);
+    std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert_eq!(code(&settled[0].reply), 163);
+    assert_eq!(ask(&dapp, "wallet_getPermissions", None, 2), ok("[]"));
+    core.lock();
+    core.unlock(PASSWORD.into()).unwrap();
+    assert_eq!(ask(&dapp, "wallet_getPermissions", None, 3), ok("[]"));
 }

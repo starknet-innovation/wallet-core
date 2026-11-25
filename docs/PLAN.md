@@ -1035,7 +1035,9 @@ Features, smallest and least dependent first:
       an input (`blocked`) until the blocklist PR fills it. Stacked on it, the connect-only
       export: `bramble-core`'s `DappSession` (`request`, `pending_approvals`,
       `approve_connect`, `deny_connect`, `settle_expired`), with grants written to the vault,
-      the origin checked against `isWalletOrigin`, and `ffi_surface.rs` pinning its exports. A
+      the origin checked against `isWalletOrigin`, and `ffi_surface.rs` pinning its exports
+      (#140; follow-ups: a dropped card answers 113 as the extension's does, and the network is
+      the active account's, the browser's shown network serving only a locked chain-id read). A
       connect card survives a lock, as the extension's does, since a site asking while locked
       is approved after unlock; the spike's "a lock rejects every pending approval" applies
       from the first card that holds session-bound review (invoke, typed data).
