@@ -98,13 +98,9 @@ pub(crate) struct SigningKey {
     pub(crate) private_key: String,
 }
 
-/// `OriginGrant`: a site and the accounts it may see.
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct OriginGrant {
-    pub(crate) account_ids: Vec<String>,
-    pub(crate) origin: String,
-}
+/// `OriginGrant`: a site and the accounts it may see, the core's record and rules
+/// (`starknet_wallet_core::dapp::grants`).
+pub(crate) use starknet_wallet_core::dapp::OriginGrant;
 
 /// `ImportedSeedRef`: another wallet's phrase, retained for the accounts derived from it.
 #[derive(Clone, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
