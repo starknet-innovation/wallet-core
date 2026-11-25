@@ -216,9 +216,10 @@ Grep first; extend in place rather than adding a sibling.
   - the hostile-JSON budget over the text a bridge passes (`budget::parse_within`);
   - the wallet API's error codes (`WalletRpcError`);
   - the method table and each method's param reader (`request::{Method, read_request}`), an
-    invoke's calls read into `send::calls::Call` by `invoke` under `InvokeLimits`.
+    invoke's calls read into `send::calls::Call` by `invoke` under `InvokeLimits`, a chain by
+    `add_chain` (URLs through `relay_url::is_custom_rpc_url`), an asset by `watch_asset`.
   Bramble's budgets, advertised versions and `mc_*` methods are `bramble-core`'s `dapp.rs`
-  (`DAPP_BUDGETS`, `read_page_request`).
+  (`DAPP_POLICY`, `read_page_request`).
 - Only `wallet-core` depends on Krusty (`kms.rs`, `nostr.rs`, `accounts/`, `send/`);
   `bramble-core` goes through `wallet-core` and never names `krusty_kms`.
 

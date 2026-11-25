@@ -5,7 +5,7 @@
 //! also checks the asking origin against the vault's origin grammar before reading anything.
 
 use starknet_wallet_core::dapp::{
-    read_request, InvokeLimits, JsonBudget, Request, RequestBudgets, WalletRpcError,
+    read_request, InvokeLimits, JsonBudget, Request, RequestPolicy, WalletRpcError,
 };
 
 /// `JSON_BUDGETS.provider`.
@@ -19,7 +19,7 @@ const PROVIDER_BUDGET: JsonBudget = JsonBudget {
 };
 
 /// The extension's per-method budgets, as `readProviderParams` picks them.
-pub const DAPP_BUDGETS: RequestBudgets = RequestBudgets {
+pub const DAPP_POLICY: RequestPolicy = RequestPolicy {
     default: PROVIDER_BUDGET,
     // `JSON_BUDGETS.typedData`: hashing is the expensive part.
     typed_data: JsonBudget {
@@ -56,7 +56,15 @@ pub const DAPP_BUDGETS: RequestBudgets = RequestBudgets {
         // 66 covers `0x` hex; 78 also admits the decimal spelling starknet.js accepts.
         felt_chars: 78,
     },
+    reserved_network_names: RESERVED_NETWORK_NAMES,
+    // `MAX_CHAIN_URLS`: without a bound one approved card could fill the preferences record.
+    max_chain_urls: 4,
 };
+
+/// The extension's built-in network names (`STARKNET_NETWORKS`), which a page may not give a
+/// chain it asks to add, so an attacker's RPC cannot be added as "Starknet Mainnet". Devnet is
+/// not in mobile's catalog but keeps its name reserved, as in the extension.
+const RESERVED_NETWORK_NAMES: &[&str] = &["Starknet Mainnet", "Starknet Sepolia", "Local Devnet"];
 
 /// `SUPPORTED_SPECS`: the Starknet JSON-RPC versions `wallet_supportedSpecs` reports.
 pub const SUPPORTED_SPECS: &[&str] = &["0.10.0"];
@@ -92,7 +100,7 @@ pub fn read_page_request(
             no_params().map(|()| PageRequest::Spec(Request::RequestAccounts { silent: false }))
         }
         "mc_strk20Register" => Err(WalletRpcError::unknown_error()),
-        _ => read_request(method, params, &DAPP_BUDGETS).map(PageRequest::Spec),
+        _ => read_request(method, params, &DAPP_POLICY).map(PageRequest::Spec),
     }
 }
 
@@ -147,6 +155,24 @@ mod tests {
         let long = format!(r#"{{"typed_data":{{"n":"{}"}}}}"#, "a".repeat(65_537));
         assert_eq!(
             read_page_request("wallet_signTypedData", Some(&long)),
+            Err(WalletRpcError::invalid_request_payload())
+        );
+    }
+
+    #[test]
+    fn every_catalog_network_name_is_reserved() {
+        for network in crate::catalogs::networks::all() {
+            assert!(
+                RESERVED_NETWORK_NAMES.contains(&network.name.as_str()),
+                "{}",
+                network.name
+            );
+        }
+        assert_eq!(
+            read_page_request(
+                "wallet_addStarknetChain",
+                Some(r#"{"id":"x","chain_id":"0x1","chain_name":"  starknet   MAINNET "}"#)
+            ),
             Err(WalletRpcError::invalid_request_payload())
         );
     }
