@@ -161,7 +161,7 @@ impl Invoke {
         context: &ReviewContext,
     ) -> Result<Self, InvokeRefusal> {
         check(&account.address, &calls, policy)?;
-        refuse_poisoned(&account.address, &calls, context.trusted)?;
+        refuse_poisoned(&account.address, &calls, &context.known, context.trusted)?;
         let decoded: Vec<_> = calls
             .iter()
             .map(|call| {

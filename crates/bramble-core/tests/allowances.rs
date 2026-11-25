@@ -436,3 +436,17 @@ fn a_listing_without_an_endpoint_says_its_scan_is_incomplete() {
     );
     assert_eq!(row.network, NetworkId::Sepolia);
 }
+
+// Bramble #1038: a grant to a lookalike of the account is refused, but revoking one is exempt, or
+// a poisoned grant could never be taken back. The revoke reaches its review.
+#[test]
+fn a_grant_to_a_lookalike_spender_can_still_be_revoked() {
+    const TWIN: &str = "0x2083610000000000000000000000000000000000000000000000000000098d9";
+    let (dir, core) = wallet();
+    let id = format!("{}:{STRK_ID}:{TWIN}", account());
+    let record = json!([{"accountId": account(), "amount": "1000", "id": id,
+        "networkId": "SN_SEPOLIA", "spender": TWIN, "token": STRK_ID}]);
+    std::fs::write(dir.path().join(FILE), record.to_string()).unwrap();
+    // `reviewed_revoke` asserts the plan reaches `SendStep::Review`.
+    reviewed_revoke(&core, &mut sepolia(true), &id);
+}

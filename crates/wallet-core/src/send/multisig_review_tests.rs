@@ -170,9 +170,13 @@ fn a_payee_mimicking_a_trusted_address_is_refused() {
         );
         assert!(review(&calls, &[], 120).is_ok(), "{entrypoint}");
     }
-    // A spender is not a payee.
+    // A spender is not a payee, but a lookalike one is refused with its own sentence (Bramble
+    // #1038).
     let approve = [call("0x123", "approve", &[twin, "0x1", "0x0"])];
-    assert!(review(&approve, &[trusted], 120).is_ok());
+    assert_eq!(
+        review(&approve, &[trusted], 120),
+        Err(CallReviewError::PoisonedSpender)
+    );
     // The multisig itself is always trusted.
     let account_twin = "0x2841000000000000000000000000000000000000000000000000000000001c0";
     let near_self = [call("0x123", "transfer", &[account_twin, "0x1", "0x0"])];
