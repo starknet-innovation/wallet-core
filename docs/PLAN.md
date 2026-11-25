@@ -999,15 +999,16 @@ Features, smallest and least dependent first:
       method table, and the readers for accounts, permissions, chain id, the discovery methods,
       deployment data, switch-chain and typed data (#122); an invoke's calls, a `null` proof
       refused and any other proof held for P15 (#128); a declare's hashes and contract class
-      (#129). `bramble-core`'s `dapp.rs` holds `DAPP_POLICY` and the `mc_*` methods.
-    - Open: add-chain and watch-asset (#130), which also renames the policy record
-      `RequestPolicy` and reserves the extension's three built-in network names.
-    - Next here, in order: origin grants (`dapp::grants`, the vault's `OriginGrant` shared with
-      `vault_wire`; written, in review next); the approval queue (admission caps, the TTL, dedupe,
-      reservations, fee revisions, over the host's clock, dropped ids returned for the host to
-      answer); the blocklist, feed and insights; the gate order that runs a request through all of
-      them, and the replies' shapes (`results.ts`); typed-data review and SNIP-12 signing at
-      approval; the export.
+      (#129); add-chain and watch-asset (#130); origin grants (`dapp::grants`, #134); the
+      approval queue (#136). `bramble-core`'s `dapp.rs` holds `DAPP_POLICY` and the `mc_*`
+      methods.
+    - Open: connecting a site (`dapp::connect`): `wallet_requestAccounts`, `getPermissions`,
+      `requestChainId` and the discovery methods through the blocklist, lock and grant gates, the
+      connect decision, and the results' shapes for them. The blocklist is an input (`blocked`)
+      until the blocklist PR fills it.
+    - Next here, in order: the connect-only export (below); the blocklist, feed and insights;
+      the remaining methods' gates and results; typed-data review and SNIP-12 signing at
+      approval; the full export.
     - *Proposed*: export a connect-only slice first (connect, accounts, chain id, versions,
       permissions) once grants and the queue land, so Bramble can build and test the WebView
       bridge against real dapps while review, signing and the blocklist follow. Connect's card is
