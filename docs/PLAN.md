@@ -72,7 +72,7 @@ v13 payload.
 | 2.7 Swap | done (#50), behind the `mobile` feature | done (M13, Bramble #929), at `v0.3.0`: `mobile/core` is a shell over this crate |
 | Vault switch | done (V1 #58) | G4 done (Bramble #947); M14 done (Bramble #980): mobile pins `v0.4.0` |
 | [Mobile parity](#mobile-parity) | P6 done (#65), P2 done (#68); P1 done (P1a #70, P1b #71, P1c #72) and exported (X1 #111); P3 done (#80), P4 done (#78), P5 done (#83), each with its fixture copied (G7, #109) | M15 (Bramble #1007–#1010) took `v0.6.0` and shipped P2, P4–P6 and P10; M16 (#1019) shipped P3's screens. P1's screens are M18, not started |
-| [Parity](#parity) P7–P16 | P7 done for reading (#87, #92): every v13 and v14 collection is read, every vault the extension opens opens here, and what mobile does not operate is kept unused and listed; new vaults are written at 14 and a v13 vault is raised on unlock (#116, `v0.8.0`). P9 done (#84, #91, #104) and exported with P12's revoke (X2+X3 #106). P10 done (#86). P11 exported (X4 #107), P13 exported (X5 #110). P14 done and exported (#108, #117, `v0.8.0`). Fixtures for P3–P5, P7 and P9–P14 copied (G7, #109, #117). P8's core done and exported (#101, #123, #126, #132, #135, #138), not yet tagged; P15 spiked (#102); P16 in progress: D2 settled 2026-11-25 (an in-app browser); request reading, add-chain and watch-asset, grants, the queue, connecting a site and its export (`DappSession`) merged (#122, #128, #129, #130, #134, #136, #139, #140); see "P16 progress" under P16 in [Parity](#parity) and [Road to parity](#road-to-parity) | Mobile takes `v0.7.0` (Bramble #1032). P7's kept accounts (#1009) and P10 (#1008) shipped; the screens for P12 (M19), P11 (M20), P13 (M21) and P14 are not started |
+| [Parity](#parity) P7–P16 | P7 done for reading (#87, #92): every v13 and v14 collection is read, every vault the extension opens opens here, and what mobile does not operate is kept unused and listed; new vaults are written at 14 and a v13 vault is raised on unlock (#116, `v0.8.0`). P9 done (#84, #91, #104) and exported with P12's revoke (X2+X3 #106). P10 done (#86). P11 exported (X4 #107), P13 exported (X5 #110). P14 done and exported (#108, #117, `v0.8.0`). Fixtures for P3–P5, P7 and P9–P14 copied (G7, #109, #117). P8's core done and exported (#101, #123, #126, #132, #135, #138), not yet tagged; P15 spiked (#102); P16 in progress: D2 settled 2026-11-25 (an in-app browser); request reading, add-chain and watch-asset, grants, the queue, connecting a site and its export (`DappSession`), the blocklist, phishing feed and site warnings merged (#122, #128, #129, #130, #134, #136, #139, #140, #141); see "P16 progress" under P16 in [Parity](#parity) and [Road to parity](#road-to-parity) | Mobile takes `v0.7.0` (Bramble #1032). P7's kept accounts (#1009) and P10 (#1008) shipped; the screens for P12 (M19), P11 (M20), P13 (M21) and P14 are not started |
 | 3 Extension | not started, and waits for parity; `js/package.json` is private | n/a |
 
 `v0.1.0` is tagged at `35abc8b` (GitHub release only) and was what M2 and M3 pinned. `v0.2.0`
@@ -113,16 +113,22 @@ vault raised to 14 on unlock, #116; the extension reads 14 since v0.10.11, relea
 and P14's export (`TransferPlan::gasless_offers`, `GaslessFee`, the sponsored and gasless rows,
 #117). It only adds to the bindings: `ActivityEntry`'s `feePayer`, `relay` and `userFee` default
 to nil. One behaviour change: the first unlock of a v13 vault rewrites it at 14.
-`v0.9.0` carries #122–#148: P8's core and exports (device signing for sends and deploys, Ledger
+`v0.9.0` carries #122–#148 and #141, #144, #146: P8's core and exports (device signing for sends
+and deploys, Ledger
 records, a vault with no phrase and Ledger-only wallets, the key picker, a Ledger deployer for an
 Argent multisig: #123, #124, #126, #132, #135, #138, and the review fixes in #148), P16's request
-reading, origin grants, approval queue and the connect slice exported as `DappSession` (#122,
-#128–#130, #134, #136, #139, #140), a stake's pool named by a second source (#131), and an unlock
+reading, origin grants, approval queue, the connect slice exported as `DappSession` and its
+follow-ups (#122, #128–#130, #134, #136, #139, #140, #144), the blocklist, phishing feed and site
+warnings, not yet exported (#141), the multisig intent card's review for co-signing
+(`WalletCore::multisig_intent_review`, `MultisigIntent.sender`, #146), a stake's pool named by a
+second source (#131), and an unlock
 that never installs a stale vault over newer state (#125). Mobile adopts, with the bump:
 `sign_hash_for_account` is gone from the FFI (#127; Bramble #1045 drops the bridge tests' calls),
 and `SendStep::Device` and `DeviceRetry` join each app's exhaustive switch before any Ledger screen
-exists. `LedgerKey` carries its scheme and `ledger_account_candidates` takes none (#148); nothing
-in the apps calls either yet.
+exists. `LedgerKey` carries its scheme and `ledger_account_candidates` takes none (#148), and
+`DappSession::approve_connect` no longer takes a network (#144); nothing in the apps calls any of
+them yet. `DappSession` does not consult the blocklist yet (it passes `blocked = false`), so no app
+ships the browser on `v0.9.0`.
 
 ### Next PRs
 
@@ -137,8 +143,9 @@ tests ported from the extension's own, with its generator owed. M15 (Bramble #10
 2026-11-22) takes `v0.6.0` and ships P2, P4–P6 and P10 on both apps; P3's screens were left out,
 then shipped as M16 (Bramble #1019). Since `v0.7.0`, `main` adds X1's settle (#115), P7's
 migration (#116) and P14's export (#117), all in `v0.8.0`. Since `v0.8.0`, `main` adds P8's core
-and exports (#123, #126, #132, #135, #138), and P16's connect slice (#139, #140); see P8 and
-P16 in [Parity](#parity).
+and exports (#123, #126, #132, #135, #138), and P16's connect slice and blocklist (#139, #140,
+#141); see P8
+and P16 in [Parity](#parity).
 
 #### Road to parity
 
@@ -1031,7 +1038,8 @@ Features, smallest and least dependent first:
     (same core, another transport), wallet-standard registration (the extension has none), dapp
     privacy flows and shadow accounts (P15's fifth PR).
   - *P16 progress (2026-11-25).* The core reads every request the extension accepts except the
-    STRK20 methods, which wait on P15; nothing is exported yet, and nothing is built in Bramble.
+    STRK20 methods, which wait on P15; the connect slice is exported, and nothing is built in
+    Bramble.
     - Merged: the hostile-JSON budget over the params text, the wallet API's error codes, the
       method table, and the readers for accounts, permissions, chain id, the discovery methods,
       deployment data, switch-chain and typed data (#122); an invoke's calls, a `null` proof
@@ -1039,11 +1047,10 @@ Features, smallest and least dependent first:
       (#129); add-chain and watch-asset (#130); origin grants (`dapp::grants`, #134); the
       approval queue (#136). `bramble-core`'s `dapp.rs` holds `DAPP_POLICY` and the `mc_*`
       methods.
-    - Open: connecting a site (`dapp::connect`, #139): `wallet_requestAccounts`,
+    - Merged: connecting a site (`dapp::connect`, #139): `wallet_requestAccounts`,
       `getPermissions`, `requestChainId` and the discovery methods through the blocklist, lock
-      and grant gates, the connect decision, and the results' shapes for them. The blocklist is
-      an input (`blocked`) until the blocklist PR fills it. Stacked on it, the connect-only
-      export: `bramble-core`'s `DappSession` (`request`, `pending_approvals`,
+      and grant gates, the connect decision, and the results' shapes for them. The connect-only
+      export (#140): `bramble-core`'s `DappSession` (`request`, `pending_approvals`,
       `approve_connect`, `deny_connect`, `settle_expired`), with grants written to the vault,
       the origin checked against `isWalletOrigin`, and `ffi_surface.rs` pinning its exports
       (#140; follow-ups: a dropped card answers 113 as the extension's does, and the network is
@@ -1051,13 +1058,17 @@ Features, smallest and least dependent first:
       connect card survives a lock, as the extension's does, since a site asking while locked
       is approved after unlock; the spike's "a lock rejects every pending approval" applies
       from the first card that holds session-bound review (invoke, typed data).
-    - Next here, in order: the blocklist, feed and insights (Bramble must not ship the browser
-      before it);
-      the remaining methods' gates and results; typed-data review and SNIP-12 signing at
-      approval; the full export.
-    - *Proposed*: export a connect-only slice first (connect, accounts, chain id, versions,
-      permissions) once grants and the queue land, so Bramble can build and test the WebView
-      bridge against real dapps while review, signing and the blocklist follow. Connect's card is
+    - Merged: the blocklist, phishing feed and site warnings (#141): `dapp::blocklist`
+      (`is_blocked_origin`, `origin_insights` and its `SiteWarning` codes), `dapp::phishing_feed`
+      (`PhishingFeed`, a request and judge with a one-file cache over `host::Storage`) and
+      `dapp::origin_history`; Bramble's lists and feed are `SITE_LISTS` and `PHISHING_FEED` in
+      `bramble-core`'s `dapp.rs`.
+    - Next here, in order: wire the blocklist and feed into `DappSession`, which still passes
+      `blocked = false` (Bramble must not ship the browser before it), and export the feed's
+      refresh and the site warnings; the remaining methods' gates and results; typed-data
+      review and SNIP-12 signing at approval; the full export.
+    - *Done* (#140): the connect-only slice is exported first, so Bramble can build and test
+      the WebView bridge against real dapps while review and signing follow. Connect's card is
       a site and an account, so the slice does not wait on M19–M21.
     - Owed outside this repo: P16's generator in Bramble (each PR so far is on unit tests ported
       from the extension's own); a `provider` key on the extension's `starknet_bramble`, without
