@@ -1,0 +1,152 @@
+//! Bramble's dapp provider choices, for `starknet_wallet_core::dapp`: the hostile-JSON budgets
+//! (`JSON_BUDGETS` in `packages/foundation/core/src/json.ts`), the versions it advertises
+//! (`provider/versions.ts`), and its own `mc_*` methods, which Bramble's page script calls
+//! (`provider/inpage.ts`: `isPreauthorized` and `enable`). Plain Rust until the export, which
+//! also checks the asking origin against the vault's origin grammar before reading anything.
+
+use starknet_wallet_core::dapp::{
+    read_request, JsonBudget, Request, RequestBudgets, WalletRpcError,
+};
+
+/// `JSON_BUDGETS.provider`.
+const PROVIDER_BUDGET: JsonBudget = JsonBudget {
+    max_array_length: 4_096,
+    max_bytes: 1024 * 1024,
+    max_depth: 32,
+    max_nodes: 50_000,
+    max_object_keys: 2_048,
+    max_string_length: 512 * 1024,
+};
+
+/// The extension's per-method budgets, as `readProviderParams` picks them.
+pub const DAPP_BUDGETS: RequestBudgets = RequestBudgets {
+    default: PROVIDER_BUDGET,
+    // `JSON_BUDGETS.typedData`: hashing is the expensive part.
+    typed_data: JsonBudget {
+        max_array_length: 1_024,
+        max_bytes: 256 * 1024,
+        max_depth: 24,
+        max_nodes: 10_000,
+        max_object_keys: 512,
+        max_string_length: 64 * 1024,
+    },
+    // `JSON_BUDGETS.contractClass`.
+    declare: JsonBudget {
+        max_array_length: 100_000,
+        max_bytes: 8 * 1024 * 1024,
+        max_depth: 64,
+        max_nodes: 200_000,
+        max_object_keys: 10_000,
+        max_string_length: 2 * 1024 * 1024,
+    },
+    // `JSON_BUDGETS.strk20Proof`: an invoke may carry a STRK20 proof.
+    invoke: JsonBudget {
+        max_array_length: 4_096,
+        max_bytes: 8 * 1024 * 1024,
+        max_depth: 16,
+        max_nodes: 50_000,
+        max_object_keys: 32,
+        max_string_length: 512 * 1024,
+    },
+};
+
+/// `SUPPORTED_SPECS`: the Starknet JSON-RPC versions `wallet_supportedSpecs` reports.
+pub const SUPPORTED_SPECS: &[&str] = &["0.10.0"];
+
+/// `SUPPORTED_WALLET_API`: the wallet API versions `wallet_supportedWalletApi` reports (stable
+/// `0.10.5`; release candidates are never advertised).
+pub const SUPPORTED_WALLET_API: &[&str] = &["0.10.5"];
+
+/// A request from Bramble's page script: a spec method, or one of Bramble's own.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PageRequest {
+    Spec(Request),
+    /// `mc_accounts`: the granted account, without asking (`wallet.getGrantedAccounts`).
+    GrantedAccounts,
+}
+
+/// Reads a page's request as `readProviderRequestArguments` and `toRuntimeMessage` do. The
+/// `mc_*` methods take no params at all; `mc_requestAccounts` is `wallet_requestAccounts`.
+/// `mc_strk20Register` waits for STRK20 (P15) and is refused as unknown until then.
+pub fn read_page_request(
+    method: &str,
+    params: Option<&str>,
+) -> Result<PageRequest, WalletRpcError> {
+    let no_params = || {
+        params
+            .is_none()
+            .then_some(())
+            .ok_or_else(WalletRpcError::invalid_request_payload)
+    };
+    match method {
+        "mc_accounts" => no_params().map(|()| PageRequest::GrantedAccounts),
+        "mc_requestAccounts" => {
+            no_params().map(|()| PageRequest::Spec(Request::RequestAccounts { silent: false }))
+        }
+        "mc_strk20Register" => Err(WalletRpcError::unknown_error()),
+        _ => read_request(method, params, &DAPP_BUDGETS).map(PageRequest::Spec),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // `provider-bridge.test.ts`: "reads direct provider request arguments"
+    #[test]
+    fn bramble_methods_take_no_params() {
+        assert_eq!(
+            read_page_request("mc_accounts", None),
+            Ok(PageRequest::GrantedAccounts)
+        );
+        assert_eq!(
+            read_page_request("mc_requestAccounts", None),
+            Ok(PageRequest::Spec(Request::RequestAccounts {
+                silent: false
+            }))
+        );
+        for method in ["mc_accounts", "mc_requestAccounts"] {
+            for params in ["[]", "{}", "null"] {
+                assert_eq!(
+                    read_page_request(method, Some(params)),
+                    Err(WalletRpcError::invalid_request_payload()),
+                    "{method} {params}"
+                );
+            }
+        }
+        assert_eq!(
+            read_page_request("mc_strk20Register", None),
+            Err(WalletRpcError::unknown_error())
+        );
+    }
+
+    #[test]
+    fn spec_methods_go_through_the_core_with_bramble_budgets() {
+        assert_eq!(
+            read_page_request(
+                "wallet_switchStarknetChain",
+                Some(r#"{"chainId":"0x534e5f4d41494e"}"#)
+            ),
+            Ok(PageRequest::Spec(Request::SwitchChain {
+                chain_id: "0x534e5f4d41494e".into()
+            }))
+        );
+        assert_eq!(
+            read_page_request("wallet.signHash", None),
+            Err(WalletRpcError::invalid_request_payload())
+        );
+        // Typed data over 64 KiB of one string is past `JSON_BUDGETS.typedData`.
+        let long = format!(r#"{{"typed_data":{{"n":"{}"}}}}"#, "a".repeat(65_537));
+        assert_eq!(
+            read_page_request("wallet_signTypedData", Some(&long)),
+            Err(WalletRpcError::invalid_request_payload())
+        );
+    }
+
+    #[test]
+    fn advertised_versions_are_well_formed() {
+        for version in SUPPORTED_WALLET_API.iter().chain(SUPPORTED_SPECS) {
+            assert!(starknet_wallet_core::dapp::request::is_api_version(version));
+        }
+    }
+}

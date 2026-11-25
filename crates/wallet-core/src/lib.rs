@@ -30,6 +30,7 @@ pub mod activity;
 pub mod allowances;
 pub mod catalog;
 pub mod container;
+pub mod dapp;
 pub mod envelope;
 pub mod felt;
 pub mod gasless;
