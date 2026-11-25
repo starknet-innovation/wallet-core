@@ -7,10 +7,11 @@ on:
     branches: [main]
     paths-ignore: ['docs/**']
 
-# A newer push to the same PR or to main supersedes the run in progress.
+# A newer push to a PR supersedes its run in progress. main's runs all finish: a tag must land on
+# a commit CI passed, and nothing in the release workflows checks that.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
