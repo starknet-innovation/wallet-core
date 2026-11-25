@@ -419,3 +419,19 @@ pub struct ReviewedCall {
     pub summary: String,
     pub flags: Vec<RiskFlag>,
 }
+
+impl ReviewedCall {
+    /// `call` beside its review.
+    pub(crate) fn new(
+        call: &wallet_core::send::calls::Call,
+        reviewed: &wallet_core::send::invoke::ReviewedCall,
+    ) -> Self {
+        Self {
+            contract_address: crate::felt::canonical(&call.contract_address),
+            entrypoint: call.entrypoint.clone(),
+            kind: reviewed.kind,
+            summary: reviewed.summary.clone(),
+            flags: reviewed.flags.iter().map(RiskFlag::from).collect(),
+        }
+    }
+}

@@ -19,12 +19,12 @@ use super::call_decode::{
     AVNU_MULTI_ROUTE_SWAP, DECREASE_ALLOWANCE,
 };
 use super::calls::Call;
-use super::types::Account;
 use super::u256::U256;
 use crate::allowances::calls::{standing_allowance_totals, AllowanceOwner};
 use crate::allowances::record::{is_unlimited, AllowanceRecord};
 use crate::felt;
 use crate::js::felt::address_label;
+use crate::NetworkId;
 
 /// `RiskFlag`: one warning, with the extension's `code` and `message`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -142,6 +142,9 @@ pub struct ReviewContext<'a> {
     pub standing: &'a [AllowanceRecord],
 }
 
+/// The acting account (`VerificationContext.account`): its network and address.
+pub(crate) type Actor<'a> = (NetworkId, &'a Felt);
+
 /// `addressLabel(value)`.
 fn short(value: &Felt) -> String {
     address_label(&felt::canonical(value))
@@ -154,8 +157,9 @@ fn short(value: &Felt) -> String {
 type Total = Option<U256>;
 
 /// `standingAllowanceTotals` under `allowanceOwner(actor)`, each amount a `Total`.
-fn standing_totals(actor: &Account, context: &ReviewContext) -> HashMap<(Felt, Felt), Total> {
-    let Some(owner) = AllowanceOwner::of(actor.network, &actor.address) else {
+fn standing_totals(actor: Actor, context: &ReviewContext) -> HashMap<(Felt, Felt), Total> {
+    let (network, address) = actor;
+    let Some(owner) = AllowanceOwner::of(network, address) else {
         return HashMap::new();
     };
     standing_allowance_totals(context.standing, &owner, &context.known)
@@ -170,7 +174,7 @@ fn standing_totals(actor: &Account, context: &ReviewContext) -> HashMap<(Felt, F
 fn unlimited_approvals(
     calls: &[Call],
     decoded: &[DecodedCall],
-    actor: &Account,
+    actor: Actor,
     context: &ReviewContext,
 ) -> Vec<bool> {
     let mut totals = standing_totals(actor, context);
@@ -224,9 +228,10 @@ fn token_contracts(context: &ReviewContext) -> Vec<Felt> {
 pub(crate) fn call_flags(
     calls: &[Call],
     decoded: &[DecodedCall],
-    actor: &Account,
+    actor: Actor,
     context: &ReviewContext,
 ) -> Vec<Vec<RiskFlag>> {
+    let (_, address) = actor;
     let unlimited = unlimited_approvals(calls, decoded, actor, context);
     let tokens = token_contracts(context);
     calls
@@ -259,11 +264,11 @@ pub(crate) fn call_flags(
                 if decoded.kind != CallKind::Swap {
                     flags.push(RiskFlag::UndecodedSwap);
                 }
-                if let Some(beneficiary) = recipient.filter(|to| *to != actor.address) {
+                if let Some(beneficiary) = recipient.filter(|to| to != address) {
                     flags.push(RiskFlag::ForeignBeneficiary { beneficiary });
                 }
             } else if let Some(recipient) = recipient {
-                if recipient == actor.address {
+                if recipient == *address {
                     flags.push(RiskFlag::SelfTransfer);
                 }
                 if tokens.contains(&recipient) {

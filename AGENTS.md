@@ -134,7 +134,8 @@ Grep first; extend in place rather than adding a sibling.
   ordinary-call review both batches share is `multisig_review::summarise_calls`. A batch's
   annotation flags (`verifyCalls`) are `send::review_flags` (`RiskFlag`, `ReviewContext`), over
   `call_decode::decode_call`'s `CallKind`; the full review is `Invoke::reviewed`, the only
-  constructor; the plan's card reads its flags through `Plan::risk_flags()`, and a batch's
+  constructor, over `invoke::verify_calls` (the unrefused per-call review a stored multisig
+  intent's card reads too, `WalletCore::multisig_intent_review`) and `invoke::batch_flags`; the plan's card reads its flags through `Plan::risk_flags()`, and a batch's
   activity text is `Invoke::with_activity_summary` or `with_dapp_origin`. A batch's allowance
   changes and its row's amount and token (`ActivityAsset`) reach the host in the plan's pending
   record (`PendingKind::Invoke`). The approve spellings are `call_decode::{APPROVE,
