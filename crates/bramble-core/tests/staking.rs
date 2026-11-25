@@ -250,6 +250,13 @@ fn a_plan_needs_a_finished_verified_read() {
     prepared.restart();
     assert_eq!(plan(&prepared), unreadable);
     run(&chain, || prepared.next_calls(), |r| prepared.accept(r));
+    // A stake also needs its check read, from the bundled endpoints.
+    assert_eq!(plan(&prepared), unreadable);
+    let check = || prepared.check_next_calls();
+    run(&chain, check, |r| prepared.check_accept(r));
+    prepared.check_restart();
+    assert_eq!(plan(&prepared), unreadable);
+    run(&chain, check, |r| prepared.check_accept(r));
     assert!(prepared.plan(NOW_S, None).is_ok());
     let read = wallet
         .core
@@ -293,6 +300,11 @@ fn a_preparation_plans_once() {
     let chain = Chain::new(&wallet.address);
     let prepared = wallet.prepare(StakingAction::Stake, Some("1")).unwrap();
     run(&chain, || prepared.next_calls(), |r| prepared.accept(r));
+    run(
+        &chain,
+        || prepared.check_next_calls(),
+        |r| prepared.check_accept(r),
+    );
     let plan = prepared.plan(NOW_S, Some(BALANCE.into())).unwrap().plan;
     let again = prepared.plan(NOW_S, Some(BALANCE.into()));
     let again = again.err().map(refused);
@@ -310,6 +322,11 @@ fn a_lock_voids_a_prepared_stake() {
     let chain = Chain::new(&wallet.address);
     let prepared = wallet.prepare(StakingAction::Stake, Some("1")).unwrap();
     run(&chain, || prepared.next_calls(), |r| prepared.accept(r));
+    run(
+        &chain,
+        || prepared.check_next_calls(),
+        |r| prepared.check_accept(r),
+    );
     wallet.core.lock();
     assert_eq!(prepared.plan(NOW_S, None).err(), Some(StakingError::Locked));
     wallet.core.unlock(PASSWORD.into()).unwrap();

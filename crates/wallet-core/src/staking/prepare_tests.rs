@@ -75,14 +75,20 @@ pub(super) fn act_in(
     let account = account();
     let read = input.read(&NETWORK, &strk_info(), &account, token)?;
     let reading = run(read, chain);
+    // The stake's second reading, from an honest source answering the same chain.
+    let check = run(
+        input.read(&NETWORK, &strk_info(), &account, token)?,
+        &mut chain.clone(),
+    );
     let context = PrepareContext {
         review,
+        check: check.as_ref(),
         ..context(&account, token, policy)
     };
     prepare(input, reading.as_ref(), &context)
 }
 
-fn context<'a>(
+pub(super) fn context<'a>(
     account: &'a Account,
     token: &'a TokenConfig,
     policy: &'a Policy,
@@ -94,6 +100,7 @@ fn context<'a>(
         now: NOW,
         policy,
         review: &NOTHING_KNOWN,
+        check: None,
     }
 }
 
@@ -409,7 +416,7 @@ fn the_read_is_for_the_accounts_own_network_and_a_token_it_tracks_there() {
     }
 }
 
-fn reading() -> Option<StakingReading> {
+pub(super) fn reading() -> Option<StakingReading> {
     run(read_of(vec![strk_pair()]), &mut chain())
 }
 
@@ -418,7 +425,11 @@ fn prepare_takes_only_a_reading_of_this_pair_for_this_account_and_network() {
     let input = PrepareInput::new(StakingAction::Stake, Some("1"), STAKER).unwrap();
     let account = account();
     let token = strk_config();
-    let context = context(&account, &token, &SEND);
+    let check = reading();
+    let context = PrepareContext {
+        check: check.as_ref(),
+        ..context(&account, &token, &SEND)
+    };
     assert!(prepare(&input, reading().as_ref(), &context).is_ok());
     assert_eq!(
         prepare(&input, None, &context),
@@ -445,7 +456,7 @@ fn prepare_takes_only_a_reading_of_this_pair_for_this_account_and_network() {
     };
     let switched_off = PrepareContext {
         staking: &off,
-        ..self::context(&account, &token, &SEND)
+        ..context
     };
     assert_eq!(
         prepare(&input, reading().as_ref(), &switched_off),

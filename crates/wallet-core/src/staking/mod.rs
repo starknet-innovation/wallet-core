@@ -15,7 +15,8 @@
 //!
 //! Trust boundary, as in the extension: the staking contract comes only from the wallet's own
 //! `StakingNetwork`; a staker address (from the directory or pasted) is a candidate until the
-//! staking contract lists a pool for it and the pool's own parameters agree; a pool address is
+//! staking contract lists a pool for it and the pool's own parameters agree, and before a stake
+//! a second source names the same pool (`prepare::PrepareContext::check`); a pool address is
 //! never taken from Starkscan or the host; and nothing Starkscan says is signed or shown as an
 //! amount. Every number that is Bramble's choice is a `StakingPolicy`.
 
@@ -39,6 +40,8 @@ mod directory_ops_tests;
 mod directory_tests;
 #[cfg(test)]
 mod integration_tests;
+#[cfg(test)]
+mod pool_check_tests;
 #[cfg(test)]
 mod positions_tests;
 #[cfg(test)]

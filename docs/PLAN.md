@@ -732,7 +732,10 @@ Features, smallest and least dependent first:
   and the rewards token for a claim or the staked one otherwise) and a stake carries its
   exact-amount approval of the pool for the allowance log. Departures: fee freezing
   and the execute-time trusted-set re-check are the plan's (as P9); a claim's row names the
-  reading's rewards token where the extension hard-codes STRK; preparation ids are a counter and there is no time expiry
+  reading's rewards token where the extension hard-codes STRK; a stake also needs a second
+  reading from the bundled endpoints (never the RPC override) naming the same pool
+  (`PrepareContext::check`, `StakingPreparation::check_next_calls`), where the extension trusts
+  one node to choose the contract the stake is approved to; preparation ids are a counter and there is no time expiry
   (the extension has none); the website hostname is hand-parsed and stricter than WHATWG
   (display only); amounts are exact integers; a staker is read once per pinned read. Not
   ported: message envelopes, the shared Starkscan cooldown (`history::starkscan::cooldown_ms`
