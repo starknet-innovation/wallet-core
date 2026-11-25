@@ -10,7 +10,9 @@
 
 use super::budget::{parse_within, JsonBudget};
 use super::error::WalletRpcError;
+use super::invoke::{invoke_params, InvokeLimits};
 use crate::js::json::JsValue;
+use crate::send::calls::Call;
 
 /// A wallet API method the wallet accepts from a page (`PROVIDER_METHOD_POLICY`'s spec names).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -104,6 +106,8 @@ pub struct RequestBudgets {
     pub declare: JsonBudget,
     /// `wallet_addInvokeTransaction`, which may carry a STRK20 proof.
     pub invoke: JsonBudget,
+    /// The bounds on an invoke's calls, beyond its JSON budget.
+    pub invoke_limits: InvokeLimits,
 }
 
 impl RequestBudgets {
@@ -145,14 +149,20 @@ pub enum Request {
     SignTypedData {
         typed_data: JsValue,
     },
+    /// `wallet_addInvokeTransaction`'s calls, each address non-zero and every calldata entry a
+    /// felt. Its review is the wallet's own (`send::invoke::Invoke::reviewed`).
+    AddInvoke {
+        calls: Vec<Call>,
+    },
 }
 
 /// Reads a page's request: `method` as named, `params` as the JSON text of its params, or `None`
 /// where the page passed none (`params: undefined` included).
 ///
-/// Methods whose params are not read here yet (invoke, declare, add-chain, watch-asset and the
-/// STRK20 methods) are refused with UNKNOWN_ERROR (163) until their readers land, so nothing
-/// acts on params no grammar has checked.
+/// Methods whose params are not read here yet (declare, add-chain, watch-asset and the STRK20
+/// methods) are refused with UNKNOWN_ERROR (163) until their readers land, so nothing acts on
+/// params no grammar has checked. So is an invoke that carries a STRK20 proof (P15), once its
+/// calls have parsed.
 pub fn read_request(
     method: &str,
     params: Option<&str>,
@@ -182,8 +192,14 @@ pub fn read_request(
         Method::SignTypedData => typed_data(params)
             .map(|typed_data| Request::SignTypedData { typed_data })
             .ok_or_else(invalid),
+        Method::AddInvokeTransaction => match invoke_params(params, &budgets.invoke_limits) {
+            None => Err(invalid()),
+            Some(invoke) if invoke.has_proof => Err(WalletRpcError::unknown_error()),
+            Some(invoke) => Ok(Request::AddInvoke {
+                calls: invoke.calls,
+            }),
+        },
         Method::AddDeclareTransaction
-        | Method::AddInvokeTransaction
         | Method::AddStarknetChain
         | Method::Strk20Balances
         | Method::Strk20InvokeTransaction
@@ -204,7 +220,7 @@ pub fn is_api_version(value: &str) -> bool {
 }
 
 /// `isOptionalApiVersion`: absent, or a string of the right shape.
-fn optional_api_version(value: Option<&JsValue>) -> bool {
+pub(super) fn optional_api_version(value: Option<&JsValue>) -> bool {
     match value {
         None => true,
         Some(value) => value.as_str().is_some_and(is_api_version),
@@ -312,4 +328,4 @@ fn typed_data(params: Option<&JsValue>) -> Option<JsValue> {
 
 #[cfg(test)]
 #[path = "request_tests.rs"]
-mod tests;
+pub(super) mod tests;

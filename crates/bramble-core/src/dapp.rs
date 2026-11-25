@@ -5,7 +5,7 @@
 //! also checks the asking origin against the vault's origin grammar before reading anything.
 
 use starknet_wallet_core::dapp::{
-    read_request, JsonBudget, Request, RequestBudgets, WalletRpcError,
+    read_request, InvokeLimits, JsonBudget, Request, RequestBudgets, WalletRpcError,
 };
 
 /// `JSON_BUDGETS.provider`.
@@ -47,6 +47,14 @@ pub const DAPP_BUDGETS: RequestBudgets = RequestBudgets {
         max_nodes: 50_000,
         max_object_keys: 32,
         max_string_length: 512 * 1024,
+    },
+    // `INVOKE_LIMITS`; the call and calldata caps are the ones a send holds to.
+    invoke_limits: InvokeLimits {
+        calls: crate::MAX_INVOKE_CALLS,
+        calldata_felts: crate::MAX_CALL_CALLDATA_FELTS,
+        entrypoint_chars: 64,
+        // 66 covers `0x` hex; 78 also admits the decimal spelling starknet.js accepts.
+        felt_chars: 78,
     },
 };
 
