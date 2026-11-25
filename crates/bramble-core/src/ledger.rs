@@ -3,6 +3,8 @@
 //! at (`ledger-path.ts`), which the vault also validates, and the device a Ledger record signs
 //! on (`LedgerScheme::device`).
 
+#[cfg(feature = "mobile")]
+use crate::account_store::{KeySource, StoredAccount};
 use starknet_wallet_core::ledger::{DeviceModel, LedgerPath, PathComponent, Version};
 #[cfg(feature = "mobile")]
 use starknet_wallet_core::send::plan_device::DeviceKey;
@@ -93,9 +95,44 @@ impl LedgerScheme {
     }
 }
 
+/// The device `record` signs on; `None` unless it is a Ledger account.
+#[cfg(feature = "mobile")]
+pub(crate) fn record_device(record: &StoredAccount) -> Option<DeviceKey> {
+    match record.key {
+        KeySource::Ledger(scheme) => scheme.device(record.account_index),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "mobile")]
+    #[test]
+    fn a_scheme_signs_at_its_own_path() {
+        let device = |scheme: LedgerScheme, index| scheme.device(index).unwrap().path.to_string();
+        assert_eq!(
+            device(LedgerScheme::Ready, 3),
+            "m/2645'/1195502025'/1148870696'/0'/0'/3"
+        );
+        assert_eq!(
+            device(LedgerScheme::Bramble, 3),
+            "m/2645'/1195502025'/734980059'/0'/3'/0"
+        );
+        assert_eq!(
+            LedgerScheme::Ready.device(3).unwrap().app_minimum,
+            LEDGER_APP_MIN
+        );
+        assert!(LedgerScheme::Bramble.device(1 << 31).is_none());
+        for scheme in [LedgerScheme::Bramble, LedgerScheme::Ready] {
+            assert_eq!(
+                LedgerScheme::from_application(scheme.application()),
+                Some(scheme)
+            );
+        }
+        assert_eq!(LedgerScheme::from_application("ledgerw"), None);
+    }
 
     #[test]
     fn paths_are_the_extension_schemes() {

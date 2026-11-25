@@ -195,7 +195,7 @@ impl WalletCore {
                     account_id: record.id.clone(),
                     network: record.network(),
                     generation: self.lock_epoch.load(Ordering::SeqCst),
-                    device: record.device(),
+                    device: crate::ledger::record_device(record),
                 })
             }))
         });

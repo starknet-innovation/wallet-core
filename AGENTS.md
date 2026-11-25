@@ -145,7 +145,7 @@ Grep first; extend in place rather than adding a sibling.
   (`Plan::with_device`, `send::plan_device`), never through `PlanHost::sign`. Bramble's minimums
   and path schemes are `bramble-core`'s `ledger.rs` (`LedgerScheme`); a vault's Ledger record is
   `KeySource::Ledger`, admitted when its stored key places it, and reaches a plan only through
-  `StoredAccount::device` (`signing_key` refuses it).
+  `ledger::record_device` (`signing_key` refuses it).
 - AVNU swaps are `crates/wallet-core/src/swap/`: the quote (`quote.rs`: `PendingQuote`,
   `SwapQuote`, the value check), the build and its reply judge (`build.rs`: `PendingBuild`), the
   build policy and floor (`policy.rs`: `build_policy`, `reviewed_min_buy_amount`) and the frozen

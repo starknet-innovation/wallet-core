@@ -54,7 +54,7 @@ impl WalletCore {
         self: Arc<Self>,
         account_id: String,
     ) -> Result<Arc<PrivacyReadPlan>, PrivacyError> {
-        let (network, address, generation) = self
+        let (network, address, generation, ledger) = self
             .with_session(false, |session| {
                 let payload = &session.payload;
                 Ok(signing_record(payload, &account_id).map(|record| {
@@ -62,11 +62,16 @@ impl WalletCore {
                         record.network(),
                         record.address.clone(),
                         self.lock_epoch.load(Ordering::SeqCst),
+                        crate::ledger::record_device(record).is_some(),
                     )
                 }))
             })
             .map_err(|_| PrivacyError::Locked)?
             .map_err(|_| PrivacyError::UnknownAccount)?;
+        // Its viewing key would come from the account key, which a Ledger account never has.
+        if ledger {
+            return Err(PrivacyError::LedgerAccount);
+        }
         let route = config::route_for(network).ok_or(PrivacyError::NotConfigured)?;
         let address = felt::parse_non_zero(&address).ok_or(PrivacyError::UnknownAccount)?;
         let plan = wallet_core::privacy::plan::PrivacyReadPlan::new(

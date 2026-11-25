@@ -15,7 +15,6 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
-use wallet_core::send::plan_device::DeviceKey;
 use wallet_core::Felt;
 use wallet_core::{SecretFelt, StarkXOnlyKeypair};
 use zeroize::{Zeroize, ZeroizeOnDrop};
@@ -102,14 +101,6 @@ impl StoredAccount {
         match self.key {
             KeySource::Phrase(ladder) => Some((ladder, self.account_index)),
             KeySource::Imported | KeySource::Ledger(_) => None,
-        }
-    }
-
-    /// The device the record signs on; `None` unless it is a Ledger account.
-    pub(crate) fn device(&self) -> Option<DeviceKey> {
-        match self.key {
-            KeySource::Ledger(scheme) => scheme.device(self.account_index),
-            _ => None,
         }
     }
 }
@@ -279,8 +270,15 @@ impl VaultPayload {
         source: &StoredAccount,
         network: NetworkId,
     ) -> Result<(StoredAccount, Option<Box<SecretFelt>>), CoreError> {
-        let (pair, _) = self.signing_key(source)?;
-        let public_key = felt::parse_non_zero(&pair.public_key_x).ok_or_else(invalid_payload)?;
+        // A Ledger account carries its public key over and holds no key (`deriveLedgerAccount`).
+        let pair = match source.key {
+            KeySource::Ledger(_) => None,
+            _ => Some(self.signing_key(source)?.0),
+        };
+        let public_key = pair
+            .as_ref()
+            .map_or(&source.public_key, |pair| &pair.public_key_x);
+        let public_key = felt::parse_non_zero(public_key).ok_or_else(invalid_payload)?;
         let family = source.family();
         let class_hash = (family != AccountFamily::OpenZeppelin).then(|| source.class_felt());
         let record = record_at(
@@ -292,10 +290,9 @@ impl VaultPayload {
             &public_key,
             network,
         )?;
-        let sealed = self
-            .held_keys
-            .contains_key(&source.id)
-            .then(|| Box::new(pair.private_key));
+        let sealed = pair
+            .filter(|_| self.held_keys.contains_key(&source.id))
+            .map(|pair| Box::new(pair.private_key));
         Ok((record, sealed))
     }
 
