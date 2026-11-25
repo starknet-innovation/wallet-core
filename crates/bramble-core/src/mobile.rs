@@ -121,8 +121,9 @@ pub use ledger_reader::{
 pub use ledger_wallet::LedgerAccountRequest;
 pub use multisig_rpc::{MultisigAuthorityRead, MultisigAuthorityStatus, MultisigStateRead};
 pub use multisig_tx::{
-    ConfigChange, IntentState, MultisigCall, MultisigCallReview, MultisigIntent, MultisigProposal,
-    MultisigProposalRequest, MultisigSubmission, MultisigTxFailure, MultisigTxStep, StaleReason,
+    ConfigChange, IntentState, MultisigCall, MultisigCallReview, MultisigIntent,
+    MultisigIntentReview, MultisigProposal, MultisigProposalRequest, MultisigSubmission,
+    MultisigTxFailure, MultisigTxStep, StaleReason,
 };
 pub use networks::{NetworkInfo, TokenInfo};
 pub use nostr_relay::RelayStep;

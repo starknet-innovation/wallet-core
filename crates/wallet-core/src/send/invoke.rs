@@ -90,6 +90,45 @@ pub struct ReviewedCall {
     pub flags: Vec<RiskFlag>,
 }
 
+/// `verifyCalls(calls, context).calls`, each beside the flags it raises: what the review of a
+/// batch from the account at `sender` on `network` shows, with no refusal. `Invoke::reviewed` is
+/// this behind its checks; a stored multisig intent's card (calls the wallet already reviewed
+/// before it froze them) reads it directly. A partial `context` under-warns, as `reviewed` says.
+pub fn verify_calls(
+    network: NetworkId,
+    sender: &Felt,
+    calls: &[Call],
+    context: &ReviewContext,
+) -> Vec<ReviewedCall> {
+    let decoded: Vec<_> = calls
+        .iter()
+        .map(|call| {
+            decode_call(
+                &call.contract_address,
+                &call.entrypoint,
+                &call.calldata,
+                &context.known,
+            )
+        })
+        .collect();
+    let flags = call_flags(calls, &decoded, (network, sender), context);
+    decoded
+        .into_iter()
+        .zip(flags)
+        .map(|(call, flags)| ReviewedCall {
+            kind: call.kind,
+            summary: call.summary,
+            flags,
+        })
+        .collect()
+}
+
+/// `verifyCalls(..).flags`: every call's flags, in order, each line once (`dedupeFlags`), as the
+/// extension's card lists them.
+pub fn batch_flags(calls: &[ReviewedCall]) -> Vec<&RiskFlag> {
+    dedupe(calls.iter().flat_map(|call| call.flags.iter()))
+}
+
 /// `clampActivitySummary`: at most `MAX_SUMMARY_LENGTH` UTF-16 units, a longer one cut to one
 /// fewer and ended with an ellipsis.
 pub(crate) fn clamp_activity_summary(summary: &str) -> String {
@@ -162,30 +201,10 @@ impl Invoke {
     ) -> Result<Self, InvokeRefusal> {
         check(&account.address, &calls, policy)?;
         refuse_poisoned(&account.address, &calls, context.trusted)?;
-        let decoded: Vec<_> = calls
-            .iter()
-            .map(|call| {
-                decode_call(
-                    &call.contract_address,
-                    &call.entrypoint,
-                    &call.calldata,
-                    &context.known,
-                )
-            })
-            .collect();
-        let flags = call_flags(&calls, &decoded, account, context);
-        let summaries: Vec<&str> = decoded.iter().map(|call| call.summary.as_str()).collect();
+        let reviewed = verify_calls(account.network, &account.address, &calls, context);
+        let summaries: Vec<&str> = reviewed.iter().map(|call| call.summary.as_str()).collect();
         let summary = batch_line(&summaries, MAX_SUMMARY_LENGTH, "");
         let calldata = execute_calldata(&calls);
-        let reviewed = decoded
-            .into_iter()
-            .zip(flags)
-            .map(|(call, flags)| ReviewedCall {
-                kind: call.kind,
-                summary: call.summary,
-                flags,
-            })
-            .collect();
         // What the batch grants, read with the lists the review read (`allowanceChangesFromCalls`
         // under `allowanceOwner(account)`), so the plan's pending record carries it to the log.
         let allowances = AllowanceOwner::of(account.network, &account.address)
@@ -228,7 +247,7 @@ impl Invoke {
     /// The batch's flags as the extension's card lists them: every call's, in order, each line
     /// once (`dedupeFlags`).
     pub fn flags(&self) -> Vec<&RiskFlag> {
-        dedupe(self.reviewed.iter().flat_map(|call| call.flags.iter()))
+        batch_flags(&self.reviewed)
     }
 
     /// Names the activity row's text, as a swap or a stake does; cut as the activity log cuts it.

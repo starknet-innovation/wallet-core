@@ -118,8 +118,9 @@ blocks, `gasless_reads_parity.rs` the rest; the lines the core departs from, its
 `extension-privacy-copy.json` is the source of
 Bramble's generated Swift and Kotlin privacy copy; no Rust function returns those sentences, so
 no test here reads it. `extension-multisig-transactions.json` is read by
-`multisig_deploy_parity.rs` (`deploy`), `multisig_proposal_parity.rs` (`proposal`) and
-`multisig_signers_parity.rs` (the proposal's summary). `multisig_signers_parity.rs` also reads
+`multisig_deploy_parity.rs` (`deploy`), `multisig_proposal_parity.rs` (`proposal`),
+`multisig_signers_parity.rs` (the proposal's summary) and `multisig_intent_review.rs` (the
+proposal's summary as the intent card's call line, and the first signer change of `-signers.json`). `multisig_signers_parity.rs` also reads
 all of `-signers.json` and the `calls` part of `-refusals.json`; `multisig_deploy_parity.rs` its
 `deploySubmit` part and `multisig_refusals_parity.rs` every other part
 (`multisig_import_mechanism.rs` builds on its `readyIntent` and `account`). See
