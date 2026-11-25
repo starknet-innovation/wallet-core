@@ -5,6 +5,7 @@
 //! material, so nothing a user typed or a node said can reach a log through an error.
 
 pub use wallet_core::history::activity::ActivityKind;
+pub use wallet_core::ledger::TransportFailure;
 pub use wallet_core::send::call_decode::CallKind;
 pub use wallet_core::send::calls::{ReviewFlag, SendAmountError};
 pub use wallet_core::send::fees::{FeeAmount, FeeUnit};
@@ -145,6 +146,13 @@ pub enum SendStep {
     },
     /// Wait, then reply `WaitElapsed`.
     Wait { delay_ms: u32 },
+    /// A Ledger account: send `apdu` to the account's device and reply `Device` with its answer,
+    /// or `DeviceFailure` with what the transport reported. No account is signed this way yet.
+    Device { apdu: Vec<u8> },
+    /// The device refused (`reason` is the extension's rejection code: `device-locked`,
+    /// `wrong-device`, ...). Nothing was signed. Reply `RetryDevice` once the person has fixed
+    /// it, to sign the same transaction again, or close the plan.
+    DeviceRetry { reason: String },
     /// Show `TransferPlan::current_review`; reply `Confirm` or `RetryEstimate`.
     Review,
     /// The node accepted the transaction; reply `Proceed` to confirm it on chain.
@@ -163,13 +171,42 @@ pub enum SendStep {
 #[uniffi::remote(Enum)]
 pub enum StepReply {
     Start,
-    Rpc { id: u64, body: String, now_ms: u64 },
-    TransportFailure { id: u64, now_ms: u64 },
+    Rpc {
+        id: u64,
+        body: String,
+        now_ms: u64,
+    },
+    TransportFailure {
+        id: u64,
+        now_ms: u64,
+    },
     WaitElapsed,
     RetryEstimate,
     Confirm,
     Proceed,
     CheckAgain,
+    /// The device's answer to the last `SendStep::Device`: its data, then the status word.
+    Device {
+        reply: Vec<u8>,
+    },
+    DeviceFailure {
+        failure: TransportFailure,
+    },
+    /// After `SendStep::DeviceRetry`: sign on the device again.
+    RetryDevice,
+}
+
+/// A failure the device's transport reported in place of an answer.
+#[uniffi::remote(Enum)]
+pub enum TransportFailure {
+    /// The device is locked.
+    Locked,
+    /// The device disconnected.
+    Disconnected,
+    /// Another program holds the device.
+    Busy,
+    /// Anything else.
+    Other,
 }
 
 /// Why an amount was refused.
@@ -239,6 +276,9 @@ pub enum SendFailureCode {
     Locked,
     /// Krusty failed to sign, or signed under a key that is not the account's.
     SigningFailed,
+    /// A Ledger account's device returned a signature that did not verify against the account's
+    /// key (`detail`: `signature-verify-failed`). Nothing was written.
+    DeviceRefused,
     /// Ready: the account runs an Argent class this wallet does not recognise.
     AccountClassUnrecognised,
     /// Ready: the account runs an Argent class whose authorization this wallet does not produce

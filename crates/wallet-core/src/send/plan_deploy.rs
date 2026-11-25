@@ -14,6 +14,7 @@ use super::plan::{
     AfterWait, Authorization, DeploymentFor, DeploymentPoll, Expect, Plan, PlanHost,
     DEPLOY_POLL_ATTEMPTS, DEPLOY_POLL_INTERVAL_MS,
 };
+use super::plan_device::{DeployWrite, SignFor};
 use super::plan_submit::{refusal_code, settle, Settled};
 use super::rpc_bodies::{self, DeployTx};
 use super::sign;
@@ -119,15 +120,34 @@ impl Plan {
             Ok(hash) => hash,
             Err(refusal) => return self.fail(refusal_code(refusal), None),
         };
-        let signed = if self.account.is_braavos() {
-            self.braavos_deploy_signature(host, &hash, true)
-        } else {
-            self.sign(host, &hash)
+        let write = DeployWrite {
+            bounds,
+            purpose,
+            deployment,
         };
-        let signature = match signed {
-            Ok(signature) => signature,
-            Err(code) => return self.fail(code, None),
-        };
+        if !self.account.is_braavos() {
+            return self.sign_for(host, hash, SignFor::Deploy(write));
+        }
+        // Braavos signs twice through the host; a device account is refused there.
+        match self.braavos_deploy_signature(host, &hash, true) {
+            Ok(signature) => self.send_deploy(host, hash, write, signature),
+            Err(code) => self.fail(code, None),
+        }
+    }
+
+    /// Sends the deployment `hash` names, once signed: the only way a deployment's write leaves.
+    pub(super) fn send_deploy(
+        &mut self,
+        host: &dyn PlanHost,
+        hash: Felt,
+        write: DeployWrite,
+        signature: Vec<Felt>,
+    ) -> SendStep {
+        let DeployWrite {
+            bounds,
+            purpose,
+            deployment,
+        } = write;
         self.work.deploy_hash = Some(hash);
         self.persist_pending(host, &hash, false);
         self.rpc(

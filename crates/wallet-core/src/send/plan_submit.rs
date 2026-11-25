@@ -13,6 +13,7 @@ use super::judge::{self, Answer, ChainAnswer, EstimateAnswer, Observation, Write
 use super::plan::{
     DeploymentFor, Expect, Kind, PendingKind, PendingRecord, Plan, PlanHost, SignRefusal,
 };
+use super::plan_device::{InvokeWrite, SignFor};
 use super::plan_probe::{Outcome, Probe};
 use super::plan_review::DEPLOY_SUMMARY;
 use super::rpc_bodies::{self, InvokeTx};
@@ -113,7 +114,7 @@ impl Plan {
 
     /// A failure after an accepted automatic deployment names the deployment
     /// ("Account deployment … completed, but the following transaction could not be confirmed").
-    fn after_deployment(
+    pub(super) fn after_deployment(
         &mut self,
         deployment: Option<Felt>,
         code: Code,
@@ -303,10 +304,29 @@ impl Plan {
             Ok(hash) => hash,
             Err(refusal) => return self.after_deployment(deployment, refusal_code(refusal), None),
         };
-        let signature = match self.sign(host, &hash) {
-            Ok(signature) => signature,
-            Err(code) => return self.after_deployment(deployment, code, None),
+        let write = InvokeWrite {
+            nonce,
+            bounds,
+            deployment,
+            calldata,
         };
+        self.sign_for(host, hash, SignFor::Invoke(write))
+    }
+
+    /// Sends the invoke `hash` names, once signed: the only way an invoke's write leaves.
+    pub(super) fn send_invoke(
+        &mut self,
+        host: &dyn PlanHost,
+        hash: Felt,
+        write: InvokeWrite,
+        signature: Vec<Felt>,
+    ) -> SendStep {
+        let InvokeWrite {
+            nonce,
+            bounds,
+            deployment,
+            calldata,
+        } = write;
         self.work.invoke_hash = Some(hash);
         self.persist_pending(host, &hash, true);
         self.rpc(
@@ -391,6 +411,10 @@ impl Plan {
         hash: &Felt,
         renew: bool,
     ) -> Result<Vec<Felt>, Code> {
+        // A Ledger account never signs with a key (`plan_device`).
+        if self.device.is_some() {
+            return Err(Code::AccountClassUnsupported);
+        }
         let StarkSignature { public_key, r, s } =
             host.sign(hash, renew).map_err(|refusal| match refusal {
                 SignRefusal::Locked => Code::Locked,

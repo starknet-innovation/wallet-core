@@ -4,11 +4,13 @@
 
 use super::calls::{self, ReviewFlag, SendAmountError};
 use super::fees::{FeeAmount, Headroom};
-use super::invoke::Invoke;
+use super::invoke::{ActivityAsset, Invoke};
 use super::judge::TxStatus;
 use super::sign::Deployment;
 use super::u256::U256;
+use crate::allowances::calls::AllowanceChange;
 use crate::kms::NetworkId;
+use crate::ledger::TransportFailure;
 use crate::Felt;
 
 /// What a `getClassHashAt` answer says about an account contract.
@@ -81,6 +83,13 @@ pub enum SendStep {
     },
     /// Wait, then reply `WaitElapsed`.
     Wait { delay_ms: u32 },
+    /// A Ledger account (`Plan::with_device`): send `apdu` to the account's device and reply
+    /// `Device` with its answer, or `DeviceFailure` with what the transport reported.
+    Device { apdu: Vec<u8> },
+    /// The device refused (`reason` is the extension's rejection code: `device-locked`,
+    /// `wrong-device`, ...). Nothing was signed. Reply `RetryDevice` once the person has fixed
+    /// it, to sign the same transaction again, or close the plan.
+    DeviceRetry { reason: String },
     /// Show `Plan::current_review`; reply `Confirm` or `RetryEstimate`.
     Review,
     /// The node accepted the transaction; reply `Proceed` to confirm it on chain.
@@ -99,13 +108,29 @@ pub enum SendStep {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StepReply {
     Start,
-    Rpc { id: u64, body: String, now_ms: u64 },
-    TransportFailure { id: u64, now_ms: u64 },
+    Rpc {
+        id: u64,
+        body: String,
+        now_ms: u64,
+    },
+    TransportFailure {
+        id: u64,
+        now_ms: u64,
+    },
     WaitElapsed,
     RetryEstimate,
     Confirm,
     Proceed,
     CheckAgain,
+    /// The device's answer to the last `SendStep::Device`: its data, then the status word.
+    Device {
+        reply: Vec<u8>,
+    },
+    DeviceFailure {
+        failure: TransportFailure,
+    },
+    /// After `SendStep::DeviceRetry`: sign on the device again.
+    RetryDevice,
 }
 
 /// Refusals raised synchronously by `Plan::advance`.
@@ -141,6 +166,9 @@ pub enum SendFailureCode {
     Locked,
     /// The host failed to sign, or signed under a key that is not the account's.
     SigningFailed,
+    /// A Ledger account's device returned a signature that did not verify against the account's
+    /// key (`detail`: `signature-verify-failed`). Nothing was written.
+    DeviceRefused,
     /// Ready: the account runs an Argent class this wallet does not recognise.
     AccountClassUnrecognised,
     /// Ready: the account runs an Argent class whose authorization this wallet does not produce
@@ -177,7 +205,8 @@ pub struct SendFailure {
     pub code: SendFailureCode,
     pub hash: Option<String>,
     /// The class label an `AccountClassUnsupported` refusal names (the extension's `{label}`,
-    /// e.g. "argent 0.3.1"); catalog text, never node text.
+    /// e.g. "argent 0.3.1"), or the device's rejection code when the device ended the plan;
+    /// catalog text, never node text.
     pub detail: Option<String>,
 }
 
@@ -375,4 +404,43 @@ pub enum Kind {
     Refresh {
         hash: Felt,
     },
+}
+
+/// Why the host would not sign.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SignRefusal {
+    /// The session the plan was prepared in has ended.
+    Locked,
+    Failed,
+}
+
+/// What a pending activity record describes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PendingKind {
+    Transfer {
+        amount: String,
+        recipient: Felt,
+        symbol: String,
+        token_address: Felt,
+    },
+    /// A call batch; the record's summary is its review's, or the text its builder named.
+    Invoke {
+        /// The amount and token the batch's builder named for the row (a swap, a stake).
+        asset: Option<ActivityAsset>,
+        /// Every allowance the batch changes. The host files them under the record's hash
+        /// (`allowances::calls::record_changes`) before it writes the row, as the extension
+        /// does for any hash that may be on chain: a row that fails to write must not lose a
+        /// grant from the list a person revokes from.
+        allowances: Vec<AllowanceChange>,
+    },
+    Deployment,
+}
+
+/// The record a wallet writes before a signed write leaves the core, keyed by its hash.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingRecord {
+    pub hash: Felt,
+    pub kind: PendingKind,
+    pub summary: String,
+    pub submitted_at: u64,
 }

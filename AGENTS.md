@@ -139,6 +139,11 @@ Grep first; extend in place rather than adding a sibling.
   changes and its row's amount and token (`ActivityAsset`) reach the host in the plan's pending
   record (`PendingKind::Invoke`). The approve spellings are `call_decode::{APPROVE,
   APPROVE_SET, DECREASE_ALLOWANCE}` and the approve call is `send::calls::erc20_approve`.
+- The Ledger device protocol is `crates/wallet-core/src/ledger/` (APDUs and their replies,
+  `LedgerRejection`, `LedgerPath`); one signature, verified against the account's key before it
+  can be used, is `ledger::DeviceSigning`. A plan signs a Ledger account through it
+  (`Plan::with_device`, `send::plan_device`), never through `PlanHost::sign`. Bramble's minimums
+  and path schemes are `bramble-core`'s `ledger.rs`.
 - AVNU swaps are `crates/wallet-core/src/swap/`: the quote (`quote.rs`: `PendingQuote`,
   `SwapQuote`, the value check), the build and its reply judge (`build.rs`: `PendingBuild`), the
   build policy and floor (`policy.rs`: `build_policy`, `reviewed_min_buy_amount`) and the frozen

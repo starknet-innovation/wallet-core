@@ -51,7 +51,10 @@ impl Plan {
                 Felt::from(transfer.amount.high),
             ],
         };
+        // A Ledger account's outside execution would be signed through the host; until the
+        // gasless path signs on the device, its STRK path is the only one (fails closed).
         let qualifies = matches!(self.stage, Stage::Reviewed)
+            && self.device.is_none()
             // `execute_calldata` names the entrypoint (always by name); the outside execution takes
             // a felt entrypoint as its own selector (`selector_of`). Equal for this one "transfer";
             // a batch with felt entrypoints would need both to agree before it is widened to.

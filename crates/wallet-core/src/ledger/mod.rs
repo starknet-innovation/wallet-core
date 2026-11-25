@@ -16,9 +16,10 @@
 //!   gate, and the commands that close and reopen an app.
 //!
 //! Minimum versions are a wallet's choice and arguments here (Bramble's are `bramble-core`'s
-//! `ledger`). There is no cryptography: a signature is verified against the account's key by the
-//! caller, before anything is broadcast. The dashboard-and-reopen sequence that reads the OS
-//! version (`readLedgerOsAndRestoreStarknet`) and the transport are not here.
+//! `ledger`). One signature end to end, verified through Krusty against the account's stored key
+//! before it can be used, is `sign::DeviceSigning`; the readers alone never verify. The
+//! dashboard-and-reopen sequence that reads the OS version (`readLedgerOsAndRestoreStarknet`) and
+//! the transport are not here.
 //!
 //! The vectors are the library's encoding and the extension's tests. Golden transcripts from a
 //! device or Ledger's Speculos emulator are owed to a Bramble generator; none is in
@@ -27,10 +28,13 @@
 mod management;
 mod path;
 mod rejection;
+mod sign;
 mod starknet;
 
 #[cfg(test)]
 mod management_tests;
+#[cfg(test)]
+mod sign_tests;
 #[cfg(test)]
 mod starknet_tests;
 
@@ -41,6 +45,7 @@ pub use management::{
 };
 pub use path::{LedgerPath, PathComponent};
 pub use rejection::{LedgerRejection, RejectionCode, TransportFailure};
+pub use sign::{DeviceSigning, DeviceStep, VerifiedSignature};
 pub use starknet::{
     app_version_request, check_app_version, parse_app_version, parse_public_key, parse_sign_path,
     parse_signature, public_key_request, sign_hash_requests, DeviceSignature,
