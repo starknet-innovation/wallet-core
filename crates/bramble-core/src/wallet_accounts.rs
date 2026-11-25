@@ -27,7 +27,7 @@ use crate::recovery::{derive_selections, RecoverySelection};
 use crate::recovery_scan::{self, RecoveryScanStep};
 use crate::rpc_request::RpcResponse;
 use crate::vault_provenance::Origin;
-use crate::wallet::{Session, StarkSignature, WalletCore};
+use crate::wallet::{Session, WalletCore};
 use crate::CoreError;
 
 /// One account as the UI renders it. Public data only; safe to render and log.
@@ -314,32 +314,6 @@ impl WalletCore {
         })
     }
 
-    /// Signs a host-supplied hash for one stored account, through the same gate as every transfer
-    /// (`signing_record`): refuses a vault still waiting for discovery and an unknown id. A
-    /// Braavos record is refused too: its signatures are made only by a send plan, after the
-    /// account's live class and signers are checked, and a raw hash would skip those checks. The
-    /// key is derived from the record's index, used, and wiped inside this call. Renews. See
-    /// `docs/accounts.md` §2.7 for what this can and cannot guarantee.
-    pub fn sign_hash_for_account(
-        &self,
-        account_id: String,
-        message_hash: String,
-    ) -> Result<StarkSignature, CoreError> {
-        self.with_session(true, |session| {
-            let payload = &session.payload;
-            let record = signing_record(payload, &account_id)?;
-            if record.family() == AccountFamily::Braavos {
-                return Err(invalid("a Braavos account signs only through a send plan"));
-            }
-            let signature = sign_for(payload, record, &message_hash)?;
-            Ok(StarkSignature {
-                public_key: signature.public_key,
-                r: signature.r,
-                s: signature.s,
-            })
-        })
-    }
-
     /// Sets (trimmed, 1-64) or clears (empty) an account's label; returns what is stored.
     pub fn set_account_label(
         &self,
@@ -484,6 +458,30 @@ impl WalletCore {
                 .iter()
                 .map(|record| render(payload, record))
                 .collect())
+        })
+    }
+}
+
+/// Not exported: signing any hash the host supplies is a key oracle. Krusty derives an account's
+/// STRK20 viewing key as one deterministic signature over a public pool scope hash, so a caller
+/// that can sign that hash holds the viewing key, and a scope hash looks like any other.
+#[cfg(feature = "testing")]
+impl WalletCore {
+    /// Signs a hash for one stored account through `signing_record`, for the integration suite
+    /// only; Bramble's send plans sign inside the core. A Braavos record is refused, as only its
+    /// send plan checks the live class and signers. Renews.
+    pub fn sign_hash_for_account(
+        &self,
+        account_id: String,
+        message_hash: String,
+    ) -> Result<crate::StarkSignature, CoreError> {
+        self.with_session(true, |session| {
+            let payload = &session.payload;
+            let record = signing_record(payload, &account_id)?;
+            if record.family() == AccountFamily::Braavos {
+                return Err(invalid("a Braavos account signs only through a send plan"));
+            }
+            sign_for(payload, record, &message_hash)
         })
     }
 }
