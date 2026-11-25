@@ -86,6 +86,10 @@ pub enum SendStep {
     /// A Ledger account (`Plan::with_device`): send `apdu` to the account's device and reply
     /// `Device` with its answer, or `DeviceFailure` with what the transport reported.
     Device { apdu: Vec<u8> },
+    /// The device refused (`reason` is the extension's rejection code: `device-locked`,
+    /// `wrong-device`, ...). Nothing was signed. Reply `RetryDevice` once the person has fixed
+    /// it, to sign the same transaction again, or close the plan.
+    DeviceRetry { reason: String },
     /// Show `Plan::current_review`; reply `Confirm` or `RetryEstimate`.
     Review,
     /// The node accepted the transaction; reply `Proceed` to confirm it on chain.
@@ -125,6 +129,8 @@ pub enum StepReply {
     DeviceFailure {
         failure: TransportFailure,
     },
+    /// After `SendStep::DeviceRetry`: sign on the device again.
+    RetryDevice,
 }
 
 /// Refusals raised synchronously by `Plan::advance`.
@@ -160,8 +166,8 @@ pub enum SendFailureCode {
     Locked,
     /// The host failed to sign, or signed under a key that is not the account's.
     SigningFailed,
-    /// A Ledger account's device did not give a signature that verified; `detail` is the
-    /// extension's rejection code (`wrong-device`, `signature-verify-failed`, ...).
+    /// A Ledger account's device returned a signature that did not verify against the account's
+    /// key (`detail`: `signature-verify-failed`). Nothing was written.
     DeviceRefused,
     /// Ready: the account runs an Argent class this wallet does not recognise.
     AccountClassUnrecognised,
@@ -199,8 +205,8 @@ pub struct SendFailure {
     pub code: SendFailureCode,
     pub hash: Option<String>,
     /// The class label an `AccountClassUnsupported` refusal names (the extension's `{label}`,
-    /// e.g. "argent 0.3.1"), or a `DeviceRefused` refusal's code; catalog text, never node
-    /// text.
+    /// e.g. "argent 0.3.1"), or the device's rejection code when the device ended the plan;
+    /// catalog text, never node text.
     pub detail: Option<String>,
 }
 

@@ -149,6 +149,10 @@ pub enum SendStep {
     /// A Ledger account: send `apdu` to the account's device and reply `Device` with its answer,
     /// or `DeviceFailure` with what the transport reported. No account is signed this way yet.
     Device { apdu: Vec<u8> },
+    /// The device refused (`reason` is the extension's rejection code: `device-locked`,
+    /// `wrong-device`, ...). Nothing was signed. Reply `RetryDevice` once the person has fixed
+    /// it, to sign the same transaction again, or close the plan.
+    DeviceRetry { reason: String },
     /// Show `TransferPlan::current_review`; reply `Confirm` or `RetryEstimate`.
     Review,
     /// The node accepted the transaction; reply `Proceed` to confirm it on chain.
@@ -188,6 +192,8 @@ pub enum StepReply {
     DeviceFailure {
         failure: TransportFailure,
     },
+    /// After `SendStep::DeviceRetry`: sign on the device again.
+    RetryDevice,
 }
 
 /// A failure the device's transport reported in place of an answer.
@@ -270,8 +276,8 @@ pub enum SendFailureCode {
     Locked,
     /// Krusty failed to sign, or signed under a key that is not the account's.
     SigningFailed,
-    /// A Ledger account's device did not give a signature that verified; `detail` is the
-    /// extension's rejection code (`wrong-device`, `signature-verify-failed`, ...).
+    /// A Ledger account's device returned a signature that did not verify against the account's
+    /// key (`detail`: `signature-verify-failed`). Nothing was written.
     DeviceRefused,
     /// Ready: the account runs an Argent class this wallet does not recognise.
     AccountClassUnrecognised,

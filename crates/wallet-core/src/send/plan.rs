@@ -126,6 +126,8 @@ pub(super) enum Stage {
     Waiting(AfterWait),
     /// A Ledger account's signature in progress (`plan_device`).
     Device(Box<super::plan_device::DeviceWait>),
+    /// The device refused; waiting for `RetryDevice` (`plan_device`).
+    DeviceRefused(Box<super::plan_device::DeviceWait>),
     Reviewed,
     Broadcasted,
     Finished(TxStatus),
@@ -298,6 +300,9 @@ impl Plan {
             }
             (Stage::Device(wait), StepReply::DeviceFailure { failure }) => {
                 Ok(self.on_device(host, *wait, Err(failure)))
+            }
+            (Stage::DeviceRefused(wait), StepReply::RetryDevice) => {
+                Ok(self.retry_device(host, *wait))
             }
             (Stage::Reviewed, StepReply::Confirm) => self.confirm(host),
             (Stage::Broadcasted, StepReply::Proceed)
