@@ -71,8 +71,8 @@ v13 payload.
 | 2.6 Catalogs | done (#49) | done (M12, Bramble #928) |
 | 2.7 Swap | done (#50), behind the `mobile` feature | done (M13, Bramble #929), at `v0.3.0`: `mobile/core` is a shell over this crate |
 | Vault switch | done (V1 #58) | G4 done (Bramble #947); M14 done (Bramble #980): mobile pins `v0.4.0` |
-| [Mobile parity](#mobile-parity) | P6 done (#65), P2 done (#68); P1 done (P1a #70, P1b #71, P1c #72) and exported (X1 #111); P3 done (#80), not shippable until Bramble's imported-key v13 fixture lands; P4 done (#78), no fixture yet (needs a Bramble generator); P5 done (#83), no fixture yet | M15 (Bramble #1007–#1010) takes `v0.6.0`: P2 and P6 merged (#1008, #1009), P4 and P5 in #1010 (open); P1 waits on its export, P3's screens were left out |
-| [Parity](#parity) P7–P16 | P7 done for reading (#87, #92): every v13 and v14 collection is read, every vault the extension opens opens here, and what mobile does not operate is kept unused and listed; the 13→14 migration waits on v0.10.11 reaching the extension's `main`. P9 done (#84, #91, #104) and exported with P12's revoke (X2+X3 #106). P10 done (#86). P11 exported (X4 #107), P13 exported (X5 #110). Fixtures for P3–P5 and P9–P13 copied (G7, #109). P8's device protocol (#101) and P14's core (#108) done, neither exported; P15 spiked (#102); P16 not started. See [Road to parity](#road-to-parity) | P7's kept accounts (#1009) and P10 (#1008) merged; the rest wait on their exports |
+| [Mobile parity](#mobile-parity) | P6 done (#65), P2 done (#68); P1 done (P1a #70, P1b #71, P1c #72) and exported (X1 #111); P3 done (#80), P4 done (#78), P5 done (#83), each with its fixture copied (G7, #109) | M15 (Bramble #1007–#1010) took `v0.6.0` and shipped P2, P4–P6 and P10; M16 (#1019) shipped P3's screens. P1's screens are M18, not started |
+| [Parity](#parity) P7–P16 | P7 done for reading (#87, #92): every v13 and v14 collection is read, every vault the extension opens opens here, and what mobile does not operate is kept unused and listed; new vaults are written at 14 and a v13 vault is raised on unlock (#116, not yet tagged). P9 done (#84, #91, #104) and exported with P12's revoke (X2+X3 #106). P10 done (#86). P11 exported (X4 #107), P13 exported (X5 #110). P14 done and exported (#108, #117, not yet tagged). Fixtures for P3–P5, P7 and P9–P14 copied (G7, #109, #117). P8's device protocol (#101) done, not exported; P15 spiked (#102); P16 not started. See [Road to parity](#road-to-parity) | Mobile takes `v0.7.0` (Bramble #1032). P7's kept accounts (#1009) and P10 (#1008) shipped; the screens for P12 (M19), P11 (M20), P13 (M21) and P14 are not started |
 | 3 Extension | not started, and waits for parity; `js/package.json` is private | n/a |
 
 `v0.1.0` is tagged at `35abc8b` (GitHub release only) and was what M2 and M3 pinned. `v0.2.0`
@@ -118,19 +118,25 @@ all merged; each is described under its step in [Phases](#phases).
 #83–#87 and #89–#93 (2026-11-21) landed the core halves of P5, P7 and P9–P13 at the product
 owner's request: several steps ahead of mobile, where [Process](#process) says one, each on unit
 tests ported from the extension's own, with its generator owed. M15 (Bramble #1007–#1010,
-2026-11-22) takes `v0.6.0` and ships P2, P4–P6 and P10 on both apps; P3's screens were left out.
+2026-11-22) takes `v0.6.0` and ships P2, P4–P6 and P10 on both apps; P3's screens were left out,
+then shipped as M16 (Bramble #1019). Since `v0.7.0`, `main` adds X1's settle (#115), P7's
+migration (#116) and P14's export (#117), all untagged.
 
 #### Road to parity
 
-Written 2026-11-23, against #990's table. With M15 merged, mobile ships 17 of the extension's 29
-user-facing rows; 12 remain. What decides the pace is not the porting, which is mostly done, but
-one upstream export and three decisions (D1 and D3 settled 2026-11-23):
+Written 2026-11-23, against #990's table; updated 2026-11-25. With M15–M17 merged, mobile ships
+19 of the extension's 29 user-facing rows; 10 remain:
 
-- **krusty-kms#257** (a selector from an entrypoint name and Stark signature verification). Open
-  since 2026-11-20 with no movement. It blocks P1's export and P9's, and through P9 every
-  feature that submits calls: P11, P12's revoke, P13, P14 and P16, and P8, whose check before
-  broadcast verifies the device's signature. Chasing it is the highest-value thing anyone can do
-  for parity.
+- exported, screens only: multisig transactions (M18), allowances and revoke (M19), swap (M20),
+  staking (M21), and gasless and sponsored (after the next tag);
+- core work left: Ledger (P8), STRK20 actions, then shadow accounts and multisig STRK20 (P15),
+  dapp connect and anti-phishing (P16, waiting on D2).
+
+The porting is mostly done; what decides the pace now is the mobile screens and D2:
+
+- **krusty-kms#257** (a selector from an entrypoint name and Stark signature verification).
+  Closed: Krusty 3.2.0 shipped it and K2 (#105) took it, which unblocked P1, P9 and every
+  feature that submits calls.
 - **D1 Ledger transport** (P8). *Decided* 2026-11-23 (product owner): Bluetooth first on both
   apps (Nano X, Stax, Flex), Android USB (Nano S Plus) as a follow-up, since iOS cannot reach a
   Ledger over USB at all; Ledger's own mobile SDK for the link to start with, ported into the core
@@ -157,13 +163,13 @@ step starts.
 
 | PR | Repo | Needs | What it is |
 | --- | --- | --- | --- |
-| M15d | Bramble | — | #1010 (custom RPC screens, Starknet names), the last of M15 |
-| G7a | Bramble | — | fixtures for what mobile already ships on unit tests alone: an imported-key v13 vault (P3), the RPC override rules (P4), Stark-name normalisation, calldata and judging (P5), and the CSV, filter and counterparty summary over one feed (P10). Also regenerates G6's `extension-activity-detail.jsonl` now that Bramble #1002 is closed (the extension stores a receipt fee; `throughProvider` should stop showing the gap), and adds G5's import over a partial intent now that #1003 is closed |
-| G7b | Bramble | — | G4 at v13 with every collection filled, and at v14 with an `accountProvenance`, sealed by the extension's own store (P7) |
-| M16 | Bramble | G7a | P3's screens (private-key import), if the product owner wants them back in; the export is in `v0.6.0` |
-| M17 | Bramble | — | analytics consent and diagnostics screens; nothing here |
-| Extension Krusty 3 | Bramble, `main` | — | the extension still pins `@starknetfoundation/krusty-kms-wasm` `0.11.0`, which predates the fix (Krusty 3.0 changed the derivation; 2.0.0 and earlier kept the leading zero bytes), so its keys and mobile's part for affected phrases. Its users have funds, so it follows Krusty's [migration guide](https://github.com/starknet-innovation/krusty-kms/blob/v3.0.0/docs/migration-3.0.md): keep the old key for any existing account whose public key differs. Needed before Phase 3, where the extension takes this crate's Krusty |
-| P7 migrate | here | v0.10.11 on the extension's `main`, G7b | `NEW_VAULT_SCHEMA` to 14 and raising a v13 vault on unlock, as the extension's migration does. Until v0.10.11 ships, a backup mobile raised to 14 would not open in the released extension |
+| M15d | Bramble | — | done (#1010): custom RPC screens, Starknet names, the last of M15 |
+| G7a | Bramble | — | done (Bramble #1013, #1016; copied in #109): fixtures for what mobile already ships on unit tests alone: an imported-key v13 vault (P3), the RPC override rules (P4), Stark-name normalisation, calldata and judging (P5), and the CSV, filter and counterparty summary over one feed (P10). Also regenerates G6's `extension-activity-detail.jsonl` now that Bramble #1002 is closed (the extension stores a receipt fee; `throughProvider` should stop showing the gap), and adds G5's import over a partial intent now that #1003 is closed |
+| G7b | Bramble | — | done (#1033, as G7i; copied in #116): G4 at v13 with every collection filled, and at v14 with an `accountProvenance`, sealed by the extension's own store (P7) |
+| M16 | Bramble | G7a | done (#1019): P3's screens (private-key import) |
+| M17 | Bramble | — | done (#1027): analytics consent and diagnostics screens; nothing here |
+| Extension Krusty 3 | Bramble, `main` | — | `main` pins `@starknetfoundation/krusty-kms-wasm` `3.1.0` (checked 2026-11-25); confirm the migration below shipped with it before Phase 3. It had pinned `@starknetfoundation/krusty-kms-wasm` `0.11.0`, which predates the fix (Krusty 3.0 changed the derivation; 2.0.0 and earlier kept the leading zero bytes), so its keys and mobile's parted for affected phrases. Its users have funds, so it follows Krusty's [migration guide](https://github.com/starknet-innovation/krusty-kms/blob/v3.0.0/docs/migration-3.0.md): keep the old key for any existing account whose public key differs. Needed before Phase 3, where the extension takes this crate's Krusty |
+| P7 migrate | here | v0.10.11 on the extension's `main`, G7b | done (#116), not yet tagged: `NEW_VAULT_SCHEMA` to 14 and raising a v13 vault on unlock, as the extension's migration does. Until v0.10.11 ships, a backup mobile raised to 14 would not open in the released extension |
 | D2 | — | — | the dapp transport above; D1 and D3 are settled |
 | P15 spike | here | — | done 2026-11-23: see "P15 spike findings" under P15 in [Parity](#parity). The account key stays in Rust (the SDK only asks for a `CallSet` signature the core can compute and sign); the viewing key crosses into the runtime and on to StarkWare's prover and discovery service, as in the extension; a hidden WebView on both apps runs the pinned bundle unchanged behind a native fetch bridge; no StarkWare Rust client exists or is announced; the core's first P15 PR (the `PrivacyEngine` trait, `CallSet` signing, result judging) can start now |
 
@@ -173,7 +179,7 @@ step starts.
 | --- | --- | --- | --- |
 | K2 | here | — | done (#105): Krusty 3.2.0; its selector and Stark signature verification replace `StarkPrimitives` |
 | G7c | Bramble | — (can start now) | P1's missing fixtures: the multisig import cases and the call summaries beyond an ERC-20 transfer |
-| X1 P1 | here | — | done (#111, `v0.7.0`): deploy, propose, co-sign, submit, change signers and import, with the extension's stale-intent and resend guards. Left: settling a submitted intent needs `refresh_activity` to take a multisig id |
+| X1 P1 | here | — | done (#111, `v0.7.0`): deploy, propose, co-sign, submit, change signers and import, with the extension's stale-intent and resend guards; settling a submitted intent through `refresh_activity` by multisig id followed (#115) |
 | M18 | Bramble | X1 | multisig transaction screens on both apps: propose, sign, submit, change signers |
 | P9 rest | here | — | done (#104) |
 | G7d | Bramble | — | a multicall and a refused batch through `submitInvokeTransaction`, and `verifyCalls` over batches that raise each flag (P9) |
@@ -181,7 +187,7 @@ step starts.
 | G7e, X3, M19 | both | — | G7e and X3 done (#106, #109); M19, the allowance manager and revoke screens, is next |
 | G7f, X4, M20 | both | — | G7f and X4 done (#107, #109); M20, the swap screens, is next |
 | G7g, X5, M21 | both | — | X5 done (#110, Mainnet only, `STAKING_POLICY`); M21, the staking screens, is next |
-| P14 | here, then both | — | core done (#108): the gateway's outside execution checked against the reviewed calls (Krusty's SNIP-12 hash agrees with starknet.js), and the paymaster's bodies and judges. Not exported; left: the ceiling's fee-to-token conversion, the export and the sponsored and gasless rows |
+| P14 | here, then both | — | done (#108, #117), not yet tagged: the gateway's outside execution checked against the reviewed calls (Krusty's SNIP-12 hash agrees with starknet.js), the paymaster's bodies and judges, the ceiling's fee-to-token conversion (`GASLESS_POLICY`), `TransferPlan::gasless_offers`, and the sponsored and gasless rows; fixtures from G7h (Bramble #1034). Left: the tag and the mobile screens |
 
 **Wave 2: when its decision is made.** Each can run beside Wave 1.
 
