@@ -541,9 +541,10 @@ Foundations, which the features need, and Ledger, which needs only the first:
   Deliberate departures from the extension: the device OS gate is the host's connect flow; the
   app version is read on every signature; a Braavos Ledger account's deployment, and adding a
   Braavos Ledger account, are refused (the extension proves one live on chain first); a Ledger
-  account's privacy reads (`PrivacyError::LedgerAccount`), gasless offers, deploying an Argent
-  multisig and co-signing a multisig intent are refused until each signs on the device (the
-  extension signs each there); Nostr coordination needs a phrase.
+  account's privacy reads (`PrivacyError::LedgerAccount`), gasless offers and co-signing a
+  multisig intent are refused until each signs on the device (the extension signs each there);
+  Nostr coordination needs a phrase. A Ledger deployer signs an Argent multisig's deployment on
+  its device (#138).
   Left: the Bramble screens (connect over the Device Management Kit, pick, sign) and the
   generator's transcripts under Speculos.
 - **P9 Call batches.** `send::Kind` is a transfer, a deployment or a refresh; a single-signer
