@@ -8,8 +8,10 @@ network, privacy-routing and token tables into `mobile/core/generated/`. Syncing
 unchanged, all at one Bramble commit. `tests/fixtures.rs` checks this table against the directory:
 every file must be listed, and its sha256 must match.
 
-All files: Bramble commit `aa9d9d1df1cde58849e0e637a6d5c6e8a1060caa` (`feature/mobile-wallet`, 2026-11-24, merging `main` at
-v0.10.11 into the branch). Against the previous copy (`1771d951`) twelve files changed: the
+All files: Bramble commit `caea553003905ee5a947fcde1772a125d93c620f` (`feature/mobile-wallet`, 2026-11-25, merging
+#1034). Against `aa9d9d1df` (the merge of `main` at v0.10.11) no file changed; four are new: G7i's
+`vault-v13-full.json`, `vault-v14.json` and `vault-v13-to-v14.json` (#1033) and G7h's
+`extension-gasless.jsonl` (#1034). Against the copy before that (`1771d951`) twelve files changed: the
 padded address labels of #884 (`accounts-parity-rules.json`, `portfolio-parity.jsonl`,
 `extension-transactions-presentation.json`, `extension-multisig-transactions.json`,
 `extension-multisig-transactions-refusals.json`, `extension-staking.jsonl`, and the summaries in
@@ -22,9 +24,6 @@ padded address labels of #884 (`accounts-parity-rules.json`, `portfolio-parity.j
 an extension bug fixed on Bramble `fix/review-decimal-recipient`; that exception goes with the next
 copy. Every file is byte-identical to its copy at that commit; privacy SDK
 `vendor/starknet-privacy` at `b40bf109` (Bramble's pin).
-Provisional: `vault-v13-full.json`, `vault-v14.json` and `vault-v13-to-v14.json` are copied from Bramble
-#1033's head `6876ddeb`, and `extension-gasless.jsonl` from #1034's head `aa944a9c`, both unmerged;
-they are recopied with every other file at one `feature/mobile-wallet` commit once both merge.
 Generators are under `scripts/` in Bramble; each fixture's is reached from
 `generate-mobile-parity-vectors.ts`.
 
