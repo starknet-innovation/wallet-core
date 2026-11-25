@@ -15,7 +15,7 @@ use wallet_core::allowances::discovery::{
     listing_notices, merge_allowance_views, outstanding_allowances, AllowanceReading,
 };
 pub use wallet_core::allowances::discovery::{AllowanceNotice, AllowanceSource};
-use wallet_core::allowances::record::AllowanceRecord;
+use wallet_core::allowances::record::{is_unlimited, AllowanceRecord};
 use wallet_core::allowances::retention::{RankToken, Ranking};
 use wallet_core::allowances::revoke::revoke_outcomes;
 use wallet_core::allowances::scan::{ExternalAllowanceScan, ExternalAllowanceScanResult};
@@ -107,12 +107,21 @@ pub struct AllowanceView {
     pub token: String,
     pub spender: String,
     pub amount: String,
+    /// `amount` is at or above 2^128 - 1 (`isUnlimitedAllowance`): shown as unlimited.
+    pub unlimited: bool,
     /// The spender may hold at least `amount`, not exactly.
     pub lower_bound: bool,
     /// A revoke was submitted and the chain has not confirmed it.
     pub revoking: bool,
     pub source: AllowanceSource,
     pub unconfirmed_token: bool,
+}
+
+/// How many approvals the log keeps per account (`ALLOWANCE_LIMITS.entriesPerScope`): the
+/// number `AllowanceNotice::RetentionFull`'s sentence names.
+#[uniffi::export]
+pub fn allowance_entries_per_scope() -> u32 {
+    u32::try_from(POLICY.entries_per_scope).unwrap_or(u32::MAX)
 }
 
 /// What the manager lists, and what it could not vouch for.
@@ -261,6 +270,7 @@ impl Listing {
                 token: view.token,
                 spender: view.spender,
                 amount: view.amount.to_decimal(),
+                unlimited: is_unlimited(view.amount),
                 lower_bound: view.lower_bound,
                 revoking: view.revoking,
                 source: view.source,

@@ -34,6 +34,7 @@ mod clock;
 mod contact_card;
 mod contacts;
 mod container;
+mod dapp_session;
 mod ffi_coordination;
 mod ffi_nostr_multisig;
 mod ffi_staking;
@@ -91,7 +92,8 @@ pub use account_names::{
     is_account_label,
 };
 pub use allowances::{
-    AllowanceList, AllowanceListing, AllowanceNotice, AllowanceSource, AllowanceView,
+    allowance_entries_per_scope, AllowanceList, AllowanceListing, AllowanceNotice, AllowanceSource,
+    AllowanceView,
 };
 pub use argent_multisig::{ArgentMultisigConfig, ArgentMultisigPrediction};
 pub use avatar::{AccountAvatar, AvatarPaint, AvatarPart, AvatarShape};
@@ -100,6 +102,7 @@ pub use class_declared::ClassDeclaredRead;
 pub use clock::HostClock;
 pub use contact_card::{ContactCardParse, WalletContactCard};
 pub use contacts::Contact;
+pub use dapp_session::{DappApproval, DappReply, DappSession, DappSettled};
 pub use ffi_coordination::{CoordinationSyncOutcome, NostrSyncPlan, RelayPolicy};
 pub use ffi_nostr_multisig::{
     argent_multisig_normalize, argent_multisig_predict, argent_signer_guid, multisig_limits,
@@ -119,8 +122,9 @@ pub use ledger_reader::{
 pub use ledger_wallet::LedgerAccountRequest;
 pub use multisig_rpc::{MultisigAuthorityRead, MultisigAuthorityStatus, MultisigStateRead};
 pub use multisig_tx::{
-    ConfigChange, IntentState, MultisigCall, MultisigCallReview, MultisigIntent, MultisigProposal,
-    MultisigProposalRequest, MultisigSubmission, MultisigTxFailure, MultisigTxStep, StaleReason,
+    ConfigChange, IntentState, MultisigCall, MultisigCallReview, MultisigIntent,
+    MultisigIntentReview, MultisigProposal, MultisigProposalRequest, MultisigSubmission,
+    MultisigTxFailure, MultisigTxStep, StaleReason,
 };
 pub use networks::{NetworkInfo, TokenInfo};
 pub use nostr_relay::RelayStep;

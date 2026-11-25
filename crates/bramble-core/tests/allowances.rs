@@ -11,9 +11,9 @@ use std::path::Path;
 use std::sync::Arc;
 
 use bramble_core::{
-    AllowanceNotice, AllowanceSource, CallKind, FeeAffordability, NetworkId, RevokeError,
-    RiskFlagCode, RpcReply, RpcRequest, ScanStep, SendStep, StepReply, TokenPreferences,
-    TransferPlan, TxStatus, WalletCore,
+    allowance_entries_per_scope, AllowanceNotice, AllowanceSource, CallKind, FeeAffordability,
+    NetworkId, RevokeError, RiskFlagCode, RpcReply, RpcRequest, ScanStep, SendStep, StepReply,
+    TokenPreferences, TransferPlan, TxStatus, WalletCore,
 };
 use send_support::*;
 use serde_json::{json, Value};
@@ -435,6 +435,47 @@ fn a_listing_without_an_endpoint_says_its_scan_is_incomplete() {
         ("1000", AllowanceSource::Wallet, account().as_str())
     );
     assert_eq!(row.network, NetworkId::Sepolia);
+}
+
+// Bramble #1050: the apps held the unlimited cut-off (`isUnlimitedAllowance`, 2^128 - 1) and the
+// per-account cap the retention notice names; the core now judges the one and exports the other.
+#[test]
+fn a_listing_says_which_grants_are_unlimited() {
+    for (reading, unlimited) in [
+        ("0xfffffffffffffffffffffffffffffffe", false),
+        ("0xffffffffffffffffffffffffffffffff", true),
+    ] {
+        let (dir, core) = wallet();
+        seed(dir.path(), &account(), "1");
+        let listed = list(&core, reading);
+        assert_eq!(listed.allowances[0].unlimited, unlimited, "{reading}");
+    }
+    assert_eq!(allowance_entries_per_scope(), 50);
+}
+
+// Bramble #1050: the apps showed only `Refused`'s sentence and mirrored the others by hand; every
+// refusal now carries its sentence through `Display` (Swift `description`, Kotlin `toString()`).
+#[test]
+fn every_revoke_refusal_says_its_sentence() {
+    for (error, sentence) in [
+        (RevokeError::Locked, "wallet is locked"),
+        (
+            RevokeError::OtherAccount,
+            "switch to the account that granted this allowance",
+        ),
+        (
+            RevokeError::Collection,
+            "this contract is an NFT collection, not a token; revoke it from the dapp",
+        ),
+        (
+            RevokeError::Refused {
+                reason: "fixed".into(),
+            },
+            "fixed",
+        ),
+    ] {
+        assert_eq!(error.to_string(), sentence);
+    }
 }
 
 // Bramble #1038: a grant to a lookalike of the account is refused, but revoking one is exempt, or

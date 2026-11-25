@@ -115,6 +115,13 @@ fn exported_signatures(source: &str) -> Vec<Exported> {
         }) else {
             panic!("an export attribute ends the file");
         };
+        // A builtin trait exported on a type (`#[uniffi::export(Display)]` on a refusal) hands
+        // out only that impl's text, which the no-secret rule already bounds: no function here.
+        if line.trim_start().starts_with("#[uniffi::export(Display)]")
+            && (lines[head].starts_with("pub enum ") || lines[head].starts_with("pub struct "))
+        {
+            continue;
+        }
         let before = signatures.len();
         let extension_only = lines[..head]
             .iter()
@@ -322,6 +329,7 @@ fn multisig_transactions_take_and_return_no_key() {
         "submit_multisig_intent",
         "import_multisig_intent",
         "multisig_intent_read",
+        "multisig_intent_review",
     ] {
         assert!(
             seen.iter().any(|seen| seen == name),
@@ -426,4 +434,26 @@ fn no_export_takes_calls_to_sign() {
             }
         }
     }
+}
+
+/// P16: a site's requests reach the wallet only through `DappSession`, and none of its exports
+/// signs yet. When typed data and invoke review land, each signing export must take a queued,
+/// approved card's id; widen this list deliberately then.
+#[test]
+fn the_dapp_session_exports_only_the_connect_slice() {
+    let names: Vec<String> = exported_signatures(include_str!("../src/dapp_session.rs"))
+        .iter()
+        .map(|exported| exported.name().to_owned())
+        .collect();
+    assert_eq!(
+        names,
+        [
+            "new",
+            "request",
+            "pending_approvals",
+            "approve_connect",
+            "deny_connect",
+            "settle_expired"
+        ]
+    );
 }

@@ -147,7 +147,7 @@ pub enum SendStep {
     /// Wait, then reply `WaitElapsed`.
     Wait { delay_ms: u32 },
     /// A Ledger account: send `apdu` to the account's device and reply `Device` with its answer,
-    /// or `DeviceFailure` with what the transport reported. No account is signed this way yet.
+    /// or `DeviceFailure` with what the transport reported.
     Device { apdu: Vec<u8> },
     /// The device refused (`reason` is the extension's rejection code: `device-locked`,
     /// `wrong-device`, ...). Nothing was signed. Reply `RetryDevice` once the person has fixed
@@ -418,4 +418,20 @@ pub struct ReviewedCall {
     pub kind: CallKind,
     pub summary: String,
     pub flags: Vec<RiskFlag>,
+}
+
+impl ReviewedCall {
+    /// `call` beside its review.
+    pub(crate) fn new(
+        call: &wallet_core::send::calls::Call,
+        reviewed: &wallet_core::send::invoke::ReviewedCall,
+    ) -> Self {
+        Self {
+            contract_address: crate::felt::canonical(&call.contract_address),
+            entrypoint: call.entrypoint.clone(),
+            kind: reviewed.kind,
+            summary: reviewed.summary.clone(),
+            flags: reviewed.flags.iter().map(RiskFlag::from).collect(),
+        }
+    }
 }
