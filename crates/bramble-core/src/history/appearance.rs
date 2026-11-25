@@ -132,6 +132,53 @@ pub fn activity_unavailable_notice() -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::activity_groups;
+    use wallet_core::history::activity::{ActivityEntry, ActivityKind, RelayExecution, TxStatus};
+    use wallet_core::NetworkId;
+
+    fn entry(relay: Option<RelayExecution>) -> ActivityEntry {
+        ActivityEntry {
+            account_id: "SN_SEPOLIA:0x1234".into(),
+            amount: Some("1".into()),
+            counterparty: None,
+            direction: None,
+            failure_notice: None,
+            fee_payer: None,
+            user_fee: None,
+            relay,
+            fee_paid: None,
+            finalized_on_l1: None,
+            hash: "0x5".into(),
+            kind: ActivityKind::Transfer,
+            network: NetworkId::Sepolia,
+            not_found_count: None,
+            origin: None,
+            status: TxStatus::Pending,
+            submitted_at: 1_752_501_900_000,
+            submitted_price: None,
+            summary: "Send 1 STRK".into(),
+            token: Some("STRK".into()),
+            token_address: None,
+        }
+    }
+
+    // Bramble #1053: a gasless row still waiting for its transaction holds the signed message's
+    // hash, which no explorer knows; the extension's relay row links nothing (`relay-rows.ts`).
+    #[test]
+    fn a_relay_row_links_no_explorer_page_until_it_has_a_transaction() {
+        let url = |relay| {
+            activity_groups(vec![entry(relay)], vec![], None)[0].rows[0]
+                .explorer_url
+                .clone()
+        };
+        assert!(url(None).is_some());
+        let relay = RelayExecution {
+            nonce: "0x1".into(),
+            execute_before: 1_752_502_000,
+        };
+        assert_eq!(url(Some(relay)), None);
+    }
+
     #[test]
     fn icons_are_generated_names() {
         let swift = include_str!("../../generated/BrambleTokens.generated.swift");
