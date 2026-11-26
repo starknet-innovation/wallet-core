@@ -21,6 +21,13 @@ pub trait Entropy {
     fn fill(&mut self, bytes: &mut [u8]) -> Result<(), Error>;
 }
 
+/// A borrowed source, so a caller can keep its source (and what it recorded) after a job.
+impl<T: Entropy + ?Sized> Entropy for &mut T {
+    fn fill(&mut self, bytes: &mut [u8]) -> Result<(), Error> {
+        (**self).fill(bytes)
+    }
+}
+
 /// The OS CSPRNG, through the vault's randomness boundary.
 pub struct OsEntropy;
 
