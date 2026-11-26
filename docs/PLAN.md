@@ -72,7 +72,7 @@ v13 payload.
 | 2.7 Swap | done (#50), behind the `mobile` feature | done (M13, Bramble #929), at `v0.3.0`: `mobile/core` is a shell over this crate |
 | Vault switch | done (V1 #58) | G4 done (Bramble #947); M14 done (Bramble #980): mobile pins `v0.4.0` |
 | [Mobile parity](#mobile-parity) | P6 done (#65), P2 done (#68); P1 done (P1a #70, P1b #71, P1c #72) and exported (X1 #111); P3 done (#80), P4 done (#78), P5 done (#83), each with its fixture copied (G7, #109) | M15 (Bramble #1007–#1010) took `v0.6.0` and shipped P2, P4–P6 and P10; M16 (#1019) shipped P3's screens. P1's screens are M18, not started |
-| [Parity](#parity) P7–P16 | P7 done for reading (#87, #92): every v13 and v14 collection is read, every vault the extension opens opens here, and what mobile does not operate is kept unused and listed; new vaults are written at 14 and a v13 vault is raised on unlock (#116, `v0.8.0`). P9 done (#84, #91, #104) and exported with P12's revoke (X2+X3 #106). P10 done (#86). P11 exported (X4 #107), P13 exported (X5 #110). P14 done and exported (#108, #117, `v0.8.0`). Fixtures for P3–P5, P7 and P9–P14 copied (G7, #109, #117). P8's core done and exported (#101, #123, #126, #132, #135, #138, `v0.9.0`); its golden transcripts (#162), multisig co-signing and gasless on the device (#163, #164) in review; P15 spiked (#102); P16 in progress: D2 settled 2026-11-25 (an in-app browser); request reading, add-chain and watch-asset, grants, the queue, connecting a site and its export (`DappSession`), the blocklist, phishing feed and site warnings merged (#122, #128, #129, #130, #134, #136, #139, #140, #141); see "P16 progress" under P16 in [Parity](#parity) and [Road to parity](#road-to-parity) | Mobile takes `v0.7.0` (Bramble #1032). P7's kept accounts (#1009) and P10 (#1008) shipped. The move to `v0.9.0` (through `v0.8.0`) is open (#1048), with P1's screens (M18, #1049) merged into it, the screens for P12 (M19, #1050), P11 (M20, #1051), P13 (M21, #1052) and P14 (#1053) stacked on it, and #1056 on top taking up what `v0.9.0` adds; mobile does no device signing yet (a device step ends a send unsigned), and P8's screens are not started |
+| [Parity](#parity) P7–P16 | P7 done for reading (#87, #92): every v13 and v14 collection is read, every vault the extension opens opens here, and what mobile does not operate is kept unused and listed; new vaults are written at 14 and a v13 vault is raised on unlock (#116, `v0.8.0`). P9 done (#84, #91, #104) and exported with P12's revoke (X2+X3 #106). P10 done (#86). P11 exported (X4 #107), P13 exported (X5 #110). P14 done and exported (#108, #117, `v0.8.0`). Fixtures for P3–P5, P7 and P9–P14 copied (G7, #109, #117). P8's core done and exported (#101, #123, #126, #132, #135, #138, `v0.9.0`); its Bluetooth framing (#159), golden transcripts (#162), multisig co-signing and gasless on the device (#163, #164) merged since; P15 spiked (#102), and PR 1's engine slice merged unexported (#168); P16 in progress: D2 settled 2026-11-25 (an in-app browser); request reading, add-chain and watch-asset, grants, the queue, connecting a site and its export (`DappSession`), the blocklist, phishing feed and site warnings merged (#122, #128, #129, #130, #134, #136, #139, #140, #141), then typed-data review and signing (#156, #158, #160, #161), withdrawing a gone page's cards (#166) and the browser's site check (#170); see "P16 progress" under P16 in [Parity](#parity) and [Road to parity](#road-to-parity) | Mobile takes `v0.7.0` (Bramble #1032). P7's kept accounts (#1009) and P10 (#1008) shipped. The move to `v0.9.0` (through `v0.8.0`) is open (#1048), with P1's screens (M18, #1049) merged into it, the screens for P12 (M19, #1050), P11 (M20, #1051), P13 (M21, #1052) and P14 (#1053) stacked on it, and #1056 on top taking up what `v0.9.0` adds; mobile does no device signing yet (a device step ends a send unsigned), and P8's screens are not started |
 | 3 Extension | not started, and waits for parity; `js/package.json` is private | n/a |
 
 `v0.1.0` is tagged at `35abc8b` (GitHub release only) and was what M2 and M3 pinned. `v0.2.0`
@@ -147,8 +147,10 @@ tests ported from the extension's own, with its generator owed. M15 (Bramble #10
 then shipped as M16 (Bramble #1019). Since `v0.7.0`, `main` adds X1's settle (#115), P7's
 migration (#116) and P14's export (#117), all in `v0.8.0`. Since `v0.8.0`, `main` adds P8's core
 and exports (#123, #126, #132, #135, #138), and P16's connect slice and blocklist (#139, #140,
-#141); see P8
-and P16 in [Parity](#parity).
+#141). Since `v0.9.0`, `main` adds P8's Bluetooth framing and device follow-ups (#159, #162–#164),
+P16's typed-data signing, `withdraw` and the browser's site check (#156, #158, #160, #161, #166,
+#170), P15's engine slice, unexported (#168), and the coordination sync's import (#167, #171); see
+P8, P15 and P16 in [Parity](#parity).
 
 #### Road to parity
 
@@ -157,7 +159,7 @@ Written 2026-11-23, against #990's table; updated 2026-11-26. With M15–M17 mer
 
 - exported, screens only: multisig transactions (M18), allowances and revoke (M19), swap (M20),
   staking (M21), gasless and sponsored (`v0.8.0`), and Ledger (P8, `v0.9.0`; its Speculos
-  transcripts, multisig co-signing and gasless on the device are in review, #162–#164);
+  transcripts, multisig co-signing and gasless on the device followed, #162–#164);
 - core work left: STRK20 actions, then shadow accounts and multisig STRK20 (P15),
   dapp connect and anti-phishing (P16; D2 settled 2026-11-25, core started in #122).
 
@@ -241,7 +243,7 @@ and #147), and #1056, on top of the stack, takes up what `v0.9.0` adds.
 | Gasless selector felt | Bramble #1039 | done before (`v0.8.0`) | the rebuild already takes a felt entrypoint as its own selector (`gasless::typed_data::selector_of`, test `a_felt_entrypoint_is_its_own_selector_in_the_rebuild`). Nothing to port; once #1039 merges, G7h can add a felt-entrypoint line |
 | Intent signer change | M18 (#1049) | open | `MultisigIntent` carries no decoded change. Port `configReviewFor` (`multisig-intent-review.ts`): when the intent is exactly one call and its `configSnapshot` equals the record's current config (threshold and signer GUIDs in order), `review_config_change` over that config gives the change and the next config; otherwise none. `intent_view` then needs the record (five call sites) |
 | Update network fee | M18 (#1049) | open | The extension's stale card offers "Update network fee" (`data-ms-refresh-intent`), re-proposing the stale intent's own calls at a fresh fee. Mobile's propose takes a `MultisigProposalRequest` (typed actions), so it cannot. The port is an export that takes the stale intent's id, never calls, and reviews its stored calls again: a signing-path export, so it gets an independent review |
-| Sync imports packages | M18 (#1049) | ported (`parity/x1-sync-import`) | Not intended: `CoordinationSyncOutcome.imported` is still 0 at `v0.8.0` ("until intent import lands"), but import landed with X1. The extension's sync imports every trusted package it opens (`importSharedIntent` in `multisig-coordination-ops.ts`: STRK20 key and authorization first, removed intents kept out, `FINAL_IMPORT_REFUSALS`, one wrap never stopping the sync), so co-signers need not paste. Each import needs a fresh `MultisigStateRead`, so the sync becomes a multi-step plan |
+| Sync imports packages | M18 (#1049) | done (#167, #171) | Not intended: `CoordinationSyncOutcome.imported` is still 0 at `v0.8.0` ("until intent import lands"), but import landed with X1. The extension's sync imports every trusted package it opens (`importSharedIntent` in `multisig-coordination-ops.ts`: STRK20 key and authorization first, removed intents kept out, `FINAL_IMPORT_REFUSALS`, one wrap never stopping the sync), so co-signers need not paste. Each import needs a fresh `MultisigStateRead`, so the sync becomes a multi-step plan |
 
 **Wave 2: when its decision is made.** Each can run beside Wave 1.
 
@@ -589,15 +591,15 @@ Foundations, which the features need, and Ledger, which needs only the first:
   account's privacy reads (`PrivacyError::LedgerAccount`) are refused until it signs on the
   device (the extension signs there); Nostr coordination needs a phrase. A Ledger deployer signs
   an Argent multisig's deployment on its device (#138).
-  In review (2026-11-26, drafts):
+  Merged since `v0.9.0` (2026-11-26):
   - golden transcripts (#162, from Bramble #1061): `extension-ledger.jsonl`, the extension's
     client against app-starknet 2.4.3 under the digest-pinned Speculos image, seeded with the
     parity phrase, replayed by `ledger_parity.rs` through the version gate, keys at both schemes,
     `DeviceSigning` (approved, rejected, wrong device), `KeyEnumeration`, the picker, and a
     Ledger transfer and deployment in `Plan`. Manual (`bun run mobile:ledger`: Docker and the
     vendored app), so nothing checks it for drift; the plan signatures are over the core's own
-    hashes, and the below-minimum version reply is written by the generator. Provisional until
-    #1061 merges;
+    hashes, and the below-minimum version reply is written by the generator. Bramble #1061
+    merged it unchanged (`cd1a18a`);
   - one device-signing machine for every Ledger signature (`ledger::HashSigning`, #163), which
     `plan_device` now drives, and co-signing a multisig intent on the device (#163:
     `WalletCore::sign_multisig_intent_on_device`, `MultisigDeviceSigning`). The host names an
@@ -983,7 +985,7 @@ Features, smallest and least dependent first:
     accounts, whose scope is a dapp's origin, after P16; (6) multisig STRK20, after X1. Unknown
     until built: the bundle's size, its cold start in a WebView, and whether proving's 180 s budget
     survives an app in the background.
-  - *Progress.* PR 1's core slice is built, unexported (`parity/p15-engine`, #168):
+  - *Progress.* PR 1's core slice is merged, unexported (#168):
     `privacy::engine` (the trait as above, without `shadow_commitment`, which waits for PR 5;
     actions `Register`, `Deposit`, `Transfer` with a fixed amount, `Withdraw`; open notes wait for
     their flow), `privacy::call_set` (the digest against the protocol's golden vector, and the
@@ -1134,7 +1136,7 @@ Features, smallest and least dependent first:
       cannot be approved, the host refreshes the feed (`refresh_phishing_feed`,
       `answer_phishing_feed`), each card carries `blocked` and its warnings, and a decided card
       records the site's first sighting (deleted with the wallet).
-    - In review: SNIP-12 typed data (`dapp::typed_data`: the gate, chain binding and summary)
+    - Merged: SNIP-12 typed data (`dapp::typed_data`: the gate, chain binding and summary)
       and its signing at approval (`bramble-core`'s `dapp_sign.rs`:
       `approve_sign_typed_data`, `DappCard::SignTypedData`, and `deny` for any card). Signs for
       vault-key OpenZeppelin and Ready (signer-array class) accounts; Ledger, Braavos and a Ready
@@ -1145,7 +1147,10 @@ Features, smallest and least dependent first:
       re-read trusted set). A lock does not drop typed-data cards, as in the extension.
       `withdraw(request_ids)` drops a gone page's requests and any card no page waits on, so a
       late approval cannot grant or sign for it: a mobile divergence (the extension keeps the
-      card until a decision or its expiry).
+      card until a decision or its expiry). (#156, #158, #160, #161, #166)
+    - Merged (#170): `DappSession::is_blocked_site(origin)`, so the in-app browser can refuse to
+      load a listed site, not only its requests: a mobile addition (the extension checks only
+      requests). Before the host first calls `refresh_phishing_feed`, only the bundled list blocks.
     - Next here, in order: the remaining methods' gates and results; the live class read
       (Braavos, upgraded Argent); Ledger typed data; the full export.
     - *Done* (#140): the connect-only slice is exported first, so Bramble can build and test
