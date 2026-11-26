@@ -6,7 +6,7 @@
 //! the SDK's reads, every byte consumed.
 
 use serde_json::Value;
-use starknet_wallet_core::privacy::client_actions::compile_actions_calldata;
+use starknet_wallet_core::privacy::client_actions::{compile_actions_calldata, ClientAction};
 use starknet_wallet_core::privacy::compiler::{compile, walk_inputs, CompileRefusal, Compiled};
 use starknet_wallet_core::privacy::discovery::{AddressMap, Note, Walked};
 use starknet_wallet_core::privacy::engine::EngineAction;
@@ -196,12 +196,38 @@ fn run(job: &Value) -> (Result<Compiled, CompileRefusal>, Stream) {
     (compiled, stream)
 }
 
+/// The refusal the SDK's `createProofInvocation` threw, read from its message.
+fn sdk_refusal(job: &Value) -> Option<CompileRefusal> {
+    let message = job["sdk"]["createProofInvocation"]["error"]["message"].as_str()?;
+    Some(
+        [
+            (
+                "Insufficient balance for token",
+                CompileRefusal::InsufficientBalance,
+            ),
+            (
+                "Missing channel context for recipient",
+                CompileRefusal::RecipientNotRegistered,
+            ),
+            (
+                "Channel already exists for",
+                CompileRefusal::AlreadyRegistered,
+            ),
+        ]
+        .into_iter()
+        .find(|(prefix, _)| message.starts_with(prefix))
+        .unwrap_or_else(|| panic!("unmapped SDK error: {message}"))
+        .1,
+    )
+}
+
 #[test]
 fn every_recorded_job_compiles_to_what_the_sdk_signed() {
-    let mut compiled_jobs = 0;
+    let (mut compiled_jobs, mut refused, mut warned_jobs) = (0, Vec::new(), 0);
     for job in jobs() {
         let id = job["id"].as_str().unwrap();
         let (compiled, stream) = run(&job);
+        // A refused job's reads are what the SDK drew before it threw.
         let reads: Vec<usize> = serde_json::from_value(job["random"]["reads"].clone()).unwrap();
         assert_eq!(stream.reads, reads, "{id}: random reads");
         assert_eq!(
@@ -209,11 +235,14 @@ fn every_recorded_job_compiles_to_what_the_sdk_signed() {
             stream.bytes.len(),
             "{id}: every byte is consumed"
         );
-        if id == "insufficient-balance" {
-            assert_eq!(compiled.unwrap_err(), CompileRefusal::InsufficientBalance);
-            assert!(job["signing"].as_array().unwrap().is_empty());
+        let signing = job["signing"].as_array().unwrap();
+        if let Some(refusal) = sdk_refusal(&job) {
+            assert!(signing.is_empty(), "{id}: refused before signing");
+            assert_eq!(compiled.unwrap_err(), refusal, "{id}");
+            refused.push(refusal);
             continue;
         }
+        assert_eq!(signing.len(), 1, "{id}: one signature");
         let compiled = compiled.unwrap_or_else(|refusal| panic!("{id}: {refusal:?}"));
         let inputs = &job["inputs"];
         let calldata = compile_actions_calldata(
@@ -223,7 +252,7 @@ fn every_recorded_job_compiles_to_what_the_sdk_signed() {
         )
         .unwrap();
         let ours: Vec<Felt> = calldata.iter().map(|felt| *felt.expose_secret()).collect();
-        let call = &job["signing"][0]["calls"][0];
+        let call = &signing[0]["calls"][0];
         assert_eq!(call["entrypoint"], "compile_actions", "{id}");
         let signed: Vec<Felt> = call["calldata"]
             .as_array()
@@ -238,8 +267,27 @@ fn every_recorded_job_compiles_to_what_the_sdk_signed() {
             .unwrap()
             .is_empty();
         assert_eq!(compiled.user_linkage, warned, "{id}: USER_LINKAGE");
-        assert_eq!(compiled.user_linkage, id == "user-linkage", "{id}");
+        // The SDK's rule: more than one `OpenChannel`.
+        let opened = compiled
+            .actions
+            .iter()
+            .filter(|action| matches!(action, ClientAction::OpenChannel { .. }))
+            .count();
+        assert_eq!(compiled.user_linkage, opened > 1, "{id}: open channels");
+        // A warned job ends in the extension's refusal, never at the prover.
+        assert_eq!(warned, job["outcome"].get("callAndProof").is_none(), "{id}");
+        warned_jobs += usize::from(warned);
         compiled_jobs += 1;
     }
-    assert_eq!(compiled_jobs, 12);
+    // 27 jobs: 3 refused by the SDK before signing, one per refusal the transcripts record;
+    // 24 signed, 2 of them (`user-linkage`, `activate-deposit-other`) warned `USER_LINKAGE`.
+    assert_eq!(
+        refused,
+        [
+            CompileRefusal::InsufficientBalance,
+            CompileRefusal::RecipientNotRegistered,
+            CompileRefusal::AlreadyRegistered,
+        ]
+    );
+    assert_eq!((compiled_jobs, warned_jobs), (24, 2));
 }
