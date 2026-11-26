@@ -76,6 +76,8 @@ cargo test -p bramble-core <name>   # narrow loop while iterating
   commit line) in the fixtures README.
 - **`wallet-core` takes no product policy.** If a rule is Bramble's choice, it lives in
   `bramble-core`.
+- **Imports never loop across `wallet-core`'s top-level modules** (`send`, `history`, ...), so
+  each can move into a crate of its own; `crates/wallet-core/tests/module_layers.rs` checks it.
 - `#![forbid(unsafe_code)]` stays on both crates, and so does the deny on `unwrap`/`expect`:
   library code returns errors, it does not panic. Fix a lint rather than allow it; the one
   accepted `allow` is `too_many_arguments` on flat UniFFI exports. A panic on input the crate
