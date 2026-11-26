@@ -51,7 +51,7 @@ fn requests<'a>(job: &'a Value, route: &str) -> Vec<&'a Value> {
 
 #[test]
 fn invocations_prove_bodies_and_replies_are_the_sdks() {
-    let mut replayed = 0;
+    let (mut replayed, mut proved_jobs) = (0, 0);
     for (line, job) in jobs() {
         let name = job["id"].as_str().unwrap();
         let Some(signing) = job["signing"].as_array().and_then(|s| s.first()) else {
@@ -118,8 +118,10 @@ fn invocations_prove_bodies_and_replies_are_the_sdks() {
 
         let Some(expected) = job["outcome"].get("callAndProof") else {
             assert!(provers.is_empty(), "{name}: refused before proving");
+            assert!(job["outcome"]["error"].is_object(), "{name}: why");
             continue;
         };
+        proved_jobs += 1;
         let (last, retried) = outcomes.split_last().unwrap();
         for (attempt, outcome) in retried.iter().enumerate() {
             assert_eq!(*outcome, ProveOutcome::Busy, "{name}: attempt {attempt}");
@@ -157,7 +159,13 @@ fn invocations_prove_bodies_and_replies_are_the_sdks() {
         let spelled: Vec<String> = proved.call.calldata.iter().map(felt::canonical).collect();
         assert_eq!(serde_json::json!(spelled), call["calldata"], "{name}");
     }
-    assert_eq!(replayed, 12, "every job that reached the signer");
+    // 27 jobs, 3 refused by the SDK before signing: 24 reached the signer, 22 of them the
+    // prover (the two `USER_LINKAGE` jobs were refused by the extension after signing).
+    assert_eq!(
+        (replayed, proved_jobs),
+        (24, 22),
+        "every job that reached the signer"
+    );
 }
 
 #[test]

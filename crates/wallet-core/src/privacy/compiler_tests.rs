@@ -464,5 +464,6 @@ fn every_recorded_job_binds_to_its_review() {
         );
         bound += 1;
     }
-    assert_eq!(bound, 12);
+    // 27 jobs, 3 refused by the SDK before signing.
+    assert_eq!(bound, 24);
 }
