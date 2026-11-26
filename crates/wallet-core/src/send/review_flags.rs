@@ -1,8 +1,9 @@
 //! The extension's pre-sign annotation flags (`verifyCalls` in
 //! `packages/features/transactions/src/routing/verify.ts`): what a review card warns about in a
 //! batch. They warn; none refuses. The one flag the extension enforces, `address-poisoning`, is
-//! `multisig_review::refuse_poisoned`, which refuses the batch before any flag is read, so it never
-//! appears here.
+//! `multisig_review::refuse_poisoned`, which refuses the batch before any flag is read, so
+//! `call_flags` never raises it. Only a card queued before that refusal carries it (a dapp's
+//! outside execution, `dapp::outside_execution`).
 //!
 //! Each flag is attached to the call it is about. The approval rules are judged across the whole
 //! batch: an allowance split into several increases is flagged on the call whose running total
@@ -19,6 +20,7 @@ use super::call_decode::{
     AVNU_MULTI_ROUTE_SWAP, DECREASE_ALLOWANCE,
 };
 use super::calls::Call;
+use super::multisig_review::CallReviewError;
 use super::u256::U256;
 use crate::allowances::calls::{standing_allowance_totals, AllowanceOwner};
 use crate::allowances::record::{is_unlimited, AllowanceRecord};
@@ -44,6 +46,9 @@ pub enum RiskFlag {
     ForeignBeneficiary { beneficiary: Felt },
     /// A swap whose route the pinned decoder could not read.
     UndecodedSwap,
+    /// The call's payee mimics an address the person trusts. Never raised by `call_flags`: a batch
+    /// carrying it is refused, and only a queued outside execution's card shows it.
+    AddressPoisoning,
 }
 
 impl RiskFlag {
@@ -57,6 +62,7 @@ impl RiskFlag {
             Self::TokenContractRecipient => "token-contract-recipient",
             Self::ForeignBeneficiary { .. } => "foreign-beneficiary",
             Self::UndecodedSwap => "undecoded-swap",
+            Self::AddressPoisoning => "address-poisoning",
         }
     }
 
@@ -78,6 +84,7 @@ impl RiskFlag {
                 short(beneficiary)
             ),
             Self::UndecodedSwap => "The wallet could not read this swap's payee or minimum output. Reject it unless you trust this site.".into(),
+            Self::AddressPoisoning => CallReviewError::PoisonedRecipient.message().into(),
         }
     }
 }
@@ -112,6 +119,7 @@ impl RiskFlag {
                 vec![("payee", short(beneficiary))],
             ),
             Self::UndecodedSwap => ("review.flag.undecodedSwap", vec![]),
+            Self::AddressPoisoning => ("review.flag.addressPoisoning", vec![]),
         };
         ReviewText { key, facts }
     }
