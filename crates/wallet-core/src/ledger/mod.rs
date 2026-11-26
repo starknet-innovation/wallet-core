@@ -20,10 +20,10 @@
 //! before it can be used, is `sign::DeviceSigning`; the readers alone never verify. That exchange
 //! under the wallet's rules (a lock stops it, a refusal parks it for a retry), for every signature
 //! a Ledger account makes, is `hash_signing::HashSigning`. A page of
-//! public keys for an account picker is `enumerate::KeyEnumeration`. The
+//! public keys for an account picker is `enumerate::KeyEnumeration`. The device OS gate, the
 //! dashboard-and-reopen sequence that reads the OS version (`readLedgerOsAndRestoreStarknet`) and
-//! the transport's I/O are not here; the transport's Bluetooth framing, which only carries bytes, is
-//! `ble`.
+//! checks it, is `transition::OsGate`. The transport's I/O (reconnecting included) is not here;
+//! its Bluetooth framing, which only carries bytes, is `ble`.
 //!
 //! The vectors here are the library's encoding and the extension's tests. Golden transcripts of the
 //! extension's client against the real Starknet app under Ledger's Speculos emulator are
@@ -37,6 +37,7 @@ mod path;
 mod rejection;
 mod sign;
 mod starknet;
+mod transition;
 
 #[cfg(test)]
 mod ble_tests;
@@ -50,6 +51,8 @@ mod management_tests;
 mod sign_tests;
 #[cfg(test)]
 mod starknet_tests;
+#[cfg(test)]
+mod transition_tests;
 
 pub use enumerate::{DeviceKeyAt, EnumerationStep, KeyEnumeration, MAX_PAGE};
 pub use hash_signing::{DeviceKey, HashFailure, HashSigning, HashStep};
@@ -65,6 +68,7 @@ pub use starknet::{
     app_version_request, check_app_version, parse_app_version, parse_public_key, parse_sign_path,
     parse_signature, public_key_request, sign_hash_requests, DeviceSignature,
 };
+pub use transition::{OsGate, TransitionPhase, TransitionStep};
 
 /// The device's reply to one APDU (its data, then the status word), or the failure the host's
 /// transport reported instead.

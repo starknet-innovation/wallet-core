@@ -153,6 +153,16 @@ impl TransferPlan {
         self.lock_plan().advance_relay(self, reply)
     }
 
+    /// The invoke's hash once the node accepted it (`Plan::accepted_invoke`).
+    pub(crate) fn accepted_invoke(&self) -> Option<Felt> {
+        self.lock_plan().accepted_invoke()
+    }
+
+    /// Whether the plan ended with nothing to follow (`Plan::is_closed`).
+    pub(crate) fn is_closed(&self) -> bool {
+        self.lock_plan().is_closed()
+    }
+
     /// How many hashes this plan has signed; for tests that prove a refusal reached no signer.
     #[doc(hidden)]
     pub fn signatures_made(&self) -> u32 {

@@ -7,7 +7,7 @@ use super::starknet_tests::hex;
 use super::*;
 
 /// `ledgerAppStateResponse(name, version, trailingFields)`.
-fn app_state(name: &[u8], version: &str, trailing: &[&[u8]]) -> Vec<u8> {
+pub(super) fn app_state(name: &[u8], version: &str, trailing: &[&[u8]]) -> Vec<u8> {
     let mut bytes = vec![1, name.len() as u8];
     bytes.extend_from_slice(name);
     bytes.push(version.len() as u8);
@@ -22,7 +22,7 @@ fn app_state(name: &[u8], version: &str, trailing: &[&[u8]]) -> Vec<u8> {
 }
 
 /// `ledgerNanoXOsResponse()`: Ledger's Nano X `GetOsVersion` fixture.
-fn nano_x_os() -> Vec<u8> {
+pub(super) fn nano_x_os() -> Vec<u8> {
     let mut bytes = vec![0x33, 0x00, 0x00, 0x04, 0x05];
     bytes.extend_from_slice(b"2.2.3");
     bytes.extend([0x04, 0xe6, 0x00, 0x00, 0x00, 0x04]);
@@ -34,7 +34,7 @@ fn nano_x_os() -> Vec<u8> {
 }
 
 /// An OS reply with the Nano X's target id, OS `2.6.1` and flags, then `rest`.
-fn os_with(rest: &[u8]) -> Vec<u8> {
+pub(super) fn os_with(rest: &[u8]) -> Vec<u8> {
     let mut bytes = vec![0x33, 0x00, 0x00, 0x04, 0x05];
     bytes.extend_from_slice(b"2.6.1");
     bytes.extend([0x04, 0xe6, 0x00, 0x00, 0x00]);

@@ -404,6 +404,9 @@ pub enum Kind {
     Refresh {
         hash: Felt,
     },
+    /// Reads whether the live account accepts this wallet's signature (`requireLiveAuthorizable
+    /// Class`): the chain, then the review's account checks; never signs (`plan_authorize`).
+    Authorize,
 }
 
 /// Why the host would not sign.

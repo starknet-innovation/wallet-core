@@ -72,7 +72,7 @@ v13 payload.
 | 2.7 Swap | done (#50), behind the `mobile` feature | done (M13, Bramble #929), at `v0.3.0`: `mobile/core` is a shell over this crate |
 | Vault switch | done (V1 #58) | G4 done (Bramble #947); M14 done (Bramble #980): mobile pins `v0.4.0` |
 | [Mobile parity](#mobile-parity) | P6 done (#65), P2 done (#68); P1 done (P1a #70, P1b #71, P1c #72) and exported (X1 #111); P3 done (#80), P4 done (#78), P5 done (#83), each with its fixture copied (G7, #109) | M15 (Bramble #1007–#1010) took `v0.6.0` and shipped P2, P4–P6 and P10; M16 (#1019) shipped P3's screens. P1's screens are M18, not started |
-| [Parity](#parity) P7–P16 | P7 done for reading (#87, #92): every v13 and v14 collection is read, every vault the extension opens opens here, and what mobile does not operate is kept unused and listed; new vaults are written at 14 and a v13 vault is raised on unlock (#116, `v0.8.0`). P9 done (#84, #91, #104) and exported with P12's revoke (X2+X3 #106). P10 done (#86). P11 exported (X4 #107), P13 exported (X5 #110). P14 done and exported (#108, #117, `v0.8.0`). Fixtures for P3–P5, P7 and P9–P14 copied (G7, #109, #117). P8's core done and exported (#101, #123, #126, #132, #135, #138, `v0.9.0`); its Bluetooth framing (#159), golden transcripts (#162), multisig co-signing and gasless on the device (#163, #164) merged since; P15 spiked (#102), and PR 1's engine slice merged unexported (#168); P16 in progress: D2 settled 2026-11-25 (an in-app browser); request reading, add-chain and watch-asset, grants, the queue, connecting a site and its export (`DappSession`), the blocklist, phishing feed and site warnings merged (#122, #128, #129, #130, #134, #136, #139, #140, #141), then typed-data review and signing (#156, #158, #160, #161), withdrawing a gone page's cards (#166) and the browser's site check (#170); see "P16 progress" under P16 in [Parity](#parity) and [Road to parity](#road-to-parity) | Mobile takes `v0.7.0` (Bramble #1032). P7's kept accounts (#1009) and P10 (#1008) shipped. The move to `v0.9.0` (through `v0.8.0`) is open (#1048), with P1's screens (M18, #1049) merged into it, the screens for P12 (M19, #1050), P11 (M20, #1051), P13 (M21, #1052) and P14 (#1053) stacked on it, and #1056 on top taking up what `v0.9.0` adds; mobile does no device signing yet (a device step ends a send unsigned), and P8's screens are not started |
+| [Parity](#parity) P7–P16 | P7 done for reading (#87, #92): every v13 and v14 collection is read, every vault the extension opens opens here, and what mobile does not operate is kept unused and listed; new vaults are written at 14 and a v13 vault is raised on unlock (#116, `v0.8.0`). P9 done (#84, #91, #104) and exported with P12's revoke (X2+X3 #106). P10 done (#86). P11 exported (X4 #107), P13 exported (X5 #110). P14 done and exported (#108, #117, `v0.8.0`). Fixtures for P3–P5, P7 and P9–P14 copied (G7, #109, #117). P8's core done and exported (#101, #123, #126, #132, #135, #138, `v0.9.0`); its Bluetooth framing (#159), golden transcripts (#162), multisig co-signing and gasless on the device (#163, #164) merged since; P15 spiked (#102), and PR 1's engine slice merged unexported (#168); P16's core done (host contract in `docs/dapp-host.md`): D2 settled 2026-11-25 (an in-app browser); request reading, add-chain and watch-asset, grants, the queue, connecting a site and its export (`DappSession`), the blocklist, phishing feed and site warnings merged (#122, #128, #129, #130, #134, #136, #139, #140, #141), then typed-data review and signing (#156, #158, #160, #161), withdrawing a gone page's cards (#166) and the browser's site check (#170), then the chain methods, `wallet_watchAsset`, `wallet_addInvokeTransaction`, the sign card's decoded rows, the live class read before signing typed data and Ledger typed data (#176, #179, #181, #183, #188, #200); see "P16 progress" under P16 in [Parity](#parity) and [Road to parity](#road-to-parity) | Mobile takes `v0.7.0` (Bramble #1032). P7's kept accounts (#1009) and P10 (#1008) shipped. The move to `v0.9.0` (through `v0.8.0`) is open (#1048), with P1's screens (M18, #1049) merged into it, the screens for P12 (M19, #1050), P11 (M20, #1051), P13 (M21, #1052) and P14 (#1053) stacked on it, and #1056 on top taking up what `v0.9.0` adds; mobile does no device signing yet (a device step ends a send unsigned), and P8's screens are not started |
 | 3 Extension | not started, and waits for parity; `js/package.json` is private | n/a |
 
 `v0.1.0` is tagged at `35abc8b` (GitHub release only) and was what M2 and M3 pinned. `v0.2.0`
@@ -146,6 +146,18 @@ read)` while it answers `CoordinationSyncStep::Read`, in place of `coordination_
 `DappSession::new` takes `TokenPreferences`, `deny_connect` becomes `deny` (any card), and
 `DappApproval` gains `card`; `GaslessSubmitStep::Device` and `DeviceRetry`, and
 `RiskFlagCode::AddressPoisoning`, join each app's exhaustive switch.
+`v0.11.0` carries #172–#202: the rest of P16's core (add-chain, switch-chain and deployment data,
+#176; watch-asset and `dappTokenIds`, #179; a site's call batch through a confirmed plan, #181;
+the sign card's decoded rows, #183; the live class read before typed data, so Ready and Braavos
+accounts sign, #188; Ledger typed data on the device, #200; the host contract,
+`docs/dapp-host.md`, #202), P8's device OS gate (`LedgerOsGate`, #199), the M18 follow-ups (an
+intent's signer change, #172; re-proposing a stale intent, #177; removing one, #190; importing a
+co-signer's signature, #193), and the module-layer guardrail (#196, #197). Mobile adopts, with the
+bump: `approve_sign_typed_data` returns a `DappSignStep` (`Read`, `Device`, `DeviceRetry`,
+`Settled`) in place of `[DappSettled]`; `DappCard::SignTypedData` gains `domain`, `message` and
+`outside_execution`; and `DappCard`'s `Invoke`, `SwitchChain` and `WatchAsset` and
+`DappReply::Read` join each app's exhaustive switch. Nothing in the apps calls `DappSession`'s
+review cards yet. `MultisigIntent` gains `change` and `next_config`.
 
 ### Next PRs
 
@@ -163,8 +175,12 @@ migration (#116) and P14's export (#117), all in `v0.8.0`. Since `v0.8.0`, `main
 and exports (#123, #126, #132, #135, #138), and P16's connect slice and blocklist (#139, #140,
 #141). Since `v0.9.0`, `main` adds P8's Bluetooth framing and device follow-ups (#159, #162–#164),
 P16's typed-data signing, `withdraw` and the browser's site check (#156, #158, #160, #161, #166,
-#170), P15's engine slice, unexported (#168), and the coordination sync's import (#167, #171); see
-P8, P15 and P16 in [Parity](#parity).
+#170), P15's engine slice, unexported (#168), and the coordination sync's import (#167, #171), all
+in `v0.10.0`. Since `v0.10.0`, `main` adds the rest of P16's core: the chain methods,
+watch-asset, invoke, sign rows, the live class read, Ledger typed data and the host contract
+(#176, #179, #181, #183, #188, #200, #202, with fixtures in #175); P8's device OS gate (#199); the
+M18 follow-ups (#172, #177, #190, #193); and the module-layer guardrail (#196, #197); see P8, P15
+and P16 in [Parity](#parity).
 
 #### Road to parity
 
@@ -173,9 +189,13 @@ Written 2026-11-23, against #990's table; updated 2026-11-26. With M15–M17 mer
 
 - exported, screens only: multisig transactions (M18), allowances and revoke (M19), swap (M20),
   staking (M21), gasless and sponsored (`v0.8.0`), and Ledger (P8, `v0.9.0`; its Speculos
-  transcripts, multisig co-signing and gasless on the device followed, #162–#164);
-- core work left: STRK20 actions, then shadow accounts and multisig STRK20 (P15),
-  dapp connect and anti-phishing (P16; D2 settled 2026-11-25, core started in #122).
+  transcripts, multisig co-signing and gasless on the device followed, #162–#164), and dapp
+  connect and anti-phishing (P16, core done in #202; the host contract is `docs/dapp-host.md`);
+- core work left: STRK20 actions, then shadow accounts and multisig STRK20 (P15; a Rust port of
+  the SDK's client, #182, is being built on `strk20/integration`, draft #186, unmerged, and D3
+  below is not amended), and NFTs
+  (P17, added 2026-11-26: the extension shipped them in v0.10.10, so #990's "parked" row was
+  wrong).
 
 The porting is mostly done; what decides the pace now is the mobile screens:
 
@@ -223,6 +243,7 @@ step starts.
 | Extension Krusty 3 | Bramble, `main` | — | `main` pins `@starknetfoundation/krusty-kms-wasm` `3.1.0` (checked 2026-11-25); confirm the migration below shipped with it before Phase 3. It had pinned `@starknetfoundation/krusty-kms-wasm` `0.11.0`, which predates the fix (Krusty 3.0 changed the derivation; 2.0.0 and earlier kept the leading zero bytes), so its keys and mobile's parted for affected phrases. Its users have funds, so it follows Krusty's [migration guide](https://github.com/starknet-innovation/krusty-kms/blob/v3.0.0/docs/migration-3.0.md): keep the old key for any existing account whose public key differs. Needed before Phase 3, where the extension takes this crate's Krusty |
 | P7 migrate | here | v0.10.11 on the extension's `main`, G7b | done (#116, `v0.8.0`): `NEW_VAULT_SCHEMA` to 14 and raising a v13 vault on unlock, as the extension's migration does. v0.10.11, which reads 14, was released 2026-11-24 |
 | D2 | — | — | done: decided 2026-11-25, an in-app browser. Spiked 2026-11-25 (see "P16 spike findings" under P16 in [Parity](#parity)): an in-app browser on `WKWebView` and Android `WebView` with `androidx.webkit`, injecting the extension's `starknet_bramble` at document start in the main frame only, each request bound natively to the main frame's committed `https` origin; the core takes the extension's gate order, queue, grants and blocklist sans-IO |
+| M-QR | Bramble | — | QR scan for recipients on both apps (see "QR scan for recipients" under [Parity](#parity)): VisionKit on iOS, Play services' code scanner on Android; a scan fills the recipient and stops at review. Nothing here |
 | P15 spike | here | — | done 2026-11-23: see "P15 spike findings" under P15 in [Parity](#parity). The account key stays in Rust (the SDK only asks for a `CallSet` signature the core can compute and sign); the viewing key crosses into the runtime and on to StarkWare's prover and discovery service, as in the extension; a hidden WebView on both apps runs the pinned bundle unchanged behind a native fetch bridge; no StarkWare Rust client exists or is announced; the core's first P15 PR (the `PrivacyEngine` trait, `CallSet` signing, result judging) can start now |
 
 **Wave 1: krusty-kms#257 shipped (Krusty 3.2.0).** In order; each export is one PR here and one tag.
@@ -257,15 +278,18 @@ and #147), and #1056, on top of the stack, takes up what `v0.9.0` adds.
 | Gasless selector felt | Bramble #1039 | done before (`v0.8.0`) | the rebuild already takes a felt entrypoint as its own selector (`gasless::typed_data::selector_of`, test `a_felt_entrypoint_is_its_own_selector_in_the_rebuild`). Nothing to port; once #1039 merges, G7h can add a felt-entrypoint line |
 | Intent signer change | M18 (#1049) | done (#172) | `MultisigIntent.change` and `next_config` port `configReviewFor` (`multisig-intent-review.ts`): when the intent is exactly one call and the record's stored config (`held_config`: `currentConfig`, else `deployment`) is its snapshot (threshold and signer GUIDs in order), `review_config_change` over that config gives the change and the next config; otherwise none. `multisig_intent_review`'s pin reads the same helper. The apps drop any local decode of a stored intent's call |
 | Update network fee | M18 (#1049) | done (#177) | `MultisigProposalRequest::Repropose { intent_id }` proposes a stale intent's own stored calls again (`openUpdatedIntent`) through `propose_multisig_transaction`: the host names the intent, never calls; the calls are normalised and reviewed afresh, and the resend guard (`AlreadySent`, `ResendUnconfirmed`) applies as to any proposal. `multisig_fee_replacement` ports `feeReplacementIntentFor` (same multisig, snapshot, nonce and calls; collecting or ready; most signatures) for the card's "Continue" label and to open the existing version instead of proposing twice (`multisig_tx_refresh.rs`) |
+| Import a co-signer's signature | M18 (#1049) | done (#193) | `import_multisig_signature` ports `importSignature`: a pasted signature (`public_key`, `r`, `s`, canonical felts) joins a collecting intent once the chain still holds its snapshot and nonce. `SigningIntent::with_signature` (`persistSignature`: a snapshot member's signature over the recomputed hash, a signer once, below the threshold) is now the one rule a local, Ledger or pasted signature passes before the store validates again. It touches the signing path, so it had an independent review: no high or medium findings; its low notes are fixed (tests, the `ffi_surface` signature allowlist) or are behaviour that already existed (the lock check is not tied to the session, and stale-marking comes before the lock check, as in `sign_multisig_intent`) |
 | Sync imports packages | M18 (#1049) | done (#167, #171) | Not intended: `CoordinationSyncOutcome.imported` is still 0 at `v0.8.0` ("until intent import lands"), but import landed with X1. The extension's sync imports every trusted package it opens (`importSharedIntent` in `multisig-coordination-ops.ts`: STRK20 key and authorization first, removed intents kept out, `FINAL_IMPORT_REFUSALS`, one wrap never stopping the sync), so co-signers need not paste. Each import needs a fresh `MultisigStateRead`, so the sync becomes a multi-step plan |
+| Remove an intent | M18 (#1049) | done (#190) | `remove_multisig_intent(intent_id)` ports `removeIntent` (the intent card's "Delete", `wallet.removeArgentMultisigIntent`): it records the removal in `coordination.json` first (`removedIntents`, `recordRemovedIntent`: 100 ids per multisig, 20 multisigs, newest first), then drops the intent, so a coordination sync keeps a removed intent out whatever event id a relay serves it under (`isRemovedIntent`). Unlike the extension, an intent whose submission is under way is refused, since the submission would store it again |
 
 **Wave 2: when its decision is made.** Each can run beside Wave 1.
 
 | PR | Repo | Needs | What it is |
 | --- | --- | --- | --- |
 | P8 Ledger | here, then both | D1 (settled) | as the extension's v1: blind signing only. The Starknet app's version, public-key and `signHash` commands with the extension's minimum app version and its status-word catalogue (`ledger-protocol/`, 1,096; `background/ledger/`, 847), as sans-IO APDU bytes here; a signing step in `Plan` that hands the hash to the host's device and takes a signature back, verified against the record's stored `publicKeyX` before anything is broadcast, and never falls back to a key (`account-hash-signer.ts`); Ledger records made operable; and a vault with no phrase opened and created, for Ledger-only onboarding. The apps link to the device over Bluetooth with the core's framing (`ledger::ble`: the GATT identifiers per model, the MTU handshake, frames out and the reply in, refusing a wrong tag, a sequence gap or an overrun) and a thin CoreBluetooth or `BluetoothGatt` shim each that only scans, pairs, writes and listens (D1, amended 2026-11-26). Bluetooth first; Android USB a follow-up. The generator records APDU transcripts against the Starknet Ledger app under Ledger's Speculos emulator (Bramble #1061, copied in #162), so no test needs a device. Core done in `v0.9.0`; follow-ups in review and left: see P8 in [Parity](#parity) |
-| P16 Dapp connect | here, then both | D2 (settled), X2 | in progress (see "P16 progress" under P16 in [Parity](#parity)). request validation, grants (the vault's `originGrants`, and the per-account revocation P7 left, `withoutOriginAccess`), the approval queue and its review budget, typed-data review and signing (SNIP-12), add-chain and watch-asset, the blocklist and phishing feed as a sans-IO body and judge (`background/provider/`, 2,453; `background/approvals/`, 4,169; `permissions/`, 905). The core takes a request (origin, method, params) and returns a review, a grant or a refusal, whatever carried it. Mobile builds the transport: for a browser, a WebView whose bridge binds every request to the top frame's origin as the platform reports it and refuses frames it cannot attribute. P9's poisoned-payee refusal must not reach the site before the person acts |
+| P16 Dapp connect | here, then both | D2 (settled), X2 | core done here, the STRK20 methods waiting on P15 and a declare refused by decision; Bramble's browser, bridge and screens remain (see "P16 progress" under P16 in [Parity](#parity), and [`docs/dapp-host.md`](dapp-host.md) for the host contract). request validation, grants (the vault's `originGrants`, and the per-account revocation P7 left, `withoutOriginAccess`), the approval queue and its review budget, typed-data review and signing (SNIP-12), add-chain and watch-asset, the blocklist and phishing feed as a sans-IO body and judge (`background/provider/`, 2,453; `background/approvals/`, 4,169; `permissions/`, 905). The core takes a request (origin, method, params) and returns a review, a grant or a refusal, whatever carried it. Mobile builds the transport: for a browser, a WebView whose bridge binds every request to the top frame's origin as the platform reports it and refuses frames it cannot attribute. P9's poisoned-payee refusal must not reach the site before the person acts |
 | P15 STRK20 | here, then both | D3 (settled), the P15 spike | activate, shield, unshield and private send; then shadow accounts and multisig STRK20 (`privacy/`, 9,279; `background/privacy/`, 5,872), over 2.4d's read plan. The core owns the policy, the review and the extension's own rules around the SDK; the SDK is an engine the core drives through a trait, and each app runs the same pinned bundle the extension vendors (its pin, its digests) in a sandboxed runtime the spike picks. The largest step: six PRs in that order. Later: the SDK's client ported to Rust, once upstream leaves release candidates or StarkWare ships one, with its crypto from Krusty (the core adds none of its own), and the embedded runtime goes |
+| P17 NFTs | here, then both | legal on 3.1.1 before the screens ship | spiked 2026-11-26 (see P17 in [Parity](#parity)): the extension's discovery (Starkscan or a set indexer), `owner_of` re-proof, `token_uri` / `uri` metadata, ERC-721/1155 transfers under P9's review, and watched NFTs; then the gallery, detail and send screens, images only. G-NFT, then the core and its tag, then M-NFT |
 
 Done means #990's every shipped row on both apps, each proved against the extension by its
 generator. Phase 3 (the extension takes this crate) starts after that, and needs Extension Krusty
@@ -599,8 +623,13 @@ Foundations, which the features need, and Ledger, which needs only the first:
     needs a phrase fails closed through `VaultPayload::phrase`;
   - the key picker (#135): `LedgerKeyReader` reads a page of up to five keys and
     `ledger_account_candidates` places their addresses.
-  Deliberate departures from the extension: the device OS gate is the host's connect flow; the
-  app version is read on every signature; a Braavos Ledger account's deployment, and adding a
+  - the device OS gate (#191): `LedgerOsGate` (over `wallet_core::ledger::OsGate`) runs the
+    extension's `readLedgerOsAndRestoreStarknet` and `assertLedgerFirmwareReady` as one
+    sans-IO sequence the apps call at the start of the connect flow. It reads the open app,
+    closes it if it is not the dashboard, reads the OS, reopens Starknet, and checks the model
+    and version against `LEDGER_OS_MIN`. After each close or open, the host reconnects to the same
+    device when the step asks it to.
+  Deliberate departures from the extension: the app version is read on every signature; a Braavos Ledger account's deployment, and adding a
   Braavos Ledger account, are refused (the extension proves one live on chain first); a Ledger
   account's privacy reads (`PrivacyError::LedgerAccount`) are refused until it signs on the
   device (the extension signs there); Nostr coordination needs a phrase. A Ledger deployer signs
@@ -1108,7 +1137,8 @@ Features, smallest and least dependent first:
     4.7 is what removed Trust Wallet's and Coinbase Wallet's iOS dapp browsers (2019–2020).
     imToken kept URL entry but dropped its dapp list, and Argent and Braavos ship browsers today.
     *Proposed*: URL entry and the person's own history only, with no curated dapp list at
-    first. 3.1.1 (NFTs through in-app purchase) does not bite while NFTs are parked. Play has no
+    first. 3.1.1 (NFTs) applies once P17 ships: the extension shipped NFTs in v0.10.10, so legal
+    confirms showing and sending owned NFTs before P17's screens do. Play has no
     in-app-browser rule. `eth-phishing-detect` is under the DBAD licence, not OSI; the extension
     already ships it, so legal reviews it once for both.
   - *PRs.* A generator first (Bramble): request-to-outcome transcripts through the extension's
@@ -1120,9 +1150,10 @@ Features, smallest and least dependent first:
     but the inpage script), then the approval screens over M19–M21's card. Not now: WalletConnect
     (same core, another transport), wallet-standard registration (the extension has none), dapp
     privacy flows and shadow accounts (P15's fifth PR).
-  - *P16 progress (2026-11-25).* The core reads every request the extension accepts except the
-    STRK20 methods, which wait on P15; the connect slice is exported, and nothing is built in
-    Bramble.
+  - *P16 progress (2026-11-26).* P16's core is done here: every request the extension accepts
+    is answered through `DappSession`, except the STRK20 methods, which wait on P15, and
+    `wallet_addDeclareTransaction`, refused by decision. The host's contract is
+    [`docs/dapp-host.md`](dapp-host.md). Nothing is built in Bramble yet.
     - Merged: the hostile-JSON budget over the params text, the wallet API's error codes, the
       method table, and the readers for accounts, permissions, chain id, the discovery methods,
       deployment data, switch-chain and typed data (#122); an invoke's calls, a `null` proof
@@ -1165,13 +1196,110 @@ Features, smallest and least dependent first:
     - Merged (#170): `DappSession::is_blocked_site(origin)`, so the in-app browser can refuse to
       load a listed site, not only its requests: a mobile addition (the extension checks only
       requests). Before the host first calls `refresh_phishing_feed`, only the bundled list blocks.
-    - Next here, in order: the remaining methods' gates and results; the live class read
-      (Braavos, upgraded Argent); Ledger typed data; the full export.
+    - Merged (#183, for #180): the sign card's decoded rows. `CheckedTypedData::sign_rows` ports
+      the side panel's decoder, and `DappCard::SignTypedData` carries `domain` and `message`
+      (`SignRow { key, value, signed }`, signed rows first) and `outside_execution` (set from
+      the primary type, calls or none). Not-signed rows occur in one case: a revision 0 domain's
+      undeclared `revision`, which Krusty drops before hashing. A document whose rows cannot be
+      placed is refused (114), where the extension shows the card and withholds Sign. Missing:
+      a merkle field's root row and a revision 1 `string`'s ByteArray felt, which only Krusty's
+      encoder computes (krusty-kms #280). Follow-ups, in order:
+      1. *Golden rows* (#175 merged; after Bramble #1066 merges). Bramble's
+         `scripts/mobile-parity-dapp/typed-data.ts` records, for each `typedData` case the gate
+         accepts, `decodeSignRequest` rendered through `signValueText` (`card: { domain,
+         message, classified }`, each block `{ signed, unsigned }` as `[key, text]` pairs) and
+         `isOutsideExecution`. It adds cases that reach rows the current 28 do not: a revision 0
+         domain with an undeclared `revision`, a revision 1 `string`, a three-leaf merkle tree,
+         and a key past 259 characters. `dapp_typed_data_parity.rs` compares
+         `sign_rows` to them, listing as deviations the root row and the ByteArray felt (until
+         step 2) and the documents Krusty refuses (no card).
+      2. *Krusty's felts* (when krusty-kms ships #280, bumped deliberately with
+         `starknet-types-core`). `sign_rows` prints the root as `<path> ⟨merkle root⟩` and the
+         ByteArray felt in `"text" (string = 0x…)`, through `kms.rs`. The `ponytail:` note in
+         `sign_rows.rs` goes, the ByteArray felt joins a merkle leaf's order key, and step 1's
+         two deviations flip to agreement.
+      3. *Release and mobile.* `v0.11.0` carries #183 (step 2 follows in a later tag), then Bramble
+         `mobile/p16-sign-typed-data`: rows under `signing.domain` and `signing.message`, the
+         not-signed rows apart under `signing.domainUnsigned` and `signing.messageUnsigned`
+         (capped at 48), the raw document behind "Raw typed data", and the
+         `signing.outsideExecution` warning from `outside_execution` instead of parsing
+         `summary`.
+    - Merged (#176): the chain methods (`dapp::chain`, `bramble-core`'s `dapp_chain.rs`).
+      `wallet_addStarknetChain` is answered at once (`true` for a built-in chain, 117 for any
+      other, nothing stored); `wallet_switchStarknetChain` queues a switch card for a connected
+      site (`DappCard::SwitchChain`, `approve_switch_chain`), which selects the account the
+      site's grant holds on that network, else `ensure_network_account`'s pick, and then shows a
+      connect card if the site landed outside its grant; `wallet_deploymentData` answers after
+      one chain read the host makes (`DappReply::Read`, `answer_read`), 115 when deployed, 116
+      for a class this wallet does not deploy (the extension's `accountDeployment` tries more
+      classes; mobile offers only what it would deploy itself), and its gates run again on the
+      reply.
+    - Merged (#179): `wallet_watchAsset` (`bramble-core`'s `dapp_watch.rs`). The blocklist, queue
+      room, then the token's name, symbol and decimals read from the chain (`DappReply::Read`);
+      a card (`DappCard::WatchAsset`, `approve_watch_asset`) queued whether or not the token is
+      tracked, an already-tracked one a notice whose close answers `true` (audit M1). Approved,
+      the token is stored as the site's: `preferences.json` gains the extension's
+      `dappTokenIds`, and every review reads `TokenPreferences::trusted` (`portfolio::
+      token_sources`), which leaves out a site's token unless it is exactly a curated one
+      (audit 171). The person's own add now keeps one record per address, as `upsertToken`
+      does. Collectibles are refused (163) while mobile shows no NFTs, and a read whose endpoint
+      fails is refused (114) rather than retried on the next endpoint. Added tokens stop at 50
+      per network for the person and sites alike (`MAX_ADDED_TOKENS_PER_NETWORK`, the
+      portfolio policy's `max_added_tokens`).
+    - Merged (#181): `wallet_addInvokeTransaction` (`bramble-core`'s `dapp_invoke.rs`). The
+      blocklist and queue room, the lock and the granted active account (a site granted
+      elsewhere is also shown a connect card), an account the wallet signs with, the batch's
+      bounds and the self-call refusal, then the unrefused review (`verify_calls`) on the card
+      (`DappCard::Invoke`), a poisoned payee flagged, not refused (Sherlock 140). Approving
+      (`approve_invoke`) re-checks all of it, reviews again with `Invoke::reviewed` (which
+      refuses the poisoned payee) and hands the host a `TransferPlan`, so the fee review, the
+      person's confirm and a Ledger account's device signature are every batch's. `settle_invoke`
+      answers the page: `{ transaction_hash }` once the node accepted it (`Plan::
+      accepted_invoke`), 113 if the plan closed unsigned, 163 if after; `withdraw` closes a plan
+      no page waits on. A divergence: the fee is estimated after approval, in the plan, not on
+      the card while it waits.
+    - *Decided* 2026-11-26: `wallet_addDeclareTransaction` stays refused (163) on mobile, a
+      deliberate divergence. Declaring a class is a developer workflow no mobile dapp needs, and
+      it would take a declare kind in the plan and Sierra class hashing, which Krusty does not
+      have (the extension leaves it to starknet.js when a site omits `class_hash`). Revisit if
+      product asks for it: requiring `class_hash` (which the node checks against the class)
+      avoids the hashing.
+    - Merged (#188): the live class read for typed data (`requireLiveAuthorizableClass`).
+      `approve_sign_typed_data` now returns a `DappSignStep`: OpenZeppelin signs at once; a
+      Ready or Braavos account first has its live state read, one read at a time
+      (`answer_sign_read`), through `Kind::Authorize`, a plan that never signs and runs the send
+      review's own account checks (`send::plan_authorize`): the endpoint's chain, then the class
+      at an accepted block, Ready's owner, owner type and no guardian, Braavos's key as first
+      Stark signer with no 2FA still active. So a Ready account stored at 0.3.x that has
+      upgraded signs, one still on 0.3.x does not, Braavos signs `[r, s]`, and every Ready
+      account is read before signing (it was not). Stricter than the extension, which checks
+      only a Ready account's class for typed data: its owner and guardian too, since a guardian
+      account cannot verify one signature. A failed read refuses (163), where the extension
+      tries its next endpoint.
+    - Merged (#200): Ledger typed data (`bramble-core`'s `dapp_sign_device.rs`), as the
+      extension's `executeSignApproval` routes a keyless account through `accountHashSigner`.
+      A Ledger account queues a typed-data card like any other and, once approved, takes the
+      live read first. Then every check runs under one session hold and the core computes the
+      message hash, an outside execution's review included (a lookalike payee is refused
+      before the device is asked for anything). The device blind-signs that hash through
+      `ledger::HashSigning`, one APDU at a time (`DappSignStep::Device`,
+      `answer_sign_device`, `sign_device_transport_failure`). A refusal parks at
+      `DeviceRetry` (`retry_sign_device`; `cancel_sign_device` refuses the page, as the side
+      panel's reject does), and a lock ends the exchange before another APDU.
+      The signature is verified against the stored key. Before it answers the page, the cheap
+      checks run again: the same session, the site not blocked, and the card's account still
+      the granted active one. The host never passes a hash, and `withdraw` drops a signing
+      whose page has gone.
+    - Merged (#202): the full export (P16's fifth PR). `DappSession`'s whole surface is audited
+      against `ffi_surface.rs`, which still holds that no export signs without a queued card
+      the person approved, and the host contract is written down in `docs/dapp-host.md`.
+      What remains is outside the core's P16: the STRK20 methods (P15), and Bramble's items
+      below.
     - *Done* (#140): the connect-only slice is exported first, so Bramble can build and test
       the WebView bridge against real dapps while review and signing follow. Connect's card is
       a site and an account, so the slice does not wait on M19–M21.
-    - Owed outside this repo: P16's generator in Bramble (each PR so far is on unit tests ported
-      from the extension's own); a `provider` key on the extension's `starknet_bramble`, without
+    - Owed outside this repo: P16's generator in Bramble (every PR here is on unit tests ported
+      from the extension's own); the browser shell, bridge and approval screens on each app; a `provider` key on the extension's `starknet_bramble`, without
       which starknet-react 5's discovery lists no Bramble wallet, in the extension or the app;
       the threat-model update for an in-app web view; and legal and store-policy review.
   - *Unknowns.* Whether `WKScriptMessage.frameInfo` reflects send or delivery time across a
@@ -1180,13 +1308,61 @@ Features, smallest and least dependent first:
     grant is needed, but its code requires one (`approval-limits.ts:7-8`,
     `chain-ops.ts:349-356`). The code is what gets ported.
 
+- **P17 NFTs.** The extension shipped NFTs on by default in v0.10.10 (Bramble `61507fc49`,
+  2026-11-06); #990 and this plan had them as parked. Spiked 2026-11-26 from Bramble `main`
+  (`898879ff5`), not run.
+  - *What the extension does.* An NFTs tab on Home, on unless the person turns it off
+    (`collectiblesPreview: false`, `nftsShown`). Discovery through Starkscan by default or an
+    indexer URL the person sets (`nft-indexer.ts`), capped, with every candidate re-proven
+    through on-chain `owner_of` before the gallery shows it. ERC-721 and ERC-1155, metadata from
+    `token_uri` / `uri` (legacy felt-array URIs too), normalised and bounded
+    (`nft-metadata.ts`, `nft-token-metadata.ts`). Send: ERC-721 `transfer_from` and ERC-1155
+    `safe_transfer_from` (`collectibles/nft.ts`) through the same verification, fee review,
+    poisoned-recipient refusal and Activity rules as a token send (`nft-transfer-submit.ts`).
+    Hide as spam, remove a watch, and a site's `wallet_watchAsset` for an NFT queued as a card
+    and proven only when approved (`provider/watch-nft.ts`). An on-chain `data:text/html`
+    animation runs only after the person presses play, in the manifest-sandboxed
+    `sandbox/render.html` (no extension APIs, egress-blocking CSP); Firefox withholds that page
+    and its play control. Watched NFTs and the indexer URL live in preferences (`nfts`,
+    `nftIndexerUrl`), not the vault. Sizes: `background/portfolio/nft-*` and `watch-nft.ts`
+    (1,162), `portfolio/src/collectibles/` (874), the side panel's `collectibles/` (1,568).
+  - *Here.* Only what other steps needed: `dapp::watch_asset`'s ERC-721/1155 parsing (P16) and
+    call review's watched-NFT contracts and `set_approval_for_all` decoding (`send::call_decode`,
+    P9/P12). P17 adds, as
+    sans-IO bodies and judges like P11: the indexer and Starkscan bodies and their bounds; the
+    `owner_of` / `balance_of` re-proof; `token_uri` / `uri` reads and the metadata normaliser
+    (IPFS and data URIs, the extension's size and scheme limits); the two transfer calls as a
+    `TransferPlan` kind under P9's review; and the watched-NFT list in the host's preferences
+    store.
+  - *Mobile.* The gallery, detail and send screens, images only at first: an animation needs a
+    second sandbox (a `WKWebView` / `WebView` with no bridge and no network), which waits for
+    a reason. Store policy as above (3.1.1).
+  - *Order.* Generator first (G-NFT, Bramble: discovery replies, metadata cases, re-proof
+    outcomes and both transfers through the extension's own code), then the core and its
+    export, then the screens (M-NFT). About P12's size.
+
+- **QR scan for recipients (mobile only).** No client scans a QR code, the extension included:
+  it only draws one (`shared/qr.ts`; Receive, the wallet card, multisig funding). The extension
+  stays without one: whether its side panel can prompt for the camera is untested, and a
+  desktop user rarely has a code to point a camera at. Mobile
+  already draws the same QR (`QrCode.kt`, `ReceiveAddressView.swift`), whose text is a bare
+  address or a Bramble wallet card (`ReceiveScreen.kt`), so a scanner reads both. iOS:
+  VisionKit's `DataScannerViewController`, no dependency, `NSCameraUsageDescription`. Android:
+  Play services' code scanner (`play-services-code-scanner`) needs no camera permission, but
+  it is a new pinned dependency, works only where Play services runs (not de-Googled phones),
+  and may download its module on first use; CameraX with a decoder is the no-Google alternative. A scanned value
+  goes through exactly the checks a pasted one does, fills the recipient field and stops at
+  review; it never skips the poisoned-recipient refusal. Nothing here: a wallet card already
+  parses through `contact_card::parse` and an address through the send flow's own check. One
+  Bramble PR (M-QR), unblocked.
+
 Bramble's alone, with nothing needed here: Android's token management, its multisig stepper,
 participant picker and shared-account home, the analytics consent and diagnostics screens, and
 the screens for what the core already has (hidden accounts, the activity facts).
 
 Not parity:
 
-- NFTs are parked in the extension, and no client scans a QR code.
+- QR scanning is not parity (no client has it); mobile adds it on its own (see above).
 - Devnet (`SN_DEVNET`, a developer's local node), and the custom chains a dapp once added
   (`wallet-model/src/networks/custom-network.ts`; nothing adds one now). P4's RPC override is the
   extension's whole custom-RPC feature.
@@ -1877,9 +2053,9 @@ Each phase names the crate a module lands in; the table above decides anything n
 
    The extension's TypeScript is the oracle until it is replaced, so each swap is proved by the
    golden suite passing through the extension's own conformance tests before the TypeScript goes.
-4. **Later**: NFTs, which the extension has parked. The rest of this phase (Ledger, dapp
-   provider and permissions, STRK20 submission, swap, gasless, allowances) is the extension's
-   today and moved into [Parity](#parity), ahead of Phase 3.
+4. **Later**: nothing left here. NFTs shipped in the extension (v0.10.10) and moved into
+   [Parity](#parity) as P17, with the rest of this phase (Ledger, dapp provider and permissions,
+   STRK20 submission, swap, gasless, allowances), ahead of Phase 3.
 
 ## Key exposure
 

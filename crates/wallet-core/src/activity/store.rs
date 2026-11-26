@@ -25,7 +25,6 @@ use serde::{Deserialize, Serialize};
 
 use super::observation;
 use crate::felt;
-use crate::history::activity::ActivityKind;
 use crate::history::activity_rules::{
     is_recorded_token_address, parse_direction, relay_execution, submitted_price, transaction_fee,
     user_fee,
@@ -118,47 +117,8 @@ pub(super) struct Log {
     pub sync: Vec<SyncRecord>,
 }
 
-pub fn kind_text(kind: ActivityKind) -> &'static str {
-    match kind {
-        ActivityKind::Declare => "declare",
-        ActivityKind::Deploy => "deploy",
-        ActivityKind::Invoke => "invoke",
-        ActivityKind::Transfer => "transfer",
-    }
-}
-
-pub fn status_text(status: TxStatus) -> &'static str {
-    match status {
-        TxStatus::Pending => "pending",
-        TxStatus::Preconfirmed => "preconfirmed",
-        TxStatus::Accepted => "accepted",
-        TxStatus::Rejected => "rejected",
-        TxStatus::Reverted => "reverted",
-    }
-}
-
-pub fn parse_status(text: &str) -> Option<TxStatus> {
-    Some(match text {
-        "pending" => TxStatus::Pending,
-        "preconfirmed" => TxStatus::Preconfirmed,
-        "accepted" => TxStatus::Accepted,
-        "rejected" => TxStatus::Rejected,
-        "reverted" => TxStatus::Reverted,
-        _ => return None,
-    })
-}
-
-pub fn parse_kind(text: &str) -> Option<ActivityKind> {
-    match text {
-        "declare" => Some(ActivityKind::Declare),
-        "deploy" => Some(ActivityKind::Deploy),
-        "invoke" => Some(ActivityKind::Invoke),
-        "transfer" => Some(ActivityKind::Transfer),
-        _ => None,
-    }
-}
-
 pub use super::observation::monotonic;
+pub use crate::history::activity_rules::{kind_text, parse_kind, parse_status, status_text};
 
 fn detail_ok(value: &Option<String>) -> bool {
     value

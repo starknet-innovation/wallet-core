@@ -6,7 +6,7 @@
 
 /// Every source file under `src/`, read at test time so a new exporting file is scanned without
 /// this test changing.
-fn sources() -> Vec<(String, String)> {
+pub(crate) fn sources() -> Vec<(String, String)> {
     fn walk(dir: &std::path::Path, root: &std::path::Path, out: &mut Vec<(String, String)>) {
         for entry in std::fs::read_dir(dir).expect("read src") {
             let path = entry.expect("read src entry").path();
@@ -33,13 +33,13 @@ fn is_export_attribute(line: &str) -> bool {
 }
 
 /// One exported function, its signature up to the body (or the `;` of a trait method).
-struct Exported {
-    signature: String,
+pub(crate) struct Exported {
+    pub(crate) signature: String,
     /// A method of an exported `with_foreign` trait: the apps implement it and the core calls it,
     /// so what the core hands over is the arguments, not the return value.
-    foreign: bool,
+    pub(crate) foreign: bool,
     /// Gated on `raw-keys` or `extension`, which mobile's build leaves out.
-    extension_only: bool,
+    pub(crate) extension_only: bool,
 }
 
 impl Exported {
@@ -54,7 +54,7 @@ impl Exported {
         }
     }
 
-    fn name(&self) -> &str {
+    pub(crate) fn name(&self) -> &str {
         let after = self.signature.split("fn ").nth(1).unwrap_or("");
         after.split('(').next().unwrap_or("")
     }
@@ -101,7 +101,7 @@ fn signature(first: &str, lines: &[&str]) -> String {
 /// Functions inside `#[uniffi::export]` items: a free fn, every fn of an impl block, and the
 /// methods of a trait. Panics on an export it reads no function under, so a shape this parser
 /// does not know is a failure, never a clean item.
-fn exported_signatures(source: &str) -> Vec<Exported> {
+pub(crate) fn exported_signatures(source: &str) -> Vec<Exported> {
     let lines: Vec<&str> = source.lines().collect();
     let mut signatures = Vec::new();
     for (at, line) in lines.iter().enumerate() {
@@ -292,7 +292,8 @@ fn mobile_hands_out_no_raw_signature() {
 
 /// P1's multisig transaction exports sign by vault record and judge reads the host drove: none
 /// takes or returns a key, a phrase or a raw signature, so a co-signer's key never crosses the
-/// FFI (AGENTS.md). Their files are named so a new export there is scanned here.
+/// FFI (AGENTS.md). A signature coming in is held to `ffi_surface_signatures`. Their files
+/// are named so a new export there is scanned here.
 #[test]
 fn multisig_transactions_take_and_return_no_key() {
     let mut seen = Vec::new();
@@ -305,14 +306,7 @@ fn multisig_transactions_take_and_return_no_key() {
         }
         for exported in exported_signatures(&source) {
             let signature = exported.signature.to_lowercase();
-            for word in [
-                "private",
-                "secret",
-                "mnemonic",
-                "phrase",
-                "passphrase",
-                "signature:",
-            ] {
+            for word in ["private", "secret", "mnemonic", "phrase", "passphrase"] {
                 assert!(
                     !signature.contains(word),
                     "{file}: `{}` carries `{word}`",
@@ -329,9 +323,11 @@ fn multisig_transactions_take_and_return_no_key() {
         "sign_multisig_intent_on_device",
         "submit_multisig_intent",
         "import_multisig_intent",
+        "import_multisig_signature",
         "multisig_intent_read",
         "multisig_intent_review",
         "multisig_fee_replacement",
+        "remove_multisig_intent",
     ] {
         assert!(
             seen.iter().any(|seen| seen == name),
@@ -443,42 +439,57 @@ fn no_export_takes_calls_to_sign() {
 /// P16: a site's requests reach the wallet only through `DappSession`. The one export that signs,
 /// `approve_sign_typed_data`, takes a queued card's id (and the account the person reviewed),
 /// never a hash or a document: what it signs is only ever what the site queued and the person
-/// approved. Each new signing export must keep that shape; widen this list deliberately.
+/// approved; the other decisions (`approve_switch_chain`, `approve_watch_asset`, and
+/// `approve_invoke`, whose plan the person still confirms) take only a card's id too; a typed-data
+/// approval's chain replies (`answer_sign_read`) only gate it, and a Ledger's device steps carry
+/// APDU replies for the hash the core computed. Keep that shape; widen this list deliberately.
 #[test]
 fn the_dapp_session_signs_only_an_approved_card() {
-    let names: Vec<String> = [
-        include_str!("../src/dapp_session.rs"),
-        include_str!("../src/dapp_expiry.rs"),
-        include_str!("../src/dapp_sign.rs"),
-        include_str!("../src/dapp_sites.rs"),
+    // Every `dapp_*.rs` file, in name order, so a new one cannot add an export unseen.
+    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut files: Vec<_> = std::fs::read_dir(src)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| {
+            path.file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .starts_with("dapp_")
+        })
+        .collect();
+    files.sort();
+    let names: Vec<String> = files
+        .iter()
+        .flat_map(|path| exported_signatures(&std::fs::read_to_string(path).unwrap()))
+        .map(|exported| exported.name().to_owned())
+        .collect();
+    assert_eq!(
+        names.join(" "),
+        "pending_approvals deny approve_switch_chain answer_read settle_expired \
+         withdraw approve_invoke settle_invoke new request approve_connect \
+         answer_sign_device sign_device_transport_failure retry_sign_device cancel_sign_device \
+         approve_sign_typed_data answer_sign_read refresh_phishing_feed \
+         answer_phishing_feed is_blocked_site approve_watch_asset"
+    );
+    let signing = [
+        include_str!("../src/dapp_sign_read.rs"),
+        include_str!("../src/dapp_sign_device.rs"),
     ]
     .into_iter()
     .flat_map(exported_signatures)
-    .map(|exported| exported.name().to_owned())
-    .collect();
+    .collect::<Vec<_>>();
     assert_eq!(
-        names,
+        signing.iter().map(|e| e.signature.as_str()).collect::<Vec<_>>(),
         [
-            "new",
-            "request",
-            "pending_approvals",
-            "approve_connect",
-            "deny",
-            "settle_expired",
-            "withdraw",
-            "approve_sign_typed_data",
-            "refresh_phishing_feed",
-            "answer_phishing_feed",
-            "is_blocked_site"
+            "fn approve_sign_typed_data( &self, approval_id: String, \
+             reviewed_account_id: String, now_ms: f64, ) -> DappSignStep",
+            "fn answer_sign_read(&self, approval_id: String, id: u64, body: String) -> DappSignStep",
+            "fn answer_sign_device(&self, approval_id: String, reply: Vec<u8>) -> DappSignStep",
+            "fn sign_device_transport_failure( &self, approval_id: String, \
+             failure: TransportFailure, ) -> DappSignStep",
+            "fn retry_sign_device(&self, approval_id: String) -> DappSignStep",
+            "fn cancel_sign_device(&self, approval_id: String) -> DappSignStep"
         ]
-    );
-    let signing = exported_signatures(include_str!("../src/dapp_sign.rs"));
-    assert_eq!(
-        signing
-            .iter()
-            .map(|exported| exported.signature.as_str())
-            .collect::<Vec<_>>(),
-        ["fn approve_sign_typed_data( &self, approval_id: String, \
-             reviewed_account_id: String, now_ms: f64, ) -> Vec<DappSettled>"]
     );
 }

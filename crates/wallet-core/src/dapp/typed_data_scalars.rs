@@ -29,13 +29,42 @@ pub enum Encoded {
     ByteArray,
 }
 
-/// `snip12Scalar`: what `value` declared as `ty` encodes to on `revision`, or `None` where the
-/// type cannot describe the value (an unknown type included).
+/// How the approval card prints a leaf (`Snip12ScalarKind`): a decimal amount, a hex felt, or
+/// site-chosen text beside the felt it encodes to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kind {
+    Boolean,
+    ByteString,
+    Felt,
+    Integer,
+    Selector,
+    Text,
+}
+
+/// `Snip12Scalar`: a leaf resolved against its declared type, with the text the card shows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Reading {
+    pub encoded: Encoded,
+    pub kind: Kind,
+    pub text: String,
+}
+
+/// `snip12Scalar`'s felt: what `value` declared as `ty` encodes to on `revision`, or `None` where
+/// the type cannot describe the value (an unknown type included).
 pub fn snip12_scalar(value: &JsValue, ty: &str, revision: Revision) -> Option<Encoded> {
+    snip12_reading(value, ty, revision).map(|reading| reading.encoded)
+}
+
+/// `snip12Scalar`: the felt and the card's reading of one leaf.
+pub fn snip12_reading(value: &JsValue, ty: &str, revision: Revision) -> Option<Reading> {
     match ty {
         // Revision 1 asserts a boolean; revision 0 would hash any scalar, so `"false"` is refused.
         "bool" => match value {
-            JsValue::Bool(flag) => Some(Encoded::Felt(Felt::from(u8::from(*flag)))),
+            JsValue::Bool(flag) => Some(Reading {
+                encoded: Encoded::Felt(Felt::from(u8::from(*flag))),
+                kind: Kind::Boolean,
+                text: flag.to_string(),
+            }),
             _ => None,
         },
         "string" => match revision {
@@ -43,32 +72,60 @@ pub fn snip12_scalar(value: &JsValue, ty: &str, revision: Revision) -> Option<En
             Revision::One => value
                 .as_str()
                 .filter(|text| is_printable_ascii(text))
-                .map(|_| Encoded::ByteArray),
+                .map(|text| Reading {
+                    encoded: Encoded::ByteArray,
+                    kind: Kind::ByteString,
+                    text: text.to_string(),
+                }),
         },
         "felt" | "shortstring" => short_string_or_number(value),
         "selector" => selector(value),
         "timestamp" | "u128" => {
             let parsed = numeric_value(value, false)?;
-            (!parsed.negative || parsed.magnitude.is_zero())
+            let n = (!parsed.negative || parsed.magnitude.is_zero())
                 .then(|| parsed.magnitude.to_u128())
-                .flatten()
-                .map(|n| Encoded::Felt(Felt::from(n)))
+                .flatten()?;
+            Some(integer(Felt::from(n), &parsed))
         }
         // Only revision 1 wraps a negative into the field; both keep the i128 ceiling.
         "i128" => {
             let parsed = numeric_value(value, revision == Revision::One)?;
             let magnitude = parsed.magnitude.to_u128()?;
             let limit = 1u128 << 127;
-            if parsed.negative && magnitude != 0 {
+            let felt = if parsed.negative && magnitude != 0 {
                 // A negative number reaches here on revision 0 too (text cannot): it is out of range.
-                (revision == Revision::One && magnitude <= limit)
-                    .then(|| Encoded::Felt(-Felt::from(magnitude)))
+                (revision == Revision::One && magnitude <= limit).then(|| -Felt::from(magnitude))?
             } else {
-                (magnitude < limit).then(|| Encoded::Felt(Felt::from(magnitude)))
-            }
+                (magnitude < limit).then(|| Felt::from(magnitude))?
+            };
+            Some(integer(felt, &parsed))
         }
-        "ClassHash" | "ContractAddress" => bounded_felt(value).map(Encoded::Felt),
+        "ClassHash" | "ContractAddress" => bounded_felt(value).map(felt_reading),
         _ => None,
+    }
+}
+
+/// A whole number, shown in decimal (`bigint.toString(10)`).
+fn integer(felt: Felt, parsed: &JsBigInt) -> Reading {
+    let digits = parsed.magnitude.to_decimal();
+    let sign = if parsed.negative && !parsed.magnitude.is_zero() {
+        "-"
+    } else {
+        ""
+    };
+    Reading {
+        encoded: Encoded::Felt(felt),
+        kind: Kind::Integer,
+        text: format!("{sign}{digits}"),
+    }
+}
+
+/// A hex-shaped value: its text is the canonical felt, so every spelling reads as one row.
+fn felt_reading(felt: Felt) -> Reading {
+    Reading {
+        encoded: Encoded::Felt(felt),
+        kind: Kind::Felt,
+        text: crate::felt::canonical(&felt),
     }
 }
 
@@ -129,22 +186,25 @@ fn bounded_felt(value: &JsValue) -> Option<Felt> {
 
 /// `shortStringOrNumber`: a number first, as `getHex` reads one first; otherwise printable ASCII
 /// of 1–31 characters that `BigInt` itself refuses, encoded as its bytes.
-fn short_string_or_number(value: &JsValue) -> Option<Encoded> {
+fn short_string_or_number(value: &JsValue) -> Option<Reading> {
     if let Some(felt) = bounded_felt(value) {
-        return Some(Encoded::Felt(felt));
+        return Some(felt_reading(felt));
     }
     let text = value.as_str()?;
     let fits = !text.is_empty() && text.len() <= MAX_SHORT_STRING;
-    (fits && is_printable_ascii(text) && parse_bigint(text).is_none())
-        .then(|| Encoded::Felt(Felt::from_bytes_be_slice(text.as_bytes())))
+    (fits && is_printable_ascii(text) && parse_bigint(text).is_none()).then(|| Reading {
+        encoded: Encoded::Felt(Felt::from_bytes_be_slice(text.as_bytes())),
+        kind: Kind::Text,
+        text: text.to_string(),
+    })
 }
 
 /// `selectorScalar`: `0x` hex inside the field, or an entry point name
 /// (`/^[A-Za-z_][A-Za-z0-9_]*$/`, at most 64 characters) hashed by Krusty.
-fn selector(value: &JsValue) -> Option<Encoded> {
+fn selector(value: &JsValue) -> Option<Reading> {
     let text = value.as_str()?;
     if is_hex_text(text) {
-        return bounded_felt(value).map(Encoded::Felt);
+        return bounded_felt(value).map(felt_reading);
     }
     let mut bytes = text.bytes();
     let name = bytes
@@ -152,5 +212,9 @@ fn selector(value: &JsValue) -> Option<Encoded> {
         .is_some_and(|b| b.is_ascii_alphabetic() || b == b'_')
         && bytes.all(|b| b.is_ascii_alphanumeric() || b == b'_')
         && text.len() <= MAX_SELECTOR_NAME;
-    name.then(|| Encoded::Felt(kms::selector(text)))
+    name.then(|| Reading {
+        encoded: Encoded::Felt(kms::selector(text)),
+        kind: Kind::Selector,
+        text: text.to_string(),
+    })
 }

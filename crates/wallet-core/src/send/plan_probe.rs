@@ -56,6 +56,8 @@ pub(crate) enum Probe {
     Submit,
     /// `ensureAccountDeployed`, just before the automatic deployment.
     Deploy(Bounds),
+    /// `requireLiveAuthorizableClass`, before a typed-data signature (`Kind::Authorize`).
+    Authorize,
 }
 
 /// What an account-state read concluded.
@@ -68,7 +70,7 @@ pub(crate) enum Outcome {
     Unreadable,
 }
 
-fn refused(code: Code, detail: Option<String>) -> Outcome {
+pub(super) fn refused(code: Code, detail: Option<String>) -> Outcome {
     Outcome::Refused(SendFailure {
         code,
         hash: None,
@@ -88,7 +90,7 @@ pub fn selector(hex: &str) -> Felt {
 
 /// `requireAuthorizableArgentClass`: the live class must be a known Argent class whose
 /// authorization is the signer array this wallet produces.
-fn authorizable(classes: &[ArgentClass], class_hash: &Felt) -> Result<(), Outcome> {
+pub(super) fn authorizable(classes: &[ArgentClass], class_hash: &Felt) -> Result<(), Outcome> {
     match classes.iter().find(|class| class.class_hash == *class_hash) {
         Some(class) if class.signer_array => Ok(()),
         Some(class) => Err(refused(
@@ -360,6 +362,7 @@ impl Plan {
             Probe::ReviewDeploy => self.review_deploy_probed(outcome),
             Probe::Submit => self.submit_probed(outcome),
             Probe::Deploy(bounds) => self.deploy_probed(outcome, bounds),
+            Probe::Authorize => self.authorize_probed(outcome),
         }
     }
 

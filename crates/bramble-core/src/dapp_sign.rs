@@ -11,46 +11,81 @@
 //! record the site, then the blocklist, lock, the card's account still granted and active (so the
 //! network has not moved either), the account kind, the hash again, an outside execution's
 //! review again (now refusing a lookalike payee or spender), and the signature through
-//! `signing_record` and `sign_for` under the same session hold as every check before it. Every
-//! refusal but the document's is UNKNOWN_ERROR (163), as the extension's strings map.
+//! `signing_record` and `sign_for` under the same session hold as every check before it. A
+//! Ledger account's hash is computed under that hold too and then signed on its device
+//! (`dapp_sign_device.rs`). Every refusal but the document's is UNKNOWN_ERROR (163), as the
+//! extension's strings map.
 //!
-//! Accounts it signs for: OpenZeppelin, and Ready (Argent) whose stored class takes the signer
-//! array, each holding its key in the vault (phrase-derived or imported). Refused: Ledger (the
-//! device path is not wired for typed data), Braavos (signing needs the live class and signer
-//! read), a Ready account stored at an Argent 0.3.x class (it cannot verify the 0.4 signature),
-//! and a multisig, which is never a vault record and so never the granted account here.
+//! Accounts it signs for: any whose key the vault holds (phrase-derived or imported), and a
+//! Ledger account (`accountHashSigner`). OpenZeppelin signs at once; Ready (Argent) and Braavos
+//! sign only once the live account accepts the signature (`dapp_sign_read.rs`,
+//! `requireLiveAuthorizableClass`), whatever class is stored. Refused: a multisig, which is never
+//! a vault record and so never the granted account here.
+
+use std::sync::atomic::Ordering;
 
 use starknet_wallet_core::allowances::record::AllowanceRecord;
 use starknet_wallet_core::catalog::TokenInfo;
 use starknet_wallet_core::dapp::{
-    describe_typed_data, review_outside_execution, CheckedTypedData, OutsideExecutionReview, Site,
-    Stage, WalletRpcError,
+    describe_typed_data, review_outside_execution, sign_rows, CheckedTypedData,
+    OutsideExecutionReview, Site, Stage, WalletRpcError,
 };
 use starknet_wallet_core::js::json::JsValue;
 use starknet_wallet_core::send::call_decode::Known;
 use starknet_wallet_core::send::review_flags::ReviewContext;
 use starknet_wallet_core::Felt;
 
-use crate::account_catalog::{class_entry, AccountFamily, ARGENT_SIGNER_ARRAY};
+use crate::account_catalog::AccountFamily;
 use crate::account_store::{KeySource, StoredAccount, VaultPayload};
 use crate::allowances::{token_infos, trusted_tokens, with_allowance_log};
 use crate::dapp::DAPP_POLICY;
 use crate::dapp_session::{
-    error, result, settled, Card, DappCard, DappReply, DappSession, DappSettled, Shape,
+    error, result, settled, Card, DappCard, DappReply, DappSession, Shape, Waiter,
 };
+use crate::dapp_sign_device::DeviceStart;
+use crate::dapp_sign_read::DappSignStep;
 use crate::felt;
 use crate::networks::NetworkId;
 use crate::send::types::RiskFlag;
 use crate::send::wallet_ext::known_token_addresses;
 use crate::wallet_accounts::{sign_for, signing_record};
 
+/// One decoded row of a sign card: the dotted path a value sits at and the text the card prints
+/// for it (the extension's `signValueText`). Both are display-safe: names outside the SNIP-12
+/// grammar are sketched in `«»`, and bidi, zero-width and control characters spelled `\uXXXX`.
+/// `signed` is false for a value the site sent that the hash does not cover, which the extension
+/// shows apart, as "shown by the site but NOT signed", capped at 48 rows.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct SignRow {
+    pub key: String,
+    pub value: String,
+    pub signed: bool,
+}
+
+/// A block's signed rows in the order the card shows them, then its unsigned ones.
+fn sign_rows(block: sign_rows::SignBlock) -> Vec<SignRow> {
+    let tagged = |rows: Vec<sign_rows::SignRow>, signed| {
+        rows.into_iter().map(move |row| SignRow {
+            key: row.key,
+            value: row.value,
+            signed,
+        })
+    };
+    tagged(block.signed, true)
+        .chain(tagged(block.unsigned, false))
+        .collect()
+}
+
 /// A typed-data card: the account it was reviewed for and the document as the page sent it.
 pub(crate) struct SignCard {
-    account_id: String,
+    pub(crate) account_id: String,
     address: String,
-    network: NetworkId,
+    pub(crate) network: NetworkId,
     summary: String,
     typed_data: JsValue,
+    domain: Vec<SignRow>,
+    message: Vec<SignRow>,
+    outside_execution: bool,
     call_summaries: Vec<String>,
     flags: Vec<RiskFlag>,
 }
@@ -63,32 +98,26 @@ impl SignCard {
             network: self.network,
             summary: self.summary.clone(),
             typed_data_json: self.typed_data.to_json(),
+            domain: self.domain.clone(),
+            message: self.message.clone(),
+            outside_execution: self.outside_execution,
             call_summaries: self.call_summaries.clone(),
             flags: self.flags.clone(),
         }
     }
 }
 
-fn refused() -> WalletRpcError {
+pub(crate) fn refused() -> WalletRpcError {
     WalletRpcError::unknown_error()
 }
 
-/// Whether this wallet signs typed data for `record`: a key the vault holds, and a family whose
-/// signature it can spell without reading the chain.
-// ponytail: Braavos and an upgraded Ready account need `requireLiveAuthorizableClass` (the live
-// class and signers at an accepted block) before signing; wire that read here to admit them.
+/// Whether this wallet signs typed data for `record`: a key the vault holds, or a Ledger's. Every
+/// family but OpenZeppelin also needs the live account read first (`sign`'s `authorized`).
 fn signs_typed_data(record: &StoredAccount) -> bool {
-    if !matches!(record.key, KeySource::Phrase(_) | KeySource::Imported) {
-        return false;
-    }
-    match record.family() {
-        AccountFamily::OpenZeppelin => true,
-        AccountFamily::Argent => class_entry(&record.class_felt()).is_some_and(|entry| {
-            entry.family == AccountFamily::Argent
-                && entry.info.authorization_shape == ARGENT_SIGNER_ARRAY
-        }),
-        AccountFamily::Braavos => false,
-    }
+    matches!(
+        record.key,
+        KeySource::Phrase(_) | KeySource::Imported | KeySource::Ledger(_)
+    )
 }
 
 /// A SNIP-9 OutsideExecution authorises calls the site can submit later without a prompt
@@ -109,7 +138,7 @@ pub(crate) struct ReviewInputs {
 }
 
 impl ReviewInputs {
-    fn context(&self) -> ReviewContext<'_> {
+    pub(crate) fn context(&self) -> ReviewContext<'_> {
         ReviewContext {
             known: Known {
                 tokens: &self.tokens,
@@ -131,7 +160,11 @@ impl DappSession {
         typed_data: &JsValue,
         network: Option<NetworkId>,
     ) -> Option<ReviewInputs> {
-        let network = network.filter(|_| is_outside_execution(typed_data))?;
+        self.review_inputs_for(network.filter(|_| is_outside_execution(typed_data))?)
+    }
+
+    /// What the invoke route's review reads on `network`; `None` when any of it cannot be read.
+    pub(crate) fn review_inputs_for(&self, network: NetworkId) -> Option<ReviewInputs> {
         let tracked = trusted_tokens(&self.tokens, network);
         let trusted = self.wallet.trusted_recipients(network).ok()?;
         let token_contracts = known_token_addresses(network)
@@ -188,18 +221,36 @@ fn granted_signer<'a>(
         .ok_or_else(refused)
 }
 
-/// `serializeAccountSignature` as the page reads it (`signaturePayload`): OpenZeppelin `[r, s]`,
-/// Ready `["1", "0", public_key, r, s]`, each felt canonical and non-zero.
-fn signature_json(
+/// The record an approved card still signs for: the site not blocked, the card reviewed for it,
+/// and it still the granted active account of a kind this wallet signs typed data for.
+pub(crate) fn still_granted<'a>(
+    site: &Site<'_>,
+    payload: Option<&'a VaultPayload>,
+    card: &SignCard,
+    reviewed_account_id: &str,
+) -> Result<&'a StoredAccount, WalletRpcError> {
+    if site.blocked || reviewed_account_id != card.account_id {
+        return Err(refused());
+    }
+    let record = granted_signer(site, payload)?;
+    (record.id == card.account_id)
+        .then_some(record)
+        .ok_or_else(refused)
+}
+
+/// `serializeAccountSignature` as the page reads it (`signaturePayload`): OpenZeppelin and
+/// Braavos `[r, s]`, Ready `["1", "0", public_key, r, s]`, each felt canonical and non-zero.
+pub(crate) fn signature_json(
     record: &StoredAccount,
-    signature: &crate::kms::Signature,
+    r: &str,
+    s: &str,
 ) -> Result<JsValue, WalletRpcError> {
     let canonical = |value: &str| {
         felt::parse_non_zero(value)
             .map(|felt| JsValue::String(felt::canonical(&felt)))
             .ok_or_else(refused)
     };
-    let (r, s) = (canonical(&signature.r)?, canonical(&signature.s)?);
+    let (r, s) = (canonical(r)?, canonical(s)?);
     Ok(JsValue::Array(match record.family() {
         AccountFamily::Argent => vec![
             JsValue::String("1".into()),
@@ -241,7 +292,12 @@ impl DappSession {
             ))
         });
         match card.unwrap_or_else(|_| Err(refused())) {
-            Ok(card) => self.queue(origin, Card::Sign(card), request_id, Shape::Signature),
+            Ok(card) => self.queue(
+                origin,
+                Card::Sign(Box::new(card)),
+                request_id,
+                Shape::Signature,
+            ),
             Err(refusal) => error(refusal),
         }
     }
@@ -256,6 +312,10 @@ fn admit(
 ) -> Result<SignCard, WalletRpcError> {
     let record = granted_signer(site, payload)?;
     let (_, review) = reviewed_hash(record, typed_data, inputs, Stage::Queue)?;
+    // A value the card could not place withholds Sign in the extension; here it is never queued.
+    let rows = CheckedTypedData::check(typed_data, &DAPP_POLICY.typed_data)?
+        .sign_rows()
+        .ok_or_else(WalletRpcError::invalid_request_payload)?;
     // The review's first line is the summary; the rest are the calls'.
     let (call_summaries, flags) = review.map_or_else(Default::default, |review| {
         (
@@ -269,70 +329,105 @@ fn admit(
         network: record.network(),
         summary: describe_typed_data(typed_data),
         typed_data: typed_data.clone(),
+        domain: sign_rows(rows.domain),
+        message: sign_rows(rows.message),
+        outside_execution: is_outside_execution(typed_data),
         call_summaries,
         flags,
     })
 }
 
-/// The approved card's signature array, if every check still holds.
+/// What an approved card's checks end in: the signature array, or a Ledger's device to sign the
+/// hash on.
+enum Signed {
+    Json(JsValue),
+    Device(DeviceStart),
+}
+
+/// The approved card's signature array (or a Ledger's hash to sign), if every check still holds.
 fn sign(
     site: &Site<'_>,
     payload: Option<&VaultPayload>,
     card: &SignCard,
     reviewed_account_id: &str,
     inputs: Option<&ReviewInputs>,
-) -> Result<JsValue, WalletRpcError> {
-    if site.blocked || reviewed_account_id != card.account_id {
+    authorized: bool,
+) -> Result<Signed, WalletRpcError> {
+    let record = still_granted(site, payload, card, reviewed_account_id)?;
+    // Only OpenZeppelin's signature does not depend on the class the account runs.
+    if !authorized && record.family() != AccountFamily::OpenZeppelin {
         return Err(refused());
     }
-    let record = granted_signer(site, payload)?;
     let payload = payload.ok_or_else(refused)?;
-    if record.id != card.account_id {
-        return Err(refused());
-    }
     let (hash, _) = reviewed_hash(record, &card.typed_data, inputs, Stage::Sign)?;
+    if let Some(device) = crate::ledger::record_device(record) {
+        let public_key = felt::parse(&record.public_key).ok_or_else(refused)?;
+        return Ok(Signed::Device(DeviceStart {
+            device,
+            hash,
+            public_key,
+        }));
+    }
     let signature = sign_for(payload, record, &felt::canonical(&hash)).map_err(|_| refused())?;
-    signature_json(record, &signature)
+    signature_json(record, &signature.r, &signature.s).map(Signed::Json)
 }
 
-#[uniffi::export]
-impl DappSession {
-    /// The person approved `approval_id`'s typed-data card, reviewed for `reviewed_account_id`
-    /// (the card's `account_id`, echoed). Signs only while that account is still the active one
-    /// granted to the site, on the network it was reviewed on, with the site not blocked and the
-    /// wallet unlocked, and answers the request with the signature array; otherwise the request
-    /// is refused. Either way the card is spent. A connect card, or a card already settled or
-    /// expired, answers nothing. Renews. `now_ms` is the host's wall clock.
-    pub fn approve_sign_typed_data(
-        &self,
-        approval_id: String,
-        reviewed_account_id: String,
-        now_ms: f64,
-    ) -> Vec<DappSettled> {
-        let Some((origin, Card::Sign(card), waiters)) =
-            self.claim(&approval_id, |card| matches!(card, Card::Sign(_)))
-        else {
-            return Vec::new();
-        };
-        self.record_seen(&origin, now_ms);
-        // Read fresh, so a contact or payment made since queueing is checked against.
-        let inputs = self.review_inputs(&card.typed_data, Some(card.network));
-        // Every check and the signature run under one hold of the session: no lock, switch or
-        // revocation can land between them.
-        let signed = self.with_site(&origin, card.network, true, |site, session| {
-            let payload = session.map(|session| &session.payload);
-            Ok(sign(
-                site,
-                payload,
-                &card,
-                &reviewed_account_id,
-                inputs.as_ref(),
-            ))
-        });
-        let reply = match signed.unwrap_or_else(|_| Err(refused())) {
+/// An approved typed-data card: its site, the card, the requests waiting on it, and the account
+/// the person reviewed it for.
+pub(crate) struct Approved {
+    pub(crate) origin: String,
+    pub(crate) card: Box<SignCard>,
+    pub(crate) waiters: Vec<Waiter>,
+    pub(crate) reviewed_account_id: String,
+}
+
+impl Approved {
+    /// Answers every request waiting on the card with `reply`.
+    pub(crate) fn answer(self, reply: Result<JsValue, WalletRpcError>) -> DappSignStep {
+        let reply = match reply {
             Ok(json) => result(&json),
             Err(refusal) => error(refusal),
         };
-        settled(waiters, |_| reply.clone())
+        DappSignStep::Settled {
+            settled: settled(self.waiters, |_| reply.clone()),
+        }
+    }
+}
+
+impl DappSession {
+    /// Signs an approved card and answers its requests, if every check still holds; a Ledger
+    /// account's hash goes to its device instead. `authorized`: the live account read
+    /// (`dapp_sign_read.rs`) accepted the signature.
+    pub(crate) fn finish_sign(
+        &self,
+        approval_id: String,
+        approved: Approved,
+        authorized: bool,
+    ) -> DappSignStep {
+        let card = &approved.card;
+        // Read fresh, so a contact or payment made since queueing is checked against.
+        let inputs = self.review_inputs(&card.typed_data, Some(card.network));
+        // Every check and the signature (or the hash a device signs) run under one hold of the
+        // session: no lock, switch or revocation can land between them.
+        let signed = self.with_site(&approved.origin, card.network, true, |site, session| {
+            let generation = self.wallet.lock_epoch.load(Ordering::SeqCst);
+            let payload = session.map(|session| &session.payload);
+            let signed = sign(
+                site,
+                payload,
+                card,
+                &approved.reviewed_account_id,
+                inputs.as_ref(),
+                authorized,
+            );
+            Ok(signed.map(|signed| (signed, generation)))
+        });
+        match signed.unwrap_or_else(|_| Err(refused())) {
+            Ok((Signed::Json(json), _)) => approved.answer(Ok(json)),
+            Ok((Signed::Device(start), generation)) => {
+                self.start_device(approval_id, approved, start, generation)
+            }
+            Err(refusal) => approved.answer(Err(refusal)),
+        }
     }
 }

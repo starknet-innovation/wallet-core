@@ -1,7 +1,8 @@
 //! The extension's per-field activity rules split from `activity.rs`: the token-address and
 //! direction grammars (`isRecordedTokenAddress`, `activityToken`), the fee and price shapes
 //! (`isTransactionFee`, `isSubmittedPrice`), who paid the fee (`feePayer`, `userFee`), and the
-//! planted-row cleanup of stored rows (`withoutPlantedRows`, audit #163).
+//! planted-row cleanup of stored rows (`withoutPlantedRows`, audit #163), and the stored `kind` and
+//! `status` text (`kind_text`, `status_text` and their parsers; `activity::store` re-exports them).
 
 use serde_json::{json, Map, Value};
 
@@ -11,6 +12,7 @@ use super::activity::{
 };
 use crate::js::felt::{canonical_felt, is_non_zero_felt, is_stark_field_element};
 use crate::portfolio::model::DisplayCurrency;
+use crate::send::judge::TxStatus;
 
 /// `MAX_ACTIVITY_TIMESTAMP_MS`: the last instant an ECMAScript `Date` can hold.
 pub const MAX_ACTIVITY_TIMESTAMP_MS: u64 = 8_640_000_000_000_000;
@@ -210,6 +212,46 @@ pub fn parse_direction(text: &str) -> Option<TransferDirection> {
     match text {
         "in" => Some(TransferDirection::In),
         "out" => Some(TransferDirection::Out),
+        _ => None,
+    }
+}
+
+pub fn kind_text(kind: ActivityKind) -> &'static str {
+    match kind {
+        ActivityKind::Declare => "declare",
+        ActivityKind::Deploy => "deploy",
+        ActivityKind::Invoke => "invoke",
+        ActivityKind::Transfer => "transfer",
+    }
+}
+
+pub fn status_text(status: TxStatus) -> &'static str {
+    match status {
+        TxStatus::Pending => "pending",
+        TxStatus::Preconfirmed => "preconfirmed",
+        TxStatus::Accepted => "accepted",
+        TxStatus::Rejected => "rejected",
+        TxStatus::Reverted => "reverted",
+    }
+}
+
+pub fn parse_status(text: &str) -> Option<TxStatus> {
+    Some(match text {
+        "pending" => TxStatus::Pending,
+        "preconfirmed" => TxStatus::Preconfirmed,
+        "accepted" => TxStatus::Accepted,
+        "rejected" => TxStatus::Rejected,
+        "reverted" => TxStatus::Reverted,
+        _ => return None,
+    })
+}
+
+pub fn parse_kind(text: &str) -> Option<ActivityKind> {
+    match text {
+        "declare" => Some(ActivityKind::Declare),
+        "deploy" => Some(ActivityKind::Deploy),
+        "invoke" => Some(ActivityKind::Invoke),
+        "transfer" => Some(ActivityKind::Transfer),
         _ => None,
     }
 }

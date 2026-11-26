@@ -22,9 +22,12 @@ padded address labels of #884 (`accounts-parity-rules.json`, `portfolio-parity.j
 (`extension-activity-detail.jsonl`) and the review copy (`extension-transactions-copy.json`).
 `transactions_rules_parity.rs` excuses the decimal recipients in `-verification.json`'s summaries,
 an extension bug fixed on Bramble `fix/review-decimal-recipient`; that exception goes with the next
-copy. Every file is byte-identical to its copy at that commit; privacy SDK
+copy. One file is from another commit: `extension-dapp.jsonl` (P16's generator), Bramble `b4602f0598dca107f48e5f3b9ec647c1cbd86d8b`
+(`fixtures/p16-dapp`, on `feature/mobile-wallet` at `25f66184d`), which adds
+`scripts/mobile-parity-dapp/` and changes no other code (two `tests/support` stub headers gain a note); the next full copy brings every file to
+one commit again. Every file is byte-identical to its copy at that commit; privacy SDK
 `vendor/starknet-privacy` at `b40bf109` (Bramble's pin).
-One exception to the single commit: `extension-ledger.jsonl` comes from Bramble commit
+A second exception: `extension-ledger.jsonl` comes from Bramble commit
 `cd1a18a10d84714ecbc92a37d65fbf75645a0e0f` (`feature/mobile-wallet`, 2026-11-26, merging
 Bramble #1061); first copied from its branch at `7cb47788c18d723effcceddb7b13e0235dfef64e`, and
 byte-identical at the merge. `bun run mobile:ledger` writes it by hand, not `mobile:parity`: it runs
@@ -107,6 +110,7 @@ Generators are under `scripts/` in Bramble; each fixture's is reached from
 | `vault-v14.json` | `generate-mobile-parity-vectors.ts` (`mobile-parity-vault-full.ts`) | `97a437888e92569c45b810d757633506bb971fd9f9f91199ec8bfe05f4e01a5b` |
 | `vault-v13-to-v14.json` | `generate-mobile-parity-vectors.ts` (`mobile-parity-vault-full.ts`) | `58e4671a1ebe15bef6159df851211390de48c11b42537c8d6fb2e70290067565` |
 | `extension-gasless.jsonl` | `mobile-parity-gasless/` | `c232ecadeb65c8dc36e64d3b51a091eb63c8923698f8d686b269845e4d9e45c7` |
+| `extension-dapp.jsonl` | `mobile-parity-dapp/` | `4fa29896a551736d6f8bcb9dda21819b5077df8e6ad1cf15d3bcf2e6d50d9ef5` |
 | `extension-ledger.jsonl` | `mobile-ledger-speculos.ts` (`bun run mobile:ledger`) | `944d70116b7606ee1b6a0087dd578132153a26c63b9550e56af267766f201b5d` |
 
 Read today: `extension-parity.json` (`parity.rs`, `vault_parity.rs`),
@@ -146,7 +150,11 @@ written back unchanged, and unlocking the migration's input writing back its out
 under `mobile`, `LedgerKeyReader` with `ledger_account_candidates`), and
 `extension-gasless.jsonl` (every line: `gasless_parity.rs` its `hash`, `review` and `offers`
 blocks, `gasless_reads_parity.rs` the rest; the lines the core departs from, its
-`knownExtensionBug` lines among them, are asserted as departures).
+`knownExtensionBug` lines among them, are asserted as departures), and `extension-dapp.jsonl`
+(every line: `dapp_request_parity.rs` its `request` block, `dapp_connect_parity.rs` `connect`,
+`grants` and `queue`, `dapp_sites_parity.rs` `site`, `feedParse` and `feed`,
+`dapp_typed_data_parity.rs` `typedData` and `outside`, `dapp_sign_parity.rs` `sign`; each case the core departs from is listed
+there with its reason and asserted as a departure).
 `extension-privacy-copy.json` is the source of
 Bramble's generated Swift and Kotlin privacy copy; no Rust function returns those sentences, so
 no test here reads it. `extension-multisig-transactions.json` is read by
