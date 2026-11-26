@@ -6,186 +6,14 @@
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
 mod common;
+mod ledger_cosign_support;
 mod multisig_support;
 mod multisig_tx_support;
 
-use std::sync::Arc;
-
-use bramble_core::ledger::LedgerScheme;
-use bramble_core::{
-    AccountFamily, CoreError, IntentState, LedgerAccountRequest, MultisigDeviceSigning,
-    MultisigDeviceStep, MultisigIntent, MultisigTxStep, StepReply,
-};
-use multisig_support::fixture;
+use bramble_core::{CoreError, IntentState, MultisigDeviceStep, MultisigTxStep, StepReply};
+use ledger_cosign_support::*;
 use multisig_tx_support::*;
-use serde_json::Value;
-use starknet_wallet_core::accounts::Ladder;
-use starknet_wallet_core::kms::account_keypair;
-use starknet_wallet_core::{felt, sign_stark_hash, Felt, SecretFelt};
-
-const OK: [u8; 2] = [0x90, 0x00];
-const USER_REJECTED: [u8; 2] = [0x6e, 0x04];
-
-/// A scripted Starknet app holding one key.
-struct Device {
-    key: SecretFelt,
-    /// Answer `signHash` with the person's rejection, this many times.
-    reject: usize,
-    /// Sign another hash than the one sent.
-    tamper: bool,
-    apdus: usize,
-}
-
-impl Device {
-    fn holding(key: SecretFelt) -> Self {
-        Self {
-            key,
-            reject: 0,
-            tamper: false,
-            apdus: 0,
-        }
-    }
-
-    fn answer(&mut self, apdu: &[u8]) -> Vec<u8> {
-        self.apdus += 1;
-        let f = |hex: &str| Felt::from_hex(hex).unwrap();
-        match (apdu[1], apdu[2]) {
-            (0x00, _) => [&[2, 4, 0][..], &OK].concat(),
-            (0x01, _) => {
-                let x = f(&sign_stark_hash(&self.key, "0x1").unwrap().public_key);
-                [&[0x04][..], &x.to_bytes_be(), &[0x22; 32], &OK].concat()
-            }
-            (0x02, 0) => OK.to_vec(),
-            (0x02, 1) if self.reject > 0 => {
-                self.reject -= 1;
-                USER_REJECTED.to_vec()
-            }
-            (0x02, 1) => {
-                let mut hash = Felt::from_bytes_be_slice(&apdu[5..37]);
-                if self.tamper {
-                    hash += Felt::ONE;
-                }
-                let signature = sign_stark_hash(&self.key, &felt::canonical(&hash)).unwrap();
-                let (r, s) = (f(&signature.r), f(&signature.s));
-                [
-                    &[0x41][..],
-                    &r.to_bytes_be(),
-                    &s.to_bytes_be(),
-                    &[0x00],
-                    &OK,
-                ]
-                .concat()
-            }
-            other => panic!("unexpected APDU {other:?}"),
-        }
-    }
-}
-
-/// Answers APDUs until the signing leaves the device.
-fn drive(
-    signing: &MultisigDeviceSigning,
-    device: &mut Device,
-    mut step: MultisigDeviceStep,
-) -> Result<MultisigDeviceStep, CoreError> {
-    while let MultisigDeviceStep::Device { apdu } = &step {
-        step = signing.reply(device.answer(apdu))?;
-    }
-    Ok(step)
-}
-
-struct Setup {
-    wallet: Wallet,
-    /// The intent, signed by every co-signer but the last.
-    intent: MultisigIntent,
-    /// The last co-signer's key as a Ledger account.
-    ledger_id: String,
-    /// The last co-signer's software record.
-    software_id: String,
-    key: SecretFelt,
-}
-
-fn setup(net: &Value) -> Setup {
-    let wallet = wallet(net);
-    let cosigners: Vec<u64> = net["proposal"]["cosignerAccountIndexes"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|index| index.as_u64().unwrap())
-        .collect();
-    let (last, others) = cosigners.split_last().unwrap();
-    let mut intent = wallet.propose();
-    for index in others {
-        intent = wallet.sign(&intent, *index);
-    }
-    assert_eq!(intent.state, IntentState::Collecting);
-    let public_key = net["signers"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|signer| signer["accountIndex"] == *last)
-        .unwrap()["publicKey"]
-        .as_str()
-        .unwrap()
-        .to_string();
-    let phrase = fixture()["mnemonic"].as_str().unwrap().to_string();
-    // The key behind the co-signer's record, whichever ladder its family derives on.
-    let key = [Ladder::Account, Ladder::Address, Ladder::ArgentX]
-        .into_iter()
-        .flat_map(|ladder| (0..8).map(move |index| (ladder, index)))
-        .map(|(ladder, index)| account_keypair(&phrase, None, ladder, index).unwrap().0)
-        .find(|pair| felt::parse(&pair.public_key_x) == felt::parse(&public_key))
-        .expect("the co-signer's key")
-        .private_key;
-    let ledger = wallet
-        .core
-        .add_ledger_account(LedgerAccountRequest {
-            network: wallet.network,
-            family: AccountFamily::Argent,
-            scheme: LedgerScheme::Bramble,
-            account_index: 0,
-            public_key_x: public_key,
-        })
-        .unwrap();
-    assert!(ledger.ledger);
-    Setup {
-        software_id: wallet.signer_id(*last),
-        wallet,
-        intent,
-        ledger_id: ledger.id,
-        key,
-    }
-}
-
-impl Setup {
-    fn on_device(&self) -> Arc<MultisigDeviceSigning> {
-        self.wallet
-            .core
-            .clone()
-            .sign_multisig_intent_on_device(
-                self.intent.id.clone(),
-                self.ledger_id.clone(),
-                self.wallet.current_state(&self.intent),
-            )
-            .unwrap()
-    }
-
-    fn device(&self) -> Device {
-        Device::holding(self.key.clone())
-    }
-
-    fn stored(&self) -> MultisigIntent {
-        let stored = self
-            .wallet
-            .core
-            .multisig_intents(self.wallet.multisig_id())
-            .unwrap();
-        stored.into_iter().find(|i| i.id == self.intent.id).unwrap()
-    }
-}
-
-fn networks() -> Vec<Value> {
-    fixture()["networks"].as_array().unwrap().clone()
-}
+use starknet_wallet_core::{Felt, SecretFelt};
 
 #[test]
 fn a_ledger_cosigner_reaches_the_threshold_and_the_intent_submits() {
@@ -193,7 +21,7 @@ fn a_ledger_cosigner_reaches_the_threshold_and_the_intent_submits() {
         let setup = setup(&net);
         let signing = setup.on_device();
         let mut device = setup.device();
-        let step = drive(&signing, &mut device, signing.start().unwrap()).unwrap();
+        let step = drive_device(&signing, &mut device, signing.start().unwrap()).unwrap();
         assert_eq!(
             step,
             MultisigDeviceStep::Signed {
@@ -261,7 +89,7 @@ fn a_wrong_device_parks_and_the_right_one_signs_on_retry() {
     let setup = setup(net);
     let signing = setup.on_device();
     let mut wrong = Device::holding(SecretFelt::new(Felt::from(0xabcu64)));
-    let step = drive(&signing, &mut wrong, signing.start().unwrap()).unwrap();
+    let step = drive_device(&signing, &mut wrong, signing.start().unwrap()).unwrap();
     assert_eq!(
         step,
         MultisigDeviceStep::DeviceRetry {
@@ -272,7 +100,7 @@ fn a_wrong_device_parks_and_the_right_one_signs_on_retry() {
     assert_eq!(wrong.apdus, 2);
     assert_eq!(setup.stored(), setup.intent);
     let mut right = setup.device();
-    let step = drive(&signing, &mut right, signing.retry().unwrap()).unwrap();
+    let step = drive_device(&signing, &mut right, signing.retry().unwrap()).unwrap();
     assert!(
         matches!(step, MultisigDeviceStep::Signed { .. }),
         "{step:?}"
@@ -284,10 +112,18 @@ fn a_wrong_device_parks_and_the_right_one_signs_on_retry() {
 fn a_rejection_on_the_device_parks_until_retried() {
     let net = &networks()[0];
     let setup = setup(net);
+    // Parked: a stray answer ends it rather than being read (and releases its claim).
+    let parked = setup.on_device();
+    let mut again = setup.device();
+    again.reject = 1;
+    drive_device(&parked, &mut again, parked.start().unwrap()).unwrap();
+    assert!(parked.reply(OK.to_vec()).is_err());
+    assert!(parked.retry().is_err());
+
     let signing = setup.on_device();
     let mut device = setup.device();
     device.reject = 1;
-    let step = drive(&signing, &mut device, signing.start().unwrap()).unwrap();
+    let step = drive_device(&signing, &mut device, signing.start().unwrap()).unwrap();
     assert_eq!(
         step,
         MultisigDeviceStep::DeviceRetry {
@@ -295,15 +131,7 @@ fn a_rejection_on_the_device_parks_until_retried() {
         }
     );
     assert_eq!(setup.stored(), setup.intent);
-    // Parked: a stray answer ends it rather than being read.
-    let parked = setup.on_device();
-    let mut again = setup.device();
-    again.reject = 1;
-    drive(&parked, &mut again, parked.start().unwrap()).unwrap();
-    assert!(parked.reply(OK.to_vec()).is_err());
-    assert!(parked.retry().is_err());
-
-    let step = drive(&signing, &mut device, signing.retry().unwrap()).unwrap();
+    let step = drive_device(&signing, &mut device, signing.retry().unwrap()).unwrap();
     assert!(
         matches!(step, MultisigDeviceStep::Signed { .. }),
         "{step:?}"
@@ -336,7 +164,7 @@ fn a_signature_that_does_not_verify_is_refused() {
     let signing = setup.on_device();
     let mut device = setup.device();
     device.tamper = true;
-    let refused = drive(&signing, &mut device, signing.start().unwrap())
+    let refused = drive_device(&signing, &mut device, signing.start().unwrap())
         .err()
         .unwrap();
     assert!(

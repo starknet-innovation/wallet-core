@@ -17,6 +17,7 @@ use super::multisig_support::{decode, fixture, rpc_reply};
 
 pub struct Wallet {
     pub dir: tempfile::TempDir,
+    pub clock: Arc<common::FakeClock>,
     pub core: Arc<WalletCore>,
     pub network: NetworkId,
     pub net: Value,
@@ -43,7 +44,7 @@ fn strings(value: &Value) -> Vec<String> {
 /// The fixture phrase imported, its OpenZeppelin accounts 0 to 3 restored on `net`'s network, and
 /// the fixture multisig saved as the setup its deployer created.
 pub fn wallet(net: &Value) -> Wallet {
-    let (dir, _clock, core) = common::core();
+    let (dir, clock, core) = common::core();
     let phrase = fixture()["mnemonic"].as_str().unwrap().to_string();
     core.import_wallet(common::PASSWORD.into(), phrase).unwrap();
     let network = network_of(net);
@@ -54,6 +55,7 @@ pub fn wallet(net: &Value) -> Wallet {
     .unwrap();
     let wallet = Wallet {
         dir,
+        clock,
         core,
         network,
         net: net.clone(),
