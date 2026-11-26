@@ -2,6 +2,8 @@
 //! scripted in-memory JSON-RPC responder that plays the node for the discovery scan.
 #![allow(dead_code)] // Each test crate uses a different subset of these helpers.
 
+pub mod dapp;
+
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};

@@ -1,20 +1,20 @@
-# Reviewers auto-requested on PRs; the set a ruleset can require. Same maintainers as Bramble.
+# Reviewers auto-requested on PRs; the set a ruleset can require.
 # These paths decide what gets built, published or trusted, or hold key custody.
 
-*                                   @omarespejel @adrienlacombe @l-henri @robertkodra @Ryun1 @teddyjfpender @derek-flossman
+*                                   @Ryun1 @adrienlacombe @derek-flossman
 
-/.github/                           @omarespejel @adrienlacombe @l-henri @robertkodra @Ryun1 @teddyjfpender @derek-flossman
-/.githooks/                         @omarespejel @adrienlacombe @l-henri @robertkodra @Ryun1 @teddyjfpender @derek-flossman
-/tools/                             @omarespejel @adrienlacombe @l-henri @robertkodra @Ryun1 @teddyjfpender @derek-flossman
-/rust-toolchain.toml                @omarespejel @adrienlacombe @l-henri @robertkodra @Ryun1 @teddyjfpender @derek-flossman
-/.cargo/                            @omarespejel @adrienlacombe @l-henri @robertkodra @Ryun1 @teddyjfpender @derek-flossman
-/Cargo.toml                         @omarespejel @adrienlacombe @l-henri @robertkodra @Ryun1 @teddyjfpender @derek-flossman
-/Cargo.lock                         @omarespejel @adrienlacombe @l-henri @robertkodra @Ryun1 @teddyjfpender @derek-flossman
-/crates/*/Cargo.toml                @omarespejel @adrienlacombe @l-henri @robertkodra @Ryun1 @teddyjfpender @derek-flossman
-/deny.toml                          @omarespejel @adrienlacombe @l-henri @robertkodra @Ryun1 @teddyjfpender @derek-flossman
-/js/package.json                    @omarespejel @adrienlacombe @l-henri @robertkodra @Ryun1 @teddyjfpender @derek-flossman
-/js/package-lock.json               @omarespejel @adrienlacombe @l-henri @robertkodra @Ryun1 @teddyjfpender @derek-flossman
-/crates/wallet-core/src/kms.rs      @omarespejel @adrienlacombe @l-henri @robertkodra @Ryun1 @teddyjfpender @derek-flossman
-/crates/wallet-core/src/nostr.rs    @omarespejel @adrienlacombe @l-henri @robertkodra @Ryun1 @teddyjfpender @derek-flossman
-/crates/bramble-core/tests/fixtures/ @omarespejel @adrienlacombe @l-henri @robertkodra @Ryun1 @teddyjfpender @derek-flossman
-/AGENTS.md                          @omarespejel @adrienlacombe @l-henri @robertkodra @Ryun1 @teddyjfpender @derek-flossman
+/.github/                           @Ryun1 @adrienlacombe @derek-flossman
+/.githooks/                         @Ryun1 @adrienlacombe @derek-flossman
+/tools/                             @Ryun1 @adrienlacombe @derek-flossman
+/rust-toolchain.toml                @Ryun1 @adrienlacombe @derek-flossman
+/.cargo/                            @Ryun1 @adrienlacombe @derek-flossman
+/Cargo.toml                         @Ryun1 @adrienlacombe @derek-flossman
+/Cargo.lock                         @Ryun1 @adrienlacombe @derek-flossman
+/crates/*/Cargo.toml                @Ryun1 @adrienlacombe @derek-flossman
+/deny.toml                          @Ryun1 @adrienlacombe @derek-flossman
+/js/package.json                    @Ryun1 @adrienlacombe @derek-flossman
+/js/package-lock.json               @Ryun1 @adrienlacombe @derek-flossman
+/crates/wallet-core/src/kms.rs      @Ryun1 @adrienlacombe @derek-flossman
+/crates/wallet-core/src/nostr.rs    @Ryun1 @adrienlacombe @derek-flossman
+/crates/bramble-core/tests/fixtures/ @Ryun1 @adrienlacombe @derek-flossman
+/AGENTS.md                          @Ryun1 @adrienlacombe @derek-flossman

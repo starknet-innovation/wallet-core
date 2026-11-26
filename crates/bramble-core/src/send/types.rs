@@ -352,6 +352,8 @@ pub enum RiskFlagCode {
     TokenContractRecipient,
     ForeignBeneficiary,
     UndecodedSwap,
+    /// Only on a queued dapp card (an outside execution); refused before anything is signed.
+    AddressPoisoning,
 }
 
 /// One placeholder of a review sentence and the display text it takes.
@@ -389,6 +391,7 @@ impl From<&wallet_core::send::review_flags::RiskFlag> for RiskFlag {
             Core::TokenContractRecipient => RiskFlagCode::TokenContractRecipient,
             Core::ForeignBeneficiary { .. } => RiskFlagCode::ForeignBeneficiary,
             Core::UndecodedSwap => RiskFlagCode::UndecodedSwap,
+            Core::AddressPoisoning => RiskFlagCode::AddressPoisoning,
         };
         let text = flag.text();
         Self {

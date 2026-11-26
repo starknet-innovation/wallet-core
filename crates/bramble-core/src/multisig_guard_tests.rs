@@ -102,15 +102,15 @@ fn a_submitted_intent_settles_from_its_activity_row() {
 }
 
 #[test]
-fn a_submit_claim_is_held_until_dropped() {
+fn an_operation_claim_is_held_until_dropped() {
     let (one, two) = (Path::new("/wallet-one"), Path::new("/wallet-two"));
-    let claim = SubmitClaim::take(one, "claim-test").unwrap();
-    assert!(SubmitClaim::take(one, "claim-test").is_none());
-    assert!(SubmitClaim::take(one, "claim-other").is_some());
+    let claim = OperationClaim::submit(one, "claim-test").unwrap();
+    assert!(OperationClaim::submit(one, "claim-test").is_none());
+    assert!(OperationClaim::submit(one, "claim-other").is_some());
     assert!(
-        SubmitClaim::take(two, "claim-test").is_some(),
+        OperationClaim::submit(two, "claim-test").is_some(),
         "another wallet's"
     );
     drop(claim);
-    assert!(SubmitClaim::take(one, "claim-test").is_some());
+    assert!(OperationClaim::submit(one, "claim-test").is_some());
 }

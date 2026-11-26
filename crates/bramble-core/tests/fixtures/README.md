@@ -24,6 +24,14 @@ padded address labels of #884 (`accounts-parity-rules.json`, `portfolio-parity.j
 an extension bug fixed on Bramble `fix/review-decimal-recipient`; that exception goes with the next
 copy. Every file is byte-identical to its copy at that commit; privacy SDK
 `vendor/starknet-privacy` at `b40bf109` (Bramble's pin).
+One exception to the single commit: `extension-ledger.jsonl` comes from Bramble commit
+`7cb47788c18d723effcceddb7b13e0235dfef64e` (`fixtures/ledger-speculos`, 2026-11-26), provisional
+until that branch merges. `bun run mobile:ledger` writes it by hand, not `mobile:parity`: it runs
+the extension's Ledger client against app-starknet 2.4.3 (the pinned Nano S+ ELF, sha256
+`8f15435c…`) in the digest-pinned Speculos image, seeded with the published parity phrase, so it
+needs Docker and the vendored app and nothing checks it for drift. Its two `plan` signatures are
+over hashes the core's plan printed (`ledger_parity.rs`'s ignored `print_plan_hashes`), not the
+extension's; its second `version` line is a reply the generator wrote (`recorded: false`).
 Generators are under `scripts/` in Bramble; each fixture's is reached from
 `generate-mobile-parity-vectors.ts`.
 
@@ -78,6 +86,7 @@ Generators are under `scripts/` in Bramble; each fixture's is reached from
 | `vault-v14.json` | `generate-mobile-parity-vectors.ts` (`mobile-parity-vault-full.ts`) | `97a437888e92569c45b810d757633506bb971fd9f9f91199ec8bfe05f4e01a5b` |
 | `vault-v13-to-v14.json` | `generate-mobile-parity-vectors.ts` (`mobile-parity-vault-full.ts`) | `58e4671a1ebe15bef6159df851211390de48c11b42537c8d6fb2e70290067565` |
 | `extension-gasless.jsonl` | `mobile-parity-gasless/` | `c232ecadeb65c8dc36e64d3b51a091eb63c8923698f8d686b269845e4d9e45c7` |
+| `extension-ledger.jsonl` | `mobile-ledger-speculos.ts` (`bun run mobile:ledger`) | `944d70116b7606ee1b6a0087dd578132153a26c63b9550e56af267766f201b5d` |
 
 Read today: `extension-parity.json` (`parity.rs`, `vault_parity.rs`),
 `accounts-parity-families-sepolia.json` and `nostr-multisig-parity.json` (`parity.rs`;
@@ -111,7 +120,9 @@ summaries, the review flags, a multicall on the wire and the batches refused up 
 submit, which no test reads), `extension-staking.jsonl` (`staking_parity.rs`, and its `action`
 block `staking_action_parity.rs`), `vault-v13-full.json`, `vault-v14.json` and
 `vault-v13-to-v14.json` (`vault_migration.rs`: each payload against its sealed copy, the first two
-written back unchanged, and unlocking the migration's input writing back its output), and
+written back unchanged, and unlocking the migration's input writing back its output), and `extension-ledger.jsonl`
+(`ledger_parity.rs`: the readers, `DeviceSigning`, `KeyEnumeration`, `Plan::with_device` and,
+under `mobile`, `LedgerKeyReader` with `ledger_account_candidates`), and
 `extension-gasless.jsonl` (every line: `gasless_parity.rs` its `hash`, `review` and `offers`
 blocks, `gasless_reads_parity.rs` the rest; the lines the core departs from, its
 `knownExtensionBug` lines among them, are asserted as departures).
