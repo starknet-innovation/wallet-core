@@ -99,6 +99,17 @@ pub(crate) mod testing {
         }
     }
 
+    /// The extension's `STRK20_LIMITS` the engine judge reads.
+    pub(crate) fn proof_limits() -> crate::privacy::engine::ProofLimits {
+        crate::privacy::engine::ProofLimits {
+            sdk_warnings: 64,
+            invoke_calldata_felts: 4096,
+            proof_output_felts: 4096,
+            proof_facts: 4096,
+            proof_data_characters: 512 * 1024,
+        }
+    }
+
     pub(crate) fn mainnet(ohttp: bool) -> Route {
         Route {
             network: NetworkId::Mainnet,

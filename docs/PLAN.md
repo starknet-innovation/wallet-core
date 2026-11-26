@@ -952,6 +952,13 @@ Features, smallest and least dependent first:
     accounts, whose scope is a dapp's origin, after P16; (6) multisig STRK20, after X1. Unknown
     until built: the bundle's size, its cold start in a WebView, and whether proving's 180 s budget
     survives an app in the background.
+  - *Progress.* PR 1's core slice is built, unexported (`parity/p15-engine`): `privacy::engine`
+    (the trait as above, without `shadow_commitment`, which waits for PR 5; actions `Register`,
+    `Deposit`, `Transfer`, `Withdraw`), `privacy::call_set` (the digest against the protocol's
+    golden vector, and the wallet's signature checked against the account's key before it reaches
+    the engine) and `privacy::engine_judge` (`official-sdk-results.ts`, plus the sign request held
+    to the pool's one `compile_actions` for the account). Left of PR 1: the extension's rules
+    around the SDK, Bramble's limits and its runtime host.
 - **P16 Dapp connect, approvals and anti-phishing.** The core takes request validation, grants
   (the vault's `originGrants`, P7), typed-data and invoke review (P9), add-chain and watch-asset,
   and the blocklist and phishing feed: `background/provider/` (2,453), `background/approvals/`
