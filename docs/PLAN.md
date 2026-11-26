@@ -1203,7 +1203,9 @@ Features, smallest and least dependent first:
     and its play control. Watched NFTs and the indexer URL live in preferences (`nfts`,
     `nftIndexerUrl`), not the vault. Sizes: `background/portfolio/nft-*` and `watch-nft.ts`
     (1,162), `portfolio/src/collectibles/` (874), the side panel's `collectibles/` (1,568).
-  - *Here.* Nothing yet beyond `dapp::watch_asset`'s ERC-721/1155 parsing (P16). P17 adds, as
+  - *Here.* Only what other steps needed: `dapp::watch_asset`'s ERC-721/1155 parsing (P16) and
+    call review's watched-NFT contracts and `set_approval_for_all` decoding (`send::call_decode`,
+    P9/P12). P17 adds, as
     sans-IO bodies and judges like P11: the indexer and Starkscan bodies and their bounds; the
     `owner_of` / `balance_of` re-proof; `token_uri` / `uri` reads and the metadata normaliser
     (IPFS and data URIs, the extension's size and scheme limits); the two transfer calls as a
@@ -1217,13 +1219,15 @@ Features, smallest and least dependent first:
     export, then the screens (M-NFT). About P12's size.
 
 - **QR scan for recipients (mobile only).** No client scans a QR code, the extension included:
-  it only draws one (`shared/qr.ts`; Receive, the wallet card, multisig funding). A side panel
-  cannot raise Chrome's camera prompt in place, so the extension stays without one. Mobile
+  it only draws one (`shared/qr.ts`; Receive, the wallet card, multisig funding). The extension
+  stays without one: whether its side panel can prompt for the camera is untested, and a
+  desktop user rarely has a code to point a camera at. Mobile
   already draws the same QR (`QrCode.kt`, `ReceiveAddressView.swift`), whose text is a bare
   address or a Bramble wallet card (`ReceiveScreen.kt`), so a scanner reads both. iOS:
   VisionKit's `DataScannerViewController`, no dependency, `NSCameraUsageDescription`. Android:
-  Play services' code scanner (`play-services-code-scanner`) needs no camera permission but is
-  a new pinned dependency; CameraX with a decoder is the no-Google alternative. A scanned value
+  Play services' code scanner (`play-services-code-scanner`) needs no camera permission, but
+  it is a new pinned dependency, works only where Play services runs (not de-Googled phones),
+  and may download its module on first use; CameraX with a decoder is the no-Google alternative. A scanned value
   goes through exactly the checks a pasted one does, fills the recipient field and stops at
   review; it never skips the poisoned-recipient refusal. Nothing here: a wallet card already
   parses through `contact_card::parse` and an address through the send flow's own check. One
