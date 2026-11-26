@@ -59,6 +59,7 @@ mod multisig_rpc;
 mod multisig_store;
 mod multisig_tx;
 mod multisig_tx_device;
+mod multisig_tx_import;
 mod multisig_tx_ops;
 mod multisig_tx_plans;
 mod nostr;
