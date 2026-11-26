@@ -16,7 +16,7 @@ use wallet_core::send::multisig_invoke_plan::{MultisigStep, ProposePlan, SubmitP
 use wallet_core::send::multisig_stale::{fee_refused_reason, read_nonce, HashLookups, Resend};
 
 use crate::felt;
-use crate::multisig_guard::{journal, lookups_for, stale_resend, SubmitClaim};
+use crate::multisig_guard::{journal, lookups_for, stale_resend, OperationClaim};
 use crate::multisig_intents;
 use crate::multisig_tx::{
     intent_view, rpc_step, Bound, MultisigCallReview, MultisigIntent, MultisigTxFailure,
@@ -234,7 +234,7 @@ pub struct MultisigSubmission {
     bound: Bound<Submitting>,
     intent: SigningIntent,
     record: Record,
-    claim: Mutex<Option<SubmitClaim>>,
+    claim: Mutex<Option<OperationClaim>>,
 }
 
 impl MultisigSubmission {
@@ -244,7 +244,7 @@ impl MultisigSubmission {
         plan: SubmitPlan,
         intent: SigningIntent,
         record: Record,
-        claim: SubmitClaim,
+        claim: OperationClaim,
     ) -> Arc<Self> {
         let submitting = Submitting {
             plan,

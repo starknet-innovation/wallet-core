@@ -30,7 +30,7 @@ use wallet_core::Felt;
 use crate::account_store::{StoredAccount, VaultPayload};
 use crate::allowances::{token_infos, trusted_tokens};
 use crate::argent_multisig::ArgentMultisigConfig;
-use crate::multisig_guard::{settle, SubmitClaim};
+use crate::multisig_guard::{settle, OperationClaim};
 use crate::multisig_rpc::{MultisigAuthorityRead, MultisigStateRead};
 use crate::multisig_tx::{
     intent_view, MultisigCall, MultisigCallReview, MultisigIntent, MultisigProposal,
@@ -70,13 +70,14 @@ fn guid_of(public_key: &str) -> Option<Felt> {
 }
 
 /// The vault record `signer_account_id`, refused unless it may co-sign `intent`: on the
-/// multisig's network, its key a member of the snapshot that has not signed yet.
+/// multisig's network, its key a member of the snapshot that has not signed yet. Returns it with
+/// its signer GUID.
 pub(crate) fn cosigner<'a>(
     payload: &'a VaultPayload,
     intent: &SigningIntent,
     record: &Record,
     signer_account_id: &str,
-) -> Result<&'a StoredAccount, CoreError> {
+) -> Result<(&'a StoredAccount, Felt), CoreError> {
     let signer = signing_record(payload, signer_account_id)
         .ok()
         .filter(|signer| signer.network().catalog_id() == record.network_id)
@@ -99,7 +100,7 @@ pub(crate) fn cosigner<'a>(
             "this Argent multisig signer already signed the intent",
         ));
     }
-    Ok(signer)
+    Ok((signer, guid))
 }
 
 /// The one call `request` names, built here from `record` (the multisig that sends it).
@@ -182,6 +183,18 @@ impl WalletCore {
         let record = self.multisig_record(&intent.account_id)?;
         self.require_chain(&intent, &record, state)?;
         Ok((intent, record))
+    }
+
+    /// Claims `guid`'s signature of `intent_id` for the live session (`claimOperation("sign",
+    /// ..)`), so one signer never signs one intent twice at once. Call inside the session.
+    pub(crate) fn claim_signing(
+        &self,
+        intent_id: &str,
+        guid: &Felt,
+    ) -> Result<OperationClaim, CoreError> {
+        let generation = self.lock_epoch.load(std::sync::atomic::Ordering::SeqCst);
+        OperationClaim::sign(self.data_dir(), intent_id, guid, generation)
+            .ok_or_else(|| refused("this signer already signed or is signing the intent"))
     }
 
     /// Stores `intent` with `signature` added in GUID order, ready at the threshold
@@ -367,9 +380,11 @@ impl WalletCore {
         state: Arc<MultisigStateRead>,
     ) -> Result<MultisigIntent, CoreError> {
         let (intent, record) = self.collecting_intent(&intent_id, &state)?;
-        let signature = self.with_session(true, |session| {
-            let signer = cosigner(&session.payload, &intent, &record, &signer_account_id)?;
-            sign_for(&session.payload, signer, &intent.prepared.transaction_hash)
+        let (signature, _claim) = self.with_session(true, |session| {
+            let (signer, guid) = cosigner(&session.payload, &intent, &record, &signer_account_id)?;
+            let claim = self.claim_signing(&intent.id, &guid)?;
+            let signature = sign_for(&session.payload, signer, &intent.prepared.transaction_hash)?;
+            Ok((signature, claim))
         })?;
         self.store_signature(intent, MultisigSignature::from(signature))
     }
@@ -407,7 +422,7 @@ impl WalletCore {
         let plan = SubmitPlan::new(&intent, &config, class(), summary_length())
             .map_err(|error| refused(&error.to_string()))?;
         let generation = self.session_generation().ok_or(CoreError::Locked)?;
-        let claim = SubmitClaim::take(self.data_dir(), &intent.id)
+        let claim = OperationClaim::submit(self.data_dir(), &intent.id)
             .ok_or_else(|| refused("Argent multisig submission claim exists"))?;
         Ok(MultisigSubmission::new(
             &self, generation, plan, intent, record, claim,
