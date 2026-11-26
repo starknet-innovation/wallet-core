@@ -146,7 +146,12 @@ fn signs_the_digest_it_computed_and_returns_the_judged_proof() {
     );
     // The key crossed once, inside the job; the digest is the core's, over the engine's calls.
     assert_eq!(*engine.jobs.borrow(), vec![(9, VIEWING_KEY)]);
-    let hash = call_set_hash(&ACCOUNT, &[compile_actions(POOL, ACCOUNT)], &job().chain_id);
+    let calldata: Vec<SecretFelt> = compile_actions(POOL, ACCOUNT)
+        .calldata
+        .into_iter()
+        .map(SecretFelt::new)
+        .collect();
+    let hash = call_set_hash(&ACCOUNT, &POOL, COMPILE_ACTIONS, &calldata, &job().chain_id);
     assert_eq!(signed, vec![hash]);
     let proved = engine.proved.borrow();
     let [(9, signature)] = proved.as_slice() else {
@@ -319,7 +324,7 @@ fn the_job_debug_never_prints_the_viewing_key() {
 // `call-set-signer.test.ts`, the signing half: exactly the digest, as a raw Stark pair.
 #[test]
 fn signs_exactly_the_digest_as_a_raw_stark_pair() {
-    let hash = call_set_hash(&ACCOUNT, &[], &job().chain_id);
+    let hash = call_set_hash(&ACCOUNT, &POOL, COMPILE_ACTIONS, &[], &job().chain_id);
     let mut asked = None;
     let signature = sign_call_set(&hash, &public_key(), |digest| {
         asked = Some(*digest);

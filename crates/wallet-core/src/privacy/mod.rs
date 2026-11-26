@@ -182,6 +182,7 @@ mod tests {
                 matches!(
                     name,
                     "bodies.rs"
+                        | "call_set.rs"
                         | "client_actions.rs"
                         | "compiler.rs"
                         | "discovery.rs"
@@ -206,7 +207,6 @@ mod tests {
         // is given; outside tests, no privacy file reaches a key-taking Krusty export.
         // Nor do the discovery walks or the compiler, which never read a secret back out either.
         for (name, source) in [
-            ("call_set.rs", include_str!("call_set.rs")),
             ("client_actions.rs", include_str!("client_actions.rs")),
             ("compiler.rs", include_str!("compiler.rs")),
             ("discovery.rs", include_str!("discovery.rs")),
@@ -215,7 +215,6 @@ mod tests {
             ("engine.rs", include_str!("engine.rs")),
             ("engine_judge.rs", include_str!("engine_judge.rs")),
             ("entropy.rs", include_str!("entropy.rs")),
-            ("pool_actions.rs", include_str!("pool_actions.rs")),
             ("prover.rs", include_str!("prover.rs")),
             ("simulator.rs", include_str!("simulator.rs")),
         ] {

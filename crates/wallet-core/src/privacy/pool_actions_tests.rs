@@ -2,7 +2,6 @@ use super::*;
 use crate::privacy::config::testing::proof_limits;
 
 const ACCOUNT: Felt = Felt::from_hex_unchecked("0x123");
-const POOL: Felt = Felt::from_hex_unchecked("0x9001");
 const BOB: Felt = Felt::from_hex_unchecked("0xb0b");
 const EVE: Felt = Felt::from_hex_unchecked("0xe5e");
 const STRK: Felt =
@@ -49,8 +48,12 @@ fn calldata_for(user: Felt, key: Felt, actions: &[Vec<Felt>]) -> Vec<Felt> {
     calldata
 }
 
+fn secret(calldata: &[Felt]) -> Vec<SecretFelt> {
+    calldata.iter().copied().map(SecretFelt::new).collect()
+}
+
 fn decode(calldata: &[Felt]) -> Option<Vec<PoolAction>> {
-    decode_compile_actions(calldata, &ACCOUNT, &key())
+    decode_compile_actions(&secret(calldata), &ACCOUNT, &key())
 }
 
 const ONE: u128 = 1_000_000_000_000_000_000;
@@ -183,12 +186,13 @@ fn bound(actions: &[Vec<Felt>], reviewed: &[EngineAction]) -> Result<(), ProofRe
 }
 
 fn bound_call(calldata: Vec<Felt>, reviewed: &[EngineAction]) -> Result<(), ProofRefusal> {
-    let call = Call {
-        contract_address: POOL,
-        entrypoint: COMPILE_ACTIONS.into(),
-        calldata,
-    };
-    bound_sign_request(&[call], &POOL, &ACCOUNT, &key(), reviewed, &proof_limits())
+    bound_sign_request(
+        &secret(&calldata),
+        &ACCOUNT,
+        &key(),
+        reviewed,
+        &proof_limits(),
+    )
 }
 
 #[test]
@@ -228,7 +232,7 @@ fn binds_each_flow_to_what_was_reviewed() {
     );
 }
 
-// One test per way a hostile engine could ask for more than was reviewed.
+// One test per way a compile could move more than was reviewed.
 #[test]
 fn a_swapped_recipient_is_refused() {
     let to_eve = [use_note(STRK), enc_note(EVE, STRK, ONE)];
@@ -319,39 +323,16 @@ fn a_missing_or_altered_action_and_an_unasked_registration_are_refused() {
 }
 
 #[test]
-fn only_the_pools_one_compile_actions_is_considered() {
-    let calldata = calldata_for(ACCOUNT, KEY, &[deposit(STRK, ONE)]);
-    let call = |pool: Felt, entrypoint: &str| Call {
-        contract_address: pool,
-        entrypoint: entrypoint.into(),
-        calldata: calldata.clone(),
-    };
+fn calldata_over_the_bound_is_refused() {
+    let calldata = secret(&calldata_for(ACCOUNT, KEY, &[deposit(STRK, ONE)]));
     let reviewed = [shield(ONE)];
-    let check = |calls: &[Call]| {
-        bound_sign_request(calls, &POOL, &ACCOUNT, &key(), &reviewed, &proof_limits())
-    };
-    assert_eq!(check(&[call(POOL, COMPILE_ACTIONS)]), Ok(()));
-    for refused in [
-        vec![],
-        vec![call(POOL, COMPILE_ACTIONS), call(POOL, COMPILE_ACTIONS)],
-        vec![call(EVE, COMPILE_ACTIONS)],
-        vec![call(POOL, "apply_actions")],
-    ] {
-        assert_eq!(check(&refused), Err(ProofRefusal::UnboundSignRequest));
-    }
+    let check =
+        |limits: &ProofLimits| bound_sign_request(&calldata, &ACCOUNT, &key(), &reviewed, limits);
     let mut limits = proof_limits();
+    limits.invoke_calldata_felts = calldata.len();
+    assert_eq!(check(&limits), Ok(()));
     limits.invoke_calldata_felts = calldata.len() - 1;
-    assert_eq!(
-        bound_sign_request(
-            &[call(POOL, COMPILE_ACTIONS)],
-            &POOL,
-            &ACCOUNT,
-            &key(),
-            &reviewed,
-            &limits
-        ),
-        Err(ProofRefusal::UnboundSignRequest)
-    );
+    assert_eq!(check(&limits), Err(ProofRefusal::UnboundSignRequest));
 }
 
 #[test]

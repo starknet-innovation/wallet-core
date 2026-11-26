@@ -194,8 +194,7 @@ fn shape(actions: &[ClientAction]) -> Vec<String> {
 /// `pool_actions`' binding over our own `compile_actions` calldata.
 fn binds(compiled: &Compiled, reviewed: &[EngineAction]) -> bool {
     let calldata = compile_actions_calldata(&ACCOUNT, &key(), &compiled.actions).unwrap();
-    let felts: Vec<Felt> = calldata.iter().map(|felt| *felt.expose_secret()).collect();
-    decode_compile_actions(&felts, &ACCOUNT, &key())
+    decode_compile_actions(&calldata, &ACCOUNT, &key())
         .is_some_and(|decoded| matches_review(&decoded, reviewed, &ACCOUNT))
 }
 
@@ -449,11 +448,11 @@ fn every_recorded_job_binds_to_its_review() {
                 },
             });
         }
-        let calldata: Vec<Felt> = call["calldata"]
+        let calldata: Vec<SecretFelt> = call["calldata"]
             .as_array()
             .unwrap()
             .iter()
-            .map(decimal)
+            .map(|value| SecretFelt::new(decimal(value)))
             .collect();
         let (account, key) = (hex(&inputs["account"]), hex(&inputs["viewingKey"]));
         let decoded = decode_compile_actions(&calldata, &account, &SecretFelt::new(key)).unwrap();

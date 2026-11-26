@@ -11,7 +11,7 @@
 //! The proof that comes back is refused unless it is the configured pool's `apply_actions` within
 //! the wallet's bounds, with no SDK warning. Any refusal cancels the job.
 
-use super::call_set::{call_set_hash, sign_call_set};
+use super::call_set::{call_set_hash, sign_call_set, COMPILE_ACTIONS};
 use super::config::is_service_url;
 use super::engine_judge::{judge_proof, judge_warnings};
 use super::pool_actions::bound_sign_request;
@@ -252,15 +252,14 @@ pub fn prove<E: PrivacyEngine + ?Sized>(
     };
     let request = engine.invocation(job)?;
     judge_warnings(&request.warnings, limits)?;
-    bound_sign_request(
-        &request.calls,
-        &pool,
-        &account,
-        &viewing_key,
-        &reviewed,
-        limits,
-    )?;
-    let hash = call_set_hash(&account, &request.calls, &chain_id);
+    let calldata: Vec<SecretFelt> = match request.calls.as_slice() {
+        [call] if call.contract_address == pool && call.entrypoint == COMPILE_ACTIONS => {
+            call.calldata.iter().copied().map(SecretFelt::new).collect()
+        }
+        _ => return Err(ProofRefusal::UnboundSignRequest),
+    };
+    bound_sign_request(&calldata, &account, &viewing_key, &reviewed, limits)?;
+    let hash = call_set_hash(&account, &pool, COMPILE_ACTIONS, &calldata, &chain_id);
     let signature = sign_call_set(&hash, public_key, sign)?;
     let proof = judge_proof(engine.prove(id, signature)?, &pool, limits)?;
     guard.armed = false;
