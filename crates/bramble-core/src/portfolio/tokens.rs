@@ -52,6 +52,24 @@ impl TokenPreferences {
         self.prefs.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
+    /// The tracked tokens the reviews trust on `network` (`trustedTokens`).
+    pub(crate) fn trusted(&self, network: NetworkId) -> Vec<TokenConfig> {
+        self.prefs().trusted(network)
+    }
+
+    /// Whether `address` is tracked on `network`, under any id.
+    pub(crate) fn is_tracked(&self, network: NetworkId, address: &str) -> bool {
+        self.prefs().is_tracked(network, address)
+    }
+
+    /// A site's token the person approved; `None` when its address is already tracked.
+    pub(crate) fn add_from_dapp(
+        &self,
+        token: TokenConfig,
+    ) -> Result<Option<AddTokenOutcome>, CoreError> {
+        Ok(self.prefs().add_from_dapp(token)?)
+    }
+
     /// `explorerFallbackAllowed` given whether `network` has an RPC override. Not exported: the
     /// wallet holds the override, so the host asks the wallet (`rpc_override.rs`).
     pub(crate) fn explorer_fallback_allowed(&self, network: NetworkId, rpc_override: bool) -> bool {

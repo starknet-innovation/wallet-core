@@ -1156,10 +1156,20 @@ Features, smallest and least dependent first:
       for a class this wallet does not deploy (the extension's `accountDeployment` tries more
       classes; mobile offers only what it would deploy itself), and its gates run again on the
       reply.
-    - Next here, in order: the remaining methods' gates and results (`wallet_watchAsset`, which
-      first needs `preferences.json`'s `dappTokenIds` so a site's token is not trusted by the
-      review, then invoke and declare); the live class read (Braavos, upgraded Argent); Ledger
-      typed data; the full export.
+    - In review: `wallet_watchAsset` (`bramble-core`'s `dapp_watch.rs`). The blocklist, queue
+      room, then the token's name, symbol and decimals read from the chain (`DappReply::Read`);
+      a card (`DappCard::WatchAsset`, `approve_watch_asset`) queued whether or not the token is
+      tracked, an already-tracked one a notice whose close answers `true` (audit M1). Approved,
+      the token is stored as the site's: `preferences.json` gains the extension's
+      `dappTokenIds`, and every review reads `TokenPreferences::trusted` (`portfolio::
+      token_sources`), which leaves out a site's token unless it is exactly a curated one
+      (audit 171). The person's own add now keeps one record per address, as `upsertToken`
+      does. Collectibles are refused (163) while mobile shows no NFTs, and a read whose endpoint
+      fails is refused (114) rather than retried on the next endpoint. Added tokens stop at 50
+      per network for the person and sites alike (`MAX_ADDED_TOKENS_PER_NETWORK`, the
+      portfolio policy's `max_added_tokens`).
+    - Next here, in order: invoke and declare; the live class read (Braavos, upgraded Argent);
+      Ledger typed data; the full export.
     - *Done* (#140): the connect-only slice is exported first, so Bramble can build and test
       the WebView bridge against real dapps while review and signing follow. Connect's card is
       a site and an account, so the slice does not wait on M19–M21.
