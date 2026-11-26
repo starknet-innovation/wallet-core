@@ -9,10 +9,10 @@ use serde_json::Value;
 use starknet_wallet_core::privacy::client_actions::{compile_actions_calldata, ClientAction};
 use starknet_wallet_core::privacy::compiler::{compile, walk_inputs, CompileRefusal, Compiled};
 use starknet_wallet_core::privacy::discovery::{AddressMap, Note, Walked};
-use starknet_wallet_core::privacy::engine::EngineAction;
 use starknet_wallet_core::privacy::entropy::Entropy;
 use starknet_wallet_core::privacy::incoming::IncomingWalk;
 use starknet_wallet_core::privacy::outgoing::{OutgoingChannels, OutgoingWalk};
+use starknet_wallet_core::privacy::proof::ReviewedAction;
 use starknet_wallet_core::privacy::types::PrivacyFailure;
 use starknet_wallet_core::privacy::BlockRef;
 use starknet_wallet_core::{felt, Error, Felt, SecretFelt};
@@ -34,34 +34,34 @@ fn decimal(value: &Value) -> Felt {
 
 /// The extension's `Strk20Action`s as `strk20BuilderFor` adds them, after `register()` for the
 /// registration and activation builders.
-fn reviewed(inputs: &Value) -> Vec<EngineAction> {
+fn reviewed(inputs: &Value) -> Vec<ReviewedAction> {
     let mut reviewed = Vec::new();
     if matches!(
         inputs["builder"].as_str().unwrap(),
         "registration" | "activate"
     ) {
-        reviewed.push(EngineAction::Register);
+        reviewed.push(ReviewedAction::Register);
     }
     for action in inputs["actions"].as_array().unwrap() {
         let token = hex(&action["token"]);
         let recipient = || hex(&action["recipient"]);
         reviewed.push(
             match (action["type"].as_str().unwrap(), &action["amount"]) {
-                ("deposit", amount) => EngineAction::Deposit {
+                ("deposit", amount) => ReviewedAction::Deposit {
                     token,
                     amount: decimal(amount),
                     recipient: action.get("recipient").map(hex),
                 },
-                ("transfer", amount) if amount == "OPEN" => EngineAction::OpenTransfer {
+                ("transfer", amount) if amount == "OPEN" => ReviewedAction::OpenTransfer {
                     token,
                     recipient: recipient(),
                 },
-                ("transfer", amount) => EngineAction::Transfer {
+                ("transfer", amount) => ReviewedAction::Transfer {
                     token,
                     recipient: recipient(),
                     amount: decimal(amount),
                 },
-                ("withdraw", amount) => EngineAction::Withdraw {
+                ("withdraw", amount) => ReviewedAction::Withdraw {
                     token,
                     recipient: recipient(),
                     amount: decimal(amount),

@@ -217,11 +217,14 @@ Grep first; extend in place rather than adding a sibling.
   `plan_steps.rs`), the discovery and pool-fee bodies (`bodies.rs`, the only writer of the key),
   reply judging (`judge.rs`, `notes.rs`), the order-keeping JSON the cursor echo needs
   (`privacy::json`, stricter than `js::json`), routing and limits records (`config.rs`), and the
-  gates (`gates.rs`, `home.rs`). `DeploymentState` is `send::types`. STRK20 proofs (P15) go
-  through the wallet's engine (`engine::PrivacyEngine`, its records, `engine::prove`); the
-  `CallSet` digest and its signature check are `call_set.rs`, the `compile_actions` decoder and
-  its binding to the reviewed actions `pool_actions.rs`, and the engine's results are judged in
-  `engine_judge.rs`.
+  gates (`gates.rs`, `home.rs`). `DeploymentState` is `send::types`. STRK20 proofs (P15) are
+  `job::ProofJob` (`ProofInputs`, `ProofHost`, `ProofStep`; reply handling in `job_steps.rs`),
+  over the outgoing and incoming walks (`outgoing`, `incoming`, `discovery`), the compiler
+  (`compiler`, `simulator`), the `compile_actions` calldata (`client_actions`), its decoder and
+  binding to the reviewed actions (`pool_actions.rs`), the `CallSet` digest and signature check
+  (`call_set.rs`), the invocation and pool nonce (`invocation`) and the prover's bodies, judge and
+  retry rule (`prover`); its records (`ReviewedAction`, `ProofLimits`, `CallAndProof`,
+  `ProofRefusal`) and the final proof judge are `proof.rs`.
 - Nostr relay work lives beside the keys in `crates/wallet-core/src/nostr/`: the relay-URL
   grammar (`relay_url::is_nostr_relay_url`, which a custom RPC URL shares as
   `is_custom_rpc_url`; the endpoint redactor `redact_endpoints` sits beside it), relay selection, frame parsing, gift-wrap batches and

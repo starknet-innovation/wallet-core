@@ -1,7 +1,10 @@
-//! What the core will sign for: the SDK's one `compile_actions(user, key, Span<ClientAction>)`
-//! call, decoded and bound to the job's reviewed actions before the `CallSet` is signed. The
-//! signature authorises spending in the pool, so an engine that slipped in a withdrawal, a note
-//! to someone else, an external invoke or another key would otherwise be signed for.
+//! What the core will sign for: the pool's one `compile_actions(user, key, Span<ClientAction>)`
+//! calldata, decoded and bound to the job's reviewed actions before the `CallSet` is signed. The
+//! signature authorises spending in the pool, so a compiler bug that slipped in a withdrawal, a
+//! note to someone else, an external invoke or another key would otherwise be signed for.
+//!
+//! The calldata holds the viewing key and channel keys, so it is read as the secrets it is held
+//! in, inside `scrubbed`; only public members (recipients, tokens, amounts) leave the decoder.
 //!
 //! The decoder is the extension's `pool-call-decode.ts` (its multisig co-signer review); the
 //! layout is pinned there to the vendored pool ABI by `pool-client-actions-abi.test.ts`. The
@@ -11,10 +14,9 @@
 //! recipient, and notes back to the account itself (the SDK's surplus, or change). An empty
 //! review, or a span that moves nothing, is refused.
 
-use super::call_set::COMPILE_ACTIONS;
 use super::client_actions::LAYOUT;
-use super::engine::{EngineAction, ProofLimits, ProofRefusal};
-use crate::send::calls::Call;
+use super::proof::{ProofLimits, ProofRefusal, ReviewedAction};
+use crate::scrub::scrubbed;
 use crate::{Felt, SecretFelt};
 
 /// The most client actions one call may carry.
@@ -70,12 +72,13 @@ fn fits_abi(variant: &str, member: &str, felt: &Felt) -> bool {
     }
 }
 
-fn field(members: &[&str], felts: &[Felt], name: &str) -> Option<Felt> {
+fn field(members: &[&str], felts: &[SecretFelt], name: &str) -> Option<Felt> {
     let at = members.iter().position(|member| *member == name)?;
-    felts.get(at).copied()
+    felts.get(at).map(|value| *value.expose_secret())
 }
 
-fn action_from(variant: &str, members: &[&str], felts: &[Felt]) -> Option<PoolAction> {
+/// Reads only public members by name: a channel key is never copied out.
+fn action_from(variant: &str, members: &[&str], felts: &[SecretFelt]) -> Option<PoolAction> {
     match variant {
         "SetViewingKey" => return Some(PoolAction::Register),
         "UseNote" => return Some(PoolAction::UseNote),
@@ -118,14 +121,23 @@ fn action_from(variant: &str, members: &[&str], felts: &[Felt]) -> Option<PoolAc
 /// `viewing_key`, every action is one the wallet's flows produce, and the span consumes the
 /// calldata exactly.
 pub(super) fn decode_compile_actions(
-    calldata: &[Felt],
+    calldata: &[SecretFelt],
+    account: &Felt,
+    viewing_key: &SecretFelt,
+) -> Option<Vec<PoolAction>> {
+    scrubbed(|| decode(calldata, account, viewing_key))
+}
+
+fn decode(
+    calldata: &[SecretFelt],
     account: &Felt,
     viewing_key: &SecretFelt,
 ) -> Option<Vec<PoolAction>> {
     let [user, key, count, rest @ ..] = calldata else {
         return None;
     };
-    if user != account || viewing_key != key || *count > Felt::from(MAX_ACTIONS) {
+    let count = *count.expose_secret();
+    if *user != *account || viewing_key != key || count > Felt::from(MAX_ACTIONS) {
         return None;
     }
     let count = usize::try_from(count.to_biguint()).ok()?;
@@ -133,14 +145,14 @@ pub(super) fn decode_compile_actions(
     let mut rest = rest;
     for _ in 0..count {
         let (tag, tail) = rest.split_first()?;
-        let (variant, members) = usize::try_from(tag.to_biguint())
+        let (variant, members) = usize::try_from(tag.expose_secret().to_biguint())
             .ok()
             .and_then(|at| LAYOUT.get(at))?;
         let (felts, tail) = tail.split_at_checked(members.len())?;
         if !members
             .iter()
             .zip(felts)
-            .all(|(member, felt)| fits_abi(variant, member, felt))
+            .all(|(member, felt)| fits_abi(variant, member, felt.expose_secret()))
         {
             return None;
         }
@@ -151,10 +163,10 @@ pub(super) fn decode_compile_actions(
 }
 
 /// The value-moving client actions a reviewed action compiles to.
-fn expected(action: &EngineAction, account: &Felt) -> Vec<PoolAction> {
+fn expected(action: &ReviewedAction, account: &Felt) -> Vec<PoolAction> {
     match action {
-        EngineAction::Register => vec![PoolAction::Register],
-        EngineAction::Deposit {
+        ReviewedAction::Register => vec![PoolAction::Register],
+        ReviewedAction::Deposit {
             token,
             amount,
             recipient,
@@ -176,7 +188,7 @@ fn expected(action: &EngineAction, account: &Felt) -> Vec<PoolAction> {
                 _ => vec![deposit],
             }
         }
-        EngineAction::Transfer {
+        ReviewedAction::Transfer {
             token,
             recipient,
             amount,
@@ -185,11 +197,11 @@ fn expected(action: &EngineAction, account: &Felt) -> Vec<PoolAction> {
             token: *token,
             amount: *amount,
         }],
-        EngineAction::OpenTransfer { token, recipient } => vec![PoolAction::OpenNote {
+        ReviewedAction::OpenTransfer { token, recipient } => vec![PoolAction::OpenNote {
             recipient: *recipient,
             token: *token,
         }],
-        EngineAction::Withdraw {
+        ReviewedAction::Withdraw {
             token,
             recipient,
             amount,
@@ -207,7 +219,7 @@ fn expected(action: &EngineAction, account: &Felt) -> Vec<PoolAction> {
 /// (the extension's review returns no card for either).
 pub(super) fn matches_review(
     decoded: &[PoolAction],
-    reviewed: &[EngineAction],
+    reviewed: &[ReviewedAction],
     account: &Felt,
 ) -> bool {
     let mut want: Vec<PoolAction> = reviewed
@@ -247,27 +259,22 @@ pub(super) fn matches_review(
     want.is_empty()
 }
 
-/// Refuses calls to sign unless they are exactly one `compile_actions` on `pool`, within the
-/// calldata bound, that decodes for `account` and `viewing_key` and moves exactly `reviewed`.
+/// Refuses `compile_actions` calldata unless it is within the calldata bound, decodes for
+/// `account` and `viewing_key`, and moves exactly `reviewed`.
 pub(super) fn bound_sign_request(
-    calls: &[Call],
-    pool: &Felt,
+    calldata: &[SecretFelt],
     account: &Felt,
     viewing_key: &SecretFelt,
-    reviewed: &[EngineAction],
+    reviewed: &[ReviewedAction],
     limits: &ProofLimits,
 ) -> Result<(), ProofRefusal> {
-    match calls {
-        [call]
-            if call.contract_address == *pool
-                && call.entrypoint == COMPILE_ACTIONS
-                && call.calldata.len() <= limits.invoke_calldata_felts
-                && decode_compile_actions(&call.calldata, account, viewing_key)
-                    .is_some_and(|decoded| matches_review(&decoded, reviewed, account)) =>
-        {
-            Ok(())
-        }
-        _ => Err(ProofRefusal::UnboundSignRequest),
+    let bound = calldata.len() <= limits.invoke_calldata_felts
+        && decode_compile_actions(calldata, account, viewing_key)
+            .is_some_and(|decoded| matches_review(&decoded, reviewed, account));
+    if bound {
+        Ok(())
+    } else {
+        Err(ProofRefusal::UnboundSignRequest)
     }
 }
 

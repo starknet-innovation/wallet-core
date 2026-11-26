@@ -6,8 +6,8 @@
 //! `apply_actions` call and proof.
 
 use serde_json::Value;
-use starknet_wallet_core::privacy::engine::ProofLimits;
 use starknet_wallet_core::privacy::invocation::{pool_nonce, pool_nonce_request, ProofInvocation};
+use starknet_wallet_core::privacy::proof::ProofLimits;
 use starknet_wallet_core::privacy::prover::{
     judge_prove_reply, prove_body, ProveOutcome, ProverRetry,
 };

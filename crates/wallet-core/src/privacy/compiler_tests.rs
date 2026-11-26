@@ -87,16 +87,16 @@ fn notes(entries: Vec<(Felt, Vec<Note>)>) -> AddressMap<Vec<Note>> {
     notes
 }
 
-fn send(token: Felt, recipient: Felt, amount: u128) -> EngineAction {
-    EngineAction::Transfer {
+fn send(token: Felt, recipient: Felt, amount: u128) -> ReviewedAction {
+    ReviewedAction::Transfer {
         token,
         recipient,
         amount: Felt::from(amount),
     }
 }
 
-fn shield(token: Felt, amount: u128, recipient: Option<Felt>) -> EngineAction {
-    EngineAction::Deposit {
+fn shield(token: Felt, amount: u128, recipient: Option<Felt>) -> ReviewedAction {
+    ReviewedAction::Deposit {
         token,
         amount: Felt::from(amount),
         recipient,
@@ -104,7 +104,7 @@ fn shield(token: Felt, amount: u128, recipient: Option<Felt>) -> EngineAction {
 }
 
 fn run(
-    reviewed: &[EngineAction],
+    reviewed: &[ReviewedAction],
     found: &OutgoingChannels,
     notes: &AddressMap<Vec<Note>>,
 ) -> Result<(Compiled, Vec<usize>), CompileRefusal> {
@@ -114,7 +114,7 @@ fn run(
 }
 
 fn refused(
-    reviewed: &[EngineAction],
+    reviewed: &[ReviewedAction],
     found: &OutgoingChannels,
     notes: &AddressMap<Vec<Note>>,
 ) -> CompileRefusal {
@@ -192,10 +192,9 @@ fn shape(actions: &[ClientAction]) -> Vec<String> {
 }
 
 /// `pool_actions`' binding over our own `compile_actions` calldata.
-fn binds(compiled: &Compiled, reviewed: &[EngineAction]) -> bool {
+fn binds(compiled: &Compiled, reviewed: &[ReviewedAction]) -> bool {
     let calldata = compile_actions_calldata(&ACCOUNT, &key(), &compiled.actions).unwrap();
-    let felts: Vec<Felt> = calldata.iter().map(|felt| *felt.expose_secret()).collect();
-    decode_compile_actions(&felts, &ACCOUNT, &key())
+    decode_compile_actions(&calldata, &ACCOUNT, &key())
         .is_some_and(|decoded| matches_review(&decoded, reviewed, &ACCOUNT))
 }
 
@@ -203,7 +202,7 @@ fn binds(compiled: &Compiled, reviewed: &[EngineAction]) -> bool {
 fn a_send_groups_by_token_selects_largest_first_stably_and_returns_change() {
     let reviewed = [
         send(STRK, BOB, 3),
-        EngineAction::Withdraw {
+        ReviewedAction::Withdraw {
             token: ETH,
             recipient: EVE,
             amount: Felt::TWO,
@@ -262,7 +261,7 @@ fn a_send_groups_by_token_selects_largest_first_stably_and_returns_change() {
 #[test]
 fn registering_opens_the_own_channel_first_with_the_viewing_public_key() {
     let reviewed = [
-        EngineAction::Register,
+        ReviewedAction::Register,
         shield(STRK, 7, Some(BOB)),
         shield(STRK, 3, None),
     ];
@@ -323,7 +322,7 @@ fn registering_opens_the_own_channel_first_with_the_viewing_public_key() {
 
 #[test]
 fn an_open_transfer_touches_no_balance() {
-    let reviewed = [EngineAction::OpenTransfer {
+    let reviewed = [ReviewedAction::OpenTransfer {
         token: STRK,
         recipient: BOB,
     }];
@@ -349,7 +348,7 @@ fn every_refusal_is_its_own_variant() {
         Some(2),
     );
     for bad in [Felt::ZERO, Felt::from(u128::MAX) + Felt::ONE] {
-        let reviewed = [EngineAction::Deposit {
+        let reviewed = [ReviewedAction::Deposit {
             token: STRK,
             amount: bad,
             recipient: None,
@@ -365,7 +364,7 @@ fn every_refusal_is_its_own_variant() {
     }
     assert_eq!(
         refused(
-            &[EngineAction::Register, shield(STRK, 1, None)],
+            &[ReviewedAction::Register, shield(STRK, 1, None)],
             &ready,
             &none
         ),
@@ -422,38 +421,38 @@ fn every_recorded_job_binds_to_its_review() {
         };
         let mut reviewed = Vec::new();
         if inputs["builder"] != "actions" {
-            reviewed.push(EngineAction::Register);
+            reviewed.push(ReviewedAction::Register);
         }
         for action in inputs["actions"].as_array().unwrap() {
             let token = hex(&action["token"]);
             let recipient = || hex(&action["recipient"]);
             reviewed.push(match action["type"].as_str().unwrap() {
-                "deposit" => EngineAction::Deposit {
+                "deposit" => ReviewedAction::Deposit {
                     token,
                     amount: decimal(&action["amount"]),
                     recipient: action.get("recipient").map(hex),
                 },
-                "transfer" if action["amount"] == "OPEN" => EngineAction::OpenTransfer {
+                "transfer" if action["amount"] == "OPEN" => ReviewedAction::OpenTransfer {
                     token,
                     recipient: recipient(),
                 },
-                "transfer" => EngineAction::Transfer {
+                "transfer" => ReviewedAction::Transfer {
                     token,
                     recipient: recipient(),
                     amount: decimal(&action["amount"]),
                 },
-                _ => EngineAction::Withdraw {
+                _ => ReviewedAction::Withdraw {
                     token,
                     recipient: recipient(),
                     amount: decimal(&action["amount"]),
                 },
             });
         }
-        let calldata: Vec<Felt> = call["calldata"]
+        let calldata: Vec<SecretFelt> = call["calldata"]
             .as_array()
             .unwrap()
             .iter()
-            .map(decimal)
+            .map(|value| SecretFelt::new(decimal(value)))
             .collect();
         let (account, key) = (hex(&inputs["account"]), hex(&inputs["viewingKey"]));
         let decoded = decode_compile_actions(&calldata, &account, &SecretFelt::new(key)).unwrap();

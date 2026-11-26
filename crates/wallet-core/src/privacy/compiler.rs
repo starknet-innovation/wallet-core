@@ -20,10 +20,10 @@ use std::cmp::Reverse;
 
 use super::client_actions::ClientAction;
 use super::discovery::{AddressMap, Note};
-use super::engine::EngineAction;
 use super::entropy::Entropy;
 use super::hashes::compute_note_id;
 use super::outgoing::OutgoingChannels;
+use super::proof::ReviewedAction;
 use super::simulator::{transform, Simulator};
 use crate::send::u256::U256;
 use crate::{Felt, SecretFelt};
@@ -113,13 +113,13 @@ fn amount(value: &Felt) -> Result<u128, CompileRefusal> {
 /// `with(token)`, so actions are grouped by token in the order tokens first appear; `register()`
 /// sets the viewing key; `surplusTo(account, false)` applies to every token iff any action is a
 /// transfer or a withdrawal.
-fn collect(reviewed: &[EngineAction]) -> Result<Actions, CompileRefusal> {
+fn collect(reviewed: &[ReviewedAction]) -> Result<Actions, CompileRefusal> {
     let mut register = false;
     let mut builders: AddressMap<TokenOps> = AddressMap::default();
     for action in reviewed {
         match action {
-            EngineAction::Register => register = true,
-            EngineAction::Deposit {
+            ReviewedAction::Register => register = true,
+            ReviewedAction::Deposit {
                 token,
                 amount: value,
                 recipient,
@@ -131,7 +131,7 @@ fn collect(reviewed: &[EngineAction]) -> Result<Actions, CompileRefusal> {
                     ops.create_notes.push((*recipient, Some(value)));
                 }
             }
-            EngineAction::Transfer {
+            ReviewedAction::Transfer {
                 token,
                 recipient,
                 amount: value,
@@ -140,11 +140,11 @@ fn collect(reviewed: &[EngineAction]) -> Result<Actions, CompileRefusal> {
                 let ops = builders.get_or_insert_with(*token, TokenOps::default);
                 ops.create_notes.push((*recipient, Some(value)));
             }
-            EngineAction::OpenTransfer { token, recipient } => {
+            ReviewedAction::OpenTransfer { token, recipient } => {
                 let ops = builders.get_or_insert_with(*token, TokenOps::default);
                 ops.create_notes.push((*recipient, None));
             }
-            EngineAction::Withdraw {
+            ReviewedAction::Withdraw {
                 token,
                 recipient,
                 amount: value,
@@ -158,9 +158,9 @@ fn collect(reviewed: &[EngineAction]) -> Result<Actions, CompileRefusal> {
     let spends = reviewed.iter().any(|action| {
         matches!(
             action,
-            EngineAction::Transfer { .. }
-                | EngineAction::OpenTransfer { .. }
-                | EngineAction::Withdraw { .. }
+            ReviewedAction::Transfer { .. }
+                | ReviewedAction::OpenTransfer { .. }
+                | ReviewedAction::Withdraw { .. }
         )
     });
     let mut actions = Actions {
@@ -257,7 +257,7 @@ fn recipients_needed(account: &Felt, actions: &Actions) -> Vec<Felt> {
 /// Before discovery: what the walks must fetch for `reviewed`.
 pub fn walk_inputs(
     account: &Felt,
-    reviewed: &[EngineAction],
+    reviewed: &[ReviewedAction],
 ) -> Result<WalkInputs, CompileRefusal> {
     let actions = collect(reviewed)?;
     let tokens = balances(&actions)?
@@ -277,7 +277,7 @@ pub fn walk_inputs(
 pub fn compile(
     account: &Felt,
     viewing_key: &SecretFelt,
-    reviewed: &[EngineAction],
+    reviewed: &[ReviewedAction],
     channels: &OutgoingChannels,
     notes: &AddressMap<Vec<Note>>,
     entropy: &mut impl Entropy,

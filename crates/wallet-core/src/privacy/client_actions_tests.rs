@@ -100,7 +100,7 @@ fn round_trips_through_the_pool_decoder() {
     // Every action decodes, in order, the open note (an `Open` transfer's) included.
     let calldata = compile_actions_calldata(&ACCOUNT, &key, &every_variant()).unwrap();
     assert_eq!(
-        decode_compile_actions(&plain(&calldata), &ACCOUNT, &key),
+        decode_compile_actions(&calldata, &ACCOUNT, &key),
         Some(vec![
             PoolAction::Register,
             PoolAction::Channel { recipient: BOB },

@@ -24,7 +24,7 @@ pub(crate) fn tagged_hash(tag: &str, values: &[Felt]) -> Felt {
 
 /// `poseidonHashMany`: Starknet's Poseidon sponge (rate 2, the input padded with one, then zero
 /// to a full block), as `Poseidon::hash_array` computes it, without allocating.
-fn poseidon_hash_many(mut felts: impl Iterator<Item = Felt>) -> Felt {
+pub(crate) fn poseidon_hash_many(mut felts: impl Iterator<Item = Felt>) -> Felt {
     let mut state = [Felt::ZERO; 3];
     loop {
         let (a, b, last) = match (felts.next(), felts.next()) {

@@ -9,22 +9,21 @@
 //! for a non-OHTTP discovery URL (§1.1). Routing, limits and the network catalog are the
 //! wallet's, passed in (`config`, `crate::catalog`).
 //!
-//! Proofs (P15) go through an engine the wallet supplies (`engine::PrivacyEngine`): the core signs
-//! the `CallSet` the SDK asks for (`call_set`) once its calls are bound to the reviewed actions
-//! (`pool_actions`), and judges what comes back (`engine_judge`). No flow uses it yet, so
+//! Proofs (P15) are the Rust port of the SDK's client (#182). Its records (the reviewed actions,
+//! the wallet's bounds, the judged call and proof, the refusals) are `proof`. It starts from the
+//! SDK's primitives: the domain-tagged hashes (`hashes`, with the viewing-key ones in `kms.rs`),
+//! the `ClientAction` encoding (`client_actions`, sharing `pool_actions`' variant table) and its
+//! randomness (`entropy`).
+//!
+//! Its discovery walks are sans-IO pieces: the outgoing channels (`outgoing`) and the spendable
+//! notes with their witnesses (`incoming`), over the types in `discovery`. Between and after them,
+//! the compiler (`compiler`, over the pool simulator in `simulator`) says what the walks must
+//! fetch and turns what they found into the job's client actions.
+//!
+//! The compiled `compile_actions` is bound to the reviewed actions (`pool_actions`) before the
+//! `CallSet` over it is signed (`call_set`); the proof invocation is built here (`invocation`),
+//! and the prover is plain bodies and judged replies (`prover`). No flow proves yet, so
 //! `CAPABILITIES` stays false.
-//!
-//! The Rust port of the SDK's client (#182) starts from its primitives: the domain-tagged hashes
-//! (`hashes`, with the viewing-key ones in `kms.rs`), the `ClientAction` encoding
-//! (`client_actions`, sharing `pool_actions`' variant table) and its randomness (`entropy`).
-//!
-//! Its proof job's discovery walks are sans-IO pieces too: the outgoing channels (`outgoing`) and
-//! the spendable notes with their witnesses (`incoming`), over the types in `discovery`. Between
-//! and after them, the compiler (`compiler`, over the pool simulator in `simulator`) says what
-//! the walks must fetch and turns what they found into the job's client actions.
-//!
-//! It builds the proof invocation itself (`invocation`) and talks to the prover as plain bodies
-//! and judged replies (`prover`); the job that drives them replaces the engine.
 
 mod bodies;
 pub mod call_set;
@@ -32,14 +31,14 @@ pub mod client_actions;
 pub mod compiler;
 pub mod config;
 pub mod discovery;
-pub mod engine;
-mod engine_judge;
 pub mod entropy;
 pub mod gates;
 pub mod hashes;
 pub mod home;
 pub mod incoming;
 pub mod invocation;
+pub mod job;
+mod job_steps;
 mod json;
 mod judge;
 mod notes;
@@ -47,6 +46,7 @@ pub mod outgoing;
 pub mod plan;
 mod plan_steps;
 mod pool_actions;
+pub mod proof;
 pub mod prover;
 mod simulator;
 pub mod types;
@@ -121,18 +121,20 @@ mod tests {
     /// The equivalent of Bramble mobile's `privacy_key_boundary.rs` source scan for this module:
     /// no privacy file derives a viewing key, reaches Krusty or touches the phrase or an account
     /// key. The key arrives only through `PrivacyHost::viewing_key`, as a `SecretFelt`, and only
-    /// `plan_steps` (which asks for it), `bodies` and `invocation` (which write it) name it, besides
-    /// `engine`, whose job hands it to the engine, `pool_actions`, which compares the key slot with
-    /// it, `client_actions`, which writes it into the `compile_actions` calldata, and the discovery
-    /// walks (`discovery`, `incoming`, `outgoing`), which lend it to `bodies` and hold the channel
-    /// keys and witnesses the service derives from it as `SecretFelt`s. Channel keys are secrets
-    /// too: `client_actions` carries them and `hashes` hashes one into a note id. The hashes that
-    /// consume the viewing key itself are `kms.rs`'s, reached through the crate root. Like
-    /// `bodies`, `invocation` exposes the secret to serialise it, so it is not in the second list.
-    /// The compiler and its simulator hold the viewing key to derive channel keys through the crate
-    /// root (`compute_channel_key`), and the simulator its public key (`stark_public_key`).
-    /// The `CallSet` signature is the wallet's (`engine::prove` takes its signing closure), so the
-    /// engine files reach no key-taking Krusty export.
+    /// `plan_steps` and the proof job (`job`, `job_steps`, which ask for it and hold the bound
+    /// calldata), `bodies` and `invocation` (which write it) name it, besides
+    /// `pool_actions`, which compares the key slot with it, `call_set`, which hashes the calldata
+    /// that holds it, `client_actions`, which writes it into the `compile_actions` calldata, and the
+    /// discovery walks (`discovery`, `incoming`, `outgoing`), which lend it to `bodies` and hold the
+    /// channel keys and witnesses the service derives from it as `SecretFelt`s. Channel keys are
+    /// secrets too: `client_actions` carries them and `hashes` hashes one into a note id. The
+    /// hashes that consume the viewing key itself are `kms.rs`'s, reached through the crate root.
+    /// Like `bodies`, `invocation` exposes the secret to serialise it, and `call_set` and
+    /// `pool_actions` to hash and decode it (inside `scrubbed`), so they are not in the second
+    /// list. The compiler and its simulator hold the viewing key to derive channel keys through
+    /// the crate root (`compute_channel_key`), and the simulator its public key
+    /// (`stark_public_key`). The `CallSet` signature is the wallet's (`call_set::sign_call_set`
+    /// takes its signing closure), so no privacy file reaches a key-taking Krusty export.
     #[test]
     fn privacy_code_never_derives_or_stores_key_material() {
         let sources = [
@@ -142,14 +144,14 @@ mod tests {
             ("compiler.rs", include_str!("compiler.rs")),
             ("config.rs", include_str!("config.rs")),
             ("discovery.rs", include_str!("discovery.rs")),
-            ("engine.rs", include_str!("engine.rs")),
-            ("engine_judge.rs", include_str!("engine_judge.rs")),
             ("entropy.rs", include_str!("entropy.rs")),
             ("gates.rs", include_str!("gates.rs")),
             ("hashes.rs", include_str!("hashes.rs")),
             ("home.rs", include_str!("home.rs")),
             ("incoming.rs", include_str!("incoming.rs")),
             ("invocation.rs", include_str!("invocation.rs")),
+            ("job.rs", include_str!("job.rs")),
+            ("job_steps.rs", include_str!("job_steps.rs")),
             ("json.rs", include_str!("json.rs")),
             ("judge.rs", include_str!("judge.rs")),
             ("notes.rs", include_str!("notes.rs")),
@@ -157,6 +159,7 @@ mod tests {
             ("plan.rs", include_str!("plan.rs")),
             ("plan_steps.rs", include_str!("plan_steps.rs")),
             ("pool_actions.rs", include_str!("pool_actions.rs")),
+            ("proof.rs", include_str!("proof.rs")),
             ("prover.rs", include_str!("prover.rs")),
             ("simulator.rs", include_str!("simulator.rs")),
             ("types.rs", include_str!("types.rs")),
@@ -182,40 +185,42 @@ mod tests {
                 matches!(
                     name,
                     "bodies.rs"
+                        | "call_set.rs"
                         | "client_actions.rs"
                         | "compiler.rs"
                         | "discovery.rs"
-                        | "engine.rs"
                         | "hashes.rs"
                         | "incoming.rs"
                         | "invocation.rs"
+                        | "job.rs"
+                        | "job_steps.rs"
                         | "outgoing.rs"
                         | "plan.rs"
                         | "plan_steps.rs"
                         | "pool_actions.rs"
                         | "simulator.rs"
                 ),
-                "{name}: only the plan asks for the key, only the bodies, the client actions and \
-                 the invocation write it, only the engine's job carries it to the engine, only the \
-                 pool decoder compares it, only the note id hashes a channel key, only the \
+                "{name}: only the plan and the proof job ask for the key, only the bodies, the client actions and \
+                 the invocation write it, only the pool decoder compares it, only the CallSet \
+                 hashes the calldata it is in, only the note id hashes a channel key, only the \
                  discovery walks lend it and hold what is derived from it, and only the compiler \
                  and its simulator derive the channel keys from it"
             );
         }
-        // The `CallSet` is signed by the wallet's signing path, through the closure `engine::prove`
-        // is given; outside tests, no privacy file reaches a key-taking Krusty export.
+        // The `CallSet` is signed by the wallet's signing path, through the closure
+        // `call_set::sign_call_set` is given; outside tests, no privacy file reaches a key-taking
+        // Krusty export.
         // Nor do the discovery walks or the compiler, which never read a secret back out either.
         for (name, source) in [
-            ("call_set.rs", include_str!("call_set.rs")),
             ("client_actions.rs", include_str!("client_actions.rs")),
             ("compiler.rs", include_str!("compiler.rs")),
             ("discovery.rs", include_str!("discovery.rs")),
             ("incoming.rs", include_str!("incoming.rs")),
+            ("job.rs", include_str!("job.rs")),
+            ("job_steps.rs", include_str!("job_steps.rs")),
             ("outgoing.rs", include_str!("outgoing.rs")),
-            ("engine.rs", include_str!("engine.rs")),
-            ("engine_judge.rs", include_str!("engine_judge.rs")),
             ("entropy.rs", include_str!("entropy.rs")),
-            ("pool_actions.rs", include_str!("pool_actions.rs")),
+            ("proof.rs", include_str!("proof.rs")),
             ("prover.rs", include_str!("prover.rs")),
             ("simulator.rs", include_str!("simulator.rs")),
         ] {
