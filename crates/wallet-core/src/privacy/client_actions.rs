@@ -74,8 +74,9 @@ pub(super) fn is_span(member: &str) -> bool {
 
 /// One client action, with the ABI's member types: `u32` indices, `u128` amounts and note salt,
 /// felt spans for the invoke phase's data, felts elsewhere. Channel keys are derived from the
-/// viewing key and held as secrets.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// viewing key and held as secrets. Its `Debug` prints the variant and its spans' lengths only:
+/// randoms, salts, amounts and recipients are private too.
+#[derive(Clone, PartialEq, Eq)]
 pub enum ClientAction {
     SetViewingKey {
         random: Felt,
@@ -136,6 +137,19 @@ pub enum ClientAction {
         compute_additional_data: Vec<Felt>,
         invoke_additional_data: Vec<Felt>,
     },
+}
+
+impl std::fmt::Debug for ClientAction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let (variant, members) = self.members();
+        let mut out = f.debug_struct(variant);
+        for (name, values) in &members {
+            if is_span(name) {
+                out.field(name, &format_args!("[{} felts]", values.len()));
+            }
+        }
+        out.finish_non_exhaustive()
+    }
 }
 
 /// A member's name and its felts: one, or a span's items (without its length).

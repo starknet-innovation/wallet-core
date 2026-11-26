@@ -246,6 +246,11 @@ pub(super) fn same_spelling(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::privacy::client_actions::ClientAction;
+    use crate::privacy::compiler::Compiled;
+    use crate::privacy::job::ProofInputs;
+    use crate::privacy::proof::{ProofLimits, ReviewedAction};
+    use crate::privacy::prover::ProverRetry;
 
     #[test]
     fn address_map_keeps_javascript_map_order() {
@@ -287,6 +292,114 @@ mod tests {
             tokens: AddressMap::default(),
         };
         assert!(!format!("{channel:?}").contains("abcdef"));
+
+        // Everything that holds a service cursor, a reply body, a client action or the review:
+        // a recognisable secret (`0xc0ffee`, 12648430) never prints.
+        let secret = |debug: String| {
+            assert!(
+                !debug.contains("c0ffee") && !debug.contains("12648430"),
+                "{debug}"
+            );
+        };
+        let cursor = r#""cursor":{"channel_discovery_complete":false,"channels":{"0x5":{"channel_key":"0xc0ffee"}}}"#;
+        let incoming =
+            format!(r#"{{"block_ref":7000,"channels":[],"subchannels":[],"notes":[],{cursor}}}"#);
+        let walk = super::super::incoming::IncomingWalk::new(
+            Felt::ONE,
+            Felt::TWO,
+            vec![Felt::THREE],
+            BlockRef::Number(7000),
+            8,
+        );
+        let walked = walk.on_reply(200, incoming.as_bytes()).unwrap();
+        assert!(matches!(walked, Walked::More(_)));
+        secret(format!("{walked:?}"));
+        let read = super::super::shadow_reads::ShadowCommitmentRead::new(Felt::ONE, Felt::TWO, 8);
+        secret(format!("{:?}", read.on_reply(200, incoming.as_bytes())));
+        let outgoing = format!(
+            r#"{{"block_ref":7000,"channels":[{{"recipient_addr":"0x5","recipient_public_key":"0x7","channel_key":"0xc0ffee","precomputed":false}}],"subchannels":[],{cursor}}}"#
+        );
+        let walk = super::super::outgoing::OutgoingWalk::new(
+            Felt::ONE,
+            Felt::TWO,
+            vec![Felt::from(5u8)],
+            BlockRef::Number(7000),
+        );
+        let walked = walk.on_reply(200, outgoing.as_bytes()).unwrap();
+        assert!(matches!(walked, Walked::More(_)));
+        secret(format!("{walked:?}"));
+        let parsed: Ordered = serde_json::from_str(&incoming).unwrap();
+        secret(format!("{parsed:?}"));
+        secret(format!(
+            "{:?}",
+            super::super::types::PrivacyReply::Http {
+                id: 1,
+                status: 200,
+                body: incoming.into_bytes(),
+                now_ms: 0,
+            }
+        ));
+
+        let c0ffee = Felt::from(0xc0ffeeu64);
+        let actions = vec![
+            ClientAction::CreateEncNote {
+                recipient_addr: c0ffee,
+                recipient_public_key: c0ffee,
+                token: c0ffee,
+                amount: 0xc0ffee,
+                index: 0xc0ffee,
+                salt: 0xc0ffee,
+            },
+            ClientAction::Withdraw {
+                to_addr: c0ffee,
+                token: c0ffee,
+                amount: 0xc0ffee,
+                random: c0ffee,
+            },
+            ClientAction::OpenChannel {
+                recipient_addr: c0ffee,
+                index: 1,
+                random: c0ffee,
+                salt: c0ffee,
+            },
+            ClientAction::InvokeExternal {
+                contract_address: c0ffee,
+                calldata: vec![c0ffee; 3],
+            },
+        ];
+        let compiled = Compiled {
+            actions,
+            user_linkage: false,
+        };
+        let debug = format!("{compiled:?}");
+        secret(debug.clone());
+        assert!(
+            debug.contains("InvokeExternal { calldata: [3 felts], .. }"),
+            "{debug}"
+        );
+
+        let inputs = ProofInputs {
+            account: Felt::ONE,
+            public_key: Felt::TWO,
+            actions: vec![ReviewedAction::Transfer {
+                token: Felt::THREE,
+                recipient: c0ffee,
+                amount: c0ffee,
+            }],
+            proving_block: 7000,
+            route: super::super::config::testing::mainnet(false),
+            prover_url: "https://p.example".into(),
+            anonymizer: None,
+            limits: ProofLimits::CEILING,
+            max_notes: 8,
+            retry: ProverRetry {
+                max_retries: 0,
+                request_timeout_ms: 1,
+                base_delay_ms: 1,
+                max_delay_ms: 1,
+            },
+        };
+        secret(format!("{inputs:?}"));
     }
 
     #[test]

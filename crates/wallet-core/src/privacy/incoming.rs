@@ -34,8 +34,8 @@ use super::plan::MAX_DISCOVERY_PAGES;
 use super::types::PrivacyFailure;
 use crate::{Felt, SecretFelt};
 
-/// One `incoming_state` walk.
-#[derive(Debug)]
+/// One `incoming_state` walk. Its `Debug` prints progress only: the cursor holds channel keys in
+/// clear, and the notes are private.
 pub struct IncomingWalk {
     pool: Felt,
     account: Felt,
@@ -51,6 +51,14 @@ pub struct IncomingWalk {
     known: AddressMap<Option<SecretFelt>>,
     notes: AddressMap<Vec<Note>>,
     ids: BTreeSet<Felt>,
+}
+
+impl std::fmt::Debug for IncomingWalk {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("IncomingWalk")
+            .field("pages", &self.pages)
+            .finish_non_exhaustive()
+    }
 }
 
 impl IncomingWalk {

@@ -49,8 +49,8 @@ struct Subchannel {
     last_index: Option<u32>,
 }
 
-/// One `outgoing_state` walk.
-#[derive(Debug)]
+/// One `outgoing_state` walk. Its `Debug` prints progress only: the cursor and the channels hold
+/// channel keys in clear.
 pub struct OutgoingWalk {
     pool: Felt,
     account: Felt,
@@ -66,6 +66,15 @@ pub struct OutgoingWalk {
     precomputed: AddressMap<Felt>,
     /// `subchannelsByRecipient`.
     subchannels: AddressMap<AddressMap<Subchannel>>,
+}
+
+impl std::fmt::Debug for OutgoingWalk {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OutgoingWalk")
+            .field("recipients", &self.recipients.len())
+            .field("pages", &self.pages)
+            .finish_non_exhaustive()
+    }
 }
 
 impl OutgoingWalk {

@@ -46,7 +46,8 @@ pub trait ProofHost: PrivacyHost {
 }
 
 /// What a proof job needs. Built by the wallet; nothing here is Bramble's unless it passes it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Its `Debug` prints how many actions were reviewed, never their amounts or recipients.
+#[derive(Clone, PartialEq, Eq)]
 pub struct ProofInputs {
     pub account: Felt,
     /// The account's signer public key; the `CallSet` signature must verify under it.
@@ -70,6 +71,26 @@ pub struct ProofInputs {
     pub max_notes: usize,
     /// Clamped to `ProverRetry::CEILING`.
     pub retry: ProverRetry,
+}
+
+impl fmt::Debug for ProofInputs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ProofInputs")
+            .field("account", &self.account)
+            .field("public_key", &self.public_key)
+            .field(
+                "actions",
+                &format_args!("[redacted {} actions]", self.actions.len()),
+            )
+            .field("proving_block", &self.proving_block)
+            .field("route", &self.route)
+            .field("prover_url", &self.prover_url)
+            .field("anonymizer", &self.anonymizer)
+            .field("limits", &self.limits)
+            .field("max_notes", &self.max_notes)
+            .field("retry", &self.retry)
+            .finish()
+    }
 }
 
 /// What a step is for; progress copy only.

@@ -20,8 +20,9 @@ use crate::send::u256::U256;
 /// Largest integer `JSON.parse` represents exactly (`Number.MAX_SAFE_INTEGER`).
 pub const MAX_SAFE_INTEGER: u64 = (1 << 53) - 1;
 
-/// A JSON value that keeps object keys in document order.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// A JSON value that keeps object keys in document order. Its `Debug` prints the shape only: a
+/// service value can be a discovery cursor, which carries channel keys in clear.
+#[derive(Clone, PartialEq, Eq)]
 pub enum Ordered {
     Null,
     Bool(bool),
@@ -29,6 +30,19 @@ pub enum Ordered {
     Str(String),
     Array(Vec<Ordered>),
     Object(Vec<(String, Ordered)>),
+}
+
+impl fmt::Debug for Ordered {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Null => f.write_str("Null"),
+            Self::Bool(_) => f.write_str("Bool"),
+            Self::Int(_) => f.write_str("Int"),
+            Self::Str(text) => write!(f, "Str({} bytes)", text.len()),
+            Self::Array(items) => write!(f, "Array({} items)", items.len()),
+            Self::Object(members) => write!(f, "Object({} members)", members.len()),
+        }
+    }
 }
 
 impl Ordered {
