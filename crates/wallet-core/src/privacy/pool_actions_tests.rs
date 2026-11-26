@@ -157,35 +157,35 @@ fn refuses_what_the_flows_do_not_produce() {
     assert!(decode(&calldata_for(ACCOUNT, Felt::ONE, &one_deposit)).is_none());
 }
 
-fn shield(amount: u128) -> EngineAction {
-    EngineAction::Deposit {
+fn shield(amount: u128) -> ReviewedAction {
+    ReviewedAction::Deposit {
         token: STRK,
         amount: f(amount),
         recipient: None,
     }
 }
 
-fn send(recipient: Felt, amount: u128) -> EngineAction {
-    EngineAction::Transfer {
+fn send(recipient: Felt, amount: u128) -> ReviewedAction {
+    ReviewedAction::Transfer {
         token: STRK,
         recipient,
         amount: f(amount),
     }
 }
 
-fn unshield(recipient: Felt, amount: u128) -> EngineAction {
-    EngineAction::Withdraw {
+fn unshield(recipient: Felt, amount: u128) -> ReviewedAction {
+    ReviewedAction::Withdraw {
         token: STRK,
         recipient,
         amount: f(amount),
     }
 }
 
-fn bound(actions: &[Vec<Felt>], reviewed: &[EngineAction]) -> Result<(), ProofRefusal> {
+fn bound(actions: &[Vec<Felt>], reviewed: &[ReviewedAction]) -> Result<(), ProofRefusal> {
     bound_call(calldata_for(ACCOUNT, KEY, actions), reviewed)
 }
 
-fn bound_call(calldata: Vec<Felt>, reviewed: &[EngineAction]) -> Result<(), ProofRefusal> {
+fn bound_call(calldata: Vec<Felt>, reviewed: &[ReviewedAction]) -> Result<(), ProofRefusal> {
     bound_sign_request(
         &secret(&calldata),
         &ACCOUNT,
@@ -200,7 +200,7 @@ fn binds_each_flow_to_what_was_reviewed() {
     // Activation: register, the self channel, then the deposit.
     let activate = [set_viewing_key(), open_channel(ACCOUNT), deposit(STRK, ONE)];
     assert_eq!(
-        bound(&activate, &[EngineAction::Register, shield(ONE)]),
+        bound(&activate, &[ReviewedAction::Register, shield(ONE)]),
         Ok(())
     );
     // A private send: notes spent, the recipient's note, change back to the account.
@@ -219,7 +219,7 @@ fn binds_each_flow_to_what_was_reviewed() {
     ];
     assert_eq!(bound(&out, &[unshield(BOB, ONE)]), Ok(()));
     // A deposit for someone else carries their note.
-    let gift = EngineAction::Deposit {
+    let gift = ReviewedAction::Deposit {
         token: STRK,
         amount: f(ONE),
         recipient: Some(BOB),
@@ -312,7 +312,7 @@ fn a_missing_or_altered_action_and_an_unasked_registration_are_refused() {
         ),
         (
             vec![deposit(STRK, ONE)],
-            vec![EngineAction::Register, shield(ONE)],
+            vec![ReviewedAction::Register, shield(ONE)],
         ),
     ] {
         assert_eq!(
@@ -374,7 +374,7 @@ fn a_channel_to_an_unreviewed_recipient_is_refused() {
 
 #[test]
 fn an_open_note_binds_only_to_a_reviewed_open_transfer() {
-    let open = |recipient| EngineAction::OpenTransfer {
+    let open = |recipient| ReviewedAction::OpenTransfer {
         token: STRK,
         recipient,
     };

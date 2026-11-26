@@ -15,7 +15,7 @@
 //! review, or a span that moves nothing, is refused.
 
 use super::client_actions::LAYOUT;
-use super::engine::{EngineAction, ProofLimits, ProofRefusal};
+use super::proof::{ProofLimits, ProofRefusal, ReviewedAction};
 use crate::scrub::scrubbed;
 use crate::{Felt, SecretFelt};
 
@@ -163,10 +163,10 @@ fn decode(
 }
 
 /// The value-moving client actions a reviewed action compiles to.
-fn expected(action: &EngineAction, account: &Felt) -> Vec<PoolAction> {
+fn expected(action: &ReviewedAction, account: &Felt) -> Vec<PoolAction> {
     match action {
-        EngineAction::Register => vec![PoolAction::Register],
-        EngineAction::Deposit {
+        ReviewedAction::Register => vec![PoolAction::Register],
+        ReviewedAction::Deposit {
             token,
             amount,
             recipient,
@@ -188,7 +188,7 @@ fn expected(action: &EngineAction, account: &Felt) -> Vec<PoolAction> {
                 _ => vec![deposit],
             }
         }
-        EngineAction::Transfer {
+        ReviewedAction::Transfer {
             token,
             recipient,
             amount,
@@ -197,11 +197,11 @@ fn expected(action: &EngineAction, account: &Felt) -> Vec<PoolAction> {
             token: *token,
             amount: *amount,
         }],
-        EngineAction::OpenTransfer { token, recipient } => vec![PoolAction::OpenNote {
+        ReviewedAction::OpenTransfer { token, recipient } => vec![PoolAction::OpenNote {
             recipient: *recipient,
             token: *token,
         }],
-        EngineAction::Withdraw {
+        ReviewedAction::Withdraw {
             token,
             recipient,
             amount,
@@ -219,7 +219,7 @@ fn expected(action: &EngineAction, account: &Felt) -> Vec<PoolAction> {
 /// (the extension's review returns no card for either).
 pub(super) fn matches_review(
     decoded: &[PoolAction],
-    reviewed: &[EngineAction],
+    reviewed: &[ReviewedAction],
     account: &Felt,
 ) -> bool {
     let mut want: Vec<PoolAction> = reviewed
@@ -265,7 +265,7 @@ pub(super) fn bound_sign_request(
     calldata: &[SecretFelt],
     account: &Felt,
     viewing_key: &SecretFelt,
-    reviewed: &[EngineAction],
+    reviewed: &[ReviewedAction],
     limits: &ProofLimits,
 ) -> Result<(), ProofRefusal> {
     let bound = calldata.len() <= limits.invoke_calldata_felts

@@ -2,7 +2,7 @@
 //! `ProvingServiceProofProvider.prove`, then `buildExecuteResult`): the
 //! `starknet_proveTransaction` body, the judge of one attempt's reply, the retry rule, and the
 //! pool's `apply_actions` call with its trailing screening attestation, through
-//! `engine_judge::judge_proof`'s bounds.
+//! `proof::judge_proof`'s bounds.
 //!
 //! Nothing the prover says is kept: every failure is a fixed `ProofRefusal` or `Busy`.
 
@@ -10,10 +10,9 @@ use serde::Deserialize;
 use serde_json::Value;
 use zeroize::Zeroizing;
 
-use super::engine::{CallAndProof, EngineProof, Proof, ProofLimits, ProofRefusal};
-use super::engine_judge::{judge_proof, APPLY_ACTIONS};
 use super::invocation::ProofInvocation;
 use super::json::MAX_SAFE_INTEGER;
+use super::proof::{judge_proof, CallAndProof, Proof, ProofLimits, ProofRefusal, APPLY_ACTIONS};
 use crate::send::calls::Call;
 use crate::send::judge::{answer_within, Answer};
 use crate::{felt, Felt};
@@ -225,20 +224,17 @@ fn call_and_proof(
     };
     let mut calldata = output.get(1..).unwrap_or_default().to_vec();
     calldata.extend(screening_suffix(attestation.as_ref()));
-    let built = EngineProof {
-        call: Call {
-            contract_address: *pool,
-            entrypoint: APPLY_ACTIONS.into(),
-            calldata,
-        },
-        proof: Proof {
-            data: result.proof,
-            output,
-            proof_facts,
-        },
-        warnings: Vec::new(),
+    let call = Call {
+        contract_address: *pool,
+        entrypoint: APPLY_ACTIONS.into(),
+        calldata,
     };
-    judge_proof(built, pool, &limits.clamped())
+    let proof = Proof {
+        data: result.proof,
+        output,
+        proof_facts,
+    };
+    judge_proof(call, proof, pool, &limits.clamped())
 }
 
 #[cfg(test)]

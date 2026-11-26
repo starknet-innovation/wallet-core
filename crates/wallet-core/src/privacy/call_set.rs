@@ -9,8 +9,8 @@
 
 use starknet_types_core::hash::{Poseidon, StarkHash};
 
-use super::engine::ProofRefusal;
 use super::hashes::poseidon_hash_many;
+use super::proof::ProofRefusal;
 use crate::felt;
 use crate::scrub::scrubbed;
 use crate::send::types::SignRefusal;
@@ -135,5 +135,62 @@ mod tests {
             &Felt::from_bytes_be_slice(b"TEST"),
         );
         assert_ne!(other_entrypoint, baseline);
+    }
+
+    fn key() -> SecretFelt {
+        SecretFelt::new(Felt::from(0x1234567890abcdefu64))
+    }
+
+    fn public_key() -> Felt {
+        Felt::from_hex(&crate::sign_stark_hash(&key(), "0x1").unwrap().public_key).unwrap()
+    }
+
+    fn wallet_sign(hash: &Felt) -> Result<StarkSignature, SignRefusal> {
+        Ok(crate::sign_stark_hash(&key(), &felt::canonical(hash)).unwrap())
+    }
+
+    // `call-set-signer.test.ts`, the signing half: exactly the digest, as a raw Stark pair.
+    #[test]
+    fn signs_exactly_the_digest_as_a_raw_stark_pair() {
+        let hash = hash(0x1234, &[1, 2], b"TEST");
+        let mut asked = None;
+        let signature = sign_call_set(&hash, &public_key(), |digest| {
+            asked = Some(*digest);
+            wallet_sign(digest)
+        })
+        .unwrap();
+        assert_eq!(asked, Some(hash));
+        assert_eq!(signature.len(), 2);
+        assert!(stark_signature_is_valid(
+            &public_key(),
+            &hash,
+            &signature[0],
+            &signature[1]
+        ));
+    }
+
+    #[test]
+    fn refuses_a_signature_over_another_hash_or_key() {
+        let hash = Felt::from(0xabcu64);
+        let other_hash = |_: &Felt| Ok(crate::sign_stark_hash(&key(), "0xabd").unwrap());
+        assert_eq!(
+            sign_call_set(&hash, &public_key(), other_hash),
+            Err(ProofRefusal::SigningFailed)
+        );
+        let other_key = |_: &Felt| {
+            Ok(crate::sign_stark_hash(&SecretFelt::new(Felt::from(0x77u64)), "0xabc").unwrap())
+        };
+        assert_eq!(
+            sign_call_set(&hash, &public_key(), other_key),
+            Err(ProofRefusal::SigningFailed)
+        );
+        assert_eq!(
+            sign_call_set(&hash, &public_key(), |_| Err(SignRefusal::Failed)),
+            Err(ProofRefusal::SigningFailed)
+        );
+        assert_eq!(
+            sign_call_set(&hash, &public_key(), |_| Err(SignRefusal::Locked)),
+            Err(ProofRefusal::Locked)
+        );
     }
 }
