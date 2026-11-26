@@ -63,46 +63,6 @@ fn submit_after_cosigner(wallet: &Wallet, ready: &MultisigIntent, status: Value)
     )
 }
 
-/// Proposes the fixture's transfer again with the chain's nonce at `nonce`, answering every
-/// lookup of a stale version's hash with `status`; returns the terminal step.
-fn propose_at(wallet: &Wallet, nonce: &str, status: Value, confirm_resend: bool) -> MultisigTxStep {
-    let proposal = wallet
-        .core
-        .clone()
-        .propose_multisig_transaction(
-            wallet.current_authority(),
-            wallet.transfer(),
-            wallet.tokens(),
-            confirm_resend,
-        )
-        .unwrap();
-    let recorded = phase(&wallet.net["proposal"]["prepare"]);
-    let mut step = proposal.advance(StepReply::Start).unwrap();
-    while let MultisigTxStep::Rpc { id, body, .. } = &step {
-        let sent: Value = serde_json::from_str(body).unwrap();
-        let reply = match sent["method"].as_str().unwrap() {
-            "starknet_getNonce" => json!({ "result": nonce }),
-            "starknet_getTransactionStatus" => status.clone(),
-            method => recorded
-                .iter()
-                .find(|exchange| exchange["method"] == method)
-                .unwrap()["reply"]
-                .clone(),
-        };
-        let mut body = reply;
-        body["jsonrpc"] = json!("2.0");
-        body["id"] = json!(id);
-        step = proposal
-            .advance(StepReply::Rpc {
-                id: *id,
-                body: body.to_string(),
-                now_ms: NOW_MS,
-            })
-            .unwrap();
-    }
-    step
-}
-
 fn failed(failure: MultisigTxFailure) -> MultisigTxStep {
     MultisigTxStep::Failed { failure }
 }
@@ -124,7 +84,13 @@ fn calls_a_cosigner_already_sent_are_not_proposed_again() {
         (IntentState::Stale, Some(StaleReason::Nonce))
     );
 
-    let step = propose_at(&wallet, "0x6", status("ACCEPTED_ON_L2", "SUCCEEDED"), false);
+    let step = propose_at(
+        &wallet,
+        wallet.transfer(),
+        "0x6",
+        status("ACCEPTED_ON_L2", "SUCCEEDED"),
+        false,
+    );
     assert_eq!(step, failed(MultisigTxFailure::AlreadySent));
     // Found, the stale version is submitted under its signed hash and filed in activity.
     let sent = stored(&wallet, &ready.id);
@@ -151,10 +117,10 @@ fn calls_a_stale_version_may_have_sent_need_confirming() {
     let wallet = sepolia();
     let ready = wallet.ready();
     submit_after_cosigner(&wallet, &ready, not_found());
-    let step = propose_at(&wallet, "0x6", not_found(), false);
+    let step = propose_at(&wallet, wallet.transfer(), "0x6", not_found(), false);
     assert_eq!(step, failed(MultisigTxFailure::ResendUnconfirmed));
     assert_eq!(stored(&wallet, &ready.id).state, IntentState::Stale);
-    let step = propose_at(&wallet, "0x6", not_found(), true);
+    let step = propose_at(&wallet, wallet.transfer(), "0x6", not_found(), true);
     assert!(matches!(step, MultisigTxStep::Proposed { .. }), "{step:?}");
 }
 
@@ -189,7 +155,8 @@ fn a_stale_version_found_on_chain_stops_signing_and_sending_the_calls() {
     let wallet = sepolia();
     let stale = wallet.ready();
     submit_after_cosigner(&wallet, &stale, not_found());
-    let MultisigTxStep::Proposed { intent_id } = propose_at(&wallet, "0x6", not_found(), true)
+    let MultisigTxStep::Proposed { intent_id } =
+        propose_at(&wallet, wallet.transfer(), "0x6", not_found(), true)
     else {
         panic!("not proposed")
     };
@@ -237,7 +204,8 @@ fn signing_stops_at_a_stale_version_found_on_chain() {
     let wallet = sepolia();
     let stale = wallet.ready();
     submit_after_cosigner(&wallet, &stale, not_found());
-    let MultisigTxStep::Proposed { intent_id } = propose_at(&wallet, "0x6", not_found(), true)
+    let MultisigTxStep::Proposed { intent_id } =
+        propose_at(&wallet, wallet.transfer(), "0x6", not_found(), true)
     else {
         panic!("not proposed")
     };
@@ -273,51 +241,6 @@ fn a_plain_read_signs_and_sends_nothing() {
         reason(refused),
         "Argent multisig state read is not for this intent"
     );
-}
-
-/// Submits the ready intent and answers the write with the node's fee refusal, then the nonce
-/// read again with `nonce` (`None`: the read fails).
-fn fee_refused(wallet: &Wallet, ready: &MultisigIntent, nonce: Option<&str>) -> MultisigTxStep {
-    let submission = wallet
-        .core
-        .clone()
-        .submit_multisig_intent(ready.id.clone(), wallet.current_state(ready))
-        .unwrap();
-    let exchanges = phase(&wallet.net["proposal"]["submit"]);
-    let step = submission.advance(StepReply::Start).unwrap();
-    let MultisigTxStep::Rpc { id, .. } = step else {
-        panic!("{step:?}")
-    };
-    assert_eq!(exchanges[0]["method"], "starknet_chainId");
-    let step = submission
-        .advance(multisig_support::rpc_reply(id, &exchanges[0]["reply"]))
-        .unwrap();
-    let MultisigTxStep::Rpc { id, is_write, .. } = step else {
-        panic!("{step:?}")
-    };
-    assert!(is_write);
-    let refusal = json!({"jsonrpc": "2.0", "id": id, "error": {"code": 55,
-        "message": "Max L2 gas price (1) is lower than the actual gas price (2)"}});
-    let step = submission
-        .advance(StepReply::Rpc {
-            id,
-            body: refusal.to_string(),
-            now_ms: NOW_MS,
-        })
-        .unwrap();
-    let MultisigTxStep::Rpc { id, body: sent, .. } = step else {
-        panic!("{step:?}")
-    };
-    assert!(sent.contains("starknet_getNonce"));
-    let reply = match nonce {
-        Some(nonce) => StepReply::Rpc {
-            id,
-            body: body(id, json!(nonce)),
-            now_ms: NOW_MS,
-        },
-        None => StepReply::TransportFailure { id, now_ms: NOW_MS },
-    };
-    submission.advance(reply).unwrap()
 }
 
 /// `markFeeRefusedStale`: the fee refusal leaves the intent stale for its fee only while the

@@ -114,6 +114,9 @@ fn proposal_call(
             return config_change_call(&record.address, change, class())
                 .map_err(|error| refused(error.message()));
         }
+        MultisigProposalRequest::Repropose { .. } => {
+            return Err(refused("a stale intent's calls are not one call"));
+        }
         MultisigProposalRequest::Transfer {
             token_id,
             recipient,
@@ -319,8 +322,13 @@ impl WalletCore {
         let current = held_config(&record, &snapshot, class())
             .ok_or_else(|| refused("Argent multisig signer configuration changed on-chain"))?;
         let trusted = trusted_tokens(&tokens, network);
-        let call = proposal_call(&record, &trusted, &request)?;
-        let calls = normalize_calls(&[call]).map_err(|error| refused(&error.to_string()))?;
+        let calls = match &request {
+            MultisigProposalRequest::Repropose { intent_id } => {
+                self.stale_calls(intent_id, &record)?
+            }
+            request => vec![proposal_call(&record, &trusted, request)?],
+        };
+        let calls = normalize_calls(&calls).map_err(|error| refused(&error.to_string()))?;
         let infos = token_infos(&trusted);
         let known = Known {
             tokens: &infos,
