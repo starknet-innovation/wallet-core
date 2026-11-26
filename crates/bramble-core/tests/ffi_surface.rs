@@ -442,59 +442,48 @@ fn no_export_takes_calls_to_sign() {
 /// P16: a site's requests reach the wallet only through `DappSession`. The one export that signs,
 /// `approve_sign_typed_data`, takes a queued card's id (and the account the person reviewed),
 /// never a hash or a document: what it signs is only ever what the site queued and the person
-/// approved; the other decisions (`approve_switch_chain`, `approve_watch_asset`) take only a
-/// card's id too. Keep that shape; widen this list deliberately. Every `dapp_*.rs` file is read.
+/// approved; the other decisions (`approve_switch_chain`, `approve_watch_asset`, and
+/// `approve_invoke`, whose plan the person still confirms) take only a card's id too; a typed-data
+/// approval's chain replies (`answer_sign_read`) only gate it. Keep that shape; widen this list
+/// deliberately.
 #[test]
 fn the_dapp_session_signs_only_an_approved_card() {
-    let files = [
-        ("dapp_session.rs", include_str!("../src/dapp_session.rs")),
-        ("dapp_cards.rs", include_str!("../src/dapp_cards.rs")),
-        ("dapp_chain.rs", include_str!("../src/dapp_chain.rs")),
-        ("dapp_expiry.rs", include_str!("../src/dapp_expiry.rs")),
-        ("dapp_sign.rs", include_str!("../src/dapp_sign.rs")),
-        ("dapp_sites.rs", include_str!("../src/dapp_sites.rs")),
-        ("dapp_watch.rs", include_str!("../src/dapp_watch.rs")),
-    ];
+    // Every `dapp_*.rs` file, in name order, so a new one cannot add an export unseen.
     let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-    for entry in std::fs::read_dir(src).unwrap() {
-        let name = entry.unwrap().file_name().into_string().unwrap();
-        let read = files.iter().any(|(file, _)| *file == name);
-        assert!(
-            !name.starts_with("dapp_") || read,
-            "{name} is not read here"
-        );
-    }
+    let mut files: Vec<_> = std::fs::read_dir(src)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| {
+            path.file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .starts_with("dapp_")
+        })
+        .collect();
+    files.sort();
     let names: Vec<String> = files
-        .into_iter()
-        .flat_map(|(_, source)| exported_signatures(source))
+        .iter()
+        .flat_map(|path| exported_signatures(&std::fs::read_to_string(path).unwrap()))
         .map(|exported| exported.name().to_owned())
         .collect();
     assert_eq!(
-        names,
-        [
-            "new",
-            "request",
-            "approve_connect",
-            "pending_approvals",
-            "deny",
-            "approve_switch_chain",
-            "answer_read",
-            "settle_expired",
-            "withdraw",
-            "approve_sign_typed_data",
-            "refresh_phishing_feed",
-            "answer_phishing_feed",
-            "is_blocked_site",
-            "approve_watch_asset",
-        ]
+        names.join(" "),
+        "pending_approvals deny approve_switch_chain answer_read settle_expired \
+         withdraw approve_invoke settle_invoke new request approve_connect \
+         approve_sign_typed_data answer_sign_read refresh_phishing_feed \
+         answer_phishing_feed is_blocked_site approve_watch_asset"
     );
-    let signing = exported_signatures(include_str!("../src/dapp_sign.rs"));
+    let signing = exported_signatures(include_str!("../src/dapp_sign_read.rs"));
     assert_eq!(
         signing
             .iter()
             .map(|exported| exported.signature.as_str())
             .collect::<Vec<_>>(),
-        ["fn approve_sign_typed_data( &self, approval_id: String, \
-             reviewed_account_id: String, now_ms: f64, ) -> Vec<DappSettled>"]
+        [
+            "fn approve_sign_typed_data( &self, approval_id: String, \
+             reviewed_account_id: String, now_ms: f64, ) -> DappSignStep",
+            "fn answer_sign_read(&self, approval_id: String, id: u64, body: String) -> DappSignStep"
+        ]
     );
 }

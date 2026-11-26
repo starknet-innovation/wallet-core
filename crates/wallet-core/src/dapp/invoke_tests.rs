@@ -252,3 +252,13 @@ fn a_proof_waits_for_strk20() {
         r#"{{"invoke_transaction":[{SPEC_CALL}],"proof":null}}"#
     )));
 }
+
+// `invokeTxPayload`: the hash padded to PADDED_TXN_HASH.
+#[test]
+fn the_result_is_the_padded_hash() {
+    let hash = Felt::from_hex_unchecked("0xabc");
+    assert_eq!(
+        crate::dapp::invoke::invoke_result(&hash).to_json(),
+        format!(r#"{{"transaction_hash":"0x{:0>64}"}}"#, "abc")
+    );
+}

@@ -12,7 +12,6 @@ use std::collections::hash_map::Entry;
 use starknet_wallet_core::dapp::chain::{
     add_chain, deployment_data, deployment_data_gate, held_account_on, switch_chain,
 };
-use starknet_wallet_core::dapp::connect::CONNECT_DEDUPE;
 use starknet_wallet_core::dapp::{Request, WalletRpcError};
 use starknet_wallet_core::js::json::JsValue;
 use starknet_wallet_core::send::sign::Deployment;
@@ -191,12 +190,7 @@ impl DappSession {
             })
             .ok()?;
         if !landed {
-            let mut state = guard(&self.state);
-            let now = self.wallet.now().monotonic_ms;
-            let reconnect = Some(CONNECT_DEDUPE.into());
-            let _ = state
-                .queue
-                .enqueue(origin, reconnect, Card::Connect, now, None);
+            self.queue_reconnect(origin);
         }
         Some(())
     }

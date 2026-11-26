@@ -26,6 +26,7 @@ impl DappSession {
                         Card::Connect => DappCard::Connect,
                         Card::Sign(sign) => sign.card(),
                         Card::SwitchChain(network) => DappCard::SwitchChain { network: *network },
+                        Card::Invoke(card) => card.card(),
                         Card::WatchAsset(card) => DappCard::WatchAsset {
                             token: card.token.clone(),
                             already_tracked: card.already_tracked,
