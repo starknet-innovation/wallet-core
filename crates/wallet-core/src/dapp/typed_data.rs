@@ -466,7 +466,7 @@ fn summary_name(name: &str) -> String {
 
 #[cfg(test)]
 #[path = "typed_data_tests.rs"]
-mod tests;
+pub(super) mod tests;
 
 #[cfg(test)]
 #[path = "typed_data_forgery_tests.rs"]
