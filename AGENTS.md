@@ -232,6 +232,11 @@ Grep first; extend in place rather than adding a sibling.
     `typed_data_values`, leaf readings in `typed_data_scalars`), the chain binding
     (`message_hash_for_chain`, the only hash a dapp request gets, through Krusty) and the card
     line (`describe_typed_data`).
+  - a SNIP-9 outside execution in typed data (`outside_execution::review_outside_execution`,
+    at `Stage::Queue` and again at `Stage::Sign`): its calls read with the hash's encoder,
+    then the invoke route's review (`send::invoke::verify_calls`,
+    `multisig_review::is_poisoned`), never a second one; a queued card's lookalike payee is
+    `RiskFlag::AddressPoisoning`.
   - connecting a site and the passive reads around it (`connect`: `Site`, `answer`,
     `request_accounts`, `approve_connect`, the result shapes `addresses` and `accounts_view`),
     in the extension's gate order: blocklist, lock, grant.

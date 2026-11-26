@@ -213,17 +213,20 @@ pub(crate) fn refuse_poisoned(
     calls: &[Call],
     trusted: &[Felt],
 ) -> Result<(), CallReviewError> {
-    for call in calls {
-        if let Some(recipient) = recipient_for_flags(&call.entrypoint, &call.calldata) {
-            if std::iter::once(account)
-                .chain(trusted)
-                .any(|address| is_lookalike_address(&recipient, address))
-            {
-                return Err(CallReviewError::PoisonedRecipient);
-            }
-        }
+    if calls.iter().any(|call| is_poisoned(account, call, trusted)) {
+        return Err(CallReviewError::PoisonedRecipient);
     }
     Ok(())
+}
+
+/// `addressPoisoningFlag` for one call: whether its payee mimics `account` or an address in
+/// `trusted`.
+pub(crate) fn is_poisoned(account: &Felt, call: &Call, trusted: &[Felt]) -> bool {
+    recipient_for_flags(&call.entrypoint, &call.calldata).is_some_and(|recipient| {
+        std::iter::once(account)
+            .chain(trusted)
+            .any(|address| is_lookalike_address(&recipient, address))
+    })
 }
 
 /// The batch's one line: the first summary and a count of the rest, cut to `summary_length`

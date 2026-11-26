@@ -34,6 +34,18 @@ const PLAIN_TRANSFER_FROM: [&str; 2] = ["transferFrom", "transfer_from"];
 const SAFE_TRANSFER_FROM: [&str; 2] = ["safeTransferFrom", "safe_transfer_from"];
 const BATCH_TRANSFER_FROM: [&str; 2] = ["safeBatchTransferFrom", "safe_batch_transfer_from"];
 
+/// `DECODED_ENTRYPOINTS`: every entrypoint `decode_call` describes, for a reader that holds only
+/// a selector hash and maps it back to a name (a dapp's SNIP-9 outside execution).
+pub(crate) fn decoded_entrypoints() -> impl Iterator<Item = &'static str> {
+    ["transfer", AVNU_MULTI_ROUTE_SWAP]
+        .into_iter()
+        .chain(APPROVE)
+        .chain(OPERATOR_APPROVAL)
+        .chain(PLAIN_TRANSFER_FROM)
+        .chain(SAFE_TRANSFER_FROM)
+        .chain(BATCH_TRANSFER_FROM)
+}
+
 /// What the wallet knows on the call's network: its trusted tokens (the extension's
 /// `trustedTokens`, so spam and dapp-added tokens are left out by the caller) and the NFT
 /// collections it watches.
