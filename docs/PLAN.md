@@ -583,12 +583,8 @@ Foundations, which the features need, and Ledger, which needs only the first:
   multisig intent are refused until each signs on the device (the extension signs each there);
   Nostr coordination needs a phrase. A Ledger deployer signs an Argent multisig's deployment on
   its device (#138).
-  Golden transcripts (2026-11-26, provisional on Bramble `fixtures/ledger-speculos`):
-  `extension-ledger.jsonl`, the extension's client against app-starknet 2.4.3 under Speculos
-  (`bun run mobile:ledger`, manual: Docker and the vendored app), replayed by
-  `ledger_parity.rs` through the readers, `DeviceSigning`, `KeyEnumeration`, the picker and a
-  Ledger transfer and deployment in `Plan`.
-  Left: the Bramble screens (connect over the Device Management Kit, pick, sign).
+  Left: the Bramble screens (connect over the Device Management Kit, pick, sign) and the
+  generator's transcripts under Speculos.
 - **P9 Call batches.** `send::Kind` is a transfer, a deployment or a refresh; a single-signer
   account cannot submit arbitrary calls. Swap, staking, a revoke and a dapp's invoke all do. Add
   an invoke kind to `send::plan::Plan` whose review is the one multisig already has
