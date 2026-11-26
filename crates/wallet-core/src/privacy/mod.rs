@@ -24,6 +24,10 @@
 //! `CallSet` over it is signed (`call_set`); the proof invocation is built here (`invocation`),
 //! and the prover is plain bodies and judged replies (`prover`). No flow proves yet, so
 //! `CAPABILITIES` stays false.
+//!
+//! Shadow accounts (S6): the commitments, addresses and the anonymizer's invoke data (`shadow`),
+//! which the compiler's invoke phase uses, and the extension's two shadow-account reads as
+//! sans-IO pieces (`shadow_reads`).
 
 mod bodies;
 pub mod call_set;
@@ -48,6 +52,8 @@ mod plan_steps;
 mod pool_actions;
 pub mod proof;
 pub mod prover;
+pub mod shadow;
+pub mod shadow_reads;
 mod simulator;
 pub mod types;
 
@@ -133,8 +139,12 @@ mod tests {
     /// `pool_actions` to hash and decode it (inside `scrubbed`), so they are not in the second
     /// list. The compiler and its simulator hold the viewing key to derive channel keys through
     /// the crate root (`compute_channel_key`), and the simulator its public key
-    /// (`stark_public_key`). The `CallSet` signature is the wallet's (`call_set::sign_call_set`
-    /// takes its signing closure), so no privacy file reaches a key-taking Krusty export.
+    /// (`stark_public_key`). `shadow` holds the key to derive the identity key through the crate
+    /// root (`compute_identity_key`) and hashes it in place into the partial commitment, and
+    /// `pool_actions` derives a channel key from it to recompute an open note's id;
+    /// `shadow_reads` only lends it to the commitment read's discovery body. The `CallSet`
+    /// signature is the wallet's (`call_set::sign_call_set` takes its signing closure), so no
+    /// privacy file reaches a key-taking Krusty export.
     #[test]
     fn privacy_code_never_derives_or_stores_key_material() {
         let sources = [
@@ -161,6 +171,8 @@ mod tests {
             ("pool_actions.rs", include_str!("pool_actions.rs")),
             ("proof.rs", include_str!("proof.rs")),
             ("prover.rs", include_str!("prover.rs")),
+            ("shadow.rs", include_str!("shadow.rs")),
+            ("shadow_reads.rs", include_str!("shadow_reads.rs")),
             ("simulator.rs", include_str!("simulator.rs")),
             ("types.rs", include_str!("types.rs")),
         ];
@@ -198,13 +210,16 @@ mod tests {
                         | "plan.rs"
                         | "plan_steps.rs"
                         | "pool_actions.rs"
+                        | "shadow.rs"
+                        | "shadow_reads.rs"
                         | "simulator.rs"
                 ),
                 "{name}: only the plan and the proof job ask for the key, only the bodies, the client actions and \
                  the invocation write it, only the pool decoder compares it, only the CallSet \
                  hashes the calldata it is in, only the note id hashes a channel key, only the \
-                 discovery walks lend it and hold what is derived from it, and only the compiler \
-                 and its simulator derive the channel keys from it"
+                 discovery walks and the shadow reads lend it and hold what is derived from it, \
+                 only the compiler and its simulator derive the channel keys from it, and only \
+                 the shadow commitments derive the identity key from it"
             );
         }
         // The `CallSet` is signed by the wallet's signing path, through the closure
@@ -222,6 +237,7 @@ mod tests {
             ("entropy.rs", include_str!("entropy.rs")),
             ("proof.rs", include_str!("proof.rs")),
             ("prover.rs", include_str!("prover.rs")),
+            ("shadow_reads.rs", include_str!("shadow_reads.rs")),
             ("simulator.rs", include_str!("simulator.rs")),
         ] {
             let body = source.split("#[cfg(test)]").next().unwrap_or_default();

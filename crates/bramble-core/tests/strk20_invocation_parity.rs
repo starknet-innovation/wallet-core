@@ -159,11 +159,12 @@ fn invocations_prove_bodies_and_replies_are_the_sdks() {
         let spelled: Vec<String> = proved.call.calldata.iter().map(felt::canonical).collect();
         assert_eq!(serde_json::json!(spelled), call["calldata"], "{name}");
     }
-    // 27 jobs, 3 refused by the SDK before signing: 24 reached the signer, 22 of them the
-    // prover (the two `USER_LINKAGE` jobs were refused by the extension after signing).
+    // 36 proof jobs, 6 refused before signing (the 3 `kind` lines are reads, never signed): 30
+    // reached the signer, 28 of them the prover (the two `USER_LINKAGE` jobs were refused by the
+    // extension after signing). S6 added 6 signed and proved invoke jobs.
     assert_eq!(
         (replayed, proved_jobs),
-        (24, 22),
+        (30, 28),
         "every job that reached the signer"
     );
 }

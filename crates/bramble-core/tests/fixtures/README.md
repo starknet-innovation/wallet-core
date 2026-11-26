@@ -33,13 +33,15 @@ the extension's Ledger client against app-starknet 2.4.3 (the pinned Nano S+ ELF
 needs Docker and the vendored app and nothing checks it for drift. Its two `plan` signatures are
 over hashes the core's plan printed (`ledger_parity.rs`'s ignored `print_plan_hashes`), not the
 extension's; its second `version` line is a reply the generator wrote (`recorded: false`).
-A second exception: `extension-strk20-primitives.json` and `extension-strk20-jobs.jsonl` (the STRK20
-SDK port, #182) come from the branch `mobile/strk20-port-fixtures` in Bramble, cut from
-`feature/mobile-wallet` at `7a7713f14` and not yet merged there: the primitives as of commit
-`ea886ca115a058626cbbace946d79ecb8969f72d` (unchanged since), the jobs from commit
-`533cbeeae5da69c7310910c5997cd4e05b1da50c`, which keeps the first 13 jobs byte for byte and adds
-14 written for the compiler's otherwise-unexercised paths (27 in all); this line moves to the merge
-commit when it is. They record the vendored SDK at Bramble's pin
+A second exception: `extension-strk20-primitives.json`, `extension-strk20-shadow.json` and
+`extension-strk20-jobs.jsonl` (the STRK20 SDK port, #182) come from the branch
+`mobile/strk20-port-fixtures` in Bramble, cut from `feature/mobile-wallet` at `7a7713f14` and not
+yet merged there, all three as of commit `ddb5c1903604f402e02e327c9f7a3bbbc53c5ad7`: the
+primitives unchanged since `ea886ca115a058626cbbace946d79ecb8969f72d`, the shadow-account and
+invoke vectors unchanged since `6f22fb539`, and the jobs keeping the first 27 lines of
+`533cbeeae5da69c7310910c5997cd4e05b1da50c` byte for byte and adding 12 for the invoke phase and
+shadow accounts (S6): 9 proof jobs and 3 shadow-account reads marked by a `kind` (39 lines in all);
+this line moves to the merge commit when it is. They record the vendored SDK at Bramble's pin
 (`b40bf109`, `0.14.3-rc.8`, whose `sdk/src` equals `fcc7c90`): the primitives from `sdk/src`
 directly, the jobs through the extension's `prepareWith` over the bundle with
 `crypto.getRandomValues`, `fetch` and `Date.now` stubbed. The discovery, nonce and prover replies in
@@ -70,7 +72,8 @@ Generators are under `scripts/` in Bramble; each fixture's is reached from
 | `extension-privacy-rules.json` | `generate-mobile-privacy-vectors.ts` | `771a2b7c98f8bc699b530305f6996aec2b150f96aec4bd4c5fe20358c45c20cd` |
 | `extension-privacy-wire.json` | `generate-mobile-privacy-vectors.ts` | `6274911bb8d13c31815cb1f32cc4d158be634d47180aad9d77cbb01cac717171` |
 | `extension-strk20-primitives.json` | `generate-mobile-privacy-vectors.ts` (`mobile-strk20-primitives.ts`) | `d375aaebaf5f9d065b75ef29092b21902a56ceb4a66be7daec3206655c9495b4` |
-| `extension-strk20-jobs.jsonl` | `generate-mobile-privacy-vectors.ts` (`mobile-strk20-jobs.ts`) | `c78bb0f25ce650fb43f32d507a289905961dffe779874c734b1a32ba6645a8ba` |
+| `extension-strk20-shadow.json` | `generate-mobile-privacy-vectors.ts` (`mobile-strk20-shadow.ts`) | `fb4d030acc502f4270b0096ca760b7836737b8c178e5a148dd6e10957dab7b56` |
+| `extension-strk20-jobs.jsonl` | `generate-mobile-privacy-vectors.ts` (`mobile-strk20-jobs.ts`) | `018c008ca8626c5c34e740b10318fd2f76e601682ca09c15439d10581f2134c2` |
 | `extension-transactions-argent-refusals.json` | `generate-mobile-transaction-vectors.ts` | `f2eb7492ca5425e618b9954b22fc666bf7a2a4645438ba8837a1c3f6b78d2997` |
 | `extension-transactions-argent-upgraded.json` | `generate-mobile-transaction-vectors.ts` | `9d14e829c7c2dfccb940e150984036db18a528ddd65f134763371049981b8156` |
 | `extension-transactions-argent.json` | `generate-mobile-transaction-vectors.ts` | `854103a684d841a7ed2949ac238283d17a934cd7cba9a9d29b522868959edb5f` |

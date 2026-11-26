@@ -59,6 +59,7 @@ pub(super) fn inputs(actions: Vec<ReviewedAction>) -> ProofInputs {
         proving_block: 7000,
         route: mainnet(false),
         prover_url: PROVER.into(),
+        anonymizer: None,
         limits: ProofLimits::CEILING,
         max_notes: 64,
         retry: ProverRetry {

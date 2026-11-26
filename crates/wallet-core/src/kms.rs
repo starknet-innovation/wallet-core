@@ -421,6 +421,28 @@ pub fn selector(entrypoint: &str) -> Felt {
     krusty_kms::selector_from_name(entrypoint)
 }
 
+/// `shortString.encodeShortString`: a Cairo short string as one felt, through Krusty's encoder.
+/// `None` unless the text is non-empty ASCII of at most 31 bytes (starknet.js throws on
+/// non-ASCII and on more than 31 characters, and its empty encoding is not a felt).
+pub fn encode_short_string(text: &str) -> Option<Felt> {
+    if text.is_empty() || !text.is_ascii() {
+        return None;
+    }
+    krusty_kms::encode_short_string(text).ok()
+}
+
+/// `hash.calculateContractAddressFromHash(salt, class_hash, calldata, deployer)`, through Krusty,
+/// which reduces it below `2**251 - 256` as starknet.js does. Keyless.
+pub fn calculate_contract_address(
+    salt: &Felt,
+    class_hash: &Felt,
+    constructor_calldata: &[Felt],
+    deployer: &Felt,
+) -> Result<Felt, Error> {
+    krusty_kms::calculate_contract_address(salt, class_hash, constructor_calldata, deployer)
+        .map_err(|_| Error::kms("contract address"))
+}
+
 /// `typedData.getMessageHash(typedData, account)`: the SNIP-12 message hash (revision 0 or 1, as
 /// the document's domain says) Krusty computes for `typed_data_json`. Keyless. Krusty refuses a
 /// document that is not canonical SNIP-12 (unknown envelope keys, duplicate keys, an unknown

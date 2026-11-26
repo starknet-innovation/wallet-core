@@ -57,6 +57,22 @@ pub enum CompileRefusal {
     InvalidViewingKey,
     /// The randomness source failed.
     Entropy,
+    /// More than one invoke-phase action (`invoke`, a shadow-account invoke): "At most one
+    /// invoke-phase action … per transaction". Refused before any request.
+    MultipleInvokes,
+    /// A shadow-account invoke with no anonymizer configured. Refused before any request.
+    NoAnonymizer,
+    /// An invoke names an open note the batch does not create (the extension's "invalid strk20
+    /// action batch"), found once the batch is compiled.
+    OpenNoteOutOfRange,
+}
+
+/// The contracts a job's invoke phase names: the pool (an invoke's `PoolAddress`) and the
+/// network's shadow-account anonymizer, if it has one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Contracts {
+    pub pool: Felt,
+    pub anonymizer: Option<Felt>,
 }
 
 /// What the discovery walks must fetch: the outgoing walk's recipients and the incoming walk's
@@ -93,13 +109,16 @@ struct TokenOps {
 
 /// The SDK's `Actions` as `collectActionsAndOptions` builds them from Bramble's builder calls.
 /// Every surplus goes to the account as a note (`surplusTo(account, false)`), so a surplus is
-/// just its token. No `openChannels`, `openTokenChannels` or `useNotes` are ever given.
+/// just its token. No `openChannels`, `openTokenChannels` or `useNotes` are ever given. `invoke`
+/// is the one invoke-phase action (`invoke` or `computeAndInvoke`), a reviewed `Invoke` or
+/// `ShadowInvoke`.
 pub(super) struct Actions {
     pub(super) register: bool,
     pub(super) deposits: Vec<(Felt, u128)>,
     pub(super) create_notes: Vec<CreateNote>,
     pub(super) withdraws: Vec<(Felt, Felt, u128)>,
     surpluses: Vec<Felt>,
+    pub(super) invoke: Option<ReviewedAction>,
 }
 
 fn amount(value: &Felt) -> Result<u128, CompileRefusal> {
@@ -112,8 +131,15 @@ fn amount(value: &Felt) -> Result<u128, CompileRefusal> {
 /// `strk20BuilderFor` then `collectActionsAndOptions`: each action is added through
 /// `with(token)`, so actions are grouped by token in the order tokens first appear; `register()`
 /// sets the viewing key; `surplusTo(account, false)` applies to every token iff any action is a
-/// transfer or a withdrawal.
-fn collect(reviewed: &[ReviewedAction]) -> Result<Actions, CompileRefusal> {
+/// transfer or a withdrawal. As the extension does before it builds: a shadow invoke without an
+/// anonymizer is refused (`prepareWith`), then a second invoke-phase action (the builder's
+/// `assertNoInvokePhaseAction`).
+fn collect(reviewed: &[ReviewedAction], contracts: &Contracts) -> Result<Actions, CompileRefusal> {
+    let shadow = |action: &ReviewedAction| matches!(action, ReviewedAction::ShadowInvoke { .. });
+    if contracts.anonymizer.is_none() && reviewed.iter().any(shadow) {
+        return Err(CompileRefusal::NoAnonymizer);
+    }
+    let mut invoke = None;
     let mut register = false;
     let mut builders: AddressMap<TokenOps> = AddressMap::default();
     for action in reviewed {
@@ -153,6 +179,11 @@ fn collect(reviewed: &[ReviewedAction]) -> Result<Actions, CompileRefusal> {
                 let ops = builders.get_or_insert_with(*token, TokenOps::default);
                 ops.withdraws.push((*recipient, value));
             }
+            ReviewedAction::Invoke { .. } | ReviewedAction::ShadowInvoke { .. } => {
+                if invoke.replace(action.clone()).is_some() {
+                    return Err(CompileRefusal::MultipleInvokes);
+                }
+            }
         }
     }
     let spends = reviewed.iter().any(|action| {
@@ -169,6 +200,7 @@ fn collect(reviewed: &[ReviewedAction]) -> Result<Actions, CompileRefusal> {
         create_notes: Vec::new(),
         withdraws: Vec::new(),
         surpluses: Vec::new(),
+        invoke,
     };
     for (token, ops) in builders.iter() {
         actions
@@ -254,12 +286,14 @@ fn recipients_needed(account: &Felt, actions: &Actions) -> Vec<Felt> {
     needed
 }
 
-/// Before discovery: what the walks must fetch for `reviewed`.
+/// Before discovery: what the walks must fetch for `reviewed`. The invoke phase adds nothing to
+/// fetch.
 pub fn walk_inputs(
     account: &Felt,
     reviewed: &[ReviewedAction],
+    contracts: &Contracts,
 ) -> Result<WalkInputs, CompileRefusal> {
-    let actions = collect(reviewed)?;
+    let actions = collect(reviewed, contracts)?;
     let tokens = balances(&actions)?
         .iter()
         .filter(|(_, balance)| balance.inflow < balance.outflow)
@@ -272,17 +306,19 @@ pub fn walk_inputs(
 }
 
 /// After discovery: the client actions for `reviewed`, from the outgoing walk's `channels` and
-/// the incoming walk's `notes` (empty when `walk_inputs` asked for no tokens). Draws from
-/// `entropy` in the SDK's order; nothing is drawn if the job is refused before the first action.
+/// the incoming walk's `notes` (empty when `walk_inputs` asked for no tokens), with the invoke
+/// phase naming `contracts`. Draws from `entropy` in the SDK's order; nothing is drawn if the job
+/// is refused before the first action.
 pub fn compile(
     account: &Felt,
     viewing_key: &SecretFelt,
     reviewed: &[ReviewedAction],
+    contracts: &Contracts,
     channels: &OutgoingChannels,
     notes: &AddressMap<Vec<Note>>,
     entropy: &mut impl Entropy,
 ) -> Result<Compiled, CompileRefusal> {
-    let mut actions = collect(reviewed)?;
+    let mut actions = collect(reviewed, contracts)?;
     let needed = recipients_needed(account, &actions);
     let use_notes = resolve_notes(account, &mut actions, notes)?;
 
@@ -291,7 +327,9 @@ pub fn compile(
     for (recipient, channel) in channels.channels.iter() {
         pool.setup_channel(*recipient, channel);
     }
-    transform(account, &actions, &use_notes, &needed, &mut pool, entropy)
+    transform(
+        account, contracts, &actions, &use_notes, &needed, &mut pool, entropy,
+    )
 }
 
 /// The rest of `resolveNotes`: per token in `balances` order, a deficit takes the token's notes

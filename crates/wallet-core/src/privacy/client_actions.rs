@@ -2,16 +2,16 @@
 //! `compile_actions(user, viewing_key, Span<ClientAction>)` calldata the SDK builds with
 //! `CallData.compile` (`internal/proof-invocation-factory.ts`, over `serialization.ts`).
 //!
-//! An enum is its variant index followed by its members in ABI order; every member here is one
-//! felt. `LAYOUT` is the one variant table: the encoder writes through it and `pool_actions`
-//! decodes through it, so the two cannot drift apart.
+//! An enum is its variant index followed by its members in ABI order. A member is one felt, or a
+//! `Span<felt252>` (its length, then its felts) for the invoke phase's calldata (`is_span`).
+//! `LAYOUT` is the one variant table: the encoder writes through it and `pool_actions` decodes
+//! through it, so the two cannot drift apart.
 
 use crate::{Felt, SecretFelt};
 
-/// `ClientAction` variants in ABI order (`privacy::actions::ClientAction`) with their one-felt
-/// members in ABI order. Index 8 (`InvokeExternal`) and 9 (`ComputeAndInvoke`) carry arbitrary
-/// calldata and are not listed, so they never decode.
-pub(super) const LAYOUT: [(&str, &[&str]); 8] = [
+/// `ClientAction` variants in ABI order (`privacy::actions::ClientAction`) with their members in
+/// ABI order; `is_span` says which members are spans.
+pub(super) const LAYOUT: [(&str, &[&str]); 10] = [
     ("SetViewingKey", &["random"]),
     (
         "OpenChannel",
@@ -52,10 +52,29 @@ pub(super) const LAYOUT: [(&str, &[&str]); 8] = [
     ("Deposit", &["token", "amount"]),
     ("UseNote", &["channel_key", "token", "index"]),
     ("Withdraw", &["to_addr", "token", "amount", "random"]),
+    ("InvokeExternal", &["contract_address", "calldata"]),
+    (
+        "ComputeAndInvoke",
+        &[
+            "contract_address",
+            "compute_additional_data",
+            "invoke_additional_data",
+        ],
+    ),
 ];
 
+/// Whether a `LAYOUT` member is a `Span<felt252>` (`InvokeExternalInput.calldata`,
+/// `ComputeAndInvokeInput`'s two additional-data spans); every other member is one felt.
+pub(super) fn is_span(member: &str) -> bool {
+    matches!(
+        member,
+        "calldata" | "compute_additional_data" | "invoke_additional_data"
+    )
+}
+
 /// One client action, with the ABI's member types: `u32` indices, `u128` amounts and note salt,
-/// felts elsewhere. Channel keys are derived from the viewing key and held as secrets.
+/// felt spans for the invoke phase's data, felts elsewhere. Channel keys are derived from the
+/// viewing key and held as secrets.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClientAction {
     SetViewingKey {
@@ -105,12 +124,29 @@ pub enum ClientAction {
         amount: u128,
         random: Felt,
     },
+    /// The pool calls `contract_address` with `calldata`.
+    InvokeExternal {
+        contract_address: Felt,
+        calldata: Vec<Felt>,
+    },
+    /// The pool runs `contract_address`'s computation over `compute_additional_data`, then its
+    /// invoke over `invoke_additional_data` (a shadow account's, through the anonymizer).
+    ComputeAndInvoke {
+        contract_address: Felt,
+        compute_additional_data: Vec<Felt>,
+        invoke_additional_data: Vec<Felt>,
+    },
 }
 
-type Member = (&'static str, SecretFelt);
+/// A member's name and its felts: one, or a span's items (without its length).
+type Member = (&'static str, Vec<SecretFelt>);
 
 fn member(name: &'static str, value: impl Into<Felt>) -> Member {
-    (name, SecretFelt::new(value.into()))
+    (name, vec![SecretFelt::new(value.into())])
+}
+
+fn span(name: &'static str, values: &[Felt]) -> Member {
+    (name, values.iter().copied().map(SecretFelt::new).collect())
 }
 
 impl ClientAction {
@@ -144,7 +180,7 @@ impl ClientAction {
                 vec![
                     member("recipient_addr", *recipient_addr),
                     member("recipient_public_key", *recipient_public_key),
-                    ("channel_key", channel_key.clone()),
+                    ("channel_key", vec![channel_key.clone()]),
                     member("index", *index),
                     member("token", *token),
                     member("salt", *salt),
@@ -195,7 +231,7 @@ impl ClientAction {
             } => (
                 "UseNote",
                 vec![
-                    ("channel_key", channel_key.clone()),
+                    ("channel_key", vec![channel_key.clone()]),
                     member("token", *token),
                     member("index", *index),
                 ],
@@ -214,11 +250,33 @@ impl ClientAction {
                     member("random", *random),
                 ],
             ),
+            Self::InvokeExternal {
+                contract_address,
+                calldata,
+            } => (
+                "InvokeExternal",
+                vec![
+                    member("contract_address", *contract_address),
+                    span("calldata", calldata),
+                ],
+            ),
+            Self::ComputeAndInvoke {
+                contract_address,
+                compute_additional_data,
+                invoke_additional_data,
+            } => (
+                "ComputeAndInvoke",
+                vec![
+                    member("contract_address", *contract_address),
+                    span("compute_additional_data", compute_additional_data),
+                    span("invoke_additional_data", invoke_additional_data),
+                ],
+            ),
         }
     }
 
     /// Appends the variant index and members, through `LAYOUT`; `None` if the action's members
-    /// are not the layout's, in its order.
+    /// are not the layout's, in its order. A span is its length, then its felts.
     fn encode(&self, out: &mut Vec<SecretFelt>) -> Option<()> {
         let (variant, members) = self.members();
         let index = LAYOUT.iter().position(|(name, layout)| {
@@ -229,7 +287,14 @@ impl ClientAction {
                     .eq(members.iter().map(|(name, _)| *name))
         })?;
         out.push(SecretFelt::new(Felt::from(index)));
-        out.extend(members.into_iter().map(|(_, value)| value));
+        for (name, values) in members {
+            if is_span(name) {
+                out.push(SecretFelt::new(Felt::from(values.len())));
+            } else if values.len() != 1 {
+                return None;
+            }
+            out.extend(values);
+        }
         Some(())
     }
 }

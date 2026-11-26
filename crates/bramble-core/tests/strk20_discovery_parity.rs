@@ -16,12 +16,7 @@ use starknet_wallet_core::privacy::types::PrivacyFailure;
 use starknet_wallet_core::privacy::BlockRef;
 use starknet_wallet_core::{Felt, SecretFelt};
 
-fn jobs() -> Vec<Value> {
-    include_str!("fixtures/extension-strk20-jobs.jsonl")
-        .lines()
-        .map(|line| serde_json::from_str(line).unwrap())
-        .collect()
-}
+use crate::strk20_support::proof_jobs;
 
 fn hex(value: &Value) -> Felt {
     felt::parse(value.as_str().unwrap()).unwrap()
@@ -117,7 +112,8 @@ fn completed_replies(recorded: &[&Value]) -> Vec<Value> {
 #[test]
 fn every_recorded_discovery_body_is_the_walks() {
     let (mut outgoing_walks, mut incoming_walks) = (0, 0);
-    for line in jobs() {
+    // The shadow-account reads' unfiltered walk is `strk20_shadow_parity`'s.
+    for line in proof_jobs() {
         let job = Job::new(&line);
         let outgoing = requests(&line, "outgoing");
         if let Some(first) = outgoing.first() {
@@ -168,10 +164,11 @@ fn every_recorded_discovery_body_is_the_walks() {
         if !incoming.is_empty() {
             let mut tokens: Vec<Felt> = Vec::new();
             for action in line["inputs"]["actions"].as_array().unwrap() {
+                if !matches!(action["type"].as_str(), Some("transfer" | "withdraw")) {
+                    continue;
+                }
                 let token = hex(&action["token"]);
-                if matches!(action["type"].as_str(), Some("transfer" | "withdraw"))
-                    && !tokens.contains(&token)
-                {
+                if !tokens.contains(&token) {
                     tokens.push(token);
                 }
             }
@@ -207,8 +204,9 @@ fn every_recorded_discovery_body_is_the_walks() {
             );
         }
     }
-    // 27 jobs, every one discovers its channels (`reorg-restart`'s first walk ends in a 409, so
-    // still 27 completed); the 12 that spend notes (`transfer`, `withdraw` with an amount)
-    // discover those too.
-    assert_eq!((outgoing_walks, incoming_walks), (27, 12));
+    // Tracks the fixture: 36 proof jobs, every one that reaches discovery discovers its channels
+    // (`reorg-restart`'s first walk ends in a 409, so still one completed; the two invoke-phase
+    // refusals before any request discover nothing), 34 in all; the 13 that spend notes
+    // (`transfer`, `withdraw` with an amount; S6 added `withdraw-plus-invoke`) discover those too.
+    assert_eq!((outgoing_walks, incoming_walks), (34, 13));
 }

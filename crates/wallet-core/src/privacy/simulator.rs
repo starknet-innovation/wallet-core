@@ -10,11 +10,15 @@
 //!
 //! `transform` is the compiler's `transformToClientActions`, which emits each action through
 //! the simulator. The SDK's asserts are refusals. Channel keys stay `SecretFelt`s, and no refusal carries one.
+//! Its invoke phase (8, 9) draws nothing and changes no channel state.
 
 use super::client_actions::ClientAction;
-use super::compiler::{Actions, CompileRefusal, Compiled};
+use super::compiler::{Actions, CompileRefusal, Compiled, Contracts};
 use super::discovery::{AddressMap, Channel, Note, TokenChannel};
 use super::entropy::{generate_random, generate_random120, Entropy};
+use super::hashes::compute_note_id;
+use super::proof::{InvokeArg, ReviewedAction};
+use super::shadow::{compute_additional_data, invoke_additional_data, OpenNoteRef};
 use crate::{compute_channel_key, felt, stark_public_key, Felt, SecretFelt};
 
 /// The simulated pool for one account.
@@ -109,7 +113,9 @@ impl Simulator {
             }
             ClientAction::Deposit { .. }
             | ClientAction::UseNote { .. }
-            | ClientAction::Withdraw { .. } => Ok(()),
+            | ClientAction::Withdraw { .. }
+            | ClientAction::InvokeExternal { .. }
+            | ClientAction::ComputeAndInvoke { .. } => Ok(()),
         }
     }
 
@@ -171,10 +177,76 @@ fn random(entropy: &mut impl Entropy) -> Result<Felt, CompileRefusal> {
     generate_random(entropy).map_err(|_| CompileRefusal::Entropy)
 }
 
-/// `transformToClientActions`, phases 1–7, each action executed on the simulator as it is
+/// `invokeBuilderArgs`' `openNotes`: the open notes created in this batch, in `createNotes`
+/// order, each id from its channel's key in the simulator ("Missing channel key for open note
+/// recipient" is `MissingChannelKey`). Its `withdrawals` serve no Bramble placeholder.
+fn open_notes(
+    created: &[ClientAction],
+    pool: &Simulator,
+) -> Result<Vec<OpenNoteRef>, CompileRefusal> {
+    let mut notes = Vec::new();
+    for action in created {
+        if let ClientAction::CreateOpenNote {
+            recipient_addr,
+            token,
+            index,
+            ..
+        } = action
+        {
+            let key = pool
+                .channel(recipient_addr)
+                .and_then(|channel| channel.key.as_ref())
+                .ok_or(CompileRefusal::MissingChannelKey)?;
+            notes.push(OpenNoteRef {
+                note_id: compute_note_id(key, token, *index),
+                token: *token,
+            });
+        }
+    }
+    Ok(notes)
+}
+
+/// Phases 8 (`InvokeExternal`, the extension's calldata expansion) and 9 (`ComputeAndInvoke`, a
+/// shadow account's through the anonymizer). The collector already allowed at most one.
+fn invoke_phase(
+    invoke: &ReviewedAction,
+    contracts: &Contracts,
+    open_notes: &[OpenNoteRef],
+) -> Result<Option<ClientAction>, CompileRefusal> {
+    Ok(match invoke {
+        ReviewedAction::Invoke { contract, calldata } => Some(ClientAction::InvokeExternal {
+            contract_address: *contract,
+            calldata: calldata
+                .iter()
+                .map(|arg| match arg {
+                    InvokeArg::Felt(felt) => Ok(*felt),
+                    InvokeArg::PoolAddress => Ok(contracts.pool),
+                    InvokeArg::OpenNoteId(at) => open_notes
+                        .get(*at)
+                        .map(|note| note.note_id)
+                        .ok_or(CompileRefusal::OpenNoteOutOfRange),
+                })
+                .collect::<Result<_, _>>()?,
+        }),
+        ReviewedAction::ShadowInvoke {
+            dapp_name,
+            nonce,
+            calls,
+            collect,
+        } => Some(ClientAction::ComputeAndInvoke {
+            contract_address: contracts.anonymizer.ok_or(CompileRefusal::NoAnonymizer)?,
+            compute_additional_data: compute_additional_data(dapp_name, nonce),
+            invoke_additional_data: invoke_additional_data(calls, open_notes, *collect),
+        }),
+        _ => None,
+    })
+}
+
+/// `transformToClientActions`, phases 1–9, each action executed on the simulator as it is
 /// emitted; then the SDK's flattening order.
 pub(super) fn transform(
     account: &Felt,
+    contracts: &Contracts,
     actions: &Actions,
     use_notes: &[(Felt, &Note)],
     needed: &[Felt],
@@ -307,6 +379,15 @@ pub(super) fn transform(
         emit(action, &mut withdraws, pool)?;
     }
 
+    // 8, 9. The one invoke-phase action, after every random draw above.
+    let mut invoked = Vec::new();
+    if let Some(invoke) = &actions.invoke {
+        let notes = open_notes(&created, pool)?;
+        if let Some(action) = invoke_phase(invoke, contracts, &notes)? {
+            emit(action, &mut invoked, pool)?;
+        }
+    }
+
     let user_linkage = open_channels.len() > 1;
     let actions = [
         set_viewing_key,
@@ -316,6 +397,7 @@ pub(super) fn transform(
         spent,
         created,
         withdraws,
+        invoked,
     ]
     .concat();
     Ok(Compiled {

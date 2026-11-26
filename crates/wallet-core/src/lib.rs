@@ -50,9 +50,10 @@ pub mod stark_name;
 pub mod swap;
 
 pub use kms::{
-    account_key, account_keypair, account_public_key, compute_channel_key, compute_identity_key,
-    derive_argent_legacy_keypair, derive_oz_account_address, derive_starknet_keypair,
-    derive_strk20_viewing_key, generate_mnemonic, oz_account_class_hash, selector, sign_stark_hash,
+    account_key, account_keypair, account_public_key, calculate_contract_address,
+    compute_channel_key, compute_identity_key, derive_argent_legacy_keypair,
+    derive_oz_account_address, derive_starknet_keypair, derive_strk20_viewing_key,
+    encode_short_string, generate_mnemonic, oz_account_class_hash, selector, sign_stark_hash,
     stark_public_key, stark_signature_is_valid, validate_mnemonic, NetworkId, StarkKeypair,
     StarkSignature, StarkXOnlyKeypair,
 };

@@ -7,6 +7,12 @@ const EVE: Felt = Felt::from_hex_unchecked("0xe5e");
 const STRK: Felt =
     Felt::from_hex_unchecked("0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d");
 const KEY: Felt = Felt::from_hex_unchecked("0x654321");
+const POOL: Felt = Felt::from_hex_unchecked("0x9001");
+const ANONYMIZER: Felt = Felt::from_hex_unchecked("0xa11");
+const CONTRACTS: Contracts = Contracts {
+    pool: POOL,
+    anonymizer: Some(ANONYMIZER),
+};
 
 fn key() -> SecretFelt {
     SecretFelt::new(KEY)
@@ -40,6 +46,13 @@ fn invoke_external(target: Felt) -> Vec<Felt> {
 }
 fn open_note(recipient: Felt, token: Felt) -> Vec<Felt> {
     vec![f(4), recipient, f(9), token, f(0), f(1)]
+}
+
+/// The id of `open_note(recipient, token)`: its channel key from the account's viewing key and
+/// the recipient's public key (9), then `compute_note_id` at index 0.
+fn open_note_id(recipient: Felt, token: Felt) -> Felt {
+    let channel_key = crate::compute_channel_key(&ACCOUNT, &key(), &recipient, &f(9));
+    crate::privacy::hashes::compute_note_id(&channel_key, &token, 0)
 }
 
 fn calldata_for(user: Felt, key: Felt, actions: &[Vec<Felt>]) -> Vec<Felt> {
@@ -108,14 +121,23 @@ fn decodes_every_action_the_flows_produce() {
 fn refuses_what_the_flows_do_not_produce() {
     let one_deposit = [deposit(STRK, ONE)];
     assert!(decode(&calldata_for(EVE, KEY, &one_deposit)).is_none());
-    assert!(decode(&calldata_for(ACCOUNT, KEY, &[invoke_external(BOB)])).is_none());
-    // An open note decodes (an `Open` transfer compiles to one); binding it is
-    // `an_open_note_binds_only_to_a_reviewed_open_transfer`.
+    // An external invoke decodes (S6); binding refuses it unless reviewed
+    // (`an_external_invoke_is_refused`, `pool_actions_invoke_tests.rs`).
+    assert_eq!(
+        decode(&calldata_for(ACCOUNT, KEY, &[invoke_external(BOB)])),
+        Some(vec![PoolAction::Invoke {
+            contract: BOB,
+            calldata: vec![]
+        }])
+    );
+    // An open note decodes (an `Open` transfer compiles to one), with its id recomputed; binding
+    // it is `an_open_note_binds_only_to_a_reviewed_open_transfer`.
     assert_eq!(
         decode(&calldata_for(ACCOUNT, KEY, &[open_note(BOB, STRK)])),
         Some(vec![PoolAction::OpenNote {
             recipient: BOB,
-            token: STRK
+            token: STRK,
+            note_id: open_note_id(BOB, STRK),
         }])
     );
     // Felts Cairo could not deserialize as the ABI's u32 index or u128 salt.
@@ -191,6 +213,7 @@ fn bound_call(calldata: Vec<Felt>, reviewed: &[ReviewedAction]) -> Result<(), Pr
         &ACCOUNT,
         &key(),
         reviewed,
+        &CONTRACTS,
         &proof_limits(),
     )
 }
@@ -326,8 +349,9 @@ fn a_missing_or_altered_action_and_an_unasked_registration_are_refused() {
 fn calldata_over_the_bound_is_refused() {
     let calldata = secret(&calldata_for(ACCOUNT, KEY, &[deposit(STRK, ONE)]));
     let reviewed = [shield(ONE)];
-    let check =
-        |limits: &ProofLimits| bound_sign_request(&calldata, &ACCOUNT, &key(), &reviewed, limits);
+    let check = |limits: &ProofLimits| {
+        bound_sign_request(&calldata, &ACCOUNT, &key(), &reviewed, &CONTRACTS, limits)
+    };
     let mut limits = proof_limits();
     limits.invoke_calldata_felts = calldata.len();
     assert_eq!(check(&limits), Ok(()));
@@ -401,3 +425,6 @@ fn an_open_note_binds_only_to_a_reviewed_open_transfer() {
         );
     }
 }
+
+#[path = "pool_actions_invoke_tests.rs"]
+mod invoke;

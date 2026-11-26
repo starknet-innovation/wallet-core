@@ -23,18 +23,19 @@ use std::collections::{BTreeMap, VecDeque};
 
 use bramble_core::catalogs::networks;
 use serde_json::Value;
-use starknet_wallet_core::privacy::compiler::CompileRefusal;
 use starknet_wallet_core::privacy::config::Route;
 use starknet_wallet_core::privacy::entropy::Entropy;
 use starknet_wallet_core::privacy::job::{
     ProofHost, ProofInputs, ProofJob, ProofPurpose, ProofStep,
 };
 use starknet_wallet_core::privacy::plan::PrivacyHost;
-use starknet_wallet_core::privacy::proof::{ProofLimits, ProofRefusal, ReviewedAction};
+use starknet_wallet_core::privacy::proof::{ProofLimits, ProofRefusal};
 use starknet_wallet_core::privacy::prover::ProverRetry;
 use starknet_wallet_core::privacy::types::PrivacyReply;
 use starknet_wallet_core::send::types::SignRefusal;
 use starknet_wallet_core::{felt, Error, Felt, NetworkId, SecretFelt, StarkSignature};
+
+use crate::strk20_support::{compile_refusal, contracts, proof_jobs, reviewed};
 
 /// The generator's pinned clock, the SDK's `Date.now()`.
 const NOW: u64 = 1_800_000_000_000;
@@ -47,67 +48,12 @@ const BRAMBLE_RETRY: ProverRetry = ProverRetry {
     max_delay_ms: 30_000,
 };
 
-const FIXTURE: &str = include_str!("fixtures/extension-strk20-jobs.jsonl");
-
-fn jobs() -> Vec<Value> {
-    FIXTURE
-        .lines()
-        .filter(|line| !line.trim().is_empty())
-        .map(|line| serde_json::from_str(line).unwrap())
-        .collect()
-}
-
 fn hex(value: &Value) -> Felt {
     felt::parse(value.as_str().unwrap()).unwrap()
 }
 
 fn hexes(value: &Value) -> Vec<Felt> {
     value.as_array().unwrap().iter().map(hex).collect()
-}
-
-fn decimal(value: &Value) -> Felt {
-    Felt::from_dec_str(value.as_str().unwrap()).unwrap()
-}
-
-/// The extension's `Strk20Action`s as `strk20BuilderFor` adds them, after `register()` for the
-/// registration and activation builders.
-fn reviewed(inputs: &Value) -> Vec<ReviewedAction> {
-    let mut reviewed = Vec::new();
-    if matches!(
-        inputs["builder"].as_str().unwrap(),
-        "registration" | "activate"
-    ) {
-        reviewed.push(ReviewedAction::Register);
-    }
-    for action in inputs["actions"].as_array().unwrap() {
-        let token = hex(&action["token"]);
-        let recipient = || hex(&action["recipient"]);
-        reviewed.push(
-            match (action["type"].as_str().unwrap(), &action["amount"]) {
-                ("deposit", amount) => ReviewedAction::Deposit {
-                    token,
-                    amount: decimal(amount),
-                    recipient: action.get("recipient").map(hex),
-                },
-                ("transfer", amount) if amount == "OPEN" => ReviewedAction::OpenTransfer {
-                    token,
-                    recipient: recipient(),
-                },
-                ("transfer", amount) => ReviewedAction::Transfer {
-                    token,
-                    recipient: recipient(),
-                    amount: decimal(amount),
-                },
-                ("withdraw", amount) => ReviewedAction::Withdraw {
-                    token,
-                    recipient: recipient(),
-                    amount: decimal(amount),
-                },
-                (other, _) => panic!("unknown action {other}"),
-            },
-        );
-    }
-    reviewed
 }
 
 fn network(job: &Value) -> NetworkId {
@@ -135,6 +81,7 @@ fn inputs(job: &Value) -> ProofInputs {
             pool: hex(&inputs["pool"]),
         },
         prover_url: inputs["proverUrl"].as_str().unwrap().to_owned(),
+        anonymizer: contracts(inputs).anonymizer,
         limits: ProofLimits::CEILING,
         // The bound the walk parity tests use, above any recorded job's notes.
         max_notes: 64,
@@ -344,22 +291,9 @@ fn run(job: &Value, host: &Host, stream: &mut Stream) -> Run {
     }
 }
 
-/// The compiler refusal the SDK's thrown error names.
-fn sdk_refusal(message: &str) -> CompileRefusal {
-    if message.starts_with("Insufficient balance") {
-        CompileRefusal::InsufficientBalance
-    } else if message.starts_with("Missing channel context for recipient") {
-        CompileRefusal::RecipientNotRegistered
-    } else if message.starts_with("Channel already exists for") {
-        CompileRefusal::AlreadyRegistered
-    } else {
-        panic!("an SDK error this test does not map: {message}")
-    }
-}
-
 #[test]
 fn every_recorded_job_runs_as_the_sdk_ran_it() {
-    let jobs = jobs();
+    let jobs = proof_jobs();
     let (mut proved, mut refused, mut linked) = (0, 0, 0);
     for job in &jobs {
         let id = job["id"].as_str().unwrap();
@@ -437,7 +371,7 @@ fn every_recorded_job_runs_as_the_sdk_ran_it() {
             linked += 1;
         } else {
             assert!(job["signing"].as_array().unwrap().is_empty(), "{id}");
-            let expected = sdk_refusal(sdk["error"]["message"].as_str().unwrap());
+            let expected = compile_refusal(job).unwrap();
             assert_eq!(
                 run.end,
                 ProofStep::Failed {
@@ -450,13 +384,14 @@ fn every_recorded_job_runs_as_the_sdk_ran_it() {
             refused += 1;
         }
     }
-    // Tracks the fixture (27 lines today): update it when the fixture is regenerated.
-    assert_eq!((proved, refused, linked), (22, 3, 2));
+    // Tracks the fixture (36 proof jobs and 3 shadow-account reads today): update it when the
+    // fixture is regenerated. S6 added 6 proved invoke jobs and 3 refusals.
+    assert_eq!((proved, refused, linked), (28, 6, 2));
 }
 
 #[test]
 fn the_reorg_job_restarts_once_and_the_busy_job_waits_twice() {
-    let jobs = jobs();
+    let jobs = proof_jobs();
     let job = |id: &str| jobs.iter().find(|job| job["id"] == id).unwrap();
     let reorg = job("reorg-restart");
     let statuses: Vec<u64> = reorg["requests"]
