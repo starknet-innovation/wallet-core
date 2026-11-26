@@ -11,14 +11,18 @@
 //! record the site, then the blocklist, lock, the card's account still granted and active (so the
 //! network has not moved either), the account kind, the hash again, an outside execution's
 //! review again (now refusing a lookalike payee or spender), and the signature through
-//! `signing_record` and `sign_for` under the same session hold as every check before it. Every
-//! refusal but the document's is UNKNOWN_ERROR (163), as the extension's strings map.
+//! `signing_record` and `sign_for` under the same session hold as every check before it. A
+//! Ledger account's hash is computed under that hold too and then signed on its device
+//! (`dapp_sign_device.rs`). Every refusal but the document's is UNKNOWN_ERROR (163), as the
+//! extension's strings map.
 //!
-//! Accounts it signs for: any whose key the vault holds (phrase-derived or imported). OpenZeppelin
-//! signs at once; Ready (Argent) and Braavos sign only once the live account accepts the
-//! signature (`dapp_sign_read.rs`, `requireLiveAuthorizableClass`), whatever class is stored.
-//! Refused: Ledger (the device path is not wired for typed data), and a multisig, which is never
+//! Accounts it signs for: any whose key the vault holds (phrase-derived or imported), and a
+//! Ledger account (`accountHashSigner`). OpenZeppelin signs at once; Ready (Argent) and Braavos
+//! sign only once the live account accepts the signature (`dapp_sign_read.rs`,
+//! `requireLiveAuthorizableClass`), whatever class is stored. Refused: a multisig, which is never
 //! a vault record and so never the granted account here.
+
+use std::sync::atomic::Ordering;
 
 use starknet_wallet_core::allowances::record::AllowanceRecord;
 use starknet_wallet_core::catalog::TokenInfo;
@@ -36,8 +40,10 @@ use crate::account_store::{KeySource, StoredAccount, VaultPayload};
 use crate::allowances::{token_infos, trusted_tokens, with_allowance_log};
 use crate::dapp::DAPP_POLICY;
 use crate::dapp_session::{
-    error, result, settled, Card, DappCard, DappReply, DappSession, DappSettled, Shape, Waiter,
+    error, result, settled, Card, DappCard, DappReply, DappSession, Shape, Waiter,
 };
+use crate::dapp_sign_device::DeviceStart;
+use crate::dapp_sign_read::DappSignStep;
 use crate::felt;
 use crate::networks::NetworkId;
 use crate::send::types::RiskFlag;
@@ -101,14 +107,17 @@ impl SignCard {
     }
 }
 
-fn refused() -> WalletRpcError {
+pub(crate) fn refused() -> WalletRpcError {
     WalletRpcError::unknown_error()
 }
 
-/// Whether this wallet signs typed data for `record`: a key the vault holds. Every family but
-/// OpenZeppelin also needs the live account read first (`sign`'s `authorized`).
+/// Whether this wallet signs typed data for `record`: a key the vault holds, or a Ledger's. Every
+/// family but OpenZeppelin also needs the live account read first (`sign`'s `authorized`).
 fn signs_typed_data(record: &StoredAccount) -> bool {
-    matches!(record.key, KeySource::Phrase(_) | KeySource::Imported)
+    matches!(
+        record.key,
+        KeySource::Phrase(_) | KeySource::Imported | KeySource::Ledger(_)
+    )
 }
 
 /// A SNIP-9 OutsideExecution authorises calls the site can submit later without a prompt
@@ -212,18 +221,36 @@ fn granted_signer<'a>(
         .ok_or_else(refused)
 }
 
-/// `serializeAccountSignature` as the page reads it (`signaturePayload`): OpenZeppelin `[r, s]`,
-/// Ready `["1", "0", public_key, r, s]`, each felt canonical and non-zero.
-fn signature_json(
+/// The record an approved card still signs for: the site not blocked, the card reviewed for it,
+/// and it still the granted active account of a kind this wallet signs typed data for.
+pub(crate) fn still_granted<'a>(
+    site: &Site<'_>,
+    payload: Option<&'a VaultPayload>,
+    card: &SignCard,
+    reviewed_account_id: &str,
+) -> Result<&'a StoredAccount, WalletRpcError> {
+    if site.blocked || reviewed_account_id != card.account_id {
+        return Err(refused());
+    }
+    let record = granted_signer(site, payload)?;
+    (record.id == card.account_id)
+        .then_some(record)
+        .ok_or_else(refused)
+}
+
+/// `serializeAccountSignature` as the page reads it (`signaturePayload`): OpenZeppelin and
+/// Braavos `[r, s]`, Ready `["1", "0", public_key, r, s]`, each felt canonical and non-zero.
+pub(crate) fn signature_json(
     record: &StoredAccount,
-    signature: &crate::kms::Signature,
+    r: &str,
+    s: &str,
 ) -> Result<JsValue, WalletRpcError> {
     let canonical = |value: &str| {
         felt::parse_non_zero(value)
             .map(|felt| JsValue::String(felt::canonical(&felt)))
             .ok_or_else(refused)
     };
-    let (r, s) = (canonical(&signature.r)?, canonical(&signature.s)?);
+    let (r, s) = (canonical(r)?, canonical(s)?);
     Ok(JsValue::Array(match record.family() {
         AccountFamily::Argent => vec![
             JsValue::String("1".into()),
@@ -310,7 +337,14 @@ fn admit(
     })
 }
 
-/// The approved card's signature array, if every check still holds.
+/// What an approved card's checks end in: the signature array, or a Ledger's device to sign the
+/// hash on.
+enum Signed {
+    Json(JsValue),
+    Device(DeviceStart),
+}
+
+/// The approved card's signature array (or a Ledger's hash to sign), if every check still holds.
 fn sign(
     site: &Site<'_>,
     payload: Option<&VaultPayload>,
@@ -318,54 +352,82 @@ fn sign(
     reviewed_account_id: &str,
     inputs: Option<&ReviewInputs>,
     authorized: bool,
-) -> Result<JsValue, WalletRpcError> {
-    if site.blocked || reviewed_account_id != card.account_id {
-        return Err(refused());
-    }
-    let record = granted_signer(site, payload)?;
+) -> Result<Signed, WalletRpcError> {
+    let record = still_granted(site, payload, card, reviewed_account_id)?;
     // Only OpenZeppelin's signature does not depend on the class the account runs.
     if !authorized && record.family() != AccountFamily::OpenZeppelin {
         return Err(refused());
     }
     let payload = payload.ok_or_else(refused)?;
-    if record.id != card.account_id {
-        return Err(refused());
-    }
     let (hash, _) = reviewed_hash(record, &card.typed_data, inputs, Stage::Sign)?;
+    if let Some(device) = crate::ledger::record_device(record) {
+        let public_key = felt::parse(&record.public_key).ok_or_else(refused)?;
+        return Ok(Signed::Device(DeviceStart {
+            device,
+            hash,
+            public_key,
+        }));
+    }
     let signature = sign_for(payload, record, &felt::canonical(&hash)).map_err(|_| refused())?;
-    signature_json(record, &signature)
+    signature_json(record, &signature.r, &signature.s).map(Signed::Json)
 }
 
-impl DappSession {
-    /// Signs an approved card for `origin` and answers its requests, if every check still holds.
-    /// `authorized`: the live account read (`dapp_sign_read.rs`) accepted the signature.
-    pub(crate) fn finish_sign(
-        &self,
-        origin: &str,
-        card: &SignCard,
-        waiters: Vec<Waiter>,
-        reviewed_account_id: &str,
-        authorized: bool,
-    ) -> Vec<DappSettled> {
-        // Read fresh, so a contact or payment made since queueing is checked against.
-        let inputs = self.review_inputs(&card.typed_data, Some(card.network));
-        // Every check and the signature run under one hold of the session: no lock, switch or
-        // revocation can land between them.
-        let signed = self.with_site(origin, card.network, true, |site, session| {
-            let payload = session.map(|session| &session.payload);
-            Ok(sign(
-                site,
-                payload,
-                card,
-                reviewed_account_id,
-                inputs.as_ref(),
-                authorized,
-            ))
-        });
-        let reply = match signed.unwrap_or_else(|_| Err(refused())) {
+/// An approved typed-data card: its site, the card, the requests waiting on it, and the account
+/// the person reviewed it for.
+pub(crate) struct Approved {
+    pub(crate) origin: String,
+    pub(crate) card: Box<SignCard>,
+    pub(crate) waiters: Vec<Waiter>,
+    pub(crate) reviewed_account_id: String,
+}
+
+impl Approved {
+    /// Answers every request waiting on the card with `reply`.
+    pub(crate) fn answer(self, reply: Result<JsValue, WalletRpcError>) -> DappSignStep {
+        let reply = match reply {
             Ok(json) => result(&json),
             Err(refusal) => error(refusal),
         };
-        settled(waiters, |_| reply.clone())
+        DappSignStep::Settled {
+            settled: settled(self.waiters, |_| reply.clone()),
+        }
+    }
+}
+
+impl DappSession {
+    /// Signs an approved card and answers its requests, if every check still holds; a Ledger
+    /// account's hash goes to its device instead. `authorized`: the live account read
+    /// (`dapp_sign_read.rs`) accepted the signature.
+    pub(crate) fn finish_sign(
+        &self,
+        approval_id: String,
+        approved: Approved,
+        authorized: bool,
+    ) -> DappSignStep {
+        let card = &approved.card;
+        // Read fresh, so a contact or payment made since queueing is checked against.
+        let inputs = self.review_inputs(&card.typed_data, Some(card.network));
+        // Every check and the signature (or the hash a device signs) run under one hold of the
+        // session: no lock, switch or revocation can land between them.
+        let signed = self.with_site(&approved.origin, card.network, true, |site, session| {
+            let generation = self.wallet.lock_epoch.load(Ordering::SeqCst);
+            let payload = session.map(|session| &session.payload);
+            let signed = sign(
+                site,
+                payload,
+                card,
+                &approved.reviewed_account_id,
+                inputs.as_ref(),
+                authorized,
+            );
+            Ok(signed.map(|signed| (signed, generation)))
+        });
+        match signed.unwrap_or_else(|_| Err(refused())) {
+            Ok((Signed::Json(json), _)) => approved.answer(Ok(json)),
+            Ok((Signed::Device(start), generation)) => {
+                self.start_device(approval_id, approved, start, generation)
+            }
+            Err(refusal) => approved.answer(Err(refusal)),
+        }
     }
 }

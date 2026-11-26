@@ -40,6 +40,7 @@ mod dapp_expiry;
 mod dapp_invoke;
 mod dapp_session;
 mod dapp_sign;
+mod dapp_sign_device;
 mod dapp_sign_read;
 mod dapp_sites;
 mod dapp_watch;

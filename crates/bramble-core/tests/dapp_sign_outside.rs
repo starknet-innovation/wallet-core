@@ -152,3 +152,27 @@ fn an_outside_execution_paying_a_lookalike_is_flagged_then_refused() {
     assert!(flags.contains(&RiskFlagCode::AddressPoisoning), "{flags:?}");
     assert_eq!(code(&approved(&dapp, card, account_id(&core))), 163);
 }
+
+// A Ledger account's outside execution is reviewed as any other's: a lookalike payee is flagged
+// on the card and refused at approval, before the device is asked for anything.
+#[test]
+fn a_ledger_accounts_outside_execution_paying_a_lookalike_never_reaches_the_device() {
+    let (_dir, _clock, core) = imported();
+    add_ledger(&core, &ledger_key());
+    let dapp = connected(&core);
+    let account = core.active_account().unwrap().unwrap();
+    let document = outside_execution(&[(
+        STRK,
+        "transfer",
+        vec![lookalike(&account.address), "0x1".into(), "0x0".into()],
+    )]);
+    let card = pending_id(sign_request(&dapp, SITE, &document, 1));
+    let (_, flags) = sign_card(&dapp);
+    assert!(flags.contains(&RiskFlagCode::AddressPoisoning), "{flags:?}");
+    let chain = ready_chain("argent 0.4.0", &account.public_key);
+    let mut device = common::ledger_device::Device::holding(ledger_key());
+    let step = dapp.approve_sign_typed_data(card.clone(), account.id, NOW);
+    let reply = settled_reply(drive(&dapp, &card, step, &chain, Some(&mut device)));
+    assert_eq!(code(&reply), 163);
+    assert_eq!(device.apdus, 0);
+}

@@ -3,6 +3,8 @@
 #![allow(dead_code)] // Each test crate uses a different subset of these helpers.
 
 pub mod dapp;
+/// A scripted Ledger device.
+pub mod ledger_device;
 
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
