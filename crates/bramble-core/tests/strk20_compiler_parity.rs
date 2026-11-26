@@ -12,17 +12,11 @@ use starknet_wallet_core::privacy::discovery::{AddressMap, Note, Walked};
 use starknet_wallet_core::privacy::entropy::Entropy;
 use starknet_wallet_core::privacy::incoming::IncomingWalk;
 use starknet_wallet_core::privacy::outgoing::{OutgoingChannels, OutgoingWalk};
-use starknet_wallet_core::privacy::proof::ReviewedAction;
 use starknet_wallet_core::privacy::types::PrivacyFailure;
 use starknet_wallet_core::privacy::BlockRef;
 use starknet_wallet_core::{felt, Error, Felt, SecretFelt};
 
-fn jobs() -> Vec<Value> {
-    include_str!("fixtures/extension-strk20-jobs.jsonl")
-        .lines()
-        .map(|line| serde_json::from_str(line).unwrap())
-        .collect()
-}
+use crate::strk20_support::{compile_refusal, contracts, proof_jobs, reviewed};
 
 fn hex(value: &Value) -> Felt {
     felt::parse(value.as_str().unwrap()).unwrap()
@@ -30,47 +24,6 @@ fn hex(value: &Value) -> Felt {
 
 fn decimal(value: &Value) -> Felt {
     Felt::from_dec_str(value.as_str().unwrap()).unwrap()
-}
-
-/// The extension's `Strk20Action`s as `strk20BuilderFor` adds them, after `register()` for the
-/// registration and activation builders.
-fn reviewed(inputs: &Value) -> Vec<ReviewedAction> {
-    let mut reviewed = Vec::new();
-    if matches!(
-        inputs["builder"].as_str().unwrap(),
-        "registration" | "activate"
-    ) {
-        reviewed.push(ReviewedAction::Register);
-    }
-    for action in inputs["actions"].as_array().unwrap() {
-        let token = hex(&action["token"]);
-        let recipient = || hex(&action["recipient"]);
-        reviewed.push(
-            match (action["type"].as_str().unwrap(), &action["amount"]) {
-                ("deposit", amount) => ReviewedAction::Deposit {
-                    token,
-                    amount: decimal(amount),
-                    recipient: action.get("recipient").map(hex),
-                },
-                ("transfer", amount) if amount == "OPEN" => ReviewedAction::OpenTransfer {
-                    token,
-                    recipient: recipient(),
-                },
-                ("transfer", amount) => ReviewedAction::Transfer {
-                    token,
-                    recipient: recipient(),
-                    amount: decimal(amount),
-                },
-                ("withdraw", amount) => ReviewedAction::Withdraw {
-                    token,
-                    recipient: recipient(),
-                    amount: decimal(amount),
-                },
-                (other, _) => panic!("unknown action {other}"),
-            },
-        );
-    }
-    reviewed
 }
 
 fn requests<'a>(job: &'a Value, route: &str) -> Vec<&'a Value> {
@@ -144,7 +97,8 @@ fn stream(job: &Value) -> Stream {
     }
 }
 
-/// Runs one job up to the compiler's result, checking the walks' inputs on the way.
+/// Runs one job up to the compiler's result, checking the walks' inputs on the way. A job
+/// refused before its walks (the invoke phase's builder checks) made no request.
 fn run(job: &Value) -> (Result<Compiled, CompileRefusal>, Stream) {
     let id = job["id"].as_str().unwrap();
     let inputs = &job["inputs"];
@@ -152,7 +106,14 @@ fn run(job: &Value) -> (Result<Compiled, CompileRefusal>, Stream) {
     let key = SecretFelt::new(hex(&inputs["viewingKey"]));
     let block = BlockRef::Number(inputs["provingBlock"].as_u64().unwrap());
     let reviewed = reviewed(inputs);
-    let walks = walk_inputs(&account, &reviewed).unwrap();
+    let contracts = contracts(inputs);
+    let walks = match walk_inputs(&account, &reviewed, &contracts) {
+        Ok(walks) => walks,
+        Err(refusal) => {
+            assert!(job["requests"].as_array().unwrap().is_empty(), "{id}");
+            return (Err(refusal), stream(job));
+        }
+    };
 
     let outgoing = requests(job, "outgoing");
     let sent: Value = serde_json::from_str(outgoing[0]["body"].as_str().unwrap()).unwrap();
@@ -192,39 +153,22 @@ fn run(job: &Value) -> (Result<Compiled, CompileRefusal>, Stream) {
     };
 
     let mut stream = stream(job);
-    let compiled = compile(&account, &key, &reviewed, &channels, &notes, &mut stream);
+    let compiled = compile(
+        &account,
+        &key,
+        &reviewed,
+        &contracts,
+        &channels,
+        &notes,
+        &mut stream,
+    );
     (compiled, stream)
-}
-
-/// The refusal the SDK's `createProofInvocation` threw, read from its message.
-fn sdk_refusal(job: &Value) -> Option<CompileRefusal> {
-    let message = job["sdk"]["createProofInvocation"]["error"]["message"].as_str()?;
-    Some(
-        [
-            (
-                "Insufficient balance for token",
-                CompileRefusal::InsufficientBalance,
-            ),
-            (
-                "Missing channel context for recipient",
-                CompileRefusal::RecipientNotRegistered,
-            ),
-            (
-                "Channel already exists for",
-                CompileRefusal::AlreadyRegistered,
-            ),
-        ]
-        .into_iter()
-        .find(|(prefix, _)| message.starts_with(prefix))
-        .unwrap_or_else(|| panic!("unmapped SDK error: {message}"))
-        .1,
-    )
 }
 
 #[test]
 fn every_recorded_job_compiles_to_what_the_sdk_signed() {
     let (mut compiled_jobs, mut refused, mut warned_jobs) = (0, Vec::new(), 0);
-    for job in jobs() {
+    for job in proof_jobs() {
         let id = job["id"].as_str().unwrap();
         let (compiled, stream) = run(&job);
         // A refused job's reads are what the SDK drew before it threw.
@@ -236,7 +180,7 @@ fn every_recorded_job_compiles_to_what_the_sdk_signed() {
             "{id}: every byte is consumed"
         );
         let signing = job["signing"].as_array().unwrap();
-        if let Some(refusal) = sdk_refusal(&job) {
+        if let Some(refusal) = compile_refusal(&job) {
             assert!(signing.is_empty(), "{id}: refused before signing");
             assert_eq!(compiled.unwrap_err(), refusal, "{id}");
             refused.push(refusal);
@@ -279,15 +223,20 @@ fn every_recorded_job_compiles_to_what_the_sdk_signed() {
         warned_jobs += usize::from(warned);
         compiled_jobs += 1;
     }
-    // 27 jobs: 3 refused by the SDK before signing, one per refusal the transcripts record;
-    // 24 signed, 2 of them (`user-linkage`, `activate-deposit-other`) warned `USER_LINKAGE`.
+    // Tracks the fixture: 36 proof jobs (39 lines less the 3 shadow-account reads). 6 refused
+    // before signing, one per refusal the transcripts record (the last three are the invoke
+    // phase's, S6); 30 signed (24 before S6, then 6 invoke jobs), 2 of them (`user-linkage`,
+    // `activate-deposit-other`) warned `USER_LINKAGE`.
     assert_eq!(
         refused,
         [
             CompileRefusal::InsufficientBalance,
             CompileRefusal::RecipientNotRegistered,
             CompileRefusal::AlreadyRegistered,
+            CompileRefusal::MultipleInvokes,
+            CompileRefusal::NoAnonymizer,
+            CompileRefusal::OpenNoteOutOfRange,
         ]
     );
-    assert_eq!((compiled_jobs, warned_jobs), (24, 2));
+    assert_eq!((compiled_jobs, warned_jobs), (30, 2));
 }
