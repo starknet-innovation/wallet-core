@@ -354,3 +354,115 @@ fn the_plans_own_advance_cannot_drive_the_relay_signature() {
     );
     assert_eq!(ledger.plan.signatures_made(), 0);
 }
+
+/// Answers every APDU but the device's signature, which it returns unsent.
+fn until_signature(fee: &GaslessFee, device: &mut Device, mut step: GaslessSubmitStep) -> Vec<u8> {
+    loop {
+        let GaslessSubmitStep::Device { apdu } = &step else {
+            panic!("expected an APDU, got {step:?}");
+        };
+        let reply = device.answer(apdu);
+        if apdu[1] == 0x02 && apdu[2] == 1 {
+            return reply;
+        }
+        step = fee
+            .advance_device(StepReply::Device { reply }, NOW)
+            .unwrap();
+    }
+}
+
+#[test]
+fn a_window_that_lapses_on_the_device_is_refused_and_files_no_row() {
+    let ledger = ledger();
+    let (fee, step) = chosen(&ledger);
+    let mut device = Device::holding(KEY);
+    let reply = until_signature(&fee, &mut device, step);
+    let late = NOW + 600_000;
+    assert_eq!(
+        fee.advance_device(StepReply::Device { reply }, late),
+        Err(GaslessFeeError::Refused {
+            reason: "This network fee quote was refused. Nothing was submitted.".into(),
+            retryable: false
+        })
+    );
+    assert!(ledger.core.activity(ledger.id.clone()).unwrap().is_empty());
+    assert_eq!(
+        fee.accept_submit_reply(result(json!({"transaction_hash": "0x1"})), NOW),
+        Err(GaslessFeeError::NotFound)
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_device_signature_that_cannot_be_journaled_is_never_posted() {
+    use std::os::unix::fs::PermissionsExt;
+    let ledger = ledger();
+    let (fee, step) = chosen(&ledger);
+    let mut device = Device::holding(KEY);
+    let reply = until_signature(&fee, &mut device, step);
+    let dir = ledger._dir.path();
+    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o555)).unwrap();
+    let refused = fee.advance_device(StepReply::Device { reply }, NOW);
+    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert_eq!(
+        refused,
+        Err(GaslessFeeError::Refused {
+            reason: "The transaction could not be recorded before sending. Nothing was submitted — try again.".into(),
+            retryable: false
+        })
+    );
+    assert!(ledger.core.activity(ledger.id.clone()).unwrap().is_empty());
+    assert_eq!(
+        fee.accept_submit_reply(result(json!({"transaction_hash": "0x1"})), NOW),
+        Err(GaslessFeeError::NotFound)
+    );
+}
+
+#[test]
+fn a_paymaster_reply_while_the_device_signs_ends_both() {
+    let ledger = ledger();
+    let (fee, step) = chosen(&ledger);
+    assert!(matches!(step, GaslessSubmitStep::Device { .. }));
+    assert!(fee
+        .accept_submit_reply(result(json!({"transaction_hash": "0x1"})), NOW)
+        .is_err());
+    // The device's signature is no longer wanted: the plan closed with the submission.
+    assert_eq!(
+        fee.advance_device(StepReply::RetryDevice, NOW),
+        Err(GaslessFeeError::NotFound)
+    );
+    assert_eq!(ledger.plan.signatures_made(), 0);
+    assert!(ledger.core.activity(ledger.id.clone()).unwrap().is_empty());
+}
+
+#[test]
+fn a_plan_cancelled_before_the_build_returns_never_reaches_a_signer() {
+    let ledger = ledger();
+    let (fee, offer) = offered(&ledger.plan);
+    post(fee.choose(offer, Some(prices()), NOW).unwrap());
+    ledger.plan.close();
+    // Not the key path (which would read as a lock): the device plan refuses on its own.
+    assert_eq!(
+        fee.accept_submit_reply(built(&typed()), NOW),
+        Err(GaslessFeeError::NotFound)
+    );
+    assert_eq!(ledger.plan.signatures_made(), 0);
+    assert!(ledger.core.activity(ledger.id.clone()).unwrap().is_empty());
+}
+
+#[test]
+fn a_signature_returned_after_a_lock_files_no_row() {
+    let ledger = ledger();
+    let (fee, step) = chosen(&ledger);
+    let mut device = Device::holding(KEY);
+    let reply = until_signature(&fee, &mut device, step);
+    assert_eq!(device.signed.len(), 1, "the device signed");
+    ledger.core.lock();
+    assert_eq!(
+        fee.advance_device(StepReply::Device { reply }, NOW),
+        Err(GaslessFeeError::Locked)
+    );
+    assert_eq!(ledger.plan.signatures_made(), 0);
+    ledger.core.unlock(PASSWORD.into()).unwrap();
+    assert!(ledger.core.activity(ledger.id.clone()).unwrap().is_empty());
+}

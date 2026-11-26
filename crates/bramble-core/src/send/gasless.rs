@@ -248,7 +248,8 @@ impl GaslessFee {
 
     /// The person's choice, at `now_ms` (the host's wall clock): one of the offers the round
     /// made, exactly, priced again by `prices` (the wallet's own fresh USD answer for STRK and the
-    /// token). Takes the transfer from its plan, which closes, and returns the build to post.
+    /// token). Takes the transfer from its plan, which closes (a Ledger account's stays open
+    /// only to sign the checked execution on its device), and returns the build to post.
     /// `NotFound` and nothing changed for an offer not made or a second choice; a refusal (no
     /// reference: "This token's network fee could not be checked.") ends the choice.
     pub fn choose(
@@ -325,6 +326,8 @@ impl GaslessFee {
                 Ok(step) => step,
                 Err(error) => {
                     *stage = Stage::Spent;
+                    // A device signature still outstanding goes with it.
+                    self.plan.close();
                     return Err(error.into());
                 }
             }
@@ -367,8 +370,9 @@ impl GaslessFee {
                         post: GaslessPost { request, delay_ms },
                     });
                 }
-                // A Ledger account signs on its device, inside its plan (`gasless_sign.rs`).
-                SubmitStep::Sign { .. } if self.plan.relaying() => {
+                // A Ledger account signs on its device, inside its plan (`gasless_sign.rs`),
+                // never through the key path; a plan cancelled since `choose` refuses there.
+                SubmitStep::Sign { .. } if self.plan.signs_on_device() => {
                     let started = round
                         .checked()
                         .ok_or(GaslessFeeError::NotFound)
@@ -409,6 +413,9 @@ impl GaslessFee {
             };
         };
         *stage = Stage::Spent;
+        if outcome.is_err() {
+            self.plan.close();
+        }
         outcome
     }
 }

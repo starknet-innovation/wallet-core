@@ -102,6 +102,11 @@ impl Plan {
         Some(basis)
     }
 
+    /// Whether this plan's account signs on a device: its relay only through `sign_relay`.
+    pub fn signs_on_device(&self) -> bool {
+        self.device.is_some()
+    }
+
     /// Starts signing `quote`'s outside execution on the device, once, for a device plan taken
     /// for gasless. Anything else is `OutOfOrder` and closes the plan.
     pub fn sign_relay(

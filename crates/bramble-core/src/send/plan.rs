@@ -133,6 +133,11 @@ impl TransferPlan {
         self.lock_plan().take_for_gasless()
     }
 
+    /// Whether the account signs on a device, its relay too (`Plan::signs_on_device`).
+    pub(crate) fn signs_on_device(&self) -> bool {
+        self.lock_plan().signs_on_device()
+    }
+
     /// Whether the relay signature is the device's, still to come (`Plan::relaying`).
     pub(crate) fn relaying(&self) -> bool {
         self.lock_plan().relaying()
