@@ -292,7 +292,9 @@ fn mobile_hands_out_no_raw_signature() {
 
 /// P1's multisig transaction exports sign by vault record and judge reads the host drove: none
 /// takes or returns a key, a phrase or a raw signature, so a co-signer's key never crosses the
-/// FFI (AGENTS.md). Their files are named so a new export there is scanned here.
+/// FFI (AGENTS.md). The one signature that comes in is a co-signer's, already public, over the
+/// intent's hash (`import_multisig_signature`, its public key and `r`, `s`): the core verifies it
+/// and never signs for it. Their files are named so a new export there is scanned here.
 #[test]
 fn multisig_transactions_take_and_return_no_key() {
     let mut seen = Vec::new();
@@ -329,6 +331,7 @@ fn multisig_transactions_take_and_return_no_key() {
         "sign_multisig_intent_on_device",
         "submit_multisig_intent",
         "import_multisig_intent",
+        "import_multisig_signature",
         "multisig_intent_read",
         "multisig_intent_review",
         "multisig_fee_replacement",
