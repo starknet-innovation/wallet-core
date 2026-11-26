@@ -13,9 +13,29 @@ use crate::Felt;
 /// The pool's proof-bearing entrypoint.
 pub const APPLY_ACTIONS: &str = "apply_actions";
 
-/// One reviewed action, as the SDK's builder takes it. Activation, shielding, unshielding,
-/// private sends and open notes (the SDK's `Open`); dapp invokes and shadow accounts join with
-/// their flows, and the binding in `pool_actions` with them.
+/// One item of a reviewed invoke's calldata: a felt, or a value the job resolves while it
+/// compiles (the extension's `${poolAddress}` and `${openNoteIds[N]}` placeholders, whose grammar
+/// is Bramble's).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InvokeArg {
+    Felt(Felt),
+    /// The pool's address.
+    PoolAddress,
+    /// The id of the batch's `N`th open note (from 0), in the order the batch creates them.
+    OpenNoteId(usize),
+}
+
+/// The anonymizer's `CollectPolicy` for the open notes a shadow-account invoke settles.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CollectPolicy {
+    All,
+    Diff,
+    Exact(u128),
+}
+
+/// One reviewed action, as the SDK's builder takes it: activation, shielding, unshielding,
+/// private sends, open notes (the SDK's `Open`), an external invoke and a shadow-account invoke.
+/// At most one invoke of either kind per job (the pool's one invoke phase).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReviewedAction {
     /// `register`: set the account's viewing key in the pool, alone or ahead of deposits.
@@ -40,6 +60,20 @@ pub enum ReviewedAction {
         token: Felt,
         recipient: Felt,
         amount: Felt,
+    },
+    /// `invoke`: the pool calls `contract` with `calldata` (the SDK's `InvokeExternal`).
+    Invoke {
+        contract: Felt,
+        calldata: Vec<InvokeArg>,
+    },
+    /// `shadowAccounts(dapp_name).invoke(nonce, {calls, collectPolicy})`: `calls` run from the
+    /// shadow account of (`dapp_name`, `nonce`) through the job's anonymizer, which settles the
+    /// batch's open notes under `collect` (the SDK's `ComputeAndInvoke`).
+    ShadowInvoke {
+        dapp_name: Felt,
+        nonce: Felt,
+        calls: Vec<Call>,
+        collect: CollectPolicy,
     },
 }
 
