@@ -216,26 +216,27 @@ step starts.
 | K2 | here | — | done (#105): Krusty 3.2.0; its selector and Stark signature verification replace `StarkPrimitives` |
 | G7c | Bramble | — (can start now) | P1's missing fixtures: the multisig import cases and the call summaries beyond an ERC-20 transfer |
 | X1 P1 | here | — | done (#111, `v0.7.0`): deploy, propose, co-sign, submit, change signers and import, with the extension's stale-intent and resend guards; settling a submitted intent through `refresh_activity` by multisig id followed (#115) |
-| M18 | Bramble | X1 | multisig transaction screens on both apps: propose, sign, submit, change signers. Draft Bramble #1049 on `v0.8.0`; its core gaps are under "Mobile follow-ups" below |
+| M18 | Bramble | X1 | multisig transaction screens on both apps: propose, sign, submit, change signers. Bramble #1049, merged into the pin bump (#1048, now to `v0.9.0`); its core gaps are under "Mobile follow-ups" below |
 | P9 rest | here | — | done (#104) |
 | G7d | Bramble | — | a multicall and a refused batch through `submitInvokeTransaction`, and `verifyCalls` over batches that raise each flag (P9) |
 | X2 P9 | here | — | done with X3 (#106, `v0.7.0`): no UniFFI call signs arbitrary calls on its own; `ffi_surface.rs` fails if any export takes a call |
-| G7e, X3, M19 | both | — | G7e and X3 done (#106, #109); M19, the allowance manager and revoke screens, is draft Bramble #1050 on `v0.8.0` |
-| G7f, X4, M20 | both | — | G7f and X4 done (#107, #109); M20, the swap screens, is draft Bramble #1051 on `v0.8.0` |
-| G7g, X5, M21 | both | — | X5 done (#110, Mainnet only, `STAKING_POLICY`); M21, the staking screens, is draft Bramble #1052 on `v0.8.0` |
+| G7e, X3, M19 | both | — | G7e and X3 done (#106, #109); M19, the allowance manager and revoke screens, is Bramble #1050, open, stacked on #1048 (`v0.9.0`) |
+| G7f, X4, M20 | both | — | G7f and X4 done (#107, #109); M20, the swap screens, is Bramble #1051, open, stacked on #1050 |
+| G7g, X5, M21 | both | — | X5 done (#110, Mainnet only, `STAKING_POLICY`); M21, the staking screens, is Bramble #1052, open, stacked on #1051 |
 | P14 | here, then both | — | done (#108, #117, `v0.8.0`): the gateway's outside execution checked against the reviewed calls (Krusty's SNIP-12 hash agrees with starknet.js), the paymaster's bodies and judges, the ceiling's fee-to-token conversion (`GASLESS_POLICY`), `TransferPlan::gasless_offers`, and the sponsored and gasless rows; fixtures from G7h (Bramble #1034). Left: the mobile screens |
 
 **Mobile follow-ups from M18–M21 and gasless.** Written 2026-11-25. Building the screens on
 `v0.8.0` (Bramble #1047–#1053, drafts stacked into `feature/mobile-wallet`), the apps worked
 around gaps in the core. The next mobile PR (the pin bump past `v0.8.0`) deletes the workarounds
-these close.
+these close. As of 2026-11-26 that bump is #1048, which now pins `v0.9.0` (carrying #143, #145
+and #147), and #1056, on top of the stack, takes up what `v0.9.0` adds.
 
 | Gap | From | State | What it is |
 | --- | --- | --- | --- |
 | Revoke refusal text | M19 (#1050) | done (#143) | `RevokeError` exports `Display` (Swift `description`, Kotlin `toString()`), so every refusal carries its own sentence; the apps drop `RevokeFlowModel.refusal` |
 | `MultisigTxFailure` text | M18 (#1049) | kept as a code | Like `SendFailureCode`, a code the host maps to copy generated from the extension (`SendCopy`). Six variants already map to `SendCopy`; the other five are hand-copied in `MultisigTxText.failure` and belong in Bramble's generator (`scripts/mobile-send-copy.ts`), from `review-steps-multisig.ts` and `friendly-error-copy-multisig.ts`. `.locked` there reads "The wallet is locked", not the extension's "The wallet is locked or unavailable. Unlock it and try again." |
 | Unlimited and the retention cap | M19 (#1050) | done (#143) | `AllowanceView.unlimited` (the core's `is_unlimited`) and `allowance_entries_per_scope()`; the apps drop `AllowanceCopy.isUnlimited`, `unlimitedFloor` and `entriesPerScope` |
-| Lookalike spender | Bramble #1038 | ported, held (#147) | `refuse_poisoned` refuses a grant whose spender or operator mimics a trusted address (`CallReviewError::PoisonedSpender`, `review.flag.spenderPoisoning` verbatim), not a revoke. Held until #1038 merges into the extension unchanged; then regenerate the fixtures from the merged extension. `v0.8.0` refused no spender at all, so a lookalike's revoke was never refused |
+| Lookalike spender | Bramble #1038 | done (#147, `v0.9.0`), ahead of #1038 | `refuse_poisoned` refuses a grant whose spender or operator mimics a trusted address (`CallReviewError::PoisonedSpender`, `review.flag.spenderPoisoning` verbatim), not a revoke. Merged ahead of #1038, which is still open: once it merges, regenerate the fixtures from the merged extension and port any change it took. `v0.8.0` refused no spender at all, so a lookalike's revoke was never refused |
 | Relay row link | gasless (#1053) | done (#145) | a row signed for the relay (`relay` set) has no `explorer_url` until the relay answers with a transaction hash (`relay-rows.ts`) |
 | Gasless selector felt | Bramble #1039 | done before (`v0.8.0`) | the rebuild already takes a felt entrypoint as its own selector (`gasless::typed_data::selector_of`, test `a_felt_entrypoint_is_its_own_selector_in_the_rebuild`). Nothing to port; once #1039 merges, G7h can add a felt-entrypoint line |
 | Intent signer change | M18 (#1049) | open | `MultisigIntent` carries no decoded change. Port `configReviewFor` (`multisig-intent-review.ts`): when the intent is exactly one call and its `configSnapshot` equals the record's current config (threshold and signer GUIDs in order), `review_config_change` over that config gives the change and the next config; otherwise none. `intent_view` then needs the record (five call sites) |
