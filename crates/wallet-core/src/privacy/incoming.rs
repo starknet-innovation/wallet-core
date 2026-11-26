@@ -2,6 +2,9 @@
 //! blockIdentifier})` against the indexer (`indexer-discovery.ts`), with no cursor, as Bramble's
 //! fixed option set calls it (`compiler.ts` `resolveNotes`, for the tokens in deficit).
 //!
+//! The shadow-account commitment read runs the same walk as `discoverNotes()` with no options
+//! (`IncomingWalk::unfiltered`): no proving block, every token's notes.
+//!
 //! Sans-IO, like `outgoing`. Each page runs `convertIncomingNotes`: a note's channel key comes
 //! from this reply's `channels` (matched on the sender as written) or else from an earlier page's
 //! cursor (matched by value); notes of tokens not asked for are skipped; `open` is
@@ -36,8 +39,10 @@ use crate::{Felt, SecretFelt};
 pub struct IncomingWalk {
     pool: Felt,
     account: Felt,
-    tokens: Vec<Felt>,
-    proving_block: BlockRef,
+    /// `None`: every token's notes (no `tokens` filter).
+    tokens: Option<Vec<Felt>>,
+    /// `None`: no `blockIdentifier`, so the first page names no block.
+    proving_block: Option<BlockRef>,
     max_notes: usize,
     cursor: Option<Ordered>,
     block: Option<BlockRef>,
@@ -61,8 +66,8 @@ impl IncomingWalk {
         Self {
             pool,
             account,
-            tokens,
-            proving_block,
+            tokens: Some(tokens),
+            proving_block: Some(proving_block),
             max_notes,
             cursor: None,
             block: None,
@@ -73,16 +78,33 @@ impl IncomingWalk {
         }
     }
 
+    /// `discoverNotes(address, vk)` with no options: every token's notes (at most `max_notes`
+    /// nonzero ones each), at whatever block the service answers from.
+    pub fn unfiltered(pool: Felt, account: Felt, max_notes: usize) -> Self {
+        Self {
+            tokens: None,
+            proving_block: None,
+            ..Self::new(pool, account, Vec::new(), BlockRef::Number(0), max_notes)
+        }
+    }
+
     /// The next `POST /v1/sync/incoming_state` body (`INCOMING_PATH`): `cursor: {}` and
-    /// the proving block first, then the last reply's cursor and its block.
+    /// the proving block first, then the last reply's cursor and its block. With no proving
+    /// block, the first page names none and later ones the pinned block when it is truthy.
     pub fn body(&self, viewing_key: &SecretFelt) -> zeroize::Zeroizing<Vec<u8>> {
-        let block = request_block(self.block.as_ref(), &self.proving_block);
+        let block = match &self.proving_block {
+            Some(proving) => Some(request_block(self.block.as_ref(), proving)),
+            None => self
+                .block
+                .as_ref()
+                .filter(|block| **block != BlockRef::Number(0)),
+        };
         bodies::incoming(
             &self.pool,
             &self.account,
             viewing_key,
             self.cursor.as_ref(),
-            Some(block),
+            block,
         )
     }
 
@@ -122,7 +144,11 @@ impl IncomingWalk {
         for note in array(reply.get("notes"))? {
             let fields = read_note(note)?;
             let token = felt_of(fields.token)?;
-            if !self.tokens.contains(&token) {
+            if self
+                .tokens
+                .as_ref()
+                .is_some_and(|tokens| !tokens.contains(&token))
+            {
                 continue;
             }
             let sender = felt_of(fields.sender)?;

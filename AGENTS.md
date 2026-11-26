@@ -223,8 +223,12 @@ Grep first; extend in place rather than adding a sibling.
   (`compiler`, `simulator`), the `compile_actions` calldata (`client_actions`), its decoder and
   binding to the reviewed actions (`pool_actions.rs`), the `CallSet` digest and signature check
   (`call_set.rs`), the invocation and pool nonce (`invocation`) and the prover's bodies, judge and
-  retry rule (`prover`); its records (`ReviewedAction`, `ProofLimits`, `CallAndProof`,
-  `ProofRefusal`) and the final proof judge are `proof.rs`.
+  retry rule (`prover`); its records (`ReviewedAction`, `InvokeArg`, `CollectPolicy`,
+  `ProofLimits`, `CallAndProof`, `ProofRefusal`) and the final proof judge are `proof.rs`. Shadow
+  accounts (commitments, address, the anonymizer's `ComputeAndInvoke` data) are `shadow`, their
+  two reads (the commitment read's discovery, `get_shadow_accounts` windows, body and judge)
+  `shadow_reads`; the invoke phase's contracts are `compiler::Contracts`. Bramble's placeholder
+  grammar, origin-bound shadow scope and scan limits are `bramble-core`'s `strk20.rs`.
 - Nostr relay work lives beside the keys in `crates/wallet-core/src/nostr/`: the relay-URL
   grammar (`relay_url::is_nostr_relay_url`, which a custom RPC URL shares as
   `is_custom_rpc_url`; the endpoint redactor `redact_endpoints` sits beside it), relay selection, frame parsing, gift-wrap batches and

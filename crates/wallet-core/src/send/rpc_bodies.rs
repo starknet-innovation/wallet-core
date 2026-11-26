@@ -144,6 +144,23 @@ pub fn call_at_block(id: u64, address: &Felt, selector: &Felt, block: &Felt) -> 
     )
 }
 
+/// `starknet_call` of `selector` on `address` with `calldata`, at `latest` (starknet.js
+/// `callContract`).
+pub fn call(id: u64, address: &Felt, selector: &Felt, calldata: &[Felt]) -> String {
+    envelope(
+        id,
+        "starknet_call",
+        json!({
+            "block_id": "latest",
+            "request": {
+                "calldata": felts(calldata),
+                "contract_address": felt::canonical(address),
+                "entry_point_selector": felt::canonical(selector),
+            },
+        }),
+    )
+}
+
 /// `starknet_getBlockWithTxHashes` at the pinned block, for its timestamp.
 pub fn block_at(id: u64, block: &Felt) -> String {
     envelope(
