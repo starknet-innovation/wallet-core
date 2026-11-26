@@ -150,7 +150,7 @@ fn denying_refuses_every_waiting_request() {
         data: None,
     };
     assert_eq!(
-        dapp.deny_connect(card, NOW),
+        dapp.deny(card, NOW),
         [1, 2].map(|request_id| DappSettled {
             request_id,
             reply: refused()
@@ -260,7 +260,7 @@ fn a_card_holds_eight_requests_and_the_queue_fifty_sites() {
         );
     }
     assert_eq!(code(&ask(&dapp, "wallet_requestAccounts", None, 9)), 163);
-    assert_eq!(dapp.deny_connect(card, NOW).len(), 8);
+    assert_eq!(dapp.deny(card, NOW).len(), 8);
 
     let from = |site: usize| {
         dapp.request(

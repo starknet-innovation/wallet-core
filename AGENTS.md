@@ -245,9 +245,11 @@ Grep first; extend in place rather than adding a sibling.
   `bramble-core`'s `dapp.rs` (`DAPP_POLICY`, `DAPP_QUEUE_LIMITS`, `read_page_request`,
   `SITE_LISTS`, `PHISHING_FEED`).
   The apps reach all of it through `bramble-core`'s `dapp_session::DappSession` (the request,
-  the cards, their decisions and expiry; grants are written to the vault's `kept.origin_grants`
-  through `WalletCore::commit`); its blocklist, feed refresh and card warnings are
-  `dapp_sites.rs`.
+  the cards (`DappCard`), their decisions and expiry; grants are written to the vault's
+  `kept.origin_grants` through `WalletCore::commit`); its blocklist, feed refresh and card
+  warnings are `dapp_sites.rs`; `wallet_signTypedData`'s card and its signature at approval
+  (`approve_sign_typed_data`, through `signing_record` and `sign_for` under one session hold)
+  are `dapp_sign.rs`.
 - Only `wallet-core` depends on Krusty (`kms.rs`, `nostr.rs`, `accounts/`, `send/`);
   `bramble-core` goes through `wallet-core` and never names `krusty_kms`.
 

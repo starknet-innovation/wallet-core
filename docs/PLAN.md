@@ -1087,8 +1087,14 @@ Features, smallest and least dependent first:
       cannot be approved, the host refreshes the feed (`refresh_phishing_feed`,
       `answer_phishing_feed`), each card carries `blocked` and its warnings, and a decided card
       records the site's first sighting (deleted with the wallet).
-    - Next here, in order: the remaining methods' gates and results; typed-data review and
-      SNIP-12 signing at approval; the full export.
+    - In review: SNIP-12 typed data (`dapp::typed_data`: the gate, chain binding and summary)
+      and its signing at approval (`bramble-core`'s `dapp_sign.rs`:
+      `approve_sign_typed_data`, `DappCard::SignTypedData`, and `deny` for any card). Signs for
+      vault-key OpenZeppelin and Ready (signer-array class) accounts; Ledger, Braavos, a Ready
+      account stored at Argent 0.3.x and a SNIP-9 OutsideExecution are refused (163) until the
+      device path, the live class read and the OutsideExecution review land.
+    - Next here, in order: the remaining methods' gates and results; the OutsideExecution
+      review; the full export.
     - *Done* (#140): the connect-only slice is exported first, so Bramble can build and test
       the WebView bridge against real dapps while review and signing follow. Connect's card is
       a site and an account, so the slice does not wait on M19–M21.

@@ -148,7 +148,7 @@ fn a_card_carries_its_sites_warnings_and_the_wallet_remembers_it() {
             SiteWarning::FirstSeen,
         ]
     );
-    dapp.deny_connect(card, NOW);
+    dapp.deny(card, NOW);
 
     pending(ask(&dapp, site, "wallet_requestAccounts", 2));
     let warnings = |now| dapp.pending_approvals(now)[0].warnings.clone();
