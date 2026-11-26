@@ -20,6 +20,7 @@ pub mod judge;
 pub mod multisig_deploy;
 pub mod multisig_import;
 pub mod multisig_intent;
+pub mod multisig_intent_sign;
 pub mod multisig_invoke;
 pub mod multisig_invoke_plan;
 pub mod multisig_review;

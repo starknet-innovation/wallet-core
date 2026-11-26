@@ -6,7 +6,7 @@
 
 /// Every source file under `src/`, read at test time so a new exporting file is scanned without
 /// this test changing.
-fn sources() -> Vec<(String, String)> {
+pub(crate) fn sources() -> Vec<(String, String)> {
     fn walk(dir: &std::path::Path, root: &std::path::Path, out: &mut Vec<(String, String)>) {
         for entry in std::fs::read_dir(dir).expect("read src") {
             let path = entry.expect("read src entry").path();
@@ -33,13 +33,13 @@ fn is_export_attribute(line: &str) -> bool {
 }
 
 /// One exported function, its signature up to the body (or the `;` of a trait method).
-struct Exported {
-    signature: String,
+pub(crate) struct Exported {
+    pub(crate) signature: String,
     /// A method of an exported `with_foreign` trait: the apps implement it and the core calls it,
     /// so what the core hands over is the arguments, not the return value.
-    foreign: bool,
+    pub(crate) foreign: bool,
     /// Gated on `raw-keys` or `extension`, which mobile's build leaves out.
-    extension_only: bool,
+    pub(crate) extension_only: bool,
 }
 
 impl Exported {
@@ -54,7 +54,7 @@ impl Exported {
         }
     }
 
-    fn name(&self) -> &str {
+    pub(crate) fn name(&self) -> &str {
         let after = self.signature.split("fn ").nth(1).unwrap_or("");
         after.split('(').next().unwrap_or("")
     }
@@ -101,7 +101,7 @@ fn signature(first: &str, lines: &[&str]) -> String {
 /// Functions inside `#[uniffi::export]` items: a free fn, every fn of an impl block, and the
 /// methods of a trait. Panics on an export it reads no function under, so a shape this parser
 /// does not know is a failure, never a clean item.
-fn exported_signatures(source: &str) -> Vec<Exported> {
+pub(crate) fn exported_signatures(source: &str) -> Vec<Exported> {
     let lines: Vec<&str> = source.lines().collect();
     let mut signatures = Vec::new();
     for (at, line) in lines.iter().enumerate() {
@@ -292,7 +292,8 @@ fn mobile_hands_out_no_raw_signature() {
 
 /// P1's multisig transaction exports sign by vault record and judge reads the host drove: none
 /// takes or returns a key, a phrase or a raw signature, so a co-signer's key never crosses the
-/// FFI (AGENTS.md). Their files are named so a new export there is scanned here.
+/// FFI (AGENTS.md). A signature coming in is held to `ffi_surface_signatures`. Their files
+/// are named so a new export there is scanned here.
 #[test]
 fn multisig_transactions_take_and_return_no_key() {
     let mut seen = Vec::new();
@@ -305,14 +306,7 @@ fn multisig_transactions_take_and_return_no_key() {
         }
         for exported in exported_signatures(&source) {
             let signature = exported.signature.to_lowercase();
-            for word in [
-                "private",
-                "secret",
-                "mnemonic",
-                "phrase",
-                "passphrase",
-                "signature:",
-            ] {
+            for word in ["private", "secret", "mnemonic", "phrase", "passphrase"] {
                 assert!(
                     !signature.contains(word),
                     "{file}: `{}` carries `{word}`",
@@ -329,6 +323,7 @@ fn multisig_transactions_take_and_return_no_key() {
         "sign_multisig_intent_on_device",
         "submit_multisig_intent",
         "import_multisig_intent",
+        "import_multisig_signature",
         "multisig_intent_read",
         "multisig_intent_review",
         "multisig_fee_replacement",
