@@ -137,11 +137,13 @@ impl<E: Entropy> ProofJob<E> {
         let Some(key) = self.viewing_key(host) else {
             return fail(ProofRefusal::Locked);
         };
+        let contracts = self.contracts();
         let inputs = &self.inputs;
         let compiled = match compile(
             &inputs.account,
             &key,
             &inputs.actions,
+            &contracts,
             channels,
             notes,
             &mut self.entropy,
@@ -163,6 +165,7 @@ impl<E: Entropy> ProofJob<E> {
             &inputs.account,
             &key,
             &inputs.actions,
+            &contracts,
             &inputs.limits,
         ) {
             return fail(refusal);

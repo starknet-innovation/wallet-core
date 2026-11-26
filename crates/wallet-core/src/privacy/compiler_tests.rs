@@ -10,6 +10,12 @@ const EVE: Felt = Felt::from_hex_unchecked("0xe5e");
 const STRK: Felt = Felt::from_hex_unchecked("0x5717");
 const ETH: Felt = Felt::from_hex_unchecked("0xe7");
 const KEY: Felt = Felt::from_hex_unchecked("0x654321");
+const POOL: Felt = Felt::from_hex_unchecked("0x9001");
+const ANONYMIZER: Felt = Felt::from_hex_unchecked("0xa11");
+const CONTRACTS: Contracts = Contracts {
+    pool: POOL,
+    anonymizer: Some(ANONYMIZER),
+};
 /// The sender's channel key the account's notes were created under.
 const SENDER_KEY: Felt = Felt::from_hex_unchecked("0x5e4de2");
 
@@ -109,7 +115,15 @@ fn run(
     notes: &AddressMap<Vec<Note>>,
 ) -> Result<(Compiled, Vec<usize>), CompileRefusal> {
     let mut entropy = Counter::default();
-    let compiled = compile(&ACCOUNT, &key(), reviewed, found, notes, &mut entropy)?;
+    let compiled = compile(
+        &ACCOUNT,
+        &key(),
+        reviewed,
+        &CONTRACTS,
+        found,
+        notes,
+        &mut entropy,
+    )?;
     Ok((compiled, entropy.0))
 }
 
@@ -187,6 +201,17 @@ fn shape(actions: &[ClientAction]) -> Vec<String> {
                 amount,
                 ..
             } => format!("Withdraw {} {} {amount}", name(to_addr), name(token)),
+            ClientAction::InvokeExternal {
+                contract_address,
+                calldata,
+            } => format!(
+                "InvokeExternal {} {}",
+                name(contract_address),
+                calldata.len()
+            ),
+            ClientAction::ComputeAndInvoke {
+                contract_address, ..
+            } => format!("ComputeAndInvoke {}", name(contract_address)),
         })
         .collect()
 }
@@ -195,7 +220,7 @@ fn shape(actions: &[ClientAction]) -> Vec<String> {
 fn binds(compiled: &Compiled, reviewed: &[ReviewedAction]) -> bool {
     let calldata = compile_actions_calldata(&ACCOUNT, &key(), &compiled.actions).unwrap();
     decode_compile_actions(&calldata, &ACCOUNT, &key())
-        .is_some_and(|decoded| matches_review(&decoded, reviewed, &ACCOUNT))
+        .is_some_and(|decoded| matches_review(&decoded, reviewed, &ACCOUNT, &CONTRACTS))
 }
 
 #[test]
@@ -212,7 +237,7 @@ fn a_send_groups_by_token_selects_largest_first_stably_and_returns_change() {
     // Recipients: the account, then note recipients token by token (a withdrawal's needs no
     // channel); tokens in `balances` order, where withdrawals come before created notes.
     assert_eq!(
-        walk_inputs(&ACCOUNT, &reviewed).unwrap(),
+        walk_inputs(&ACCOUNT, &reviewed, &CONTRACTS).unwrap(),
         WalkInputs {
             recipients: vec![ACCOUNT, BOB, EVE],
             tokens: vec![ETH, STRK],
@@ -265,7 +290,7 @@ fn registering_opens_the_own_channel_first_with_the_viewing_public_key() {
         shield(STRK, 7, Some(BOB)),
         shield(STRK, 3, None),
     ];
-    let walks = walk_inputs(&ACCOUNT, &reviewed).unwrap();
+    let walks = walk_inputs(&ACCOUNT, &reviewed, &CONTRACTS).unwrap();
     assert_eq!(walks.recipients, [ACCOUNT, BOB]);
     assert!(walks.tokens.is_empty());
     let found = channels(vec![(BOB, precomputed(2))], Some(5));
@@ -326,7 +351,7 @@ fn an_open_transfer_touches_no_balance() {
         token: STRK,
         recipient: BOB,
     }];
-    let walks = walk_inputs(&ACCOUNT, &reviewed).unwrap();
+    let walks = walk_inputs(&ACCOUNT, &reviewed, &CONTRACTS).unwrap();
     assert_eq!(walks.recipients, [ACCOUNT, BOB]);
     assert!(walks.tokens.is_empty());
     // No channel to open, so no total is needed.
@@ -354,7 +379,7 @@ fn every_refusal_is_its_own_variant() {
             recipient: None,
         }];
         assert_eq!(
-            walk_inputs(&ACCOUNT, &reviewed).unwrap_err(),
+            walk_inputs(&ACCOUNT, &reviewed, &CONTRACTS).unwrap_err(),
             CompileRefusal::InvalidAmount
         );
         assert_eq!(
@@ -396,6 +421,7 @@ fn every_refusal_is_its_own_variant() {
         &ACCOUNT,
         &key(),
         &[send(STRK, BOB, 5)],
+        &CONTRACTS,
         &ready,
         &short,
         &mut entropy,
@@ -404,65 +430,8 @@ fn every_refusal_is_its_own_variant() {
     assert!(entropy.0.is_empty());
 }
 
-/// The fixture's calldata is ours (bramble-core's `strk20_compiler_parity` proves it felt for
-/// felt), so binding it binds our output: every job the SDK signed passes `pool_actions` against
-/// the actions it was built from.
-#[test]
-fn every_recorded_job_binds_to_its_review() {
-    let jsonl = include_str!("../../../bramble-core/tests/fixtures/extension-strk20-jobs.jsonl");
-    let hex = |value: &serde_json::Value| felt::parse(value.as_str().unwrap()).unwrap();
-    let decimal = |value: &serde_json::Value| Felt::from_dec_str(value.as_str().unwrap()).unwrap();
-    let mut bound = 0;
-    for line in jsonl.lines() {
-        let job: serde_json::Value = serde_json::from_str(line).unwrap();
-        let inputs = &job["inputs"];
-        let Some(call) = job["signing"].get(0).map(|signing| &signing["calls"][0]) else {
-            continue;
-        };
-        let mut reviewed = Vec::new();
-        if inputs["builder"] != "actions" {
-            reviewed.push(ReviewedAction::Register);
-        }
-        for action in inputs["actions"].as_array().unwrap() {
-            let token = hex(&action["token"]);
-            let recipient = || hex(&action["recipient"]);
-            reviewed.push(match action["type"].as_str().unwrap() {
-                "deposit" => ReviewedAction::Deposit {
-                    token,
-                    amount: decimal(&action["amount"]),
-                    recipient: action.get("recipient").map(hex),
-                },
-                "transfer" if action["amount"] == "OPEN" => ReviewedAction::OpenTransfer {
-                    token,
-                    recipient: recipient(),
-                },
-                "transfer" => ReviewedAction::Transfer {
-                    token,
-                    recipient: recipient(),
-                    amount: decimal(&action["amount"]),
-                },
-                _ => ReviewedAction::Withdraw {
-                    token,
-                    recipient: recipient(),
-                    amount: decimal(&action["amount"]),
-                },
-            });
-        }
-        let calldata: Vec<SecretFelt> = call["calldata"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|value| SecretFelt::new(decimal(value)))
-            .collect();
-        let (account, key) = (hex(&inputs["account"]), hex(&inputs["viewingKey"]));
-        let decoded = decode_compile_actions(&calldata, &account, &SecretFelt::new(key)).unwrap();
-        assert!(
-            matches_review(&decoded, &reviewed, &account),
-            "{}",
-            job["id"]
-        );
-        bound += 1;
-    }
-    // 27 jobs, 3 refused by the SDK before signing.
-    assert_eq!(bound, 24);
-}
+#[path = "compiler_fixture_tests.rs"]
+mod fixture;
+
+#[path = "compiler_invoke_tests.rs"]
+mod invoke;

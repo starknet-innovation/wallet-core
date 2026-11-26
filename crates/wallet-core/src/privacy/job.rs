@@ -22,7 +22,7 @@ use std::fmt;
 
 use zeroize::Zeroizing;
 
-use super::compiler::{walk_inputs, WalkInputs};
+use super::compiler::{walk_inputs, Contracts, WalkInputs};
 use super::config::{is_service_url, Route};
 use super::entropy::{Entropy, OsEntropy};
 use super::incoming::IncomingWalk;
@@ -60,6 +60,10 @@ pub struct ProofInputs {
     /// The prover's URL, checked with `config::is_service_url`. Its own input until the wallet's
     /// routing catalog carries one.
     pub prover_url: String,
+    /// The network's shadow-account anonymizer, which a `ShadowInvoke` runs through; `None` when
+    /// the network has none, and a job with a `ShadowInvoke` is then refused before any request.
+    /// Its own input until the wallet's routing catalog carries one.
+    pub anonymizer: Option<Felt>,
     /// Clamped to `ProofLimits::CEILING`.
     pub limits: ProofLimits,
     /// The most nonzero notes the incoming walk keeps per token.
@@ -260,7 +264,11 @@ impl<E: Entropy> ProofJob<E> {
         let stage = std::mem::replace(&mut self.stage, Stage::Closed);
         Ok(match (stage, reply) {
             (Stage::Fresh, PrivacyReply::Start { .. }) => {
-                match walk_inputs(&self.inputs.account, &self.inputs.actions) {
+                match walk_inputs(
+                    &self.inputs.account,
+                    &self.inputs.actions,
+                    &self.contracts(),
+                ) {
                     Ok(walks) => {
                         self.walks = walks;
                         self.start_walks(host)
@@ -325,6 +333,14 @@ impl<E: Entropy> ProofJob<E> {
             },
             _ => return Err(PrivacyError::OutOfOrder),
         })
+    }
+
+    /// The pool and anonymizer the invoke phase names.
+    pub(super) fn contracts(&self) -> Contracts {
+        Contracts {
+            pool: self.inputs.route.pool,
+            anonymizer: self.inputs.anonymizer,
+        }
     }
 
     pub(super) fn next_id(&mut self) -> u64 {
