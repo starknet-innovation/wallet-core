@@ -32,8 +32,9 @@ use super::plan::PrivacyHost;
 use super::proof::{CallAndProof, ProofLimits, ProofRefusal, ReviewedAction};
 use super::prover::ProverRetry;
 use super::types::{PrivacyError, PrivacyReply};
+use crate::catalog::NetworkInfo;
 use crate::send::types::SignRefusal;
-use crate::{felt, Felt, NetworkId, SecretFelt, StarkSignature};
+use crate::{felt, Felt, SecretFelt, StarkSignature};
 
 /// The wallet behind a proof job: the viewing key (`PrivacyHost::viewing_key`, asked for each
 /// discovery body and once to compile) and the account's signature over the `CallSet` digest.
@@ -47,8 +48,6 @@ pub trait ProofHost: PrivacyHost {
 /// What a proof job needs. Built by the wallet; nothing here is Bramble's unless it passes it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProofInputs {
-    /// The network: the `CallSet`'s chain (`NetworkId::chain_id`) and the viewing key's scope.
-    pub network: NetworkId,
     pub account: Felt,
     /// The account's signer public key; the `CallSet` signature must verify under it.
     pub public_key: Felt,
@@ -174,7 +173,11 @@ pub(super) enum Stage {
 /// `E` is the randomness the compiler draws (the OS's in production).
 pub struct ProofJob<E: Entropy = OsEntropy> {
     pub(super) inputs: ProofInputs,
+    /// The `CallSet`'s chain, `NetworkId::chain_id` of the catalog's network.
     pub(super) chain_id: Felt,
+    /// The catalog's chain-id spelling, half of the viewing key's scope, exactly as
+    /// `PrivacyReadPlan` asks with it, so both derive the same key.
+    pub(super) scope_chain_id: String,
     pub(super) entropy: E,
     /// What the walks fetch, from `walk_inputs` at `Start`.
     pub(super) walks: WalkInputs,
@@ -185,13 +188,21 @@ pub struct ProofJob<E: Entropy = OsEntropy> {
 }
 
 impl<E: Entropy> ProofJob<E> {
-    /// A job for `inputs`, drawing from `entropy`. `InvalidRoute` when the route has OHTTP on, is
-    /// another network's, names a pool its spelling does not parse to, or either URL is not a
-    /// service URL: nothing is requested.
-    pub fn new(mut inputs: ProofInputs, entropy: E) -> Result<Self, ProofRefusal> {
+    /// A job on `network` (the wallet's catalog record) for `inputs`, drawing from `entropy`.
+    /// `InvalidRoute` when the catalog's chain id does not spell `NetworkId::chain_id` (a
+    /// wrong-chain catalog must not sign), the route has OHTTP on, is another network's, names a
+    /// pool its spelling does not parse to, or either URL is not a service URL: nothing is
+    /// requested.
+    pub fn new(
+        network: &NetworkInfo,
+        mut inputs: ProofInputs,
+        entropy: E,
+    ) -> Result<Self, ProofRefusal> {
         let route = &inputs.route;
-        if route.ohttp
-            || route.network != inputs.network
+        let chain_id = network.network.chain_id();
+        if felt::parse(&network.chain_id) != Some(chain_id)
+            || route.ohttp
+            || route.network != network.network
             || !is_service_url(&route.discovery_url)
             || !is_service_url(&inputs.prover_url)
             || felt::parse(&route.pool_address) != Some(route.pool)
@@ -200,7 +211,8 @@ impl<E: Entropy> ProofJob<E> {
         }
         inputs.limits = inputs.limits.clamped();
         Ok(Self {
-            chain_id: inputs.network.chain_id(),
+            chain_id,
+            scope_chain_id: network.chain_id.clone(),
             inputs,
             entropy,
             walks: WalkInputs {
@@ -323,7 +335,7 @@ impl<E: Entropy> ProofJob<E> {
     /// Asks the wallet for the key, scoped to this job's chain and pool; `None` once locked.
     pub(super) fn viewing_key(&self, host: &dyn ProofHost) -> Option<SecretFelt> {
         host.viewing_key(
-            &felt::canonical(&self.chain_id),
+            &self.scope_chain_id,
             &felt::canonical(&self.inputs.route.pool),
         )
     }

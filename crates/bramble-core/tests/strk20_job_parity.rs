@@ -21,6 +21,7 @@
 use std::cell::RefCell;
 use std::collections::{BTreeMap, VecDeque};
 
+use bramble_core::catalogs::networks;
 use serde_json::Value;
 use starknet_wallet_core::privacy::compiler::CompileRefusal;
 use starknet_wallet_core::privacy::config::Route;
@@ -109,16 +110,19 @@ fn reviewed(inputs: &Value) -> Vec<ReviewedAction> {
     reviewed
 }
 
-fn inputs(job: &Value) -> ProofInputs {
-    let inputs = &job["inputs"];
-    let network = match inputs["chainId"].as_str().unwrap() {
+fn network(job: &Value) -> NetworkId {
+    match job["inputs"]["chainId"].as_str().unwrap() {
         "0x534e5f4d41494e" => NetworkId::Mainnet,
         "0x534e5f5345504f4c4941" => NetworkId::Sepolia,
         other => panic!("unknown chain {other}"),
-    };
+    }
+}
+
+fn inputs(job: &Value) -> ProofInputs {
+    let inputs = &job["inputs"];
+    let network = network(job);
     assert_eq!(network.chain_id(), hex(&inputs["chainId"]));
     ProofInputs {
-        network,
         account: hex(&inputs["account"]),
         public_key: hex(&inputs["accountPublicKey"]),
         actions: reviewed(inputs),
@@ -173,6 +177,8 @@ fn stream(job: &Value) -> Stream {
 
 /// The recorded wallet: its viewing key, and the SDK's signature over whatever it is asked.
 struct Host {
+    network: NetworkId,
+    pool: Felt,
     key: Felt,
     public_key: String,
     signature: Option<(String, String)>,
@@ -180,7 +186,10 @@ struct Host {
 }
 
 impl PrivacyHost for Host {
-    fn viewing_key(&self, _chain_id: &str, _pool_address: &str) -> Option<SecretFelt> {
+    fn viewing_key(&self, chain_id: &str, pool_address: &str) -> Option<SecretFelt> {
+        // Bramble's catalog spelling, as its balance read asks: the same scope, the same key.
+        assert_eq!(chain_id, networks::info(self.network).chain_id);
+        assert_eq!(pool_address, felt::canonical(&self.pool));
         Some(SecretFelt::new(self.key))
     }
 }
@@ -208,6 +217,8 @@ fn host(job: &Value) -> Host {
         )
     });
     Host {
+        network: network(job),
+        pool: hex(&inputs["pool"]),
         key: hex(&inputs["viewingKey"]),
         public_key: inputs["accountPublicKey"].as_str().unwrap().to_owned(),
         signature,
@@ -244,7 +255,8 @@ fn run(job: &Value, host: &Host, stream: &mut Stream) -> Run {
             .and_then(VecDeque::pop_front)
             .unwrap_or_else(|| panic!("{id}: an invented {purpose:?} request"))
     };
-    let mut proof_job = ProofJob::new(inputs(job), stream).unwrap();
+    let catalog = networks::info(network(job));
+    let mut proof_job = ProofJob::new(catalog, inputs(job), stream).unwrap();
     let mut waits = Vec::new();
     let mut step = proof_job
         .advance(host, PrivacyReply::Start { now_ms: NOW })

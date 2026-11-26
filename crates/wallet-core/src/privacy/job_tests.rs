@@ -6,10 +6,13 @@
 use std::cell::{Cell, RefCell};
 
 use super::*;
+use crate::catalog::{NetworkInfo, TokenInfo};
 use crate::privacy::compiler::CompileRefusal;
+use crate::privacy::config::testing::limits;
 use crate::privacy::config::testing::{mainnet, POOL};
+use crate::privacy::plan::PrivacyReadPlan;
 use crate::privacy::proof::APPLY_ACTIONS;
-use crate::{sign_stark_hash, Error};
+use crate::{sign_stark_hash, Error, NetworkId};
 
 pub(super) const ACCOUNT: Felt =
     Felt::from_hex_unchecked("0x208361e3911b1d93a704400b88e7e53a89171fce64dbb48f8479e4f44b398d9");
@@ -31,9 +34,25 @@ pub(super) fn pool() -> Felt {
     Felt::from_hex(POOL).unwrap()
 }
 
+/// The catalog record, chain id in the catalog's spelling (Bramble's `networks.json`).
+pub(super) fn network() -> NetworkInfo {
+    NetworkInfo {
+        network: NetworkId::Mainnet,
+        chain_id: "0x534e5f4d41494e".into(),
+        explorer_base_url: "https://voyager.online".into(),
+        name: "Mainnet".into(),
+        rpc_urls: vec!["https://rpc.example".into()],
+        tokens: vec![TokenInfo {
+            address: felt::canonical(&STRK),
+            decimals: 18,
+            name: "Starknet Token".into(),
+            symbol: "STRK".into(),
+        }],
+    }
+}
+
 pub(super) fn inputs(actions: Vec<ReviewedAction>) -> ProofInputs {
     ProofInputs {
-        network: NetworkId::Mainnet,
         account: ACCOUNT,
         public_key: public_key(),
         actions,
@@ -105,7 +124,7 @@ impl ProofHost for Host {
 }
 
 pub(super) fn job(actions: Vec<ReviewedAction>) -> ProofJob<Zeros> {
-    ProofJob::new(inputs(actions), Zeros).unwrap()
+    ProofJob::new(&network(), inputs(actions), Zeros).unwrap()
 }
 
 pub(super) fn http(id: u64, status: u16, body: &str) -> PrivacyReply {
@@ -224,7 +243,7 @@ fn a_route_or_prover_url_is_refused_before_any_request() {
     ohttp.route = mainnet(true);
     cases.push(ohttp);
     let mut other_network = inputs(vec![ReviewedAction::Register]);
-    other_network.network = NetworkId::Sepolia;
+    other_network.route.network = NetworkId::Sepolia;
     cases.push(other_network);
     let mut plain_http = inputs(vec![ReviewedAction::Register]);
     plain_http.route.discovery_url = "http://d.example/discovery".into();
@@ -237,7 +256,7 @@ fn a_route_or_prover_url_is_refused_before_any_request() {
     cases.push(pool_spelling);
     for refused in cases {
         assert_eq!(
-            ProofJob::new(refused, Zeros).err(),
+            ProofJob::new(&network(), refused, Zeros).err(),
             Some(ProofRefusal::InvalidRoute)
         );
     }
@@ -247,7 +266,7 @@ fn a_route_or_prover_url_is_refused_before_any_request() {
 fn wider_limits_are_clamped_to_the_ceiling() {
     let mut wide = inputs(vec![ReviewedAction::Register]);
     wide.limits.invoke_calldata_felts = usize::MAX;
-    let job = ProofJob::new(wide, Zeros).unwrap();
+    let job = ProofJob::new(&network(), wide, Zeros).unwrap();
     assert_eq!(job.inputs.limits, ProofLimits::CEILING);
 }
 
@@ -287,7 +306,7 @@ fn refusals_come_before_the_nonce_and_the_signature() {
     // Calldata over the wallet's bound fails the binding: no nonce read, nothing signed.
     let mut tight = inputs(vec![ReviewedAction::Register]);
     tight.limits.invoke_calldata_felts = 3;
-    let mut job = ProofJob::new(tight, Zeros).unwrap();
+    let mut job = ProofJob::new(&network(), tight, Zeros).unwrap();
     let outgoing = job
         .advance(&host, PrivacyReply::Start { now_ms: NOW })
         .unwrap();
@@ -307,4 +326,68 @@ fn the_prover_reply_is_judged_against_the_pool() {
         .advance(&host, http(id(&prove), 200, &other_pool))
         .unwrap();
     assert_eq!(refusal(step), ProofRefusal::UnboundCallOrProof);
+}
+
+#[test]
+fn a_catalog_whose_chain_id_is_another_chain_is_refused() {
+    let mut sepolia_spelling = network();
+    sepolia_spelling.chain_id = "0x534e5f5345504f4c4941".into();
+    let mut unparsed = network();
+    unparsed.chain_id = "SN_MAIN".into();
+    for catalog in [sepolia_spelling, unparsed] {
+        let refused = ProofJob::new(&catalog, inputs(vec![ReviewedAction::Register]), Zeros);
+        assert_eq!(refused.err(), Some(ProofRefusal::InvalidRoute));
+    }
+}
+
+/// Records the scope each `viewing_key` call names.
+struct Scopes(RefCell<Vec<(String, String)>>);
+
+impl PrivacyHost for Scopes {
+    fn viewing_key(&self, chain_id: &str, pool_address: &str) -> Option<SecretFelt> {
+        self.0
+            .borrow_mut()
+            .push((chain_id.to_owned(), pool_address.to_owned()));
+        Some(SecretFelt::new(VIEWING_KEY))
+    }
+}
+
+impl ProofHost for Scopes {
+    fn sign(&self, _hash: &Felt) -> Result<StarkSignature, SignRefusal> {
+        Err(SignRefusal::Failed)
+    }
+}
+
+#[test]
+fn the_job_scopes_the_viewing_key_exactly_as_the_balance_read() {
+    // A catalog spelling with leading zeros: the job must not respell it, or it would prove with
+    // another key than the one the balance read discovers with.
+    let mut catalog = network();
+    catalog.chain_id = "0x00534e5f4d41494e".into();
+
+    let read = Scopes(RefCell::default());
+    let mut plan =
+        PrivacyReadPlan::new(&catalog, "id".into(), ACCOUNT, mainnet(false), limits()).unwrap();
+    let chain = plan
+        .advance(&read, PrivacyReply::Start { now_ms: NOW })
+        .unwrap();
+    let crate::privacy::types::PrivacyStep::Rpc { id, .. } = chain else {
+        panic!("{chain:?}");
+    };
+    let answer = format!(r#"{{"jsonrpc":"2.0","id":{id},"result":"0x534e5f4d41494e"}}"#);
+    let preflight = PrivacyReply::Rpc {
+        id,
+        body: answer,
+        now_ms: NOW,
+    };
+    plan.advance(&read, preflight).unwrap();
+
+    let proving = Scopes(RefCell::default());
+    let mut job = ProofJob::new(&catalog, inputs(vec![ReviewedAction::Register]), Zeros).unwrap();
+    job.advance(&proving, PrivacyReply::Start { now_ms: NOW })
+        .unwrap();
+
+    let expected = ("0x00534e5f4d41494e".to_owned(), felt::canonical(&pool()));
+    assert_eq!(*read.0.borrow(), std::slice::from_ref(&expected));
+    assert_eq!(*proving.0.borrow(), [expected]);
 }
