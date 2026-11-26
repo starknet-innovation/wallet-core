@@ -159,7 +159,7 @@ impl ProofLimits {
         proof_data_characters: 512 * 1024,
     };
 
-    fn clamped(&self) -> Self {
+    pub(super) fn clamped(&self) -> Self {
         let ceiling = Self::CEILING;
         Self {
             sdk_warnings: self.sdk_warnings.min(ceiling.sdk_warnings),
@@ -196,8 +196,14 @@ pub enum ProofRefusal {
     UnsupportedWarning,
     /// The call or proof is over a bound.
     InvalidCallOrProof,
-    /// The call is not the configured pool's `apply_actions`, or the proof is empty or partial.
+    /// The call is not the configured pool's `apply_actions`, or the proof is empty or partial
+    /// (the prover's reply has no message from the pool, or more than one).
     UnboundCallOrProof,
+    /// The prover answered with an error it does not ask to be retried (any HTTP status but 503,
+    /// any JSON-RPC code but `-32005`), or kept asking past the retry policy. Its text is dropped.
+    ProverFailed,
+    /// The prover's reply is not the `starknet_proveTransaction` result schema.
+    InvalidProverReply,
 }
 
 impl From<EngineError> for ProofRefusal {
