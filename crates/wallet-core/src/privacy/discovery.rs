@@ -1,0 +1,327 @@
+//! What a proof job learns from discovery (P15, the SDK's `channel.ts` and `interfaces.ts` `Note`),
+//! and the reply handling both walks share (`outgoing::OutgoingWalk`, `incoming::IncomingWalk`).
+//!
+//! Channel keys and witnesses are derived from the viewing key, so they are held as `SecretFelt`
+//! (zeroized on drop, redacted `Debug`). A `Note`'s `Debug` prints nothing at all: amounts and
+//! senders are private too. Failures are fixed `PrivacyFailure` variants and carry none of it.
+
+use std::fmt;
+
+use super::bodies::BlockRef;
+use super::json::{js_bigint, Ordered, FIELD_PRIME};
+use super::judge;
+use super::types::PrivacyFailure;
+use crate::send::u256::U256;
+use crate::{Felt, SecretFelt};
+
+/// The SDK's `AddressMap`: keyed by address value, iterated in insertion order. As with a
+/// JavaScript `Map`, setting a key that is already present keeps its position, and removing one
+/// forgets it.
+// ponytail: linear lookups; the maps hold a job's recipients and tokens, a handful of entries.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AddressMap<V> {
+    entries: Vec<(Felt, V)>,
+}
+
+impl<V> Default for AddressMap<V> {
+    fn default() -> Self {
+        Self {
+            entries: Vec::new(),
+        }
+    }
+}
+
+impl<V> AddressMap<V> {
+    fn position(&self, key: &Felt) -> Option<usize> {
+        self.entries.iter().position(|(k, _)| k == key)
+    }
+
+    pub fn get(&self, key: &Felt) -> Option<&V> {
+        self.entries.iter().find(|(k, _)| k == key).map(|(_, v)| v)
+    }
+
+    pub fn get_mut(&mut self, key: &Felt) -> Option<&mut V> {
+        self.entries
+            .iter_mut()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v)
+    }
+
+    pub fn contains_key(&self, key: &Felt) -> bool {
+        self.position(key).is_some()
+    }
+
+    /// `map.set(key, value)`.
+    pub fn insert(&mut self, key: Felt, value: V) {
+        match self.get_mut(&key) {
+            Some(slot) => *slot = value,
+            None => self.entries.push((key, value)),
+        }
+    }
+
+    /// `map.get(key)` on a map with a default factory, which inserts the default when missing.
+    pub fn get_or_insert_with(&mut self, key: Felt, default: impl FnOnce() -> V) -> &mut V {
+        let index = match self.position(&key) {
+            Some(index) => index,
+            None => {
+                self.entries.push((key, default()));
+                self.entries.len() - 1
+            }
+        };
+        &mut self.entries[index].1
+    }
+
+    pub fn remove(&mut self, key: &Felt) -> Option<V> {
+        let index = self.position(key)?;
+        Some(self.entries.remove(index).1)
+    }
+
+    pub fn retain(&mut self, mut keep: impl FnMut(&Felt, &V) -> bool) {
+        self.entries.retain(|(k, v)| keep(k, v));
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&Felt, &V)> {
+        self.entries.iter().map(|(k, v)| (k, v))
+    }
+
+    pub fn keys(&self) -> impl Iterator<Item = &Felt> {
+        self.entries.iter().map(|(k, _)| k)
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+}
+
+/// `TokenChannel`: which subchannel a token is (`token_index`) and the next note index in it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TokenChannel {
+    pub token_index: u32,
+    pub note_nonce: u32,
+}
+
+/// `Channel`: an outgoing channel to one recipient. `key` is `None` for a channel the service
+/// only precomputed (not opened on chain yet); `tokens` are its subchannels, by token.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Channel {
+    pub public_key: Felt,
+    pub key: Option<SecretFelt>,
+    pub tokens: AddressMap<TokenChannel>,
+}
+
+/// `Witness`: what proves a note is ours to spend.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Witness {
+    pub channel_key: SecretFelt,
+    pub nonce: u32,
+    pub r: SecretFelt,
+}
+
+/// `Note`: one unspent incoming note. `open` is the SDK's `salt === "1"`.
+#[derive(Clone, PartialEq, Eq)]
+pub struct Note {
+    pub id: Felt,
+    pub amount: u128,
+    pub witness: Witness,
+    pub sender: Felt,
+    pub open: bool,
+}
+
+impl fmt::Debug for Note {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("Note(***)")
+    }
+}
+
+/// A walk after one reply: another page to post, or its result.
+#[derive(Debug)]
+pub enum Walked<W, T> {
+    More(W),
+    Done(T),
+}
+
+/// The SDK's `post`: HTTP 409 is its `ReorgError`, whatever the body says (the job restarts once,
+/// as `compile` does, before any retry rule sees it); any other non-2xx is retryable only when the
+/// body matches the extension's pattern; a 2xx must be bounded JSON with a `block_ref` in the
+/// service's wire format.
+pub(super) fn judge_page(status: u16, body: &[u8]) -> Result<(Ordered, BlockRef), PrivacyFailure> {
+    if status == 409 {
+        return Err(PrivacyFailure::Reorg);
+    }
+    if !(200..300).contains(&status) {
+        let text = String::from_utf8_lossy(&body[..body.len().min(judge::MAX_RESPONSE_BYTES)]);
+        return Err(if judge::matches_retry(&text) {
+            PrivacyFailure::RateLimited
+        } else {
+            PrivacyFailure::ServiceUnavailable
+        });
+    }
+    let reply = judge::parse_body(body).ok_or(PrivacyFailure::InvalidResponse)?;
+    let block = judge::block_ref(&reply).ok_or(PrivacyFailure::InvalidResponse)?;
+    Ok((reply, block))
+}
+
+/// Pins the first reply's `block_ref`; a later page answering from another block is refused, as
+/// the balance read does (the SDK echoes whatever each reply says).
+pub(super) fn pin_block(pinned: &mut Option<BlockRef>, block: BlockRef) -> Option<()> {
+    match pinned {
+        Some(first) if *first != block => None,
+        Some(_) => Some(()),
+        None => {
+            *pinned = Some(block);
+            Some(())
+        }
+    }
+}
+
+/// The `block_ref` a walk sends: `if (blockRef) … else if (blockIdentifier !== undefined)`, so
+/// the proving block on the first page, and on later ones too when the pinned reply's block is
+/// falsy (`0`; an empty string is not a block the judge accepts).
+pub(super) fn request_block<'a>(
+    pinned: Option<&'a BlockRef>,
+    proving: &'a BlockRef,
+) -> &'a BlockRef {
+    match pinned {
+        Some(BlockRef::Number(0)) | None => proving,
+        Some(block) => block,
+    }
+}
+
+/// A felt below `P`, from a value the SDK reads with `BigInt`.
+pub(super) fn felt_of(value: U256) -> Option<Felt> {
+    if value >= FIELD_PRIME {
+        return None;
+    }
+    let mut bytes = [0u8; 32];
+    bytes[..16].copy_from_slice(&value.high.to_be_bytes());
+    bytes[16..].copy_from_slice(&value.low.to_be_bytes());
+    Some(Felt::from_bytes_be(&bytes))
+}
+
+/// A channel key: a nonzero felt (`0n` is falsy wherever the SDK tests `channel.key`).
+pub(super) fn channel_key(value: U256) -> Option<SecretFelt> {
+    felt_of(value)
+        .filter(|key| *key != Felt::ZERO)
+        .map(SecretFelt::new)
+}
+
+/// A service felt (an address, a note id): a string `BigInt` reads, below `P`, with its
+/// spelling.
+pub(super) fn felt_str(value: Option<&Ordered>) -> Option<(&str, Felt)> {
+    let Ordered::Str(text) = value? else {
+        return None;
+    };
+    Some((text, felt_of(js_bigint(value?)?)?))
+}
+
+/// A `number` field the SDK uses as an index: a `u32`.
+pub(super) fn index(value: Option<&Ordered>) -> Option<u32> {
+    match value? {
+        Ordered::Int(number) => u32::try_from(*number).ok(),
+        _ => None,
+    }
+}
+
+/// The SDK keys some maps by an address's text, so two spellings of one value would be two
+/// entries there. Each value must keep the spelling it was first seen with.
+pub(super) fn same_spelling(
+    spellings: &mut AddressMap<String>,
+    text: &str,
+    value: Felt,
+) -> Option<()> {
+    match spellings.get(&value) {
+        Some(first) if first != text => None,
+        Some(_) => Some(()),
+        None => {
+            spellings.insert(value, text.to_owned());
+            Some(())
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn address_map_keeps_javascript_map_order() {
+        let mut map = AddressMap::default();
+        map.insert(Felt::THREE, "a");
+        map.insert(Felt::ONE, "b");
+        map.insert(Felt::THREE, "c");
+        assert_eq!(map.iter().map(|(_, v)| *v).collect::<Vec<_>>(), ["c", "b"]);
+        assert_eq!(*map.get_or_insert_with(Felt::TWO, || "d"), "d");
+        assert_eq!(*map.get_or_insert_with(Felt::ONE, || "e"), "b");
+        assert_eq!(map.remove(&Felt::THREE), Some("c"));
+        map.insert(Felt::THREE, "f");
+        assert_eq!(
+            map.keys().copied().collect::<Vec<_>>(),
+            [Felt::ONE, Felt::TWO, Felt::THREE]
+        );
+        assert_eq!(map.len(), 3);
+    }
+
+    #[test]
+    fn secrets_never_reach_debug() {
+        let note = Note {
+            id: Felt::ONE,
+            amount: 123_456,
+            witness: Witness {
+                channel_key: SecretFelt::new(Felt::from(0xabcdefu64)),
+                nonce: 1,
+                r: SecretFelt::new(Felt::from(0xfedcbau64)),
+            },
+            sender: Felt::TWO,
+            open: false,
+        };
+        assert_eq!(format!("{note:?}"), "Note(***)");
+        let witness = format!("{:?}", note.witness);
+        assert!(!witness.contains("abcdef") && !witness.contains("11259375"));
+        let channel = Channel {
+            public_key: Felt::ONE,
+            key: Some(SecretFelt::new(Felt::from(0xabcdefu64))),
+            tokens: AddressMap::default(),
+        };
+        assert!(!format!("{channel:?}").contains("abcdef"));
+    }
+
+    #[test]
+    fn values_and_blocks() {
+        assert_eq!(felt_of(FIELD_PRIME), None);
+        let below = FIELD_PRIME.checked_sub(U256::from_u128(1)).unwrap();
+        assert_eq!(felt_of(below), Some(Felt::MAX));
+        assert!(channel_key(U256::ZERO).is_none());
+        let proving = BlockRef::Number(7000);
+        assert_eq!(request_block(None, &proving), &proving);
+        assert_eq!(
+            request_block(Some(&BlockRef::Number(0)), &proving),
+            &proving
+        );
+        let pinned = BlockRef::Text("0x5a1f00d".into());
+        assert_eq!(request_block(Some(&pinned), &proving), &pinned);
+        assert_eq!(
+            judge_page(409, b"rate limit").unwrap_err(),
+            PrivacyFailure::Reorg
+        );
+        assert_eq!(
+            judge_page(500, b"Too Many Requests").unwrap_err(),
+            PrivacyFailure::RateLimited
+        );
+        assert_eq!(
+            judge_page(429, b"").unwrap_err(),
+            PrivacyFailure::ServiceUnavailable
+        );
+        assert_eq!(
+            judge_page(200, b"{}").unwrap_err(),
+            PrivacyFailure::InvalidResponse
+        );
+        let mut spellings = AddressMap::default();
+        assert!(same_spelling(&mut spellings, "0x5", Felt::from(5u8)).is_some());
+        assert!(same_spelling(&mut spellings, "0x5", Felt::from(5u8)).is_some());
+        assert!(same_spelling(&mut spellings, "0x05", Felt::from(5u8)).is_none());
+    }
+}

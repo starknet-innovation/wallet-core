@@ -14,21 +14,33 @@
 //! (`pool_actions`), and judges what comes back (`engine_judge`). No flow uses it yet, so
 //! `CAPABILITIES` stays false.
 //!
-//! The port of the SDK's client (P15, issue #182) builds the proof invocation itself
-//! (`invocation`) and talks to the prover as plain bodies and judged replies (`prover`); the job
-//! that drives them replaces the engine.
+//! The Rust port of the SDK's client (#182) starts from its primitives: the domain-tagged hashes
+//! (`hashes`, with the viewing-key ones in `kms.rs`), the `ClientAction` encoding
+//! (`client_actions`, sharing `pool_actions`' variant table) and its randomness (`entropy`).
+//!
+//! Its proof job's discovery walks are sans-IO pieces too: the outgoing channels (`outgoing`) and
+//! the spendable notes with their witnesses (`incoming`), over the types in `discovery`.
+//!
+//! It builds the proof invocation itself (`invocation`) and talks to the prover as plain bodies
+//! and judged replies (`prover`); the job that drives them replaces the engine.
 
 mod bodies;
 pub mod call_set;
+pub mod client_actions;
 pub mod config;
+pub mod discovery;
 pub mod engine;
 mod engine_judge;
+pub mod entropy;
 pub mod gates;
+pub mod hashes;
 pub mod home;
+pub mod incoming;
 pub mod invocation;
 mod json;
 mod judge;
 mod notes;
+pub mod outgoing;
 pub mod plan;
 mod plan_steps;
 mod pool_actions;
@@ -45,6 +57,9 @@ use crate::NetworkId;
 /// Longest `Post` reply the core parses. Hosts stop reading at this many bytes and report a longer
 /// reply as a transport failure.
 pub use judge::MAX_RESPONSE_BYTES;
+
+/// A discovery block, as the walks take the proving block and echo the service's.
+pub use bodies::BlockRef;
 
 /// What a wallet on this core can submit today: nothing (Bramble's `mobile/docs/privacy.md` §9).
 pub const CAPABILITIES: PrivacyCapabilities = PrivacyCapabilities {
@@ -103,9 +118,13 @@ mod tests {
     /// no privacy file derives a viewing key, reaches Krusty or touches the phrase or an account
     /// key. The key arrives only through `PrivacyHost::viewing_key`, as a `SecretFelt`, and only
     /// `plan_steps` (which asks for it), `bodies` and `invocation` (which write it) name it, besides
-    /// `engine`, whose job hands it to the engine, and `pool_actions`, which compares the key slot
-    /// with it. Like `bodies`, `invocation` exposes the secret to serialise it, so it is not in the
-    /// second list.
+    /// `engine`, whose job hands it to the engine, `pool_actions`, which compares the key slot with
+    /// it, `client_actions`, which writes it into the `compile_actions` calldata, and the discovery
+    /// walks (`discovery`, `incoming`, `outgoing`), which lend it to `bodies` and hold the channel
+    /// keys and witnesses the service derives from it as `SecretFelt`s. Channel keys are secrets
+    /// too: `client_actions` carries them and `hashes` hashes one into a note id. The hashes that
+    /// consume the viewing key itself are `kms.rs`'s, reached through the crate root. Like
+    /// `bodies`, `invocation` exposes the secret to serialise it, so it is not in the second list.
     /// The `CallSet` signature is the wallet's (`engine::prove` takes its signing closure), so the
     /// engine files reach no key-taking Krusty export.
     #[test]
@@ -113,15 +132,21 @@ mod tests {
         let sources = [
             ("bodies.rs", include_str!("bodies.rs")),
             ("call_set.rs", include_str!("call_set.rs")),
+            ("client_actions.rs", include_str!("client_actions.rs")),
             ("config.rs", include_str!("config.rs")),
+            ("discovery.rs", include_str!("discovery.rs")),
             ("engine.rs", include_str!("engine.rs")),
             ("engine_judge.rs", include_str!("engine_judge.rs")),
+            ("entropy.rs", include_str!("entropy.rs")),
             ("gates.rs", include_str!("gates.rs")),
+            ("hashes.rs", include_str!("hashes.rs")),
             ("home.rs", include_str!("home.rs")),
+            ("incoming.rs", include_str!("incoming.rs")),
             ("invocation.rs", include_str!("invocation.rs")),
             ("json.rs", include_str!("json.rs")),
             ("judge.rs", include_str!("judge.rs")),
             ("notes.rs", include_str!("notes.rs")),
+            ("outgoing.rs", include_str!("outgoing.rs")),
             ("plan.rs", include_str!("plan.rs")),
             ("plan_steps.rs", include_str!("plan_steps.rs")),
             ("pool_actions.rs", include_str!("pool_actions.rs")),
@@ -149,23 +174,35 @@ mod tests {
                 matches!(
                     name,
                     "bodies.rs"
+                        | "client_actions.rs"
+                        | "discovery.rs"
                         | "engine.rs"
+                        | "hashes.rs"
+                        | "incoming.rs"
                         | "invocation.rs"
+                        | "outgoing.rs"
                         | "plan.rs"
                         | "plan_steps.rs"
                         | "pool_actions.rs"
                 ),
-                "{name}: only the plan asks for the key, only the bodies and the invocation write \
-                 it, only the engine's job carries it to the engine, and only the pool decoder \
-                 compares it"
+                "{name}: only the plan asks for the key, only the bodies, the client actions and \
+                 the invocation write it, only the engine's job carries it to the engine, only the \
+                 pool decoder compares it, only the note id hashes a channel key, and only the \
+                 discovery walks lend it and hold what is derived from it"
             );
         }
         // The `CallSet` is signed by the wallet's signing path, through the closure `engine::prove`
         // is given; outside tests, no privacy file reaches a key-taking Krusty export.
+        // Nor do the discovery walks, which never read a secret back out either.
         for (name, source) in [
             ("call_set.rs", include_str!("call_set.rs")),
+            ("client_actions.rs", include_str!("client_actions.rs")),
+            ("discovery.rs", include_str!("discovery.rs")),
+            ("incoming.rs", include_str!("incoming.rs")),
+            ("outgoing.rs", include_str!("outgoing.rs")),
             ("engine.rs", include_str!("engine.rs")),
             ("engine_judge.rs", include_str!("engine_judge.rs")),
+            ("entropy.rs", include_str!("entropy.rs")),
             ("pool_actions.rs", include_str!("pool_actions.rs")),
             ("prover.rs", include_str!("prover.rs")),
         ] {

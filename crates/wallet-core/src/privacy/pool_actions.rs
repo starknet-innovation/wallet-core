@@ -12,54 +12,10 @@
 //! review, or a span that moves nothing, is refused.
 
 use super::call_set::COMPILE_ACTIONS;
+use super::client_actions::LAYOUT;
 use super::engine::{EngineAction, ProofLimits, ProofRefusal};
 use crate::send::calls::Call;
 use crate::{Felt, SecretFelt};
-
-/// `ClientAction` variants in ABI order with their one-felt members. Index 8 (`InvokeExternal`)
-/// and 9 (`ComputeAndInvoke`) carry arbitrary calldata and are not listed, so they never decode.
-const LAYOUT: [(&str, &[&str]); 8] = [
-    ("SetViewingKey", &["random"]),
-    (
-        "OpenChannel",
-        &["recipient_addr", "index", "random", "salt"],
-    ),
-    (
-        "OpenSubchannel",
-        &[
-            "recipient_addr",
-            "recipient_public_key",
-            "channel_key",
-            "index",
-            "token",
-            "salt",
-        ],
-    ),
-    (
-        "CreateEncNote",
-        &[
-            "recipient_addr",
-            "recipient_public_key",
-            "token",
-            "amount",
-            "index",
-            "salt",
-        ],
-    ),
-    (
-        "CreateOpenNote",
-        &[
-            "recipient_addr",
-            "recipient_public_key",
-            "token",
-            "index",
-            "random",
-        ],
-    ),
-    ("Deposit", &["token", "amount"]),
-    ("UseNote", &["channel_key", "token", "index"]),
-    ("Withdraw", &["to_addr", "token", "amount", "random"]),
-];
 
 /// The most client actions one call may carry.
 const MAX_ACTIONS: usize = 64;
