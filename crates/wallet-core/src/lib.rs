@@ -57,6 +57,7 @@ pub use kms::{
     stark_public_key, stark_signature_is_valid, validate_mnemonic, NetworkId, StarkKeypair,
     StarkSignature, StarkXOnlyKeypair,
 };
+pub(crate) use kms::{poseidon_hash_many, tagged_hash};
 pub use krusty_kms_common::SecretFelt;
 pub use nostr::{
     derive_nostr_public_key, open_nostr_application_data, open_nostr_event,

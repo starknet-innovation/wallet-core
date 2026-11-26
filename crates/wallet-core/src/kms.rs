@@ -14,9 +14,11 @@ use zeroize::Zeroizing;
 
 use crate::accounts::{family_address, AccountFamily, Ladder};
 use crate::felt;
-use crate::privacy::hashes::tagged_hash;
 use crate::scrub::scrubbed;
 use crate::Error;
+
+mod poseidon;
+pub(crate) use poseidon::{poseidon_hash_many, tagged_hash};
 
 /// Mnemonic lengths Krusty generates and the extension accepts.
 pub const MNEMONIC_WORD_COUNTS: [u8; 5] = [12, 15, 18, 21, 24];
