@@ -13,7 +13,8 @@
 //! Stricter than the SDK, by refusing rather than producing anything different: amounts are
 //! nonzero `u128`s (the SDK asserts only that they are positive), a channel is never opened
 //! without the walk's `total` (its "total-only" fallback is not ported), every selected note's id
-//! must be its witness's (`compute_note_id(channel_key, token, nonce)`), and every index is a
+//! must be its witness's (`compute_note_id(channel_key, token, nonce)`), every created channel's
+//! key must be the one the viewing key derives (`compute_channel_key`), and every index is a
 //! checked `u32`. Refusals are fixed variants that carry no value.
 
 use std::cmp::Reverse;
@@ -26,7 +27,7 @@ use super::outgoing::OutgoingChannels;
 use super::proof::ReviewedAction;
 use super::simulator::{transform, Simulator};
 use crate::send::u256::U256;
-use crate::{Felt, SecretFelt};
+use crate::{compute_channel_key, Felt, SecretFelt};
 
 /// Why a job could not be compiled. No variant carries an amount, address or key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,6 +50,9 @@ pub enum CompileRefusal {
     MissingChannelTotal,
     /// A subchannel must be opened on a channel without a key. The SDK would write `undefined`.
     MissingChannelKey,
+    /// A created channel's key, as the service reported it, is not the one the account's viewing
+    /// key derives for that recipient and public key. Stricter: the SDK trusts the service.
+    ChannelKeyMismatch,
     /// A selected note's id is not the one its witness proves. Stricter: the SDK trusts both.
     WitnessMismatch,
     /// An index would pass `u32`.
@@ -322,9 +326,18 @@ pub fn compile(
     let needed = recipients_needed(account, &actions);
     let use_notes = resolve_notes(account, &mut actions, notes)?;
 
-    // `createPool`: the discovered channels; the job has no registry.
+    // `createPool`: the discovered channels; the job has no registry. A created channel's key
+    // came from the service and goes into the signed calldata, so it is recomputed here, where
+    // the viewing key already is: a wrong one would put the notes where the wallet cannot find
+    // them. (`channel.public_key` is the service's too; checking it means reading the pool, which
+    // the extension does not.)
     let mut pool = Simulator::new(*account, viewing_key.clone(), channels.total);
     for (recipient, channel) in channels.channels.iter() {
+        if let Some(key) = &channel.key {
+            if *key != compute_channel_key(account, viewing_key, recipient, &channel.public_key) {
+                return Err(CompileRefusal::ChannelKeyMismatch);
+            }
+        }
         pool.setup_channel(*recipient, channel);
     }
     transform(

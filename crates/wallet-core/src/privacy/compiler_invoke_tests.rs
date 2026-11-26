@@ -8,8 +8,7 @@ use crate::send::calls::Call;
 
 /// A registered account with a keyed channel to Bob under the key its viewing key derives.
 fn ready() -> OutgoingChannels {
-    let mut bob = keyed(2, &[(STRK, 0)]);
-    bob.key = Some(compute_channel_key(&ACCOUNT, &key(), &BOB, &Felt::TWO));
+    let bob = keyed(2, &[(STRK, 0)]);
     channels(vec![(ACCOUNT, keyed(1, &[(STRK, 0)])), (BOB, bob)], Some(2))
 }
 
