@@ -33,6 +33,11 @@ impl DappSession {
     /// A card another page of the same site still waits on stays. Request ids must be unique
     /// across the host's pages.
     ///
+    /// Only a request already answered `Pending` is held, so only that one can be withdrawn: a
+    /// `request` still running when its page goes is queued after this returns. The host
+    /// withdraws a `Pending` reply that arrives for a page that has gone, rather than dropping
+    /// it, or its card stays approvable until it expires.
+    ///
     /// A mobile divergence: the extension keeps such a card until a decision or its expiry, and a
     /// late approval there still writes the grant.
     pub fn withdraw(&self, request_ids: Vec<u64>) {
