@@ -61,8 +61,10 @@ pub fn ledger_ble_link() -> LedgerBleLink {
     }
 }
 
-/// The frame size in the device's answer to `ledger_ble_mtu_request`. The host frames at the
-/// smaller of this and its own longest write. Refuses an answer that is not one.
+/// The frame size in the device's answer to `LedgerBleLink::mtu_request`. The host frames at the
+/// smaller of this and its own longest write. Refuses a notification that is not an MTU answer;
+/// during the handshake the host drops such a notification and keeps waiting, as Ledger's
+/// transports do, and fails the link only on its own timeout.
 #[uniffi::export]
 pub fn ledger_ble_frame_size(mtu_reply: Vec<u8>) -> Result<u32, CoreError> {
     let size = ble::parse_mtu_reply(&mtu_reply).map_err(|_| CoreError::InvalidInput {
