@@ -132,6 +132,20 @@ exists. `LedgerKey` carries its scheme and `ledger_account_candidates` takes non
 yet. `AllowanceView`'s initialiser gains `unlimited`, and the apps' hand-copied revoke sentences,
 unlimited floor and retention cap give way to the core's (#143). A browser on `v0.9.0` must call
 `refresh_phishing_feed` at start and on a timer; until then only the bundled list blocks.
+`v0.10.0` carries #155–#171: P8's Bluetooth framing (`LedgerBleExchange`, `ledger_ble_link`,
+#159), golden transcripts (#162), a Ledger co-signer signing a multisig intent on its device
+(`WalletCore::sign_multisig_intent_on_device`, `MultisigDeviceSigning`, #163) and gasless on the
+device (#164); P16's SNIP-12 typed data reviewed and signed at approval, a SNIP-9 outside
+execution in it reviewed as an invoke's calls are (`approve_sign_typed_data`, `DappCard`, #156,
+#158, #160, #161), `withdraw` for a gone page's cards (#166) and `is_blocked_site` for the
+browser's navigation (#170); P15's engine slice, not exported (#168); and the coordination sync
+importing every trusted package (#167, #171). Mobile adopts, with the bump: the sync is a
+multi-step plan, `coordination_sync_open(plan, tokens)` then `coordination_sync_import(plan,
+read)` while it answers `CoordinationSyncStep::Read`, in place of `coordination_sync_finish`, and
+`CoordinationSyncOutcome` drops `trusted` and `held` and gains `intent_ids`;
+`DappSession::new` takes `TokenPreferences`, `deny_connect` becomes `deny` (any card), and
+`DappApproval` gains `card`; `GaslessSubmitStep::Device` and `DeviceRetry`, and
+`RiskFlagCode::AddressPoisoning`, join each app's exhaustive switch.
 
 ### Next PRs
 
