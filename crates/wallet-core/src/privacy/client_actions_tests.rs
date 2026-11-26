@@ -97,6 +97,19 @@ fn encodes_index_then_members_in_abi_order() {
 }
 
 #[test]
+fn the_calldata_is_allocated_once_at_its_exact_length() {
+    // A reallocation would free a block holding the viewing and channel keys, unwiped.
+    for actions in [
+        Vec::new(),
+        every_variant(),
+        every_variant().into_iter().cycle().take(40).collect(),
+    ] {
+        let calldata = compile_actions_calldata(&ACCOUNT, &SecretFelt::new(KEY), &actions).unwrap();
+        assert_eq!(calldata.len(), calldata.capacity());
+    }
+}
+
+#[test]
 fn every_variant_matches_the_layout() {
     for (at, action) in every_variant().iter().enumerate() {
         let (variant, members) = action.members();

@@ -49,7 +49,8 @@ fn keyed(public_key: u64, tokens: &[(Felt, u32)]) -> Channel {
     }
     Channel {
         public_key: Felt::from(public_key),
-        key: Some(SecretFelt::new(Felt::from(public_key * 1000))),
+        // Replaced by the derived key in `channels`.
+        key: Some(SecretFelt::new(Felt::ONE)),
         tokens: map,
     }
 }
@@ -62,9 +63,15 @@ fn precomputed(public_key: u64) -> Channel {
     }
 }
 
+/// The walk's result; each keyed channel gets the key the viewing key derives, as the service's
+/// must be.
 fn channels(entries: Vec<(Felt, Channel)>, total: Option<u32>) -> OutgoingChannels {
     let mut channels = AddressMap::default();
-    for (recipient, channel) in entries {
+    for (recipient, mut channel) in entries {
+        if channel.key.is_some() {
+            let derived = compute_channel_key(&ACCOUNT, &key(), &recipient, &channel.public_key);
+            channel.key = Some(derived);
+        }
         channels.insert(recipient, channel);
     }
     OutgoingChannels { channels, total }
@@ -85,12 +92,12 @@ fn note(token: Felt, amount: u128, nonce: u32) -> Note {
     }
 }
 
-fn notes(entries: Vec<(Felt, Vec<Note>)>) -> AddressMap<Vec<Note>> {
+fn notes(entries: Vec<(Felt, Vec<Note>)>) -> SpendableNotes {
     let mut notes = AddressMap::default();
     for (token, list) in entries {
         notes.insert(token, list);
     }
-    notes
+    notes.into()
 }
 
 fn send(token: Felt, recipient: Felt, amount: u128) -> ReviewedAction {
@@ -112,7 +119,7 @@ fn shield(token: Felt, amount: u128, recipient: Option<Felt>) -> ReviewedAction 
 fn run(
     reviewed: &[ReviewedAction],
     found: &OutgoingChannels,
-    notes: &AddressMap<Vec<Note>>,
+    notes: &SpendableNotes,
 ) -> Result<(Compiled, Vec<usize>), CompileRefusal> {
     let mut entropy = Counter::default();
     let compiled = compile(
@@ -130,7 +137,7 @@ fn run(
 fn refused(
     reviewed: &[ReviewedAction],
     found: &OutgoingChannels,
-    notes: &AddressMap<Vec<Note>>,
+    notes: &SpendableNotes,
 ) -> CompileRefusal {
     run(reviewed, found, notes).map(|_| ()).unwrap_err()
 }
@@ -294,7 +301,7 @@ fn registering_opens_the_own_channel_first_with_the_viewing_public_key() {
     assert_eq!(walks.recipients, [ACCOUNT, BOB]);
     assert!(walks.tokens.is_empty());
     let found = channels(vec![(BOB, precomputed(2))], Some(5));
-    let (compiled, reads) = run(&reviewed, &found, &AddressMap::default()).unwrap();
+    let (compiled, reads) = run(&reviewed, &found, &SpendableNotes::default()).unwrap();
     assert_eq!(
         shape(&compiled.actions),
         [
@@ -359,7 +366,7 @@ fn an_open_transfer_touches_no_balance() {
         vec![(ACCOUNT, keyed(1, &[])), (BOB, keyed(2, &[(STRK, 4)]))],
         None,
     );
-    let (compiled, reads) = run(&reviewed, &found, &AddressMap::default()).unwrap();
+    let (compiled, reads) = run(&reviewed, &found, &SpendableNotes::default()).unwrap();
     assert_eq!(shape(&compiled.actions), ["CreateOpenNote bob strk 4"]);
     assert_eq!(reads, [48]);
     assert!(binds(&compiled, &reviewed));
@@ -367,7 +374,7 @@ fn an_open_transfer_touches_no_balance() {
 
 #[test]
 fn every_refusal_is_its_own_variant() {
-    let none = AddressMap::default();
+    let none = SpendableNotes::default();
     let ready = channels(
         vec![(ACCOUNT, keyed(1, &[(STRK, 0)])), (BOB, keyed(2, &[]))],
         Some(2),
@@ -404,6 +411,26 @@ fn every_refusal_is_its_own_variant() {
         refused(&[shield(STRK, 1, Some(BOB))], &unopened, &none),
         CompileRefusal::MissingChannelTotal
     );
+    // A created channel whose key is not the viewing key's, before anything is drawn.
+    let mut wrong = channels(
+        vec![(ACCOUNT, keyed(1, &[])), (BOB, keyed(2, &[]))],
+        Some(2),
+    );
+    if let Some(bob) = wrong.channels.get_mut(&BOB) {
+        bob.key = Some(SecretFelt::new(Felt::from(2000u64)));
+    }
+    let mut entropy = Counter::default();
+    let result = compile(
+        &ACCOUNT,
+        &key(),
+        &[shield(STRK, 1, Some(BOB))],
+        &CONTRACTS,
+        &wrong,
+        &SpendableNotes::default(),
+        &mut entropy,
+    );
+    assert_eq!(result.unwrap_err(), CompileRefusal::ChannelKeyMismatch);
+    assert!(entropy.0.is_empty());
     let mut forged = note(STRK, 5, 1);
     forged.witness.nonce = 2;
     assert_eq!(
@@ -435,3 +462,6 @@ mod fixture;
 
 #[path = "compiler_invoke_tests.rs"]
 mod invoke;
+
+#[path = "compiler_order_tests.rs"]
+mod order;

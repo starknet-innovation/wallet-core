@@ -179,7 +179,10 @@ fn every_recorded_discovery_body_is_the_walks() {
                 |walk| walk.body(&job.key).to_vec(),
                 |walk, status, reply| match walk.on_reply(status, reply)? {
                     Walked::More(walk) => Ok(Some(walk)),
-                    Walked::Done(notes) => {
+                    Walked::Done(found) => {
+                        // No recorded job reaches the cull.
+                        assert!(found.dropped.is_empty(), "{}: dropped", job.id);
+                        let notes = found.notes;
                         assert!(notes
                             .iter()
                             .all(|(token, found)| { tokens.contains(token) && !found.is_empty() }));

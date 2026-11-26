@@ -2,15 +2,17 @@
 //! `JSON.stringify` (pinned by `tests/fixtures/extension-privacy-wire.json`), plus the pool-fee
 //! `starknet_call` the extension's `readStrk20PoolFee` makes through starknet.js.
 //!
-//! The discovery bodies carry the viewing key. Only the public parts are built as plain strings;
-//! the key's hex (`toHex(vk)`) lives in one zeroizing string and one exactly sized zeroizing body
-//! that never reallocates, and callers move the finished buffer straight into a `Post`; a wallet
-//! that crosses FFI makes its one copy there (Bramble's `mobile/docs/privacy.md` §1.1, §5).
+//! The discovery bodies carry the viewing key, and the walks' bodies the service's cursor, which
+//! holds channel keys in clear. Only the public parts are built as plain strings; the key's hex
+//! (`toHex(vk)`) lives in one zeroizing string, the cursor's echo in one exactly sized zeroizing
+//! string (`json::sized`), and both in one exactly sized zeroizing body that never reallocates.
+//! Callers move the finished buffer straight into a `Post`; a wallet that crosses FFI makes its
+//! one copy there (Bramble's `mobile/docs/privacy.md` §1.1, §5).
 
 use serde_json::json;
 use zeroize::Zeroizing;
 
-use super::json::{write_str, Ordered};
+use super::json::{sized, write_str, Ordered, Sink};
 use crate::{felt, Felt, SecretFelt};
 
 /// `sn_keccak("get_fee_amount")`, checked against `kms::selector` in the tests.
@@ -30,17 +32,17 @@ pub enum BlockRef {
 }
 
 impl BlockRef {
-    fn write(&self, out: &mut String) {
+    fn write(&self, out: &mut dyn Sink) {
         match self {
             Self::Text(text) => write_str(out, text),
-            Self::Number(number) => out.push_str(&number.to_string()),
+            Self::Number(number) => out.put(&number.to_string()),
         }
     }
 }
 
-fn member(out: &mut String, key: &str, value: &str) {
+fn member(out: &mut dyn Sink, key: &str, value: &str) {
     write_str(out, key);
-    out.push(':');
+    out.put(":");
     write_str(out, value);
 }
 
@@ -100,16 +102,19 @@ pub fn incoming(
     head.push(',');
     member(&mut head, "recipient_address", &felt::canonical(account));
     head.push(',');
-    let mut tail = String::from(",\"cursor\":");
-    match cursor {
-        None => tail.push_str("{}"),
-        Some(cursor) => cursor.write(&mut tail),
-    }
-    if let Some(block) = block {
-        tail.push_str(",\"block_ref\":");
-        block.write(&mut tail);
-    }
-    tail.push('}');
+    // The cursor carries channel keys in clear: written into one exact zeroizing buffer.
+    let tail = sized(|out| {
+        out.put(",\"cursor\":");
+        match cursor {
+            None => out.put("{}"),
+            Some(cursor) => cursor.write(out),
+        }
+        if let Some(block) = block {
+            out.put(",\"block_ref\":");
+            block.write(out);
+        }
+        out.put("}");
+    });
     with_key(&head, viewing_key, &tail)
 }
 
@@ -128,18 +133,20 @@ pub fn outgoing(
     head.push(',');
     member(&mut head, "sender_address", &felt::canonical(account));
     head.push(',');
-    let mut tail = String::from(",\"cursor\":");
-    cursor.write(&mut tail);
-    tail.push_str(",\"block_ref\":");
-    block.write(&mut tail);
-    tail.push_str(",\"recipients\":[");
-    for (index, recipient) in recipients.iter().enumerate() {
-        if index > 0 {
-            tail.push(',');
+    let tail = sized(|out| {
+        out.put(",\"cursor\":");
+        cursor.write(out);
+        out.put(",\"block_ref\":");
+        block.write(out);
+        out.put(",\"recipients\":[");
+        for (index, recipient) in recipients.iter().enumerate() {
+            if index > 0 {
+                out.put(",");
+            }
+            write_str(out, &felt::canonical(recipient));
         }
-        write_str(&mut tail, &felt::canonical(recipient));
-    }
-    tail.push_str("]}");
+        out.put("]}");
+    });
     with_key(&head, viewing_key, &tail)
 }
 

@@ -74,8 +74,9 @@ pub(super) fn is_span(member: &str) -> bool {
 
 /// One client action, with the ABI's member types: `u32` indices, `u128` amounts and note salt,
 /// felt spans for the invoke phase's data, felts elsewhere. Channel keys are derived from the
-/// viewing key and held as secrets.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// viewing key and held as secrets. Its `Debug` prints the variant and its spans' lengths only:
+/// randoms, salts, amounts and recipients are private too.
+#[derive(Clone, PartialEq, Eq)]
 pub enum ClientAction {
     SetViewingKey {
         random: Felt,
@@ -136,6 +137,19 @@ pub enum ClientAction {
         compute_additional_data: Vec<Felt>,
         invoke_additional_data: Vec<Felt>,
     },
+}
+
+impl std::fmt::Debug for ClientAction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let (variant, members) = self.members();
+        let mut out = f.debug_struct(variant);
+        for (name, values) in &members {
+            if is_span(name) {
+                out.field(name, &format_args!("[{} felts]", values.len()));
+            }
+        }
+        out.finish_non_exhaustive()
+    }
 }
 
 /// A member's name and its felts: one, or a span's items (without its length).
@@ -275,8 +289,18 @@ impl ClientAction {
         }
     }
 
+    /// How many felts `encode` appends: the index, each member's felt, a span's length and items.
+    fn encoded_len(&self) -> usize {
+        let (_, members) = self.members();
+        1 + members
+            .iter()
+            .map(|(name, values)| usize::from(is_span(name)) + values.len())
+            .sum::<usize>()
+    }
+
     /// Appends the variant index and members, through `LAYOUT`; `None` if the action's members
-    /// are not the layout's, in its order. A span is its length, then its felts.
+    /// are not the layout's, in its order. A span is its length, then its felts. The members are
+    /// cloned in rather than moved, so the temporaries drop (and wipe) their own copies.
     fn encode(&self, out: &mut Vec<SecretFelt>) -> Option<()> {
         let (variant, members) = self.members();
         let index = LAYOUT.iter().position(|(name, layout)| {
@@ -293,28 +317,31 @@ impl ClientAction {
             } else if values.len() != 1 {
                 return None;
             }
-            out.extend(values);
+            out.extend(values.iter().cloned());
         }
         Some(())
     }
 }
 
 /// `compile_actions(user, viewing_key, actions)` calldata: `[user, viewing_key, len, ...]`. Every
-/// felt is held as a secret, since the key and channel keys are among them. `None` only if an
-/// action and `LAYOUT` disagree.
+/// felt is held as a secret, since the key and channel keys are among them, in one buffer sized
+/// exactly up front: a reallocation would free a block still holding them, unwiped. `None` only
+/// if an action and `LAYOUT` disagree.
 pub fn compile_actions_calldata(
     user: &Felt,
     viewing_key: &SecretFelt,
     actions: &[ClientAction],
 ) -> Option<Vec<SecretFelt>> {
-    let mut calldata = vec![
-        SecretFelt::new(*user),
-        viewing_key.clone(),
-        SecretFelt::new(Felt::from(actions.len())),
-    ];
+    let len = 3 + actions.iter().map(ClientAction::encoded_len).sum::<usize>();
+    let mut calldata = Vec::with_capacity(len);
+    calldata.push(SecretFelt::new(*user));
+    calldata.push(viewing_key.clone());
+    calldata.push(SecretFelt::new(Felt::from(actions.len())));
     for action in actions {
         action.encode(&mut calldata)?;
     }
+    debug_assert_eq!(calldata.len(), len);
+    debug_assert_eq!(calldata.capacity(), len);
     Some(calldata)
 }
 

@@ -125,7 +125,7 @@ impl ProofHost for Host {
 }
 
 pub(super) fn job(actions: Vec<ReviewedAction>) -> ProofJob<Zeros> {
-    ProofJob::new(&network(), inputs(actions), Zeros).unwrap()
+    ProofJob::with_entropy(&network(), inputs(actions), Zeros).unwrap()
 }
 
 pub(super) fn http(id: u64, status: u16, body: &str) -> PrivacyReply {
@@ -161,7 +161,7 @@ pub(super) fn proved(rpc_id: u64) -> String {
 }
 
 /// Runs a registration up to its first prove attempt; returns that step.
-pub(super) fn to_prove(job: &mut ProofJob<Zeros>, host: &Host) -> ProofStep {
+pub(super) fn to_prove<E: Entropy>(job: &mut ProofJob<E>, host: &Host) -> ProofStep {
     let outgoing = job
         .advance(host, PrivacyReply::Start { now_ms: NOW })
         .unwrap();
@@ -188,6 +188,22 @@ pub(super) fn to_prove(job: &mut ProofJob<Zeros>, host: &Host) -> ProofStep {
         },
     )
     .unwrap()
+}
+
+#[test]
+fn the_plain_constructor_draws_from_the_os() {
+    // Its type is the proof: `new` takes no source, so no wallet can hand it a weak one.
+    let host = Host::new();
+    let mut job: ProofJob<OsEntropy> =
+        ProofJob::new(&network(), inputs(vec![ReviewedAction::Register])).unwrap();
+    let prove = to_prove(&mut job, &host);
+    assert!(matches!(
+        prove,
+        ProofStep::Post {
+            purpose: ProofPurpose::Prove,
+            ..
+        }
+    ));
 }
 
 #[test]
@@ -257,7 +273,7 @@ fn a_route_or_prover_url_is_refused_before_any_request() {
     cases.push(pool_spelling);
     for refused in cases {
         assert_eq!(
-            ProofJob::new(&network(), refused, Zeros).err(),
+            ProofJob::with_entropy(&network(), refused, Zeros).err(),
             Some(ProofRefusal::InvalidRoute)
         );
     }
@@ -267,8 +283,13 @@ fn a_route_or_prover_url_is_refused_before_any_request() {
 fn wider_limits_are_clamped_to_the_ceiling() {
     let mut wide = inputs(vec![ReviewedAction::Register]);
     wide.limits.invoke_calldata_felts = usize::MAX;
-    let job = ProofJob::new(&network(), wide, Zeros).unwrap();
+    wide.retry.max_retries = u32::MAX;
+    let job = ProofJob::with_entropy(&network(), wide, Zeros).unwrap();
     assert_eq!(job.inputs.limits, ProofLimits::CEILING);
+    assert_eq!(
+        job.inputs.retry.max_retries,
+        ProverRetry::CEILING.max_retries
+    );
 }
 
 #[test]
@@ -307,7 +328,7 @@ fn refusals_come_before_the_nonce_and_the_signature() {
     // Calldata over the wallet's bound fails the binding: no nonce read, nothing signed.
     let mut tight = inputs(vec![ReviewedAction::Register]);
     tight.limits.invoke_calldata_felts = 3;
-    let mut job = ProofJob::new(&network(), tight, Zeros).unwrap();
+    let mut job = ProofJob::with_entropy(&network(), tight, Zeros).unwrap();
     let outgoing = job
         .advance(&host, PrivacyReply::Start { now_ms: NOW })
         .unwrap();
@@ -336,7 +357,8 @@ fn a_catalog_whose_chain_id_is_another_chain_is_refused() {
     let mut unparsed = network();
     unparsed.chain_id = "SN_MAIN".into();
     for catalog in [sepolia_spelling, unparsed] {
-        let refused = ProofJob::new(&catalog, inputs(vec![ReviewedAction::Register]), Zeros);
+        let refused =
+            ProofJob::with_entropy(&catalog, inputs(vec![ReviewedAction::Register]), Zeros);
         assert_eq!(refused.err(), Some(ProofRefusal::InvalidRoute));
     }
 }
@@ -384,7 +406,8 @@ fn the_job_scopes_the_viewing_key_exactly_as_the_balance_read() {
     plan.advance(&read, preflight).unwrap();
 
     let proving = Scopes(RefCell::default());
-    let mut job = ProofJob::new(&catalog, inputs(vec![ReviewedAction::Register]), Zeros).unwrap();
+    let mut job =
+        ProofJob::with_entropy(&catalog, inputs(vec![ReviewedAction::Register]), Zeros).unwrap();
     job.advance(&proving, PrivacyReply::Start { now_ms: NOW })
         .unwrap();
 

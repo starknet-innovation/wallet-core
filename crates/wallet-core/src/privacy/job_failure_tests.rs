@@ -195,6 +195,41 @@ fn a_lock_mid_job_ends_it_locked_and_unsigned() {
         .unwrap();
     assert_eq!(refusal(step), ProofRefusal::Locked);
 
+    // Locked once the signature is made, before the first prove attempt posts the key.
+    let host = Host::new();
+    let mut job = self::job(vec![ReviewedAction::Register]);
+    let outgoing = job
+        .advance(&host, PrivacyReply::Start { now_ms: NOW })
+        .unwrap();
+    let nonce = job
+        .advance(&host, http(id(&outgoing), 200, NO_CHANNELS))
+        .unwrap();
+    host.unlocked.set(false);
+    let reply = format!(r#"{{"jsonrpc":"2.0","id":{},"result":"0x2a"}}"#, id(&nonce));
+    let step = job
+        .advance(
+            &host,
+            PrivacyReply::Rpc {
+                id: id(&nonce),
+                body: reply,
+                now_ms: NOW,
+            },
+        )
+        .unwrap();
+    assert_eq!(refusal(step), ProofRefusal::Locked);
+
+    // Locked during a busy prover's wait: the retry is never posted.
+    let host = Host::new();
+    let mut job = self::job(vec![ReviewedAction::Register]);
+    let prove = to_prove(&mut job, &host);
+    let wait = job.advance(&host, http(id(&prove), 503, "busy")).unwrap();
+    assert_eq!(wait, ProofStep::Wait { delay_ms: 1_000 });
+    host.unlocked.set(false);
+    let step = job
+        .advance(&host, PrivacyReply::WaitElapsed { now_ms: NOW })
+        .unwrap();
+    assert_eq!(refusal(step), ProofRefusal::Locked);
+
     // Locked at the signature.
     let mut host = Host::new();
     host.sign = |_| Err(SignRefusal::Locked);

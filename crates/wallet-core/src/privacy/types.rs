@@ -118,7 +118,9 @@ impl fmt::Debug for PrivacyStep {
 }
 
 /// What the host reports back. Every reply carries the host clock; the core never reads one.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Its `Debug` prints an `Http` body's length only: discovery replies carry channel keys, salts
+/// and amounts.
+#[derive(Clone, PartialEq, Eq)]
 pub enum PrivacyReply {
     Start {
         now_ms: u64,
@@ -141,6 +143,41 @@ pub enum PrivacyReply {
     WaitElapsed {
         now_ms: u64,
     },
+}
+
+impl fmt::Debug for PrivacyReply {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Start { now_ms } => f.debug_struct("Start").field("now_ms", now_ms).finish(),
+            Self::Http {
+                id,
+                status,
+                body,
+                now_ms,
+            } => f
+                .debug_struct("Http")
+                .field("id", id)
+                .field("status", status)
+                .field("body", &format_args!("[redacted {} bytes]", body.len()))
+                .field("now_ms", now_ms)
+                .finish(),
+            Self::Rpc { id, body, now_ms } => f
+                .debug_struct("Rpc")
+                .field("id", id)
+                .field("body", body)
+                .field("now_ms", now_ms)
+                .finish(),
+            Self::TransportFailure { id, now_ms } => f
+                .debug_struct("TransportFailure")
+                .field("id", id)
+                .field("now_ms", now_ms)
+                .finish(),
+            Self::WaitElapsed { now_ms } => f
+                .debug_struct("WaitElapsed")
+                .field("now_ms", now_ms)
+                .finish(),
+        }
+    }
 }
 
 /// Why a read ended without a state. The UI shows each as "Unavailable" with "Try again".

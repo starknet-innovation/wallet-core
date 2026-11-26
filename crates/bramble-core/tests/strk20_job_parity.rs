@@ -203,7 +203,7 @@ fn run(job: &Value, host: &Host, stream: &mut Stream) -> Run {
             .unwrap_or_else(|| panic!("{id}: an invented {purpose:?} request"))
     };
     let catalog = networks::info(network(job));
-    let mut proof_job = ProofJob::new(catalog, inputs(job), stream).unwrap();
+    let mut proof_job = ProofJob::with_entropy(catalog, inputs(job), stream).unwrap();
     let mut waits = Vec::new();
     let mut step = proof_job
         .advance(host, PrivacyReply::Start { now_ms: NOW })

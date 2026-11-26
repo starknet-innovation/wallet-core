@@ -8,8 +8,7 @@ use crate::send::calls::Call;
 
 /// A registered account with a keyed channel to Bob under the key its viewing key derives.
 fn ready() -> OutgoingChannels {
-    let mut bob = keyed(2, &[(STRK, 0)]);
-    bob.key = Some(compute_channel_key(&ACCOUNT, &key(), &BOB, &Felt::TWO));
+    let bob = keyed(2, &[(STRK, 0)]);
     channels(vec![(ACCOUNT, keyed(1, &[(STRK, 0)])), (BOB, bob)], Some(2))
 }
 
@@ -60,7 +59,7 @@ fn an_invoke_comes_last_with_its_placeholders_resolved_and_draws_nothing() {
     ];
     let walks = walk_inputs(&ACCOUNT, &reviewed, &CONTRACTS).unwrap();
     assert!(walks.tokens.is_empty());
-    let (compiled, reads) = run(&reviewed, &ready(), &AddressMap::default()).unwrap();
+    let (compiled, reads) = run(&reviewed, &ready(), &SpendableNotes::default()).unwrap();
     assert_eq!(
         shape(&compiled.actions),
         ["CreateOpenNote bob strk 0", "InvokeExternal eve 3"]
@@ -77,7 +76,7 @@ fn an_invoke_comes_last_with_its_placeholders_resolved_and_draws_nothing() {
 #[test]
 fn a_shadow_invoke_runs_through_the_anonymizer_over_the_batchs_open_notes() {
     let reviewed = [open(BOB), shadow()];
-    let (compiled, _) = run(&reviewed, &ready(), &AddressMap::default()).unwrap();
+    let (compiled, _) = run(&reviewed, &ready(), &SpendableNotes::default()).unwrap();
     assert_eq!(
         shape(&compiled.actions),
         ["CreateOpenNote bob strk 0", "ComputeAndInvoke 0xa11"]
@@ -135,7 +134,7 @@ fn refusals_fire_where_the_extension_refuses() {
         &past,
         &CONTRACTS,
         &ready(),
-        &AddressMap::default(),
+        &SpendableNotes::default(),
         &mut entropy,
     );
     assert_eq!(result.unwrap_err(), CompileRefusal::OpenNoteOutOfRange);

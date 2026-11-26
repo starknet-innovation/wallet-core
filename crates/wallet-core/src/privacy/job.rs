@@ -13,14 +13,15 @@
 //! An HTTP 409 from either walk (the SDK's `ReorgError`) restarts the job from step 1 once, as the
 //! SDK's `compile` does; a second one fails. Like `PrivacyReadPlan`, the host relays opaque bodies
 //! and replies, never picks a URL, and sees the viewing key only inside the zeroizing `Post`
-//! bodies. Reply handling is `job_steps`.
+//! bodies. Each `Http` reply body is wiped once judged. What stays in plain memory is said once,
+//! in `privacy`'s module doc. Reply handling is `job_steps`.
 //!
 //! Deliberate difference from the SDK, which signs first and leaves the extension to refuse the
 //! warning after: `USER_LINKAGE` is refused at compile, so no nonce is read and nothing signed.
 
 use std::fmt;
 
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
 
 use super::compiler::{walk_inputs, Contracts, WalkInputs};
 use super::config::{is_service_url, Route};
@@ -46,7 +47,8 @@ pub trait ProofHost: PrivacyHost {
 }
 
 /// What a proof job needs. Built by the wallet; nothing here is Bramble's unless it passes it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Its `Debug` prints how many actions were reviewed, never their amounts or recipients.
+#[derive(Clone, PartialEq, Eq)]
 pub struct ProofInputs {
     pub account: Felt,
     /// The account's signer public key; the `CallSet` signature must verify under it.
@@ -68,7 +70,28 @@ pub struct ProofInputs {
     pub limits: ProofLimits,
     /// The most nonzero notes the incoming walk keeps per token.
     pub max_notes: usize,
+    /// Clamped to `ProverRetry::CEILING`.
     pub retry: ProverRetry,
+}
+
+impl fmt::Debug for ProofInputs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ProofInputs")
+            .field("account", &self.account)
+            .field("public_key", &self.public_key)
+            .field(
+                "actions",
+                &format_args!("[redacted {} actions]", self.actions.len()),
+            )
+            .field("proving_block", &self.proving_block)
+            .field("route", &self.route)
+            .field("prover_url", &self.prover_url)
+            .field("anonymizer", &self.anonymizer)
+            .field("limits", &self.limits)
+            .field("max_notes", &self.max_notes)
+            .field("retry", &self.retry)
+            .finish()
+    }
 }
 
 /// What a step is for; progress copy only.
@@ -138,8 +161,10 @@ impl fmt::Debug for ProofStep {
     }
 }
 
-/// Where the job is. Every stage past `Fresh` holds what the next reply needs and nothing more;
-/// the secrets in it (channel keys, the calldata, the invocation) are zeroed when it is replaced.
+/// Where the job is. Every stage past `Fresh` holds what the next reply needs and nothing more.
+/// The `SecretFelt`s in it (the walks' channel keys and witnesses, the calldata, the invocation)
+/// are zeroed when it is replaced; the walks' held cursor is plain memory (`privacy`'s module
+/// doc).
 pub(super) enum Stage {
     Fresh,
     /// Step 1: an outgoing page is out.
@@ -174,7 +199,8 @@ pub(super) enum Stage {
 }
 
 /// One proof. Closed on lock, backgrounding, or a scope change; a new proof means a new job.
-/// `E` is the randomness the compiler draws (the OS's in production).
+/// `E` is the randomness the compiler draws: the OS's ([`ProofJob::new`]), or a replay's in tests
+/// ([`ProofJob::with_entropy`]).
 pub struct ProofJob<E: Entropy = OsEntropy> {
     pub(super) inputs: ProofInputs,
     /// The `CallSet`'s chain, `NetworkId::chain_id` of the catalog's network.
@@ -191,13 +217,24 @@ pub struct ProofJob<E: Entropy = OsEntropy> {
     pub(super) next_id: u64,
 }
 
+impl ProofJob<OsEntropy> {
+    /// A job on `network` (the wallet's catalog record) for `inputs`, drawing its randomness from
+    /// the OS CSPRNG. See [`ProofJob::with_entropy`] for the refusals.
+    pub fn new(network: &NetworkInfo, inputs: ProofInputs) -> Result<Self, ProofRefusal> {
+        Self::with_entropy(network, inputs, OsEntropy)
+    }
+}
+
 impl<E: Entropy> ProofJob<E> {
-    /// A job on `network` (the wallet's catalog record) for `inputs`, drawing from `entropy`.
+    /// THE TEST SEAM: [`ProofJob::new`] drawing from `entropy` instead of the OS, so a replay can
+    /// feed the bytes a recorded SDK job read. A wallet never calls this: the note salts and
+    /// randoms it draws are what keep a proof's notes unlinkable.
+    ///
     /// `InvalidRoute` when the catalog's chain id does not spell `NetworkId::chain_id` (a
     /// wrong-chain catalog must not sign), the route has OHTTP on, is another network's, names a
     /// pool its spelling does not parse to, or either URL is not a service URL: nothing is
     /// requested.
-    pub fn new(
+    pub fn with_entropy(
         network: &NetworkInfo,
         mut inputs: ProofInputs,
         entropy: E,
@@ -214,6 +251,7 @@ impl<E: Entropy> ProofJob<E> {
             return Err(ProofRefusal::InvalidRoute);
         }
         inputs.limits = inputs.limits.clamped();
+        inputs.retry = inputs.retry.clamped();
         Ok(Self {
             chain_id,
             scope_chain_id: network.chain_id.clone(),
@@ -240,7 +278,13 @@ impl<E: Entropy> ProofJob<E> {
         if matches!(self.stage, Stage::Closed) {
             return Err(PrivacyError::PlanClosed);
         }
-        let result = self.step(host, reply);
+        let mut reply = reply;
+        let result = self.step(host, &reply);
+        // The job owns the reply: a discovery body carries channel keys, salts and amounts, a
+        // prove reply the proof. Wiped once judged, whatever the verdict.
+        if let PrivacyReply::Http { body, .. } = &mut reply {
+            body.zeroize();
+        }
         if !matches!(
             result,
             Ok(ProofStep::Post { .. } | ProofStep::Rpc { .. } | ProofStep::Wait { .. })
@@ -259,7 +303,7 @@ impl<E: Entropy> ProofJob<E> {
     fn step(
         &mut self,
         host: &dyn ProofHost,
-        reply: PrivacyReply,
+        reply: &PrivacyReply,
     ) -> Result<ProofStep, PrivacyError> {
         let stage = std::mem::replace(&mut self.stage, Stage::Closed);
         Ok(match (stage, reply) {
@@ -284,7 +328,7 @@ impl<E: Entropy> ProofJob<E> {
                     body,
                     ..
                 },
-            ) if id == got => self.on_outgoing(host, walk, status, &body),
+            ) if id == *got => self.on_outgoing(host, walk, *status, body),
             (
                 Stage::Incoming { id, walk, channels },
                 PrivacyReply::Http {
@@ -293,7 +337,7 @@ impl<E: Entropy> ProofJob<E> {
                     body,
                     ..
                 },
-            ) if id == got => self.on_incoming(host, walk, channels, status, &body),
+            ) if id == *got => self.on_incoming(host, walk, channels, *status, body),
             (
                 Stage::Nonce { id, calldata },
                 PrivacyReply::Rpc {
@@ -301,7 +345,7 @@ impl<E: Entropy> ProofJob<E> {
                     body,
                     now_ms,
                 },
-            ) if id == got => self.on_nonce(host, calldata, id, &body, now_ms),
+            ) if id == *got => self.on_nonce(host, calldata, id, body, *now_ms),
             (
                 Stage::Proving {
                     id,
@@ -315,20 +359,20 @@ impl<E: Entropy> ProofJob<E> {
                     body,
                     ..
                 },
-            ) if id == got => self.on_prove(invocation, rpc_id, attempt, status, &body),
+            ) if id == *got => self.on_prove(invocation, rpc_id, attempt, *status, body),
             (
                 Stage::Waiting {
                     attempt,
                     invocation,
                 },
                 PrivacyReply::WaitElapsed { now_ms },
-            ) => self.prove(invocation, attempt, now_ms),
+            ) => self.prove(host, invocation, attempt, *now_ms),
             (stage, PrivacyReply::TransportFailure { id: got, .. }) => match stage {
-                Stage::Outgoing { id, .. } | Stage::Incoming { id, .. } if id == got => fail(
+                Stage::Outgoing { id, .. } | Stage::Incoming { id, .. } if id == *got => fail(
                     ProofRefusal::Discovery(super::types::PrivacyFailure::ServiceUnavailable),
                 ),
-                Stage::Nonce { id, .. } if id == got => fail(ProofRefusal::NonceUnavailable),
-                Stage::Proving { id, .. } if id == got => fail(ProofRefusal::ProverUnavailable),
+                Stage::Nonce { id, .. } if id == *got => fail(ProofRefusal::NonceUnavailable),
+                Stage::Proving { id, .. } if id == *got => fail(ProofRefusal::ProverUnavailable),
                 _ => return Err(PrivacyError::OutOfOrder),
             },
             _ => return Err(PrivacyError::OutOfOrder),

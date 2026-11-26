@@ -29,7 +29,7 @@ use crate::scrub::scrubbed;
 use crate::{compute_channel_key, Felt, SecretFelt};
 
 /// The most client actions one call may carry.
-const MAX_ACTIONS: usize = 64;
+pub(super) const MAX_ACTIONS: usize = 64;
 
 const U32_LIMIT: Felt = Felt::from_hex_unchecked("0x100000000");
 const U128_LIMIT: Felt = Felt::from_hex_unchecked("0x100000000000000000000000000000000");

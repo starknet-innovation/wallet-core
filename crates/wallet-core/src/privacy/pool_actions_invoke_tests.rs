@@ -259,3 +259,26 @@ fn both_invoke_variants_round_trip_through_the_decoder() {
     assert!(decode(&huge).is_none());
     assert!(decode(&calldata_for(ACCOUNT, KEY, &[invoke(Felt::ZERO, &[])])).is_none());
 }
+
+/// An extra note to someone else rides in no more easily beside a reviewed invoke.
+#[test]
+fn an_extra_note_beside_a_reviewed_invoke_is_refused() {
+    let reviewed = [send(BOB, ONE), reviewed_invoke(EVE, &[])];
+    let batch = |extra: Vec<Felt>| {
+        vec![
+            use_note(STRK),
+            use_note(STRK),
+            enc_note(BOB, STRK, ONE),
+            extra,
+            invoke(EVE, &[]),
+        ]
+    };
+    assert_eq!(
+        bound(&batch(enc_note(ACCOUNT, STRK, ONE)), &reviewed),
+        Ok(())
+    );
+    assert_eq!(
+        bound(&batch(enc_note(EVE, STRK, ONE)), &reviewed),
+        Err(ProofRefusal::UnboundSignRequest)
+    );
+}

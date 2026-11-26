@@ -55,7 +55,7 @@ impl Totals {
         limits: &Limits,
         requested: &BTreeSet<U256>,
     ) -> Option<()> {
-        let page_senders: Vec<&str> = page_channels(reply)?
+        let page_senders: BTreeSet<&str> = page_channels(reply)?
             .into_iter()
             .map(|(sender, _)| sender)
             .collect();

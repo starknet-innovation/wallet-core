@@ -9,6 +9,7 @@
 
 use zeroize::Zeroizing;
 
+use crate::scrub::scrubbed;
 use crate::{envelope, Error, Felt};
 
 /// Stark curve order `n` minus one: `mapHashToField` reduces modulo it, then adds one.
@@ -43,15 +44,19 @@ pub fn generate_random(entropy: &mut impl Entropy) -> Result<Felt, Error> {
     let mut bytes = Zeroizing::new([0u8; 48]);
     entropy.fill(bytes.as_mut())?;
     // The 384-bit little-endian integer, rebuilt exactly from 128-bit limbs (each below the
-    // field prime), most significant first.
-    let value = bytes
-        .chunks_exact(16)
-        .rev()
-        .fold(Felt::ZERO.to_biguint(), |value, limb| {
-            (value << 128u32) + Felt::from_bytes_le_slice(limb).to_biguint()
-        });
-    let reduced = value % CURVE_ORDER_LESS_ONE.to_biguint();
-    Ok(Felt::from(&reduced) + Felt::ONE)
+    // field prime), most significant first. The value is a note's secret randomness, so the
+    // arithmetic runs inside `scrubbed`; the `BigUint` limbs are heap and freed unwiped
+    // (`num-bigint` does not zeroize), the one copy this cannot reach.
+    Ok(scrubbed(|| {
+        let value = bytes
+            .chunks_exact(16)
+            .rev()
+            .fold(Felt::ZERO.to_biguint(), |value, limb| {
+                (value << 128u32) + Felt::from_bytes_le_slice(limb).to_biguint()
+            });
+        let reduced = value % CURVE_ORDER_LESS_ONE.to_biguint();
+        Felt::from(&reduced) + Felt::ONE
+    }))
 }
 
 /// `generateRandom120()`: 15 bytes from one `crypto.getRandomValues` call, read big-endian.

@@ -13,12 +13,22 @@
 //!
 //! Stricter than the SDK, which trusts the reply: on top of the balance read's checks
 //! (`notes::read_note`), amounts fit `u128`, `index` is a `u32`, `note_id` and `salt` are felts, a
-//! note id appears once, a salt of 1 is spelled `"1"`, a channel key is nonzero and present (the
-//! SDK reads a cursor channel without one as key `0n`), one page names a sender once and in one
-//! spelling, at most `max_notes` nonzero notes are kept per token, and a later page must answer
-//! from the first page's block. Zero-amount notes are checked like any other, then dropped: naive
+//! note id appears once in a page and never again beside a kept note, a salt of 1 is spelled
+//! `"1"`, a channel key is nonzero and present (the SDK reads a cursor channel without one as key
+//! `0n`), one page names a sender once and in one spelling, and a later page must answer from the
+//! first page's block. Zero-amount notes are checked like any other, then dropped: naive
 //! selection takes the largest first, so one only ever joins a selection that is short anyway.
+//!
+//! Dust. Anyone can send the account notes, so a token's notes are not capped but culled: the walk
+//! keeps the `max_notes` largest nonzero ones (ties to the earlier arrival, at most
+//! `MAX_ACTIONS`, what one batch could spend) and adds up the rest as `dropped`. Naive selection
+//! over the kept notes, largest first in arrival order, is the SDK's selection over all of them
+//! whenever that one fits in `max_notes`; when it does not, the compiler sees `dropped` and refuses
+//! `TooManyNotes` (consolidate) rather than `InsufficientBalance`. Ceiling: a note id is checked
+//! against this page and the kept notes, not against notes dropped on earlier pages, so that a
+//! service repeating a dropped note can only inflate `dropped`.
 
+use std::cmp::Reverse;
 use std::collections::BTreeSet;
 
 /// The path the walk's bodies are posted to, appended to the discovery URL.
@@ -31,11 +41,31 @@ use super::discovery::{
 use super::json::{js_bigint, Ordered};
 use super::notes::{array, cursor_channels, cursor_complete, page_channels, read_note};
 use super::plan::MAX_DISCOVERY_PAGES;
+use super::pool_actions::MAX_ACTIONS;
 use super::types::PrivacyFailure;
+use crate::send::u256::U256;
 use crate::{Felt, SecretFelt};
 
-/// One `incoming_state` walk.
-#[derive(Debug)]
+/// What the walk found: per token (first-seen order), its kept notes in arrival order, and the
+/// total of the nonzero notes it dropped for not being among the `max_notes` largest.
+#[derive(Debug, Default)]
+pub struct SpendableNotes {
+    pub notes: AddressMap<Vec<Note>>,
+    pub dropped: AddressMap<U256>,
+}
+
+impl From<AddressMap<Vec<Note>>> for SpendableNotes {
+    /// Notes with none dropped.
+    fn from(notes: AddressMap<Vec<Note>>) -> Self {
+        Self {
+            notes,
+            dropped: AddressMap::default(),
+        }
+    }
+}
+
+/// One `incoming_state` walk. Its `Debug` prints progress only: the cursor holds channel keys in
+/// clear, and the notes are private.
 pub struct IncomingWalk {
     pool: Felt,
     account: Felt,
@@ -48,9 +78,20 @@ pub struct IncomingWalk {
     block: Option<BlockRef>,
     pages: u32,
     /// `incomingChannels`: each sender an earlier cursor named, with its channel key if it had one.
+    /// Sized by the service, so it grows by reallocation (see `AddressMap`).
     known: AddressMap<Option<SecretFelt>>,
     notes: AddressMap<Vec<Note>>,
+    dropped: AddressMap<U256>,
+    /// The kept notes' ids.
     ids: BTreeSet<Felt>,
+}
+
+impl std::fmt::Debug for IncomingWalk {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("IncomingWalk")
+            .field("pages", &self.pages)
+            .finish_non_exhaustive()
+    }
 }
 
 impl IncomingWalk {
@@ -68,12 +109,13 @@ impl IncomingWalk {
             account,
             tokens: Some(tokens),
             proving_block: Some(proving_block),
-            max_notes,
+            max_notes: max_notes.min(MAX_ACTIONS),
             cursor: None,
             block: None,
             pages: 0,
             known: AddressMap::default(),
             notes: AddressMap::default(),
+            dropped: AddressMap::default(),
             ids: BTreeSet::new(),
         }
     }
@@ -113,7 +155,7 @@ impl IncomingWalk {
         mut self,
         status: u16,
         body: &[u8],
-    ) -> Result<Walked<Self, AddressMap<Vec<Note>>>, PrivacyFailure> {
+    ) -> Result<Walked<Self, SpendableNotes>, PrivacyFailure> {
         let (reply, block) = judge_page(status, body)?;
         let invalid = PrivacyFailure::InvalidResponse;
         pin_block(&mut self.block, block).ok_or(invalid)?;
@@ -122,7 +164,10 @@ impl IncomingWalk {
         let complete = cursor_complete(&cursor).ok_or(invalid)?;
         self.pages += 1;
         if complete {
-            return Ok(Walked::Done(self.notes));
+            return Ok(Walked::Done(SpendableNotes {
+                notes: self.notes,
+                dropped: self.dropped,
+            }));
         }
         if self.pages >= MAX_DISCOVERY_PAGES || cursor.has_index_key() {
             return Err(invalid);
@@ -133,14 +178,16 @@ impl IncomingWalk {
 
     fn fold(&mut self, reply: &Ordered) -> Option<()> {
         // `channelKeyMap`, keyed by value here, so one sender may appear once.
-        let mut page: AddressMap<(&str, SecretFelt)> = AddressMap::default();
-        for (spelling, key) in page_channels(reply)? {
+        let channels = page_channels(reply)?;
+        let mut page: AddressMap<(&str, SecretFelt)> = AddressMap::with_capacity(channels.len());
+        for (spelling, key) in channels {
             let sender = felt_of(js_bigint(&Ordered::Str(spelling.to_owned()))?)?;
             if page.contains_key(&sender) {
                 return None;
             }
             page.insert(sender, (spelling, channel_key(key)?));
         }
+        let mut page_ids = BTreeSet::new();
         for note in array(reply.get("notes"))? {
             let fields = read_note(note)?;
             let token = felt_of(fields.token)?;
@@ -165,17 +212,13 @@ impl IncomingWalk {
                 return None;
             };
             let amount = (fields.amount.high == 0).then_some(fields.amount.low)?;
-            if (r == Felt::ONE && !open) || !self.ids.insert(id) {
+            if (r == Felt::ONE && !open) || !page_ids.insert(id) || self.ids.contains(&id) {
                 return None;
             }
             if amount == 0 {
                 continue;
             }
-            let notes = self.notes.get_or_insert_with(token, Vec::new);
-            if notes.len() >= self.max_notes {
-                return None;
-            }
-            notes.push(Note {
+            let note = Note {
                 id,
                 amount,
                 witness: Witness {
@@ -185,7 +228,8 @@ impl IncomingWalk {
                 },
                 sender,
                 open,
-            });
+            };
+            self.keep(token, note)?;
         }
         // `apiCursorToNotesCursor`, merged after this page's notes, for later pages.
         for (sender, key) in cursor_channels(reply.get("cursor")?)? {
@@ -194,6 +238,48 @@ impl IncomingWalk {
                 None => None,
             };
             self.known.insert(felt_of(sender)?, key);
+        }
+        Some(())
+    }
+
+    /// Keeps `note` if it is among the token's `max_notes` largest so far (an equal amount loses
+    /// to the earlier arrival), dropping the smallest, latest kept one to make room; whatever is
+    /// dropped adds to `dropped`. The token's list is allocated once, at `max_notes`.
+    fn keep(&mut self, token: Felt, note: Note) -> Option<()> {
+        let max = self.max_notes;
+        let notes = self
+            .notes
+            .get_or_insert_with(token, || Vec::with_capacity(max));
+        let out = if notes.len() < max {
+            None
+        } else {
+            let smallest = notes
+                .iter()
+                .enumerate()
+                .min_by_key(|(at, kept)| (kept.amount, Reverse(*at)))
+                .map(|(at, kept)| (at, kept.amount));
+            match smallest {
+                Some((at, amount)) if amount < note.amount => {
+                    let evicted = notes.remove(at);
+                    self.ids.remove(&evicted.id);
+                    Some(evicted.amount)
+                }
+                _ => {
+                    let amount = note.amount;
+                    if notes.is_empty() {
+                        self.notes.remove(&token);
+                    }
+                    let total = self.dropped.get_or_insert_with(token, || U256::ZERO);
+                    *total = total.checked_add(U256::from_u128(amount))?;
+                    return Some(());
+                }
+            }
+        };
+        self.ids.insert(note.id);
+        notes.push(note);
+        if let Some(amount) = out {
+            let total = self.dropped.get_or_insert_with(token, || U256::ZERO);
+            *total = total.checked_add(U256::from_u128(amount))?;
         }
         Some(())
     }

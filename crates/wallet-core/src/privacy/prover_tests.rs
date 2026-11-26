@@ -76,6 +76,33 @@ fn backoff_doubles_to_the_cap_and_stops_after_the_retries() {
     assert_eq!(off.delay_ms(0), None);
 }
 
+#[test]
+fn a_wider_retry_policy_is_clamped_to_the_sdks_constants() {
+    assert_eq!(
+        BRAMBLE.clamped(),
+        BRAMBLE,
+        "Bramble's policy passes unchanged"
+    );
+    let wide = ProverRetry {
+        max_retries: u32::MAX,
+        request_timeout_ms: 90_000,
+        base_delay_ms: u64::MAX,
+        max_delay_ms: u64::MAX,
+    };
+    let clamped = wide.clamped();
+    assert_eq!(
+        clamped,
+        ProverRetry {
+            max_retries: 5,
+            request_timeout_ms: 90_000,
+            base_delay_ms: 30_000,
+            max_delay_ms: 30_000,
+        }
+    );
+    assert_eq!(clamped.delay_ms(4), Some(30_000));
+    assert_eq!(clamped.delay_ms(5), None);
+}
+
 fn pool_message(payload: Value) -> Value {
     json!({ "from_address": POOL, "to_address": "0x0", "payload": payload })
 }
@@ -186,6 +213,44 @@ fn refuses_an_unreadable_envelope() {
     assert_eq!(judge(200, other.as_bytes()), invalid);
     let no_version = json!({ "id": 7, "result": result() }).to_string();
     assert_eq!(judge(200, no_version.as_bytes()), invalid);
+}
+
+#[test]
+fn reads_the_envelope_as_call_once_does() {
+    // `if (json.error)`: a falsy error beside a result is a result.
+    for error in [json!(null), json!(false), json!(0), json!("")] {
+        let reply = json!({ "jsonrpc": "2.0", "id": 7, "error": error, "result": result() });
+        assert!(
+            matches!(
+                judge(200, reply.to_string().as_bytes()),
+                ProveOutcome::Proved(_)
+            ),
+            "{error}"
+        );
+    }
+    // A busy error is retried whatever its envelope says; `callOnce` reads neither.
+    for busy in [
+        json!({ "jsonrpc": "2.0", "id": 8, "error": { "code": -32005, "message": "m" } }),
+        json!({ "id": 7, "error": { "code": -32005, "message": "m" } }),
+        json!({ "error": { "code": -32005.0 } }),
+    ] {
+        assert_eq!(
+            judge(200, busy.to_string().as_bytes()),
+            ProveOutcome::Busy,
+            "{busy}"
+        );
+    }
+    // Every other error still has to answer this request.
+    let other = json!({ "jsonrpc": "2.0", "id": 8, "error": { "code": 55, "message": "m" } });
+    assert_eq!(
+        judge(200, other.to_string().as_bytes()),
+        ProveOutcome::Refused(ProofRefusal::InvalidProverReply)
+    );
+    let truthy = json!({ "jsonrpc": "2.0", "id": 7, "error": "x", "result": result() });
+    assert_eq!(
+        judge(200, truthy.to_string().as_bytes()),
+        ProveOutcome::Refused(ProofRefusal::ProverFailed)
+    );
 }
 
 #[test]
