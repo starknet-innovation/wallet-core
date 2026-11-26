@@ -211,5 +211,7 @@ fn every_recorded_discovery_body_is_the_walks() {
     // (`reorg-restart`'s first walk ends in a 409, so still one completed; the two invoke-phase
     // refusals before any request discover nothing), 34 in all; the 13 that spend notes
     // (`transfer`, `withdraw` with an amount; S6 added `withdraw-plus-invoke`) discover those too.
-    assert_eq!((outgoing_walks, incoming_walks), (34, 13));
+    // S7's fixture added 6 single-signer jobs, all reaching both walks (the multisig jobs are
+    // `strk20_multisig_parity`'s): 42 proof jobs, 40 and 19.
+    assert_eq!((outgoing_walks, incoming_walks), (40, 19));
 }

@@ -2,20 +2,21 @@
 //! the job's stage at what that step's reply needs; a refusal leaves it `Closed`.
 
 use super::bodies::BlockRef;
-use super::call_set::{call_set_hash, sign_call_set, COMPILE_ACTIONS};
+use super::call_set::{authorized_aggregate, call_set_hash, sign_call_set, COMPILE_ACTIONS};
 use super::client_actions::compile_actions_calldata;
 use super::compiler::compile;
 use super::discovery::Walked;
 use super::entropy::Entropy;
+use super::held::HeldProof;
 use super::incoming::{IncomingWalk, SpendableNotes, INCOMING_PATH};
 use super::invocation::{pool_nonce, pool_nonce_request, ProofInvocation};
 use super::job::{fail, ProofHost, ProofJob, ProofPurpose, ProofStep, Stage};
 use super::outgoing::{OutgoingChannels, OutgoingWalk, OUTGOING_PATH};
 use super::pool_actions::bound_sign_request;
-use super::proof::ProofRefusal;
+use super::proof::{ProofRefusal, ProofSigner};
 use super::prover::{judge_prove_reply, prove_body, ProveOutcome};
 use super::types::PrivacyFailure;
-use crate::SecretFelt;
+use crate::{Felt, SecretFelt};
 
 impl<E: Entropy> ProofJob<E> {
     fn block(&self) -> BlockRef {
@@ -181,7 +182,7 @@ impl<E: Entropy> ProofJob<E> {
     }
 
     /// Step 5, then the first prove attempt under the nonce reply's clock (the SDK's
-    /// `Date.now()` id).
+    /// `Date.now()` id); or, for a multisig still waiting on co-owners, the held request.
     pub(super) fn on_nonce(
         &mut self,
         host: &dyn ProofHost,
@@ -194,16 +195,37 @@ impl<E: Entropy> ProofJob<E> {
             return fail(ProofRefusal::NonceUnavailable);
         };
         let (pool, account) = (self.inputs.route.pool, self.inputs.account);
-        // S7 cuts here: a multisig stores the calldata, nonce and proving block with this digest,
-        // gathers the threshold signature, and resumes at `prove` with the invocation.
         let digest = call_set_hash(&account, &pool, COMPILE_ACTIONS, &calldata, &self.chain_id);
-        let signature =
-            match sign_call_set(&digest, &self.inputs.public_key, |hash| host.sign(hash)) {
-                Ok(signature) => signature,
-                Err(refusal) => return fail(refusal),
-            };
+        let signature = match self.authorize(host, &digest) {
+            Ok(Some(signature)) => signature,
+            Ok(None) => {
+                let held = HeldProof::new(digest, nonce, self.inputs.proving_block, calldata);
+                return ProofStep::Held { held };
+            }
+            Err(refusal) => return fail(refusal),
+        };
         let invocation = ProofInvocation::new(pool, &calldata, nonce, signature);
         self.prove(host, invocation, 0, now_ms)
+    }
+
+    /// The account's signature over `digest`: the signer key's pair (`sign_call_set`), or a
+    /// multisig's checked aggregate, `None` while its co-owners have not all signed.
+    pub(super) fn authorize(
+        &self,
+        host: &dyn ProofHost,
+        digest: &Felt,
+    ) -> Result<Option<Vec<Felt>>, ProofRefusal> {
+        match &self.inputs.signer {
+            ProofSigner::Key(public_key) => {
+                sign_call_set(digest, public_key, |hash| host.sign(hash)).map(Some)
+            }
+            ProofSigner::Multisig { config, class } => match host.authorization(digest)? {
+                Some(aggregate) => authorized_aggregate(&aggregate, digest, config, class)
+                    .map(Some)
+                    .map_err(ProofRefusal::Authorization),
+                None => Ok(None),
+            },
+        }
     }
 
     /// Step 6: prove attempt `attempt` (from 0). The JSON-RPC id is the host clock of the reply

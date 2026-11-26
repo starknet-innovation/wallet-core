@@ -223,10 +223,11 @@ fn every_recorded_job_compiles_to_what_the_sdk_signed() {
         warned_jobs += usize::from(warned);
         compiled_jobs += 1;
     }
-    // Tracks the fixture: 36 proof jobs (39 lines less the 3 shadow-account reads). 6 refused
+    // Tracks the fixture: 42 single-signer proof jobs (51 lines less the 3 shadow-account reads
+    // and the 6 multisig lines, S7). 6 refused
     // before signing, one per refusal the transcripts record (the last three are the invoke
     // phase's, S6); 30 signed (24 before S6, then 6 invoke jobs), 2 of them (`user-linkage`,
-    // `activate-deposit-other`) warned `USER_LINKAGE`.
+    // `activate-deposit-other`) warned `USER_LINKAGE`. S7's fixture added 6 signed jobs.
     assert_eq!(
         refused,
         [
@@ -238,5 +239,5 @@ fn every_recorded_job_compiles_to_what_the_sdk_signed() {
             CompileRefusal::OpenNoteOutOfRange,
         ]
     );
-    assert_eq!((compiled_jobs, warned_jobs), (30, 2));
+    assert_eq!((compiled_jobs, warned_jobs), (36, 2));
 }

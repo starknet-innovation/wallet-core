@@ -106,6 +106,7 @@ mod strk20_compiler_parity;
 mod strk20_discovery_parity;
 mod strk20_invocation_parity;
 mod strk20_job_parity;
+mod strk20_multisig_parity;
 mod strk20_primitives_parity;
 mod strk20_shadow_parity;
 mod strk20_support;

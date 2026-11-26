@@ -77,6 +77,8 @@ fn every_recorded_job_binds_to_its_review() {
         bound += 1;
     }
     // Tracks the fixture: 39 lines, of which 3 are reads (no `signing`), 6 refused by the SDK
-    // before signing and 6 signed invoke jobs bound in bramble-core.
-    assert_eq!(bound, 24);
+    // before signing and 6 signed invoke jobs bound in bramble-core. S7 added 12: 6 signed
+    // single-signer jobs, and 6 multisig lines of which 3 compiled and asked for the CallSet (the
+    // resumed job compiles nothing, and the review and refusal lines are not jobs).
+    assert_eq!(bound, 33);
 }

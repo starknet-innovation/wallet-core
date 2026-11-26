@@ -7,8 +7,12 @@
 //!    and bind it to the reviewed actions (`pool_actions`), all before any nonce or signature;
 //! 4. the pool's nonce at `latest` (`invocation::pool_nonce_request`);
 //! 5. the `CallSet` digest over the bound calldata (`call_set`), signed by the wallet and checked
-//!    under the account's public key, and the `ProofInvocation` built from it;
+//!    under the account's public key, or for a multisig its co-owners' aggregate, checked signer
+//!    by signer, and the `ProofInvocation` built from it;
 //! 6. `starknet_proveTransaction` (`prover`), retried only while the prover is busy.
+//!
+//! A multisig short of its threshold ends at step 5 holding the request (`ProofStep::Held`,
+//! `held`); a later job resumes it (`ProofJob::resumed`, `job_resume`) straight to step 6.
 //!
 //! An HTTP 409 from either walk (the SDK's `ReorgError`) restarts the job from step 1 once, as the
 //! SDK's `compile` does; a second one fails. Like `PrivacyReadPlan`, the host relays opaque bodies
@@ -26,11 +30,12 @@ use zeroize::{Zeroize, Zeroizing};
 use super::compiler::{walk_inputs, Contracts, WalkInputs};
 use super::config::{is_service_url, Route};
 use super::entropy::{Entropy, OsEntropy};
+use super::held::{HeldProof, RedactedHeldProof};
 use super::incoming::IncomingWalk;
 use super::invocation::ProofInvocation;
 use super::outgoing::{OutgoingChannels, OutgoingWalk};
 use super::plan::PrivacyHost;
-use super::proof::{CallAndProof, ProofLimits, ProofRefusal, ReviewedAction};
+use super::proof::{CallAndProof, ProofLimits, ProofRefusal, ProofSigner, ReviewedAction};
 use super::prover::ProverRetry;
 use super::types::{PrivacyError, PrivacyReply};
 use crate::catalog::NetworkInfo;
@@ -42,8 +47,18 @@ use crate::{felt, Felt, SecretFelt, StarkSignature};
 pub trait ProofHost: PrivacyHost {
     /// Signs `hash` with the job's account key under the session the job was approved in (as
     /// `send::plan::PlanHost::sign`), `Locked` once that session has ended. Asked at most once
-    /// per job, with the digest the core computed over its own bound calldata.
+    /// per job, with the digest the core computed over its own bound calldata. Never asked for a
+    /// multisig.
     fn sign(&self, hash: &Felt) -> Result<StarkSignature, SignRefusal>;
+
+    /// A multisig's authorization of `hash`: the Argent aggregate once `threshold` co-owners
+    /// signed it (`call_set::authorized_aggregate` checks it), `None` while they have not,
+    /// `Locked` once the session has ended. Asked at most once per job, only for a
+    /// `ProofSigner::Multisig`. A wallet with no multisig accounts keeps the refusing default.
+    fn authorization(&self, hash: &Felt) -> Result<Option<Vec<Felt>>, SignRefusal> {
+        let _ = hash;
+        Err(SignRefusal::Failed)
+    }
 }
 
 /// What a proof job needs. Built by the wallet; nothing here is Bramble's unless it passes it.
@@ -51,11 +66,12 @@ pub trait ProofHost: PrivacyHost {
 #[derive(Clone, PartialEq, Eq)]
 pub struct ProofInputs {
     pub account: Felt,
-    /// The account's signer public key; the `CallSet` signature must verify under it.
-    pub public_key: Felt,
+    /// Who authorises the `CallSet`: the account's signer key, or its multisig's signers.
+    pub signer: ProofSigner,
     pub actions: Vec<ReviewedAction>,
     /// The block the walks read at (as `BlockRef::Number`) and the prover proves at, picked by
-    /// the wallet before the job starts (the extension's maturity rule).
+    /// the wallet before the job starts (the extension's maturity rule). A resumed job proves at
+    /// the held proof's block instead.
     pub proving_block: u64,
     /// Pool and discovery URL; refused unless plain (no OHTTP), this network's, and a service URL.
     pub route: Route,
@@ -78,7 +94,7 @@ impl fmt::Debug for ProofInputs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ProofInputs")
             .field("account", &self.account)
-            .field("public_key", &self.public_key)
+            .field("signer", &self.signer)
             .field(
                 "actions",
                 &format_args!("[redacted {} actions]", self.actions.len()),
@@ -100,6 +116,10 @@ pub enum ProofPurpose {
     OutgoingState,
     IncomingState,
     PoolNonce,
+    /// A resumed proof's window: the chain's block number.
+    BlockNumber,
+    /// A resumed proof's window: the pool's `get_proof_validity_blocks`.
+    ProofValidity,
     Prove,
 }
 
@@ -129,6 +149,12 @@ pub enum ProofStep {
     Wait { delay_ms: u64 },
     /// Terminal. The job is closed.
     Finished { proof: CallAndProof },
+    /// Terminal, not a failure: a multisig's co-owners have not all signed. The wallet keeps
+    /// `held.redact(marker)` and resumes it with a new job once they have. Holds the viewing key.
+    Held { held: HeldProof },
+    /// Terminal, not a failure: the held proof's block is past the pool's proof window. The
+    /// wallet drops the held record; the action is compiled and signed again in a new job.
+    Expired,
     /// Terminal. The job is closed.
     Failed { refusal: ProofRefusal },
 }
@@ -156,6 +182,8 @@ impl fmt::Debug for ProofStep {
                 .finish(),
             Self::Wait { delay_ms } => f.debug_struct("Wait").field("delay_ms", delay_ms).finish(),
             Self::Finished { proof } => f.debug_struct("Finished").field("proof", proof).finish(),
+            Self::Held { held } => f.debug_struct("Held").field("held", held).finish(),
+            Self::Expired => f.write_str("Expired"),
             Self::Failed { refusal } => f.debug_struct("Failed").field("refusal", refusal).finish(),
         }
     }
@@ -167,6 +195,11 @@ impl fmt::Debug for ProofStep {
 /// doc).
 pub(super) enum Stage {
     Fresh,
+    /// Before `Start`, for a resumed job: the held record and the wallet's marker.
+    Resume {
+        held: RedactedHeldProof,
+        marker: Felt,
+    },
     /// Step 1: an outgoing page is out.
     Outgoing {
         id: u64,
@@ -182,6 +215,17 @@ pub(super) enum Stage {
     Nonce {
         id: u64,
         calldata: Vec<SecretFelt>,
+    },
+    /// Resuming: the block-number read is out; the invocation waits on the window.
+    BlockNumber {
+        id: u64,
+        invocation: ProofInvocation,
+    },
+    /// Resuming: the validity read is out at chain block `current`.
+    ProofValidity {
+        id: u64,
+        current: u64,
+        invocation: ProofInvocation,
     },
     /// Step 6: a prove attempt (from 0) is out under JSON-RPC id `rpc_id`.
     Proving {
@@ -226,6 +270,20 @@ impl ProofJob<OsEntropy> {
 }
 
 impl<E: Entropy> ProofJob<E> {
+    /// This new job, made to resume `held` (a multisig's, redacted with `marker`) instead of
+    /// compiling: at `Start` it restores the viewing key into the held calldata and proves that
+    /// request, at its block, once its aggregate is complete and its block is still inside the
+    /// pool's window. `inputs` must be the held action's (network, account, signers, reviewed
+    /// actions, route, limits); their `proving_block` is not used. A job already started is
+    /// closed instead.
+    pub fn resumed(mut self, held: RedactedHeldProof, marker: Felt) -> Self {
+        self.stage = match self.stage {
+            Stage::Fresh => Stage::Resume { held, marker },
+            _ => Stage::Closed,
+        };
+        self
+    }
+
     /// THE TEST SEAM: [`ProofJob::new`] drawing from `entropy` instead of the OS, so a replay can
     /// feed the bytes a recorded SDK job read. A wallet never calls this: the note salts and
     /// randoms it draws are what keep a proof's notes unlinkable.
@@ -307,6 +365,26 @@ impl<E: Entropy> ProofJob<E> {
     ) -> Result<ProofStep, PrivacyError> {
         let stage = std::mem::replace(&mut self.stage, Stage::Closed);
         Ok(match (stage, reply) {
+            (Stage::Resume { held, marker }, PrivacyReply::Start { .. }) => {
+                self.start_resume(host, &held, &marker)
+            }
+            (Stage::BlockNumber { id, invocation }, PrivacyReply::Rpc { id: got, body, .. })
+                if id == *got =>
+            {
+                self.on_block_number(id, invocation, body)
+            }
+            (
+                Stage::ProofValidity {
+                    id,
+                    current,
+                    invocation,
+                },
+                PrivacyReply::Rpc {
+                    id: got,
+                    body,
+                    now_ms,
+                },
+            ) if id == *got => self.on_validity(host, id, current, invocation, body, *now_ms),
             (Stage::Fresh, PrivacyReply::Start { .. }) => {
                 match walk_inputs(
                     &self.inputs.account,
@@ -372,6 +450,9 @@ impl<E: Entropy> ProofJob<E> {
                     ProofRefusal::Discovery(super::types::PrivacyFailure::ServiceUnavailable),
                 ),
                 Stage::Nonce { id, .. } if id == *got => fail(ProofRefusal::NonceUnavailable),
+                Stage::BlockNumber { id, .. } | Stage::ProofValidity { id, .. } if id == *got => {
+                    fail(ProofRefusal::WindowUnavailable)
+                }
                 Stage::Proving { id, .. } if id == *got => fail(ProofRefusal::ProverUnavailable),
                 _ => return Err(PrivacyError::OutOfOrder),
             },
@@ -412,3 +493,7 @@ mod tests;
 #[cfg(test)]
 #[path = "job_failure_tests.rs"]
 mod failure_tests;
+
+#[cfg(test)]
+#[path = "job_multisig_tests.rs"]
+mod multisig_tests;

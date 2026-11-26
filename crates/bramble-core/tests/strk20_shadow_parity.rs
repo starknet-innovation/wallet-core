@@ -361,6 +361,7 @@ fn the_recorded_shadow_account_reads_are_the_cores() {
                 accounts_read(&job);
                 accounts += 1;
             }
+            Some("multisig-review" | "multisig-refusal") => {} // `strk20_multisig_parity`
             Some(other) => panic!("unknown read {other}"),
             None => {}
         }

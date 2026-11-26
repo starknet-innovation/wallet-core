@@ -1,8 +1,9 @@
-//! Bramble's STRK20 invoke-phase protocol over `wallet_core::privacy` (#182, S6): the grammar of
-//! an invoke action's calldata placeholders, the origin-bound shadow-account scope a site's label
-//! becomes, and the numbers its shadow-account scan runs under. The core takes all three as plain
-//! values (`InvokeArg`, a dapp-name felt, `ShadowScanLimits`). Not exported yet: the P15 flows
-//! and P16's dapp methods will.
+//! Bramble's STRK20 protocol choices over `wallet_core::privacy` (#182): the grammar of an invoke
+//! action's calldata placeholders, the origin-bound shadow-account scope a site's label becomes,
+//! and the numbers its shadow-account scan runs under (S6), and the felt a multisig's held or
+//! shared calldata carries in place of the viewing key (S7). The core takes them as plain values
+//! (`InvokeArg`, a dapp-name felt, `ShadowScanLimits`, a marker felt). Not exported yet: the P15
+//! flows and P16's dapp methods will.
 
 use starknet_wallet_core::container::domain_hash;
 use starknet_wallet_core::privacy::proof::InvokeArg;
@@ -22,6 +23,11 @@ pub const SHADOW_SCAN_LIMITS: ShadowScanLimits = ShadowScanLimits {
     nonce_limit: u64::MAX,
     max_scan_range: 1024,
 };
+
+/// `MULTISIG_STRK20_REDACTED_FELT`: the ASCII short string `redacted`, written in a multisig's
+/// held and shared `compile_actions` calldata where the viewing key was (`HeldProof::redact`,
+/// `held::restore_calldata`).
+pub const MULTISIG_STRK20_REDACTED_FELT: Felt = Felt::from_hex_unchecked("0x7265646163746564");
 
 /// `strk20ShadowAccountScope(origin, label)`: the first 30 hex characters of
 /// `SHA-256("bramble/strk20-shadow-account/v1|{origin}|{label}")`. `origin` must be the verified
@@ -61,6 +67,14 @@ pub fn invoke_calldata_item(item: &str) -> Option<InvokeArg> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_redaction_marker_spells_redacted() {
+        assert_eq!(
+            encode_short_string("redacted"),
+            Some(MULTISIG_STRK20_REDACTED_FELT)
+        );
+    }
 
     #[test]
     fn placeholders_follow_the_extensions_pattern() {

@@ -1,7 +1,8 @@
-//! What the STRK20 parity tests share: the recorded proof jobs (the lines of
-//! `extension-strk20-jobs.jsonl` without a `kind`; the `kind` lines are the shadow-account reads,
-//! `strk20_shadow_parity`), the extension's actions as the core's reviewed actions, the job's
-//! contracts, and the refusal each recorded error names.
+//! What the STRK20 parity tests share: the recorded single-signer proof jobs (the lines of
+//! `extension-strk20-jobs.jsonl` with neither a `kind` nor a `multisig` record), the multisig jobs
+//! (`strk20_multisig_parity`), the extension's actions as the core's reviewed actions, the job's
+//! contracts, and the refusal each recorded error names. The `kind` lines are the shadow-account
+//! reads (`strk20_shadow_parity`) and the multisig review and refusals (`strk20_multisig_parity`).
 
 use bramble_core::strk20::invoke_calldata_item;
 use serde_json::Value;
@@ -20,12 +21,22 @@ pub fn lines() -> Vec<Value> {
         .collect()
 }
 
-/// The proof jobs: every line without a `kind`.
+/// The single-signer proof jobs: every line without a `kind` or a `multisig` record.
 pub fn proof_jobs() -> Vec<Value> {
     lines()
         .into_iter()
-        .filter(|line| line.get("kind").is_none())
+        .filter(|line| line.get("kind").is_none() && !is_multisig(line))
         .collect()
+}
+
+/// A multisig line: a job with `inputs.multisig` and a top-level `multisig` record, or a review
+/// or refusal line (`multisig-*` kind).
+pub fn is_multisig(line: &Value) -> bool {
+    let job = line["inputs"].get("multisig").is_some() && line.get("multisig").is_some();
+    let kind = line["kind"]
+        .as_str()
+        .is_some_and(|kind| kind.starts_with("multisig-"));
+    job || kind
 }
 
 fn hex(value: &Value) -> Felt {

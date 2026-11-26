@@ -283,7 +283,7 @@ mod tests {
     use crate::privacy::client_actions::ClientAction;
     use crate::privacy::compiler::Compiled;
     use crate::privacy::job::ProofInputs;
-    use crate::privacy::proof::{ProofLimits, ReviewedAction};
+    use crate::privacy::proof::{ProofLimits, ProofSigner, ReviewedAction};
     use crate::privacy::prover::ProverRetry;
 
     #[test]
@@ -414,7 +414,7 @@ mod tests {
 
         let inputs = ProofInputs {
             account: Felt::ONE,
-            public_key: Felt::TWO,
+            signer: ProofSigner::Key(Felt::TWO),
             actions: vec![ReviewedAction::Transfer {
                 token: Felt::THREE,
                 recipient: c0ffee,

@@ -30,6 +30,9 @@ const L1_DATA_GAS_MAX_AMOUNT: u64 = 1;
 /// invocation (a multisig waiting on co-signers) can be serialised again unchanged.
 #[derive(Clone, PartialEq)]
 pub struct ProofInvocation {
+    /// Rebuilt from a held envelope (`ProofInvocation::resumed`): the extension spreads the held
+    /// envelope and then sets `calldata` and `signature`, so they come last in its JSON.
+    resumed: bool,
     /// The pool: the sender, and the one call's contract.
     pub pool: Felt,
     /// The pool's nonce at `latest` ([`pool_nonce`]).
@@ -56,10 +59,26 @@ impl ProofInvocation {
         calldata.extend(head.into_iter().map(SecretFelt::new));
         calldata.extend_from_slice(compile_actions);
         Self {
+            resumed: false,
             pool,
             nonce,
             signature,
             calldata,
+        }
+    }
+
+    /// [`ProofInvocation::new`] for a held multisig proof, as the extension rebuilds it
+    /// (`multisig-strk20-held.ts` `signed`): the same members, with `calldata` and `signature`
+    /// after the envelope in its JSON.
+    pub fn resumed(
+        pool: Felt,
+        compile_actions: &[SecretFelt],
+        nonce: Felt,
+        signature: Vec<Felt>,
+    ) -> Self {
+        Self {
+            resumed: true,
+            ..Self::new(pool, compile_actions, nonce, signature)
         }
     }
 
@@ -82,8 +101,8 @@ impl ProofInvocation {
     }
 
     fn json_between(&self, before: &str, after: &str) -> Zeroizing<Vec<u8>> {
-        let head = format!(
-            "{{\"type\":\"INVOKE\",\"sender_address\":\"{}\",\"calldata\":[",
+        let sender = format!(
+            "{{\"type\":\"INVOKE\",\"sender_address\":\"{}\"",
             felt::canonical(&self.pool)
         );
         let signature: Vec<String> = self
@@ -94,17 +113,29 @@ impl ProofInvocation {
         let bound = |amount: u64| {
             format!("{{\"max_amount\":\"{amount:#x}\",\"max_price_per_unit\":\"0x0\"}}")
         };
-        let tail = format!(
-            "],\"signature\":[{}],\"nonce\":\"{}\",\"resource_bounds\":{{\"l1_gas\":{},\
+        let envelope = format!(
+            "\"nonce\":\"{}\",\"resource_bounds\":{{\"l1_gas\":{},\
              \"l2_gas\":{},\"l1_data_gas\":{}}},\"tip\":\"0x0\",\"paymaster_data\":[],\
              \"account_deployment_data\":[],\"nonce_data_availability_mode\":\"L1\",\
-             \"fee_data_availability_mode\":\"L1\",\"version\":\"0x3\"}}",
-            signature.join(","),
+             \"fee_data_availability_mode\":\"L1\",\"version\":\"0x3\"",
             felt::canonical(&self.nonce),
             bound(L1_GAS_MAX_AMOUNT),
             bound(L2_GAS_MAX_AMOUNT),
             bound(L1_DATA_GAS_MAX_AMOUNT),
         );
+        let signature = format!("\"signature\":[{}]", signature.join(","));
+        // The SDK's member order, or a held envelope's with `calldata` and `signature` last.
+        let (head, tail) = if self.resumed {
+            (
+                format!("{sender},{envelope},\"calldata\":["),
+                format!("],{signature}}}"),
+            )
+        } else {
+            (
+                format!("{sender},\"calldata\":["),
+                format!("],{signature},{envelope}}}"),
+            )
+        };
         // Each felt is `"0x…"`, with a comma between.
         let calldata_len = self
             .calldata
@@ -135,6 +166,7 @@ impl ProofInvocation {
 impl fmt::Debug for ProofInvocation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ProofInvocation")
+            .field("resumed", &self.resumed)
             .field("pool", &self.pool)
             .field("nonce", &self.nonce)
             .field("signature", &self.signature)
