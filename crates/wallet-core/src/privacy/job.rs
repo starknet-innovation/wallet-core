@@ -13,14 +13,15 @@
 //! An HTTP 409 from either walk (the SDK's `ReorgError`) restarts the job from step 1 once, as the
 //! SDK's `compile` does; a second one fails. Like `PrivacyReadPlan`, the host relays opaque bodies
 //! and replies, never picks a URL, and sees the viewing key only inside the zeroizing `Post`
-//! bodies. Reply handling is `job_steps`.
+//! bodies. Each `Http` reply body is wiped once judged. What stays in plain memory is said once,
+//! in `privacy`'s module doc. Reply handling is `job_steps`.
 //!
 //! Deliberate difference from the SDK, which signs first and leaves the extension to refuse the
 //! warning after: `USER_LINKAGE` is refused at compile, so no nonce is read and nothing signed.
 
 use std::fmt;
 
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
 
 use super::compiler::{walk_inputs, Contracts, WalkInputs};
 use super::config::{is_service_url, Route};
@@ -160,8 +161,10 @@ impl fmt::Debug for ProofStep {
     }
 }
 
-/// Where the job is. Every stage past `Fresh` holds what the next reply needs and nothing more;
-/// the secrets in it (channel keys, the calldata, the invocation) are zeroed when it is replaced.
+/// Where the job is. Every stage past `Fresh` holds what the next reply needs and nothing more.
+/// The `SecretFelt`s in it (the walks' channel keys and witnesses, the calldata, the invocation)
+/// are zeroed when it is replaced; the walks' held cursor is plain memory (`privacy`'s module
+/// doc).
 pub(super) enum Stage {
     Fresh,
     /// Step 1: an outgoing page is out.
@@ -275,7 +278,13 @@ impl<E: Entropy> ProofJob<E> {
         if matches!(self.stage, Stage::Closed) {
             return Err(PrivacyError::PlanClosed);
         }
-        let result = self.step(host, reply);
+        let mut reply = reply;
+        let result = self.step(host, &reply);
+        // The job owns the reply: a discovery body carries channel keys, salts and amounts, a
+        // prove reply the proof. Wiped once judged, whatever the verdict.
+        if let PrivacyReply::Http { body, .. } = &mut reply {
+            body.zeroize();
+        }
         if !matches!(
             result,
             Ok(ProofStep::Post { .. } | ProofStep::Rpc { .. } | ProofStep::Wait { .. })
@@ -294,7 +303,7 @@ impl<E: Entropy> ProofJob<E> {
     fn step(
         &mut self,
         host: &dyn ProofHost,
-        reply: PrivacyReply,
+        reply: &PrivacyReply,
     ) -> Result<ProofStep, PrivacyError> {
         let stage = std::mem::replace(&mut self.stage, Stage::Closed);
         Ok(match (stage, reply) {
@@ -319,7 +328,7 @@ impl<E: Entropy> ProofJob<E> {
                     body,
                     ..
                 },
-            ) if id == got => self.on_outgoing(host, walk, status, &body),
+            ) if id == *got => self.on_outgoing(host, walk, *status, body),
             (
                 Stage::Incoming { id, walk, channels },
                 PrivacyReply::Http {
@@ -328,7 +337,7 @@ impl<E: Entropy> ProofJob<E> {
                     body,
                     ..
                 },
-            ) if id == got => self.on_incoming(host, walk, channels, status, &body),
+            ) if id == *got => self.on_incoming(host, walk, channels, *status, body),
             (
                 Stage::Nonce { id, calldata },
                 PrivacyReply::Rpc {
@@ -336,7 +345,7 @@ impl<E: Entropy> ProofJob<E> {
                     body,
                     now_ms,
                 },
-            ) if id == got => self.on_nonce(host, calldata, id, &body, now_ms),
+            ) if id == *got => self.on_nonce(host, calldata, id, body, *now_ms),
             (
                 Stage::Proving {
                     id,
@@ -350,20 +359,20 @@ impl<E: Entropy> ProofJob<E> {
                     body,
                     ..
                 },
-            ) if id == got => self.on_prove(invocation, rpc_id, attempt, status, &body),
+            ) if id == *got => self.on_prove(invocation, rpc_id, attempt, *status, body),
             (
                 Stage::Waiting {
                     attempt,
                     invocation,
                 },
                 PrivacyReply::WaitElapsed { now_ms },
-            ) => self.prove(host, invocation, attempt, now_ms),
+            ) => self.prove(host, invocation, attempt, *now_ms),
             (stage, PrivacyReply::TransportFailure { id: got, .. }) => match stage {
-                Stage::Outgoing { id, .. } | Stage::Incoming { id, .. } if id == got => fail(
+                Stage::Outgoing { id, .. } | Stage::Incoming { id, .. } if id == *got => fail(
                     ProofRefusal::Discovery(super::types::PrivacyFailure::ServiceUnavailable),
                 ),
-                Stage::Nonce { id, .. } if id == got => fail(ProofRefusal::NonceUnavailable),
-                Stage::Proving { id, .. } if id == got => fail(ProofRefusal::ProverUnavailable),
+                Stage::Nonce { id, .. } if id == *got => fail(ProofRefusal::NonceUnavailable),
+                Stage::Proving { id, .. } if id == *got => fail(ProofRefusal::ProverUnavailable),
                 _ => return Err(PrivacyError::OutOfOrder),
             },
             _ => return Err(PrivacyError::OutOfOrder),

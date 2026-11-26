@@ -14,6 +14,7 @@
 use std::fmt;
 
 use serde::de::{self, Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
+use zeroize::Zeroizing;
 
 use crate::send::u256::U256;
 
@@ -68,36 +69,68 @@ impl Ordered {
     }
 
     /// `JSON.stringify` of this value.
-    pub fn write(&self, out: &mut String) {
+    pub fn write(&self, out: &mut dyn Sink) {
         match self {
-            Self::Null => out.push_str("null"),
-            Self::Bool(value) => out.push_str(if *value { "true" } else { "false" }),
-            Self::Int(value) => out.push_str(&value.to_string()),
+            Self::Null => out.put("null"),
+            Self::Bool(value) => out.put(if *value { "true" } else { "false" }),
+            Self::Int(value) => out.put(&value.to_string()),
             Self::Str(value) => write_str(out, value),
             Self::Array(items) => {
-                out.push('[');
+                out.put("[");
                 for (index, item) in items.iter().enumerate() {
                     if index > 0 {
-                        out.push(',');
+                        out.put(",");
                     }
                     item.write(out);
                 }
-                out.push(']');
+                out.put("]");
             }
             Self::Object(members) => {
-                out.push('{');
+                out.put("{");
                 for (index, (key, value)) in members.iter().enumerate() {
                     if index > 0 {
-                        out.push(',');
+                        out.put(",");
                     }
                     write_str(out, key);
-                    out.push(':');
+                    out.put(":");
                     value.write(out);
                 }
-                out.push('}');
+                out.put("}");
             }
         }
     }
+}
+
+/// Where JSON text is written: a string, or a [`Measure`] that sizes one first.
+pub trait Sink {
+    fn put(&mut self, text: &str);
+}
+
+impl Sink for String {
+    fn put(&mut self, text: &str) {
+        self.push_str(text);
+    }
+}
+
+/// Counts the bytes a write would make, and keeps none of them.
+pub struct Measure(pub usize);
+
+impl Sink for Measure {
+    fn put(&mut self, text: &str) {
+        self.0 += text.len();
+    }
+}
+
+/// What `build` writes, in one zeroizing string sized exactly by a first, counting pass, so it is
+/// never reallocated: the discovery cursor it echoes carries channel keys in clear.
+pub fn sized(build: impl Fn(&mut dyn Sink)) -> Zeroizing<String> {
+    let mut measure = Measure(0);
+    build(&mut measure);
+    let mut out = Zeroizing::new(String::with_capacity(measure.0));
+    build(&mut *out);
+    debug_assert_eq!(out.len(), measure.0);
+    debug_assert_eq!(out.capacity(), measure.0);
+    out
 }
 
 fn is_array_index(key: &str) -> bool {
@@ -105,10 +138,44 @@ fn is_array_index(key: &str) -> bool {
         .is_ok_and(|index| index != u32::MAX && index.to_string() == key)
 }
 
-/// A JSON string literal as `JSON.stringify` writes it (serde_json's escaping is the same:
-/// `\"`, `\\`, `\b\f\n\r\t`, other controls as lowercase `\u00xx`, nothing else escaped).
-pub fn write_str(out: &mut String, value: &str) {
-    out.push_str(&serde_json::to_string(value).unwrap_or_else(|_| "\"\"".into()));
+/// A JSON string literal as `JSON.stringify` writes it (and serde_json, which a test checks):
+/// `\"`, `\\`, `\b\f\n\r\t`, other controls as lowercase `\u00xx`, nothing else escaped.
+/// Written straight into `out`, with no temporary copy of the text.
+pub fn write_str(out: &mut dyn Sink, value: &str) {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    out.put("\"");
+    let mut start = 0;
+    // Every escaped byte is ASCII, so each cut is on a character boundary.
+    for (at, byte) in value.bytes().enumerate() {
+        let short = match byte {
+            b'"' => "\\\"",
+            b'\\' => "\\\\",
+            0x08 => "\\b",
+            0x0c => "\\f",
+            b'\n' => "\\n",
+            b'\r' => "\\r",
+            b'\t' => "\\t",
+            0..=0x1f => "",
+            _ => continue,
+        };
+        out.put(value.get(start..at).unwrap_or_default());
+        if short.is_empty() {
+            let code = [
+                b'\\',
+                b'u',
+                b'0',
+                b'0',
+                HEX[usize::from(byte >> 4)],
+                HEX[usize::from(byte & 0xf)],
+            ];
+            out.put(std::str::from_utf8(&code).unwrap_or_default());
+        } else {
+            out.put(short);
+        }
+        start = at + 1;
+    }
+    out.put(value.get(start..).unwrap_or_default());
+    out.put("\"");
 }
 
 struct OrderedVisitor;
@@ -219,6 +286,29 @@ mod tests {
         let mut out = String::new();
         parse(text).unwrap().write(&mut out);
         assert_eq!(out, r#"{"z":1,"a":{"y":[true,null,"x\n"],"b":false}}"#);
+    }
+
+    #[test]
+    fn strings_escape_as_serde_json_does() {
+        let mut every: String = (0u8..0x80).map(char::from).collect();
+        every.push_str("é😀\u{2028}\u{7f}");
+        for text in [every.as_str(), "", "plain", "\"\\", "a\u{1}b"] {
+            let mut out = String::new();
+            write_str(&mut out, text);
+            assert_eq!(out, serde_json::to_string(text).unwrap(), "{text:?}");
+        }
+    }
+
+    #[test]
+    fn sized_writes_into_one_exact_buffer() {
+        let cursor =
+            parse(r#"{"channels":{"0x5":{"channel_key":"0xc0ffee","n":[1,null,true]}},"z":"\n"}"#)
+                .unwrap();
+        let out = sized(|out| cursor.write(out));
+        assert_eq!(out.len(), out.capacity());
+        let mut plain = String::new();
+        cursor.write(&mut plain);
+        assert_eq!(*out, plain);
     }
 
     #[test]

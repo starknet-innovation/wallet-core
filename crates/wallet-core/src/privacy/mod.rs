@@ -4,10 +4,22 @@
 //! unshielding need an upstream privacy client that Krusty 3.2.0 does not provide (Bramble's
 //! `mobile/docs/privacy.md` §1, §9), so `CAPABILITIES` is all false.
 //!
-//! The viewing key is never held here. The plan asks the wallet for it (`plan::PrivacyHost`)
-//! while one discovery body is built, and it leaves the core only inside that zeroizing body,
-//! for a non-OHTTP discovery URL (§1.1). Routing, limits and the network catalog are the
-//! wallet's, passed in (`config`, `crate::catalog`).
+//! The viewing key is the wallet's (`plan::PrivacyHost`), asked for whenever a body needs it and
+//! dropped after. The balance read never holds it past one discovery body. A proof job
+//! (`job::ProofJob`) holds it, between compile and the proof, inside the bound `compile_actions`
+//! calldata and the proof invocation, as `SecretFelt`s. It leaves the core only inside zeroizing
+//! request bodies, to the discovery URL and, in the invocation, to the prover URL, never through
+//! OHTTP (§1.1). Routing, limits and the network catalog are the wallet's, passed in (`config`,
+//! `crate::catalog`).
+//!
+//! What is wiped and what is not, in one place. Zeroized on drop: the viewing key, channel keys
+//! and witnesses as `SecretFelt`s, the calldata and invocation, every request body, the cursor's
+//! echo while a body is built (`json::sized`), and a proof job's `Http` reply bodies once judged.
+//! Plain memory until dropped, an accepted limitation: the parsed reply (`json::Ordered`) and the
+//! cursor a walk holds between pages, which carry the service's channel keys, salts and amounts as
+//! text, the balance read's reply bodies, and what a growing service-sized map leaves behind when
+//! it reallocates (`discovery::AddressMap`). `SecretFelt` wipes where it is dropped, not the
+//! bitwise copies a move leaves on the stack.
 //!
 //! Proofs (P15) are the Rust port of the SDK's client (#182). Its records (the reviewed actions,
 //! the wallet's bounds, the judged call and proof, the refusals) are `proof`. It starts from the

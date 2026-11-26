@@ -1,9 +1,11 @@
 //! What a proof job learns from discovery (P15, the SDK's `channel.ts` and `interfaces.ts` `Note`),
 //! and the reply handling both walks share (`outgoing::OutgoingWalk`, `incoming::IncomingWalk`).
 //!
-//! Channel keys and witnesses are derived from the viewing key, so they are held as `SecretFelt`
-//! (zeroized on drop, redacted `Debug`). A `Note`'s `Debug` prints nothing at all: amounts and
-//! senders are private too. Failures are fixed `PrivacyFailure` variants and carry none of it.
+//! Channel keys and witnesses are derived from the viewing key, so the ones read out of a reply
+//! are held as `SecretFelt` (zeroized on drop, redacted `Debug`). The parsed reply and the cursor
+//! a walk echoes hold the same keys as plain text (`privacy`'s module doc). A `Note`'s `Debug`
+//! prints nothing at all: amounts and senders are private too. Failures are fixed
+//! `PrivacyFailure` variants and carry none of it.
 
 use std::fmt;
 
