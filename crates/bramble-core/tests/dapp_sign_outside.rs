@@ -65,11 +65,16 @@ fn outside_execution(calls: &[(&str, &str, Vec<String>)]) -> String {
 fn sign_card(dapp: &DappSession) -> (Vec<String>, Vec<RiskFlagCode>) {
     match dapp.pending_approvals(NOW)[0].card.clone() {
         DappCard::SignTypedData {
+            outside_execution,
             call_summaries,
             flags,
             ..
         } => (
-            call_summaries,
+            {
+                // Flagged by the primary type alone, calls or none.
+                assert!(outside_execution);
+                call_summaries
+            },
             flags.into_iter().map(|flag| flag.code).collect(),
         ),
         other => panic!("not a sign card: {other:?}"),
@@ -106,6 +111,20 @@ fn an_outside_execution_is_reviewed_as_an_invoke_and_signs_on_approval() {
     assert!(verifies(&core, &document, &signature[0], &signature[1]));
 }
 
+// An outside execution with no calls is still one: the card carries the flag (the extension's
+// `signing.outsideExecution` warning) with nothing to summarise.
+#[test]
+fn an_outside_execution_with_no_calls_is_still_flagged() {
+    let (_dir, _clock, core) = imported();
+    let dapp = connected(&core);
+    pending_id(sign_request(&dapp, SITE, &outside_execution(&[]), 1));
+    let (summaries, flags) = sign_card(&dapp);
+    assert!(
+        summaries.is_empty() && flags.is_empty(),
+        "{summaries:?} {flags:?}"
+    );
+}
+
 // "refuses a call to the account contract itself".
 #[test]
 fn an_outside_execution_calling_the_account_itself_is_refused() {
@@ -132,4 +151,28 @@ fn an_outside_execution_paying_a_lookalike_is_flagged_then_refused() {
     let (_, flags) = sign_card(&dapp);
     assert!(flags.contains(&RiskFlagCode::AddressPoisoning), "{flags:?}");
     assert_eq!(code(&approved(&dapp, card, account_id(&core))), 163);
+}
+
+// A Ledger account's outside execution is reviewed as any other's: a lookalike payee is flagged
+// on the card and refused at approval, before the device is asked for anything.
+#[test]
+fn a_ledger_accounts_outside_execution_paying_a_lookalike_never_reaches_the_device() {
+    let (_dir, _clock, core) = imported();
+    add_ledger(&core, &ledger_key());
+    let dapp = connected(&core);
+    let account = core.active_account().unwrap().unwrap();
+    let document = outside_execution(&[(
+        STRK,
+        "transfer",
+        vec![lookalike(&account.address), "0x1".into(), "0x0".into()],
+    )]);
+    let card = pending_id(sign_request(&dapp, SITE, &document, 1));
+    let (_, flags) = sign_card(&dapp);
+    assert!(flags.contains(&RiskFlagCode::AddressPoisoning), "{flags:?}");
+    let chain = ready_chain("argent 0.4.0", &account.public_key);
+    let mut device = common::ledger_device::Device::holding(ledger_key());
+    let step = dapp.approve_sign_typed_data(card.clone(), account.id, NOW);
+    let reply = settled_reply(drive(&dapp, &card, step, &chain, Some(&mut device)));
+    assert_eq!(code(&reply), 163);
+    assert_eq!(device.apdus, 0);
 }

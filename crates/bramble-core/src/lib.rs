@@ -125,6 +125,8 @@ pub const PORTFOLIO_POLICY: starknet_wallet_core::portfolio::PortfolioPolicy =
         schema: "bramble.mobile.portfolio.v1",
         price_api_base: "https://api.coingecko.com/api/v3",
         price_network: NetworkId::Mainnet,
+        // `MAX_ADDED_TOKENS_PER_NETWORK`: a private balance reads at most 64 tokens.
+        max_added_tokens: 50,
     };
 
 /// Bramble's history choices, for `starknet_wallet_core::history`: `STARKSCAN_API_BASE`

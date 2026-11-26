@@ -16,7 +16,7 @@
 
 use super::call_decode::{decode_call, CallKind};
 use super::calls::{execute_calldata, Call};
-use super::multisig_review::{batch_line, refuse_poisoned, CallReviewError};
+use super::multisig_review::{batch_line, is_poisoned, refuse_poisoned, CallReviewError};
 use super::plan::PendingKind;
 use super::review_flags::{call_flags, dedupe, ReviewContext, RiskFlag};
 use super::types::{Account, Policy};
@@ -125,6 +125,25 @@ pub fn verify_calls(
 
 /// `verifyCalls(..).flags`: every call's flags, in order, each line once (`dedupeFlags`), as the
 /// extension's card lists them.
+/// [`verify_calls`] with `addressPoisoningFlag`, the last rule `verifyCalls` applies to a call:
+/// what a card queued for the person shows. A payee, spender or operator that mimics a trusted
+/// address is flagged here and refused only when the batch is signed (`refuse_poisoned`, through
+/// [`Invoke::reviewed`]), so a site asking learns nothing about who the person trusts.
+pub fn verify_calls_for_card(
+    network: NetworkId,
+    sender: &Felt,
+    calls: &[Call],
+    context: &ReviewContext,
+) -> Vec<ReviewedCall> {
+    let mut reviewed = verify_calls(network, sender, calls, context);
+    for (call, reviewed) in calls.iter().zip(reviewed.iter_mut()) {
+        if is_poisoned(sender, call, context.trusted) {
+            reviewed.flags.push(RiskFlag::AddressPoisoning);
+        }
+    }
+    reviewed
+}
+
 pub fn batch_flags(calls: &[ReviewedCall]) -> Vec<&RiskFlag> {
     dedupe(calls.iter().flat_map(|call| call.flags.iter()))
 }
@@ -164,7 +183,7 @@ pub(crate) fn is_entrypoint(name: &str) -> bool {
 /// The rules that need neither the wallet's context nor a selector: at least one call and no more
 /// than `policy` allows, each a non-zero contract with a grammatical entrypoint, and none to
 /// `sender` itself. Felts compare by value, so no spelling of the account slips past.
-pub(crate) fn check(sender: &Felt, calls: &[Call], policy: &Policy) -> Result<(), InvokeRefusal> {
+pub fn check(sender: &Felt, calls: &[Call], policy: &Policy) -> Result<(), InvokeRefusal> {
     if calls.is_empty() {
         return Err(InvokeRefusal::NoCalls);
     }

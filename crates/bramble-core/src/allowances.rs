@@ -60,14 +60,9 @@ pub(crate) fn with_allowance_log<T>(dir: &Path, f: impl FnOnce(&mut AllowanceLog
 }
 
 /// The tracked tokens the review and the log trust on `network` (`trustedTokens`): every one the
-/// spam heuristic does not flag.
+/// spam heuristic does not flag, except a site's that is not exactly a curated token.
 pub(crate) fn trusted_tokens(prefs: &TokenPreferences, network: NetworkId) -> Vec<TokenConfig> {
-    prefs
-        .tracked(network)
-        .into_iter()
-        .filter(|tracked| !tracked.likely_spam)
-        .map(|tracked| tracked.token)
-        .collect()
+    prefs.trusted(network)
 }
 
 /// `tokens` as the review's `Known::tokens` reads them.

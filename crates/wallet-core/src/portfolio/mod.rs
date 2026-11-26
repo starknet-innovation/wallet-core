@@ -14,6 +14,7 @@ pub mod prices;
 pub mod registry;
 pub mod snapshots;
 pub mod token_meta;
+pub mod token_sources;
 pub mod tokens;
 pub mod wire;
 
@@ -33,6 +34,9 @@ pub struct PortfolioPolicy {
     /// price cache is keyed by address alone and ETH and STRK share their addresses across
     /// networks (Sherlock 185).
     pub price_network: NetworkId,
+    /// The most tokens the person or sites may add on one network, beyond the network's own
+    /// (`MAX_ADDED_TOKENS_PER_NETWORK`).
+    pub max_added_tokens: usize,
 }
 
 /// A policy for this crate's unit tests; `bramble-core`'s tests run Bramble's.
@@ -41,6 +45,7 @@ pub(crate) const TEST_POLICY: PortfolioPolicy = PortfolioPolicy {
     schema: "wallet.portfolio.v1",
     price_api_base: "https://api.coingecko.com/api/v3",
     price_network: NetworkId::Mainnet,
+    max_added_tokens: 3,
 };
 
 #[cfg(test)]

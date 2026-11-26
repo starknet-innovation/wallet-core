@@ -200,27 +200,17 @@ impl WalletCore {
             .ok_or_else(|| refused("this signer already signed or is signing the intent"))
     }
 
-    /// Stores `intent` with `signature` added in GUID order, ready at the threshold
-    /// (`persistSignature`). The store validates the result, every signature over the hash
-    /// recomputed from the prepared transaction.
+    /// Stores `intent` with `signature` added (`persistSignature`, through
+    /// `SigningIntent::with_signature`): a member's signature over the recomputed hash, in GUID
+    /// order, ready at the threshold. The store validates the result again.
     pub(crate) fn store_signature(
         &self,
         intent: SigningIntent,
         signature: MultisigSignature,
     ) -> Result<MultisigIntent, CoreError> {
-        let mut signatures = intent.signatures.clone();
-        signatures.push(signature);
-        signatures.sort_by_cached_key(|signed| guid_of(&signed.public_key));
-        let ready = signatures.len() == intent.config_snapshot.threshold as usize;
-        let next = SigningIntent {
-            signatures,
-            state: if ready {
-                IntentState::Ready
-            } else {
-                IntentState::Collecting
-            },
-            ..intent
-        };
+        let next = intent
+            .with_signature(signature)
+            .map_err(|error| refused(error.message()))?;
         self.require_unlocked()?;
         multisig_intents::upsert(self.data_dir(), &next)?;
         let record = self.multisig_record(&next.account_id).ok();

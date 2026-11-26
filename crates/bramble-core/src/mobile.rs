@@ -34,10 +34,16 @@ mod clock;
 mod contact_card;
 mod contacts;
 mod container;
+mod dapp_cards;
+mod dapp_chain;
 mod dapp_expiry;
+mod dapp_invoke;
 mod dapp_session;
 mod dapp_sign;
+mod dapp_sign_device;
+mod dapp_sign_read;
 mod dapp_sites;
+mod dapp_watch;
 mod ffi_coordination;
 mod ffi_coordination_sync;
 mod ffi_nostr_multisig;
@@ -50,6 +56,7 @@ pub(crate) use wallet_core::js;
 mod key_import;
 mod kms;
 mod ledger_ble;
+mod ledger_os_gate;
 mod ledger_reader;
 mod ledger_wallet;
 pub use kms::Ladder;
@@ -63,6 +70,7 @@ mod multisig_tx_import;
 mod multisig_tx_ops;
 mod multisig_tx_plans;
 mod multisig_tx_refresh;
+mod multisig_tx_remove;
 mod nostr;
 mod nostr_relay;
 mod portfolio;
@@ -110,7 +118,10 @@ pub use class_declared::ClassDeclaredRead;
 pub use clock::HostClock;
 pub use contact_card::{ContactCardParse, WalletContactCard};
 pub use contacts::Contact;
+pub use dapp_invoke::DappInvokeStart;
 pub use dapp_session::{DappApproval, DappCard, DappReply, DappSession, DappSettled};
+pub use dapp_sign::SignRow;
+pub use dapp_sign_read::DappSignStep;
 pub use ffi_coordination::{
     CoordinationSyncOutcome, CoordinationSyncStep, NostrSyncPlan, RelayPolicy,
 };
@@ -130,6 +141,7 @@ pub use ledger_ble::{
     ledger_ble_frame_size, ledger_ble_link, LedgerBleExchange, LedgerBleFrame, LedgerBleLink,
     LedgerBleSpec, LedgerBleStep,
 };
+pub use ledger_os_gate::{LedgerOsGate, LedgerOsStep};
 pub use ledger_reader::{
     ledger_account_candidates, LedgerCandidate, LedgerKey, LedgerKeyReader, LedgerReadStep,
 };
