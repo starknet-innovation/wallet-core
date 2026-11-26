@@ -75,12 +75,12 @@ fn decodes_every_action_the_flows_produce() {
         decode(&calldata),
         Some(vec![
             PoolAction::Register,
-            PoolAction::Setup,
+            PoolAction::Channel { recipient: ACCOUNT },
             PoolAction::Deposit {
                 token: STRK,
                 amount: f(3 * ONE)
             },
-            PoolAction::Setup,
+            PoolAction::UseNote,
             PoolAction::Note {
                 recipient: BOB,
                 token: STRK,
@@ -344,4 +344,41 @@ fn only_the_pools_one_compile_actions_is_considered() {
         ),
         Err(ProofRefusal::UnboundSignRequest)
     );
+}
+
+#[test]
+fn an_empty_review_or_a_span_that_moves_nothing_is_refused() {
+    let setup_only = [open_channel(ACCOUNT), use_note(STRK)];
+    assert_eq!(
+        bound(&setup_only, &[]),
+        Err(ProofRefusal::UnboundSignRequest)
+    );
+    assert_eq!(bound(&[], &[]), Err(ProofRefusal::UnboundSignRequest));
+    assert_eq!(
+        bound(&setup_only, &[send(BOB, ONE)]),
+        Err(ProofRefusal::UnboundSignRequest)
+    );
+}
+
+#[test]
+fn a_channel_to_an_unreviewed_recipient_is_refused() {
+    let to_eve = [open_channel(EVE), use_note(STRK), enc_note(BOB, STRK, ONE)];
+    assert_eq!(
+        bound(&to_eve, &[send(BOB, ONE)]),
+        Err(ProofRefusal::UnboundSignRequest)
+    );
+    // A withdrawal's recipient gets no note, so no channel either.
+    let out = [open_channel(BOB), withdraw(BOB, STRK, ONE)];
+    assert_eq!(
+        bound(&out, &[unshield(BOB, ONE)]),
+        Err(ProofRefusal::UnboundSignRequest)
+    );
+    // Channels to the account and to the reviewed note recipient are allowed.
+    let to_bob = [
+        open_channel(ACCOUNT),
+        open_channel(BOB),
+        use_note(STRK),
+        enc_note(BOB, STRK, ONE),
+    ];
+    assert_eq!(bound(&to_bob, &[send(BOB, ONE)]), Ok(()));
 }

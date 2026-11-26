@@ -6,8 +6,10 @@
 //! The decoder is the extension's `pool-call-decode.ts` (its multisig co-signer review); the
 //! layout is pinned there to the vendored pool ABI by `pool-client-actions-abi.test.ts`. The
 //! binding is this core's: every value-moving action must be one the job asked for, each used
-//! once, and every one the job asked for must be there. Channel and note bookkeeping (`setup`)
-//! and notes back to the account itself (the SDK's surplus, or change) move nothing away.
+//! once, and every one the job asked for must be there. Beyond those, only three things may
+//! appear: spending the account's notes (`UseNote`), channels to the account or a reviewed note
+//! recipient, and notes back to the account itself (the SDK's surplus, or change). An empty
+//! review, or a span that moves nothing, is refused.
 
 use super::call_set::COMPILE_ACTIONS;
 use super::engine::{EngineAction, ProofLimits, ProofRefusal};
@@ -69,8 +71,17 @@ const U128_LIMIT: Felt = Felt::from_hex_unchecked("0x100000000000000000000000000
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum PoolAction {
     Register,
-    /// Channel and note bookkeeping that moves no value.
-    Setup,
+    /// `UseNote`: spends one of the account's notes, an inflow to the batch. Safe to allow
+    /// unreviewed only because the pool nets every batch to zero and every outflow that does not
+    /// return to the account is pinned to a reviewed action, so what it frees can only come back
+    /// to the account.
+    UseNote,
+    /// `OpenChannel` or `OpenSubchannel` to `recipient`. Moves no value, but writes an on-chain
+    /// link to the recipient and uses up a channel index, so it is held to the account and the
+    /// reviewed note recipients.
+    Channel {
+        recipient: Felt,
+    },
     Deposit {
         token: Felt,
         amount: Felt,
@@ -105,7 +116,12 @@ fn field(members: &[&str], felts: &[Felt], name: &str) -> Option<Felt> {
 fn action_from(variant: &str, members: &[&str], felts: &[Felt]) -> Option<PoolAction> {
     match variant {
         "SetViewingKey" => return Some(PoolAction::Register),
-        "OpenChannel" | "OpenSubchannel" | "UseNote" => return Some(PoolAction::Setup),
+        "UseNote" => return Some(PoolAction::UseNote),
+        "OpenChannel" | "OpenSubchannel" => {
+            return field(members, felts, "recipient_addr")
+                .filter(|recipient| *recipient != Felt::ZERO)
+                .map(|recipient| PoolAction::Channel { recipient });
+        }
         _ => {}
     }
     let token = field(members, felts, "token").filter(|token| *token != Felt::ZERO)?;
@@ -215,7 +231,9 @@ fn expected(action: &EngineAction, account: &Felt) -> Vec<PoolAction> {
 }
 
 /// Whether `decoded` moves exactly what `reviewed` asked for: each expected action once, and
-/// nothing else but setup and notes back to `account`.
+/// nothing else but spent notes, channels to the account or a reviewed note recipient, and notes
+/// back to `account`. An empty review, or a span with nothing but bookkeeping, never matches
+/// (the extension's review returns no card for either).
 pub(super) fn matches_review(
     decoded: &[PoolAction],
     reviewed: &[EngineAction],
@@ -225,13 +243,31 @@ pub(super) fn matches_review(
         .iter()
         .flat_map(|action| expected(action, account))
         .collect();
+    let mut channel_to: Vec<Felt> = want
+        .iter()
+        .filter_map(|action| match action {
+            PoolAction::Note { recipient, .. } => Some(*recipient),
+            _ => None,
+        })
+        .collect();
+    channel_to.push(*account);
+    let moves =
+        |action: &PoolAction| !matches!(action, PoolAction::UseNote | PoolAction::Channel { .. });
+    if want.is_empty() || !decoded.iter().any(moves) {
+        return false;
+    }
     for action in decoded {
         if let Some(at) = want.iter().position(|wanted| wanted == action) {
             want.swap_remove(at);
             continue;
         }
-        let to_self = matches!(action, PoolAction::Note { recipient, .. } if recipient == account);
-        if !(to_self || *action == PoolAction::Setup) {
+        let allowed = match action {
+            PoolAction::Note { recipient, .. } => recipient == account,
+            PoolAction::Channel { recipient } => channel_to.contains(recipient),
+            PoolAction::UseNote => true,
+            _ => false,
+        };
+        if !allowed {
             return false;
         }
     }

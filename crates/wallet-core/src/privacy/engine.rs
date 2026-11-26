@@ -219,7 +219,8 @@ impl From<SignRefusal> for ProofRefusal {
 /// signature must verify under; `sign` signs a hash with the account's key under the session
 /// the job was approved in (the plan's `PlanHost::sign`), and is called at most once, with the
 /// `CallSet` digest the core computed, and only once the calls are bound to `job.actions`. Any
-/// refusal after the job was handed over cancels it, and so does a panic.
+/// refusal after the job was handed over cancels it, and so does a panic in a build that unwinds
+/// (release builds abort on panic, which ends the engine's host with the process).
 pub fn prove<E: PrivacyEngine + ?Sized>(
     engine: &E,
     job: EngineJob,
@@ -257,7 +258,8 @@ pub fn prove<E: PrivacyEngine + ?Sized>(
     Ok(proof)
 }
 
-/// Cancels the job unless disarmed: on every early return and on unwinding.
+/// Cancels the job unless disarmed: on every early return, and on a panic only where panics unwind
+/// (release builds set `panic = "abort"`).
 struct CancelOnDrop<'a, E: PrivacyEngine + ?Sized> {
     engine: &'a E,
     id: JobId,
