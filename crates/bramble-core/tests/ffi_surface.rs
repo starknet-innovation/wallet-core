@@ -442,16 +442,18 @@ fn no_export_takes_calls_to_sign() {
 /// P16: a site's requests reach the wallet only through `DappSession`. The one export that signs,
 /// `approve_sign_typed_data`, takes a queued card's id (and the account the person reviewed),
 /// never a hash or a document: what it signs is only ever what the site queued and the person
-/// approved; the switch decision (`approve_switch_chain`) takes only a card's id too. Each new
-/// export must keep that shape; widen this list deliberately. Every `dapp_*.rs` file is read.
+/// approved; the other decisions (`approve_switch_chain`, `approve_watch_asset`) take only a
+/// card's id too. Keep that shape; widen this list deliberately. Every `dapp_*.rs` file is read.
 #[test]
 fn the_dapp_session_signs_only_an_approved_card() {
     let files = [
         ("dapp_session.rs", include_str!("../src/dapp_session.rs")),
+        ("dapp_cards.rs", include_str!("../src/dapp_cards.rs")),
         ("dapp_chain.rs", include_str!("../src/dapp_chain.rs")),
         ("dapp_expiry.rs", include_str!("../src/dapp_expiry.rs")),
         ("dapp_sign.rs", include_str!("../src/dapp_sign.rs")),
         ("dapp_sites.rs", include_str!("../src/dapp_sites.rs")),
+        ("dapp_watch.rs", include_str!("../src/dapp_watch.rs")),
     ];
     let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     for entry in std::fs::read_dir(src).unwrap() {
@@ -472,8 +474,8 @@ fn the_dapp_session_signs_only_an_approved_card() {
         [
             "new",
             "request",
-            "pending_approvals",
             "approve_connect",
+            "pending_approvals",
             "deny",
             "approve_switch_chain",
             "answer_read",
@@ -482,7 +484,8 @@ fn the_dapp_session_signs_only_an_approved_card() {
             "approve_sign_typed_data",
             "refresh_phishing_feed",
             "answer_phishing_feed",
-            "is_blocked_site"
+            "is_blocked_site",
+            "approve_watch_asset",
         ]
     );
     let signing = exported_signatures(include_str!("../src/dapp_sign.rs"));
