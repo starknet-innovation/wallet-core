@@ -52,8 +52,13 @@ fn invalid() -> Error {
 /// Fresh bytes from the OS CSPRNG. The one randomness boundary of the vault.
 pub fn random<const N: usize>() -> Result<[u8; N], Error> {
     let mut bytes = [0u8; N];
-    getrandom::fill(&mut bytes).map_err(|_| Error::storage("entropy unavailable"))?;
+    fill(&mut bytes)?;
     Ok(bytes)
+}
+
+/// Fills `bytes` from the OS CSPRNG: the boundary `random` and `privacy::entropy` share.
+pub(crate) fn fill(bytes: &mut [u8]) -> Result<(), Error> {
+    getrandom::fill(bytes).map_err(|_| Error::storage("entropy unavailable"))
 }
 
 fn derive_key(password: &str, salt: &[u8], iterations: u32) -> Zeroizing<[u8; 32]> {

@@ -103,6 +103,7 @@ mod staking_action_parity;
 mod staking_parity;
 mod stark_name_parity;
 mod strk20_discovery_parity;
+mod strk20_primitives_parity;
 mod swap;
 mod swap_parity;
 mod token_parity;
