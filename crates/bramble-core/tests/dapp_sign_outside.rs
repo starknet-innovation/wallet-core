@@ -65,11 +65,16 @@ fn outside_execution(calls: &[(&str, &str, Vec<String>)]) -> String {
 fn sign_card(dapp: &DappSession) -> (Vec<String>, Vec<RiskFlagCode>) {
     match dapp.pending_approvals(NOW)[0].card.clone() {
         DappCard::SignTypedData {
+            outside_execution,
             call_summaries,
             flags,
             ..
         } => (
-            call_summaries,
+            {
+                // Flagged by the primary type alone, calls or none.
+                assert!(outside_execution);
+                call_summaries
+            },
             flags.into_iter().map(|flag| flag.code).collect(),
         ),
         other => panic!("not a sign card: {other:?}"),
@@ -104,6 +109,20 @@ fn an_outside_execution_is_reviewed_as_an_invoke_and_signs_on_approval() {
     let reply = approved(&dapp, card, account_id(&core));
     let signature = signature(&reply);
     assert!(verifies(&core, &document, &signature[0], &signature[1]));
+}
+
+// An outside execution with no calls is still one: the card carries the flag (the extension's
+// `signing.outsideExecution` warning) with nothing to summarise.
+#[test]
+fn an_outside_execution_with_no_calls_is_still_flagged() {
+    let (_dir, _clock, core) = imported();
+    let dapp = connected(&core);
+    pending_id(sign_request(&dapp, SITE, &outside_execution(&[]), 1));
+    let (summaries, flags) = sign_card(&dapp);
+    assert!(
+        summaries.is_empty() && flags.is_empty(),
+        "{summaries:?} {flags:?}"
+    );
 }
 
 // "refuses a call to the account contract itself".

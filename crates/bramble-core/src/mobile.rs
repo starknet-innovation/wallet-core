@@ -111,6 +111,7 @@ pub use clock::HostClock;
 pub use contact_card::{ContactCardParse, WalletContactCard};
 pub use contacts::Contact;
 pub use dapp_session::{DappApproval, DappCard, DappReply, DappSession, DappSettled};
+pub use dapp_sign::SignRow;
 pub use ffi_coordination::{
     CoordinationSyncOutcome, CoordinationSyncStep, NostrSyncPlan, RelayPolicy,
 };
