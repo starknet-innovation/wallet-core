@@ -80,6 +80,7 @@ mod multisig_parity;
 mod multisig_proposal_mechanism;
 mod multisig_proposal_parity;
 mod multisig_refusals_parity;
+mod multisig_remove_intent;
 mod multisig_signers_parity;
 mod multisig_sync_import;
 mod multisig_tx_binding;

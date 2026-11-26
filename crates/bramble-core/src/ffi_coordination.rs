@@ -126,9 +126,7 @@ impl WalletCore {
     pub fn set_nostr_relay_url(&self, raw: String) -> Result<Option<String>, CoreError> {
         self.require_unlocked()?;
         let url = nostr_relay::normalize_relay_url(&raw)?;
-        let mut file = coordination::load(self.data_dir())?;
-        file.relay_url = url.clone();
-        coordination::store(self.data_dir(), &file)?;
+        coordination::update(self.data_dir(), |file| file.relay_url = url.clone())?;
         Ok(url)
     }
 
