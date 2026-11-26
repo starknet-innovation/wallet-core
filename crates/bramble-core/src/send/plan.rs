@@ -12,12 +12,14 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 use wallet_core::activity::detail::submitted_price;
 use wallet_core::allowances::calls::record_changes;
 use wallet_core::allowances::retention::Ranking;
+use wallet_core::gasless::CheckedQuote;
 use wallet_core::history::activity::{RelayExecution, UserFee};
 use wallet_core::history::activity_rules::{price_json, relay_json, user_fee_json};
 use wallet_core::send::fees::TransactionFee;
 use wallet_core::send::judge::{Observation, TxStatus};
 use wallet_core::send::plan::{Kind, PendingKind, PendingRecord, Plan, PlanHost, SignRefusal};
-use wallet_core::send::plan_gasless::GaslessBasis;
+use wallet_core::send::plan_gasless::{GaslessBasis, RelayStep};
+use wallet_core::send::types::SendError as CoreSendError;
 use wallet_core::{Felt, StarkSignature};
 
 use super::types::{
@@ -129,6 +131,21 @@ impl TransferPlan {
     /// Hands the reviewed transfer to the gasless path, closing this plan (`Plan::take_for_gasless`).
     pub(crate) fn take_for_gasless(&self) -> Option<GaslessBasis> {
         self.lock_plan().take_for_gasless()
+    }
+
+    /// Whether the relay signature is the device's, still to come (`Plan::relaying`).
+    pub(crate) fn relaying(&self) -> bool {
+        self.lock_plan().relaying()
+    }
+
+    /// Starts the device's signature over a checked outside execution (`Plan::sign_relay`).
+    pub(crate) fn sign_relay(&self, quote: &CheckedQuote<'_>) -> Result<RelayStep, CoreSendError> {
+        self.lock_plan().sign_relay(self, quote)
+    }
+
+    /// Feeds the device's answer to the relay signature (`Plan::advance_relay`).
+    pub(crate) fn advance_relay(&self, reply: StepReply) -> Result<RelayStep, CoreSendError> {
+        self.lock_plan().advance_relay(self, reply)
     }
 
     /// How many hashes this plan has signed; for tests that prove a refusal reached no signer.

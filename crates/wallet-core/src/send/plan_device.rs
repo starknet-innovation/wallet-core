@@ -9,7 +9,8 @@
 //! signature, its two-signature deployment), so a Ledger account never signs with a key. A lock
 //! ends the exchange at the next device answer, before another APDU is sent, and a signature the
 //! device returns after the session ended is dropped (`Locked`), as the extension's sign queue
-//! rejects at lock and at settle time. The gasless path is closed to a device plan.
+//! rejects at lock and at settle time. A gasless transfer's outside execution is signed here
+//! too (`SignFor::Relay`, driven by `Plan::advance_relay`).
 //!
 //! As the extension's side panel keeps a refused request parked (`sign-session.ts`), a device
 //! refusal (locked, app not open, blind signing off, the wrong device, a lost link) parks the plan
@@ -45,12 +46,21 @@ pub(crate) struct DeployWrite {
 pub(crate) enum SignFor {
     Invoke(InvokeWrite),
     Deploy(DeployWrite),
+    /// A gasless transfer's checked outside execution (`plan_gasless`): no write, the signature
+    /// goes back to the gasless path.
+    Relay,
 }
 
 /// A signature in progress on the device.
 pub(crate) struct DeviceWait {
     signing: HashSigning,
     then: SignFor,
+}
+
+impl DeviceWait {
+    pub(super) fn relays(&self) -> bool {
+        matches!(self.then, SignFor::Relay)
+    }
 }
 
 impl Plan {
@@ -131,7 +141,7 @@ impl Plan {
     fn sign_failed(&mut self, then: &SignFor, code: Code, detail: Option<&str>) -> SendStep {
         let mut step = match then {
             SignFor::Invoke(write) => self.after_deployment(write.deployment, code, None),
-            SignFor::Deploy(_) => self.fail(code, None),
+            SignFor::Deploy(_) | SignFor::Relay => self.fail(code, None),
         };
         if let (SendStep::Failed { failure }, Some(detail)) = (&mut step, detail) {
             failure.detail = Some(detail.to_string());
@@ -149,6 +159,7 @@ impl Plan {
         match then {
             SignFor::Invoke(write) => self.send_invoke(host, hash, write, signature),
             SignFor::Deploy(write) => self.send_deploy(host, hash, write, signature),
+            SignFor::Relay => self.relayed(signature),
         }
     }
 }

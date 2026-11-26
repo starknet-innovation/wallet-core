@@ -3,13 +3,30 @@
 //! plan, and the one hand-over from its STRK path to the gasless one. Only a transfer the review
 //! found short of STRK (`Insufficient`, an FRI fee) qualifies, as the extension offers gasless
 //! only then; its recipient passed the review's poisoning check, as a Confirm would require.
+//!
+//! A Ledger account (`Plan::with_device`) signs the outside execution on its device, as the
+//! extension's `accountHashSigner` routes it: the plan taken for gasless stays open only to sign
+//! the hash of a `CheckedQuote` (the gateway's build, checked against the reviewed call), through
+//! the same device exchange its invoke would use (`plan_device`), and hands the account's
+//! signature back (`sign_relay`, `advance_relay`). It never signs a hash the host names.
 
 use super::calls::{execute_calldata, Call, ReviewFlag};
 use super::fees::{self, FeeUnit};
-use super::plan::{Kind, Plan, Stage};
-use super::types::FeeAffordability;
+use super::plan::{Kind, Plan, PlanHost, Stage};
+use super::plan_device::SignFor;
+use super::types::{FeeAffordability, SendError, SendStep, StepReply};
 use super::u256::U256;
+use crate::gasless::CheckedQuote;
 use crate::Felt;
+
+/// Where a device plan's relay signature stands.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RelayStep {
+    /// `SendStep::Device`, `SendStep::DeviceRetry` or `SendStep::Failed`, answered as a plan's.
+    Step(SendStep),
+    /// The account's signature over the checked outside execution, verified on its key.
+    Signed(Vec<Felt>),
+}
 
 /// One reviewed transfer, as the gasless path takes it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,10 +68,7 @@ impl Plan {
                 Felt::from(transfer.amount.high),
             ],
         };
-        // A Ledger account's outside execution would be signed through the host; until the
-        // gasless path signs on the device, its STRK path is the only one (fails closed).
         let qualifies = matches!(self.stage, Stage::Reviewed)
-            && self.device.is_none()
             // `execute_calldata` names the entrypoint (always by name); the outside execution takes
             // a felt entrypoint as its own selector (`selector_of`). Equal for this one "transfer";
             // a batch with felt entrypoints would need both to agree before it is widened to.
@@ -78,9 +92,72 @@ impl Plan {
     /// Hands the reviewed transfer over to the gasless path, once: its basis, with the plan
     /// closed so its STRK path can never also be confirmed (the extension's held review is
     /// consumed the same way). `None`, and the plan untouched, when it does not qualify.
+    /// A device plan stays open for its relay signature alone (`sign_relay`).
     pub fn take_for_gasless(&mut self) -> Option<GaslessBasis> {
         let basis = self.gasless_basis()?;
-        self.close();
+        self.stage = match self.device {
+            Some(_) => Stage::Relay,
+            None => Stage::Closed,
+        };
         Some(basis)
+    }
+
+    /// Starts signing `quote`'s outside execution on the device, once, for a device plan taken
+    /// for gasless. Anything else is `OutOfOrder` and closes the plan.
+    pub fn sign_relay(
+        &mut self,
+        host: &dyn PlanHost,
+        quote: &CheckedQuote<'_>,
+    ) -> Result<RelayStep, SendError> {
+        if !matches!(self.stage, Stage::Relay) {
+            self.close();
+            return Err(SendError::OutOfOrder);
+        }
+        let step = self.sign_for(host, quote.message_hash(), SignFor::Relay);
+        self.relay_step(step)
+    }
+
+    /// Feeds the device's answer (`Device`, `DeviceFailure`) or `RetryDevice` to the relay
+    /// signature in progress.
+    pub fn advance_relay(
+        &mut self,
+        host: &dyn PlanHost,
+        reply: StepReply,
+    ) -> Result<RelayStep, SendError> {
+        if !self.relaying() {
+            self.close();
+            return Err(SendError::OutOfOrder);
+        }
+        let step = self.run(host, reply)?;
+        self.relay_step(step)
+    }
+
+    /// Whether the plan was taken for gasless on a device and has not yet handed back (or
+    /// failed) its relay signature: `sign_relay` or `advance_relay` is what it takes next.
+    pub fn relaying(&self) -> bool {
+        match &self.stage {
+            Stage::Relay | Stage::Relayed(_) => true,
+            Stage::Device(wait) | Stage::DeviceRefused(wait) => wait.relays(),
+            _ => false,
+        }
+    }
+
+    /// `plan_device`'s end of a relay signature: parked for `relay_step` to hand back.
+    pub(super) fn relayed(&mut self, signature: Vec<Felt>) -> SendStep {
+        self.stage = Stage::Relayed(signature);
+        // Never seen by a host: `relay_step` reads the stage instead.
+        SendStep::Review
+    }
+
+    fn relay_step(&mut self, step: SendStep) -> Result<RelayStep, SendError> {
+        match (std::mem::replace(&mut self.stage, Stage::Closed), step) {
+            (Stage::Relayed(signature), _) => Ok(RelayStep::Signed(signature)),
+            (stage, step @ (SendStep::Device { .. } | SendStep::DeviceRetry { .. })) => {
+                self.stage = stage;
+                Ok(RelayStep::Step(step))
+            }
+            (_, step @ SendStep::Failed { .. }) => Ok(RelayStep::Step(step)),
+            _ => Err(SendError::OutOfOrder),
+        }
     }
 }

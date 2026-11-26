@@ -8,7 +8,8 @@
 //! the core signs its hash, and the execute.
 //!
 //! Single use, as the extension's held review is: `choose` takes the transfer from its plan
-//! (closing it, so its STRK path can never also be confirmed) and the offers with it; a second
+//! (closing it, so its STRK path can never also be confirmed; a Ledger account's stays open only
+//! to sign the checked execution on its device, `gasless_sign.rs`) and the offers with it; a second
 //! choice, a choice the round did not offer, or a step out of turn is `NotFound` and changes
 //! nothing. A lock since `prepare_transfer` voids it. The submitted transfer's row carries the
 //! signed fee (`userFee`) and names it in its summary; a lost execute files no row, as the
@@ -16,34 +17,25 @@
 
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use wallet_core::activity::detail::gasless_fee_summary;
 use wallet_core::gasless::{
-    fee_reference, GaslessError, GaslessFeeOffer, GaslessPolicy, GaslessSession, GaslessSubmission,
-    OfferRound, RoundStep, SubmitRound, SubmitStep,
+    fee_reference, GaslessError, GaslessFeeOffer, GaslessPolicy, GaslessSession, OfferRound,
+    RoundStep, SubmitRound, SubmitStep,
 };
 use wallet_core::send::calls::format_token_amount;
-use wallet_core::send::plan::{PendingKind, PendingRecord};
 use wallet_core::send::plan_gasless::GaslessBasis;
 use wallet_core::send::types::Account;
 use wallet_core::send::u256::U256;
 use wallet_core::Felt;
 
 use super::plan::TransferPlan;
-use crate::activity::with_log;
 use crate::felt;
 use crate::gasless::GASLESS_POLICY;
 use crate::portfolio::prices::PriceView;
 use crate::portfolio::registry::known_tokens;
 use crate::portfolio::wire::{HttpOutcome, HttpRequest};
 use crate::wallet::WalletCore;
-use wallet_core::gasless::CheckedQuote;
-use wallet_core::history::activity::RelayExecution;
 
 pub(super) static POLICY: GaslessPolicy = GASLESS_POLICY;
-
-/// `INVOKE_NOT_JOURNALED`: the execution could not be filed before posting, so it was not posted.
-const INVOKE_NOT_JOURNALED: &str =
-    "The transaction could not be recorded before sending. Nothing was submitted — try again.";
 
 /// Why a gasless step was refused. Each is a fixed sentence (the extension's); none carries an
 /// address, an amount or reply text.
@@ -117,6 +109,15 @@ pub enum GaslessSubmitStep {
     /// posts again only if the wallet is still unlocked (`postGasless` checks after its pause).
     Wait {
         delay_ms: u64,
+    },
+    /// A Ledger account: send `apdu` to its device and pass the answer to `advance_device`.
+    Device {
+        apdu: Vec<u8>,
+    },
+    /// The device refused (`reason` is the extension's rejection code); nothing was signed.
+    /// `advance_device` with `RetryDevice` signs the same execution again from the start.
+    DeviceRetry {
+        reason: String,
     },
     /// The relay accepted it: its hash, and its page on the network's explorer.
     Submitted {
@@ -214,89 +215,16 @@ pub(super) fn reference(
 }
 
 impl GaslessFee {
-    fn stage(&self) -> MutexGuard<'_, Stage> {
+    pub(super) fn stage(&self) -> MutexGuard<'_, Stage> {
         self.stage.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    fn core(&self) -> Result<Arc<WalletCore>, GaslessFeeError> {
+    pub(super) fn core(&self) -> Result<Arc<WalletCore>, GaslessFeeError> {
         let core = self.plan.core.upgrade().ok_or(GaslessFeeError::Locked)?;
         match core.session_generation() {
             Some(generation) if generation == self.plan.generation => Ok(core),
             _ => Err(GaslessFeeError::Locked),
         }
-    }
-
-    /// Signs the checked hash for the plan's record, still in its session, and serialises the
-    /// account's signature (`serializeAccountSignature`).
-    fn sign(&self, core: &WalletCore, hash: &Felt) -> Result<Vec<Felt>, GaslessFeeError> {
-        let signature = core
-            .plan_sign(self.plan.generation, &self.plan.account_id, hash, true)
-            .map_err(|_| GaslessFeeError::Locked)?;
-        let (r, s) = (felt::parse(&signature.r), felt::parse(&signature.s));
-        let (Some(r), Some(s)) = (r, s) else {
-            return Err(GaslessFeeError::Locked);
-        };
-        Ok(self.account.signature(r, s))
-    }
-
-    /// `recordRequiredRelaySignature`: files the transfer's row before its execute is posted,
-    /// under the signed message's hash with the execution's nonce and deadline, so a lost answer
-    /// still leaves a pending row that guards a second signature (`ActivityLog::relay_pending`).
-    /// Whether it is stored; when not, nothing may be posted.
-    fn journal(
-        &self,
-        core: &WalletCore,
-        quote: &CheckedQuote<'_>,
-        offer: &GaslessFeeOffer,
-        now_ms: u64,
-    ) -> bool {
-        let basis = &self.basis;
-        let Some(nonce) = quote.nonce() else {
-            return false;
-        };
-        let relay = RelayExecution {
-            nonce: felt::canonical(&nonce),
-            execute_before: quote.execute_before(),
-        };
-        let user_fee = quote.user_fee();
-        let amount = U256::from_decimal(&user_fee.amount).unwrap_or(U256::ZERO);
-        let record = PendingRecord {
-            hash: quote.message_hash(),
-            kind: PendingKind::Transfer {
-                amount: basis.amount_text.clone(),
-                recipient: basis.recipient,
-                symbol: basis.symbol.clone(),
-                token_address: basis.token_address,
-            },
-            summary: gasless_fee_summary(&basis.summary, &amount, offer.decimals, &user_fee.token),
-            submitted_at: now_ms,
-        };
-        let stored = self
-            .plan
-            .record_row(core, record, Some(user_fee), Some(&relay));
-        if stored {
-            *self
-                .journaled
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner) = Some(quote.message_hash());
-        }
-        stored
-    }
-
-    /// The relay accepted: the journal row takes the transaction hash, one row, never two.
-    fn settle(&self, core: &WalletCore, submission: &GaslessSubmission) {
-        let journaled = self
-            .journaled
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .take();
-        let Some(message_hash) = journaled else {
-            return;
-        };
-        let account_id = &self.plan.account_id;
-        with_log(&core.data_dir, |log| {
-            log.settle_relay(account_id, &message_hash, &submission.transaction_hash)
-        });
     }
 }
 
@@ -408,7 +336,7 @@ impl GaslessFee {
 impl GaslessFee {
     // Carries a submission step through the host's half the core owns: the session check before
     // signing and before every execute, the signature itself, and the row.
-    fn submit_step(
+    pub(super) fn submit_step(
         &self,
         mut step: SubmitStep,
         now_ms: u64,
@@ -439,25 +367,27 @@ impl GaslessFee {
                         post: GaslessPost { request, delay_ms },
                     });
                 }
+                // A Ledger account signs on its device, inside its plan (`gasless_sign.rs`).
+                SubmitStep::Sign { .. } if self.plan.relaying() => {
+                    let started = round
+                        .checked()
+                        .ok_or(GaslessFeeError::NotFound)
+                        .and_then(|quote| self.relay(self.plan.sign_relay(quote)));
+                    let next = started.and_then(|started| match started {
+                        Ok(signature) => {
+                            self.after_signed(round, chosen, &signature, now_ms).map(Ok)
+                        }
+                        Err(device) => Ok(Err(device)),
+                    });
+                    match next {
+                        Ok(Ok(next)) => next,
+                        Ok(Err(device)) => return Ok(device),
+                        Err(error) => break Err(error),
+                    }
+                }
                 SubmitStep::Sign { hash } => {
                     let signed = self.core().and_then(|core| self.sign(&core, &hash));
-                    let next = signed.and_then(|signature| {
-                        round
-                            .signed(&signature, now_ms / 1000)
-                            .map_err(GaslessFeeError::from)
-                    });
-                    let journaled = next.and_then(|next| {
-                        let core = self.core()?;
-                        let quote = round.checked().ok_or(GaslessFeeError::NotFound)?;
-                        if !self.journal(&core, quote, chosen, now_ms) {
-                            return Err(GaslessFeeError::Refused {
-                                reason: INVOKE_NOT_JOURNALED.into(),
-                                retryable: false,
-                            });
-                        }
-                        Ok(next)
-                    });
-                    match journaled {
+                    match signed.and_then(|sig| self.after_signed(round, chosen, &sig, now_ms)) {
                         Ok(next) => next,
                         Err(error) => break Err(error),
                     }
