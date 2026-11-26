@@ -331,7 +331,12 @@ pub fn compile(
     // the viewing key already is: a wrong one would put the notes where the wallet cannot find
     // them. (`channel.public_key` is the service's too; checking it means reading the pool, which
     // the extension does not.)
-    let mut pool = Simulator::new(*account, viewing_key.clone(), channels.total);
+    let mut pool = Simulator::new(
+        *account,
+        viewing_key.clone(),
+        channels.total,
+        channels.channels.len(),
+    );
     for (recipient, channel) in channels.channels.iter() {
         if let Some(key) = &channel.key {
             if *key != compute_channel_key(account, viewing_key, recipient, &channel.public_key) {

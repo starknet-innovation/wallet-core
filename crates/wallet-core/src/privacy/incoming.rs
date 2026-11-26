@@ -48,6 +48,7 @@ pub struct IncomingWalk {
     block: Option<BlockRef>,
     pages: u32,
     /// `incomingChannels`: each sender an earlier cursor named, with its channel key if it had one.
+    /// Sized by the service, so it grows by reallocation (see `AddressMap`).
     known: AddressMap<Option<SecretFelt>>,
     notes: AddressMap<Vec<Note>>,
     ids: BTreeSet<Felt>,
@@ -141,8 +142,9 @@ impl IncomingWalk {
 
     fn fold(&mut self, reply: &Ordered) -> Option<()> {
         // `channelKeyMap`, keyed by value here, so one sender may appear once.
-        let mut page: AddressMap<(&str, SecretFelt)> = AddressMap::default();
-        for (spelling, key) in page_channels(reply)? {
+        let channels = page_channels(reply)?;
+        let mut page: AddressMap<(&str, SecretFelt)> = AddressMap::with_capacity(channels.len());
+        for (spelling, key) in channels {
             let sender = felt_of(js_bigint(&Ordered::Str(spelling.to_owned()))?)?;
             if page.contains_key(&sender) {
                 return None;

@@ -191,7 +191,7 @@ impl OutgoingWalk {
 
     /// `buildChannelMap`, then the requested-recipient filter.
     fn finish(self, total: Option<u32>) -> Option<OutgoingChannels> {
-        let mut channels = AddressMap::default();
+        let mut channels = AddressMap::with_capacity(self.created.len() + self.precomputed.len());
         for (recipient, created) in self.created.iter() {
             let mut tokens = AddressMap::default();
             if let Some(subs) = self.subchannels.get(recipient) {

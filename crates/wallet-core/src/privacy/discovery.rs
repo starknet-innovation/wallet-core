@@ -17,6 +17,11 @@ use crate::{Felt, SecretFelt};
 /// The SDK's `AddressMap`: keyed by address value, iterated in insertion order. As with a
 /// JavaScript `Map`, setting a key that is already present keeps its position, and removing one
 /// forgets it.
+///
+/// Growing one reallocates, which frees the old block with the moved entries' bytes still in it:
+/// `SecretFelt` wipes on drop, not on a move. Where the size is known it is allocated once
+/// (`with_capacity`); where the service decides it (the incoming walk's cursor senders and their
+/// channel keys) those keys can be left behind in freed memory until it is reused.
 // ponytail: linear lookups; the maps hold a job's recipients and tokens, a handful of entries.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AddressMap<V> {
@@ -32,6 +37,13 @@ impl<V> Default for AddressMap<V> {
 }
 
 impl<V> AddressMap<V> {
+    /// An empty map with room for `capacity` entries, for a caller that knows its size up front.
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            entries: Vec::with_capacity(capacity),
+        }
+    }
+
     fn position(&self, key: &Felt) -> Option<usize> {
         self.entries.iter().position(|(k, _)| k == key)
     }

@@ -33,12 +33,19 @@ pub(super) struct Simulator {
 
 impl Simulator {
     /// `new PoolSimulator(userAddress, viewingKey, totalChannels)`.
-    pub(super) fn new(account: Felt, viewing_key: SecretFelt, total: Option<u32>) -> Self {
+    /// Room for `channels` discovered channels and the account's own, so the keys are never
+    /// moved by a reallocation.
+    pub(super) fn new(
+        account: Felt,
+        viewing_key: SecretFelt,
+        total: Option<u32>,
+        channels: usize,
+    ) -> Self {
         Self {
             account,
             viewing_key,
             next_channel_index: total,
-            channels: AddressMap::default(),
+            channels: AddressMap::with_capacity(channels + 1),
         }
     }
 
@@ -267,7 +274,9 @@ pub(super) fn transform(
     }
 
     // 1. SetViewingKey.
-    let mut set_viewing_key = Vec::new();
+    // Each phase's list is allocated once at its most, so no reallocation leaves a channel key
+    // behind; the concatenation below clones into one exact buffer and drops (wipes) these.
+    let mut set_viewing_key = Vec::with_capacity(usize::from(actions.register));
     if actions.register {
         let action = ClientAction::SetViewingKey {
             random: random(entropy)?,
@@ -276,7 +285,7 @@ pub(super) fn transform(
     }
 
     // 2. OpenChannel: `random`, then `salt`.
-    let mut open_channels = Vec::new();
+    let mut open_channels = Vec::with_capacity(to_open.len());
     for recipient in &to_open {
         if pool.channel(recipient).is_none() {
             return Err(CompileRefusal::RecipientNotRegistered);
@@ -294,10 +303,10 @@ pub(super) fn transform(
     }
 
     // 3. No explicit OpenSubchannels on Bramble's path; 6. adds the implicit ones here.
-    let mut open_subchannels = Vec::new();
+    let mut open_subchannels = Vec::with_capacity(actions.create_notes.len());
 
     // 4. Deposit.
-    let mut deposits = Vec::new();
+    let mut deposits = Vec::with_capacity(actions.deposits.len());
     for (token, amount) in &actions.deposits {
         let action = ClientAction::Deposit {
             token: *token,
@@ -307,7 +316,7 @@ pub(super) fn transform(
     }
 
     // 5. UseNote.
-    let mut spent = Vec::new();
+    let mut spent = Vec::with_capacity(use_notes.len());
     for (token, note) in use_notes {
         let action = ClientAction::UseNote {
             channel_key: note.witness.channel_key.clone(),
@@ -318,7 +327,7 @@ pub(super) fn transform(
     }
 
     // 6. CreateEncNote / CreateOpenNote, each after its subchannel if the channel lacks the token.
-    let mut created = Vec::new();
+    let mut created = Vec::with_capacity(actions.create_notes.len());
     for note in &actions.create_notes {
         let channel = pool
             .channel(&note.recipient)
@@ -368,7 +377,7 @@ pub(super) fn transform(
     }
 
     // 7. Withdraw.
-    let mut withdraws = Vec::new();
+    let mut withdraws = Vec::with_capacity(actions.withdraws.len());
     for (token, recipient, amount) in &actions.withdraws {
         let action = ClientAction::Withdraw {
             to_addr: *recipient,
@@ -380,7 +389,7 @@ pub(super) fn transform(
     }
 
     // 8, 9. The one invoke-phase action, after every random draw above.
-    let mut invoked = Vec::new();
+    let mut invoked = Vec::with_capacity(usize::from(actions.invoke.is_some()));
     if let Some(invoke) = &actions.invoke {
         let notes = open_notes(&created, pool)?;
         if let Some(action) = invoke_phase(invoke, contracts, &notes)? {
