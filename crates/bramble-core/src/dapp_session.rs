@@ -34,7 +34,7 @@ use crate::dapp::{
     read_page_request, PageRequest, DAPP_QUEUE_LIMITS, PHISHING_FEED, SUPPORTED_SPECS,
     SUPPORTED_WALLET_API,
 };
-use crate::dapp_sign::SignCard;
+use crate::dapp_sign::{SignCard, SignRow};
 use crate::networks::NetworkId;
 use crate::portfolio::tokens::TokenPreferences;
 use crate::send::types::RiskFlag;
@@ -90,7 +90,11 @@ pub enum DappCard {
     Connect,
     /// Sign SNIP-12 typed data as `account_id` (echoed back to `approve_sign_typed_data`) on
     /// `network`. `summary` is `"<primaryType> · <domain.name>"`; `typed_data_json` is the
-    /// document the signature commits to, for the app to render. A SNIP-9 outside execution
+    /// document the signature commits to, for the app's "Raw typed data" disclosure; `domain`
+    /// and `message` are its decoded rows (the extension's `signing.domain` and
+    /// `signing.message`), the primary type the message's first signed row. `outside_execution`
+    /// is set for a SNIP-9 `OutsideExecution` primary type, calls or none, and the app shows the
+    /// extension's `signing.outsideExecution` warning for it. A SNIP-9 outside execution
     /// also carries its calls' summaries and the review's flags, as an invoke card does (both
     /// empty for any other document). One request, one card.
     SignTypedData {
@@ -99,6 +103,9 @@ pub enum DappCard {
         network: NetworkId,
         summary: String,
         typed_data_json: String,
+        domain: Vec<SignRow>,
+        message: Vec<SignRow>,
+        outside_execution: bool,
         call_summaries: Vec<String>,
         flags: Vec<RiskFlag>,
     },
@@ -107,7 +114,7 @@ pub enum DappCard {
 /// A queued card's payload.
 pub(crate) enum Card {
     Connect,
-    Sign(SignCard),
+    Sign(Box<SignCard>),
 }
 
 /// Which result a held request wants.

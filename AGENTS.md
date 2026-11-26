@@ -242,8 +242,10 @@ Grep first; extend in place rather than adding a sibling.
   - SNIP-12 typed data (`typed_data`): the gate (`CheckedTypedData::check`, the name grammar
     `is_safe_snip12_name`, revisions, merkle and enum rules, value conformance in
     `typed_data_values`, leaf readings in `typed_data_scalars`), the chain binding
-    (`message_hash_for_chain`, the only hash a dapp request gets, through Krusty) and the card
-    line (`describe_typed_data`).
+    (`message_hash_for_chain`, the only hash a dapp request gets, through Krusty), the card
+    line (`describe_typed_data`) and the card's decoded rows (`sign_rows`:
+    `CheckedTypedData::sign_rows`, the extension's `signValueText`, over
+    `typed_data_scalars::snip12_reading`).
   - a SNIP-9 outside execution in typed data (`outside_execution::review_outside_execution`,
     at `Stage::Queue` and again at `Stage::Sign`): its calls read with the hash's encoder,
     then the invoke route's review (`send::invoke::verify_calls`,
