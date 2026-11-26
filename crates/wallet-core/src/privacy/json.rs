@@ -40,6 +40,19 @@ impl Ordered {
         }
     }
 
+    /// Whether any object key, at any depth, is an array index (`"0"` to `"4294967294"`).
+    /// JavaScript objects list those keys first, in numeric order, so `JSON.stringify` of the
+    /// parsed value would not keep document order; a cursor holding one cannot be echoed exactly.
+    pub fn has_index_key(&self) -> bool {
+        match self {
+            Self::Array(items) => items.iter().any(Self::has_index_key),
+            Self::Object(members) => members
+                .iter()
+                .any(|(key, value)| is_array_index(key) || value.has_index_key()),
+            _ => false,
+        }
+    }
+
     /// `JSON.stringify` of this value.
     pub fn write(&self, out: &mut String) {
         match self {
@@ -71,6 +84,11 @@ impl Ordered {
             }
         }
     }
+}
+
+fn is_array_index(key: &str) -> bool {
+    key.parse::<u32>()
+        .is_ok_and(|index| index != u32::MAX && index.to_string() == key)
 }
 
 /// A JSON string literal as `JSON.stringify` writes it (serde_json's escaping is the same:
@@ -204,6 +222,19 @@ mod tests {
             parse("9007199254740991"),
             Some(Ordered::Int(MAX_SAFE_INTEGER))
         );
+    }
+
+    #[test]
+    fn array_index_keys_are_found_at_any_depth() {
+        for (text, found) in [
+            (r#"{"0x1":{"a":[{"b":1}]}}"#, false),
+            (r#"{"01":1,"-1":1,"1.0":1,"4294967295":1," 1":1}"#, false),
+            (r#"{"0":1}"#, true),
+            (r#"{"a":{"4294967294":1}}"#, true),
+            (r#"[{"b":{"7":null}}]"#, true),
+        ] {
+            assert_eq!(parse(text).unwrap().has_index_key(), found, "{text}");
+        }
     }
 
     #[test]

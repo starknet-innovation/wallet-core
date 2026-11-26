@@ -96,11 +96,11 @@ impl PrivacyReadPlan {
         let Some(key) = self.viewing_key(host) else {
             return self.fail(PrivacyFailure::Locked);
         };
-        let page = match (&self.discovery.cursor, &self.discovery.block) {
-            (Some(cursor), Some(block)) => Some((cursor, block)),
-            _ => None,
+        let (cursor, block) = match (&self.discovery.cursor, &self.discovery.block) {
+            (Some(cursor), Some(block)) => (Some(cursor), Some(block)),
+            _ => (None, None),
         };
-        let body = bodies::incoming(&self.route.pool, &self.address, &key, page);
+        let body = bodies::incoming(&self.route.pool, &self.address, &key, cursor, block);
         self.post(Read::Discovery, INCOMING_PATH, body)
     }
 
