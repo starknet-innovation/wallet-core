@@ -122,7 +122,19 @@ fn declining_to_reopen_starknet_is_refused() {
     assert_eq!(
         gate.reply(vec![0x55, 0x01]),
         LedgerOsStep::Refused {
-            reason: "management-refused".into()
+            reason: "rejected-on-device".into()
+        }
+    );
+}
+
+#[test]
+fn a_locked_device_is_named_locked() {
+    let gate = LedgerOsGate::new();
+    gate.start();
+    assert_eq!(
+        gate.reply(vec![0x55, 0x15]),
+        LedgerOsStep::Refused {
+            reason: "device-locked".into()
         }
     );
 }

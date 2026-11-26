@@ -4,7 +4,7 @@
 //! the app, reads the OS and reopens Starknet is `transition::OsGate`; reconnecting after each
 //! change is the host's.
 
-use super::rejection::{thrown, LedgerRejection, RejectionCode, Thrown};
+use super::rejection::{named_status, thrown, LedgerRejection, RejectionCode, Thrown};
 use super::{apdu, split, Reply, Version, STATUS_OK};
 
 /// The name the Starknet app reports and `OpenApp` takes.
@@ -109,6 +109,21 @@ fn unreadable() -> LedgerRejection {
     LedgerRejection::new(RejectionCode::ManagementUnreadable)
 }
 
+/// What a management command's failing status word is shown as. The extension's transport throws
+/// it and names it by its text: a missing app or a locked device ([`named_status`]). The person
+/// declining an app change (`USER_REFUSED_ON_DEVICE`, 0x5501) is a rejection on the device (the
+/// extension's text classifier has no signature for it and shows `unexpected-device-error`, a
+/// deliberate departure). Any other word is `management-refused`, as `statusOffsetOf` names it.
+fn refusal(status: u16) -> RejectionCode {
+    match status {
+        STATUS_USER_REFUSED_ON_DEVICE => RejectionCode::RejectedOnDevice,
+        status => named_status(status).unwrap_or(RejectionCode::ManagementRefused),
+    }
+}
+
+/// `USER_REFUSED_ON_DEVICE`: the person declined to open or close an app.
+const STATUS_USER_REFUSED_ON_DEVICE: u16 = 0x5501;
+
 /// A management reply's data. The status must be success, or the command was refused.
 pub(super) fn data_of(reply: Reply<'_>) -> Result<&[u8], LedgerRejection> {
     let reply = reply.map_err(|failure| thrown(Thrown::Transport(failure)))?;
@@ -118,10 +133,7 @@ pub(super) fn data_of(reply: Reply<'_>) -> Result<&[u8], LedgerRejection> {
     match split(reply) {
         None => Err(unreadable()),
         Some((data, STATUS_OK)) => Ok(data),
-        Some((_, status)) => Err(LedgerRejection::with_status(
-            RejectionCode::ManagementRefused,
-            status,
-        )),
+        Some((_, status)) => Err(LedgerRejection::with_status(refusal(status), status)),
     }
 }
 

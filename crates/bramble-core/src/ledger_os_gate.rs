@@ -28,7 +28,8 @@ pub enum LedgerOsStep {
     Supported { model: String, version: String },
     /// Done: `reason` is the extension's rejection code (`firmware-below-minimum`,
     /// `unsupported-ledger-device`, `dashboard-restore-failed`, `starknet-reopen-failed`,
-    /// `management-refused`, `management-unreadable`, `device-locked`, ...). A new gate starts
+    /// `rejected-on-device` (the person declined the app change), `device-locked`,
+    /// `no-app-open`, `management-refused`, `management-unreadable`, ...). A new gate starts
     /// again.
     Refused { reason: String },
 }

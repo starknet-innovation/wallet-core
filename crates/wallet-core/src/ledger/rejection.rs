@@ -184,19 +184,30 @@ pub(crate) fn outcome(reply: super::Reply<'_>) -> Outcome<'_> {
     }
 }
 
-/// `mapThrown`: a throw that reached the extension. A thrown status word is matched by the text
-/// `TransportStatusError` gives it (`@ledgerhq/errors` 6.37.0): `INS_NOT_SUPPORTED (0x6d00)` names
-/// a missing app; `Locked device (0x5515)`, `dongle locked` (0x6982) and `CODE_BLOCKED` (0x9840)
-/// all match `/locked/i`. No other status word's text matches a signature.
+/// The status words whose `TransportStatusError` text (`@ledgerhq/errors` 6.37.0) one of
+/// `classifyLedgerTransportError`'s signatures matches: `INS_NOT_SUPPORTED (0x6d00)` and
+/// `CLA_NOT_SUPPORTED` (0x6e00, 0x6e01) name a missing app (`NO_APP`); `Locked device (0x5515)`,
+/// `dongle locked` (0x6982) and `CODE_BLOCKED` (0x9840) all match `/locked/i`. No other status
+/// word's text matches a signature.
+pub(crate) fn named_status(status: u16) -> Option<RejectionCode> {
+    match status {
+        0x6d00 | 0x6e00 | 0x6e01 => Some(RejectionCode::NoAppOpen),
+        0x5515 | 0x6982 | 0x9840 => Some(RejectionCode::DeviceLocked),
+        _ => None,
+    }
+}
+
+/// `mapThrown`: a throw that reached the extension. A thrown status word is matched by its text
+/// ([`named_status`]); the Starknet app's 0x6e00 and 0x6e01 never throw (`outcome` passes them).
 pub(crate) fn thrown(thrown: Thrown) -> LedgerRejection {
     let code = match thrown {
-        Thrown::Status(0x6d00) => RejectionCode::NoAppOpen,
-        Thrown::Status(0x5515 | 0x6982 | 0x9840) | Thrown::Transport(TransportFailure::Locked) => {
-            RejectionCode::DeviceLocked
+        Thrown::Status(status) => {
+            named_status(status).unwrap_or(RejectionCode::UnexpectedDeviceError)
         }
+        Thrown::Transport(TransportFailure::Locked) => RejectionCode::DeviceLocked,
         Thrown::Transport(TransportFailure::Disconnected) => RejectionCode::DisconnectedMidSign,
         Thrown::Transport(TransportFailure::Busy) => RejectionCode::DeviceBusy,
-        Thrown::Status(_) | Thrown::Short | Thrown::Transport(TransportFailure::Other) => {
+        Thrown::Short | Thrown::Transport(TransportFailure::Other) => {
             RejectionCode::UnexpectedDeviceError
         }
     };

@@ -260,7 +260,7 @@ fn a_declined_open_app_is_not_reclassified_as_success() {
     ]);
     assert_eq!(
         run.end,
-        TransitionStep::Refused(LedgerRejection::with_status(C::ManagementRefused, 0x5501))
+        TransitionStep::Refused(LedgerRejection::with_status(C::RejectedOnDevice, 0x5501))
     );
     assert_eq!(run.reconnects, 0);
     let failed = run_with_open_failure(TransportFailure::Other);
@@ -281,6 +281,30 @@ fn a_transport_failure_mid_sequence_ends_it() {
 
 fn run_first(answer: Answer) -> TransitionStep {
     run(vec![answer]).end
+}
+
+// The status words the extension's transport throws and names by their text.
+#[test]
+fn a_locked_device_or_a_missing_app_is_named_as_the_extension_names_it() {
+    for (status, code) in [
+        (0x5515_u16, C::DeviceLocked),
+        (0x6982, C::DeviceLocked),
+        (0x9840, C::DeviceLocked),
+        (0x6d00, C::NoAppOpen),
+        (0x6e00, C::NoAppOpen),
+        (0x6e01, C::NoAppOpen),
+    ] {
+        assert_eq!(
+            run_first(Reply(status.to_be_bytes().to_vec())),
+            TransitionStep::Refused(LedgerRejection::with_status(code, status))
+        );
+    }
+    // Locked while closing the open app, too.
+    let run = run(vec![app("Starknet"), Reply(vec![0x55, 0x15])]);
+    assert_eq!(
+        run.end,
+        TransitionStep::Refused(LedgerRejection::with_status(C::DeviceLocked, 0x5515))
+    );
 }
 
 #[test]

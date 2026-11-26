@@ -16,8 +16,10 @@
 //!
 //! A transport that reports `Disconnected` in place of the close's or open's answer is the
 //! expected drop, not a failure. Any other failure, or a reconnect the host could not make to the
-//! same device, ends the sequence. A reply's status other than success is `management-refused`
-//! with its status word, as the parsers name it.
+//! same device, ends the sequence. A reply's failing status word is named as the parsers name it
+//! (`management::data_of`): a locked device or a missing app as the extension's transport names
+//! them, the person declining the app change as `rejected-on-device`, any other word as
+//! `management-refused`.
 
 use super::management::{data_of, firmware, parse_app_state, parse_os_version};
 use super::rejection::{thrown, Thrown};
