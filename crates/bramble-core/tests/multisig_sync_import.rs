@@ -398,3 +398,24 @@ fn a_lock_mid_sync_stops_it_and_records_nothing() {
         .is_empty());
     assert!(!wallet.dir.path().join("coordination.json").exists());
 }
+
+#[test]
+fn an_unreadable_multisig_store_mid_sync_is_retried_not_receipted() {
+    let wallet = cosigned();
+    let proposal = proposal_package(&wallet);
+    let event = share(&wallet, &proposal);
+    let store = wallet.dir.path().join("multisigs.json");
+    let saved = std::fs::read(&store).unwrap();
+    let chain = chain_at(&wallet, &nonce_of(&proposal));
+    let (outcome, reads) = sync(&wallet, std::slice::from_ref(&event), &|read| {
+        chain(read);
+        // The store goes unreadable after the sync opened, before the import reads it.
+        std::fs::write(&store, b"{").unwrap();
+    });
+    assert_eq!((outcome.received, outcome.imported, reads), (0, 0, 1));
+    assert!(receipts(&wallet).is_empty());
+
+    std::fs::write(&store, saved).unwrap();
+    let (outcome, _) = sync(&wallet, &[event], &chain);
+    assert_eq!(outcome.intent_ids, [intent_id(&proposal)]);
+}

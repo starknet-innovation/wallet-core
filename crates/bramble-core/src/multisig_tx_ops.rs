@@ -430,9 +430,13 @@ impl WalletCore {
         state: &MultisigStateRead,
         tokens: &TokenPreferences,
     ) -> Result<SigningIntent, ImportRefusal> {
-        let record = self
-            .multisig_record(&parsed.intent.account_id)
-            .map_err(|_| ImportRefusal::Import(ImportError::UnknownAccount))?;
+        // Only a record that is not there is `UnknownAccount` (final); an unreadable store is the
+        // wallet's error, which a sync tries again.
+        let record = multisig_store::load(self.data_dir())?
+            .records
+            .into_iter()
+            .find(|record| record.id == parsed.intent.account_id)
+            .ok_or(ImportRefusal::Import(ImportError::UnknownAccount))?;
         let network = NetworkId::from_catalog_id(&record.network_id)
             .ok_or(ImportRefusal::Import(ImportError::UnknownAccount))?;
         let (read, nonce) = state
