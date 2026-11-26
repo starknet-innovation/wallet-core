@@ -7,13 +7,15 @@
 //! The `compile_actions` calldata carries the viewing key (and values derived from it), so the
 //! invocation holds its calldata as `SecretFelt`s, zeroed on drop, in a buffer sized exactly up
 //! front, and serialises into one exactly sized zeroizing buffer (as `bodies::with_key`), whose
-//! hex is written straight in with no temporary strings. Its `Debug` is redacted.
+//! hex is written straight in with no temporary strings, inside `scrubbed`. Its `Debug` is
+//! redacted.
 
 use std::fmt;
 
 use zeroize::{Zeroize, Zeroizing};
 
 use super::call_set::COMPILE_ACTIONS;
+use crate::scrub::scrubbed;
 use crate::send::calls::call_head;
 use crate::send::{judge, rpc_bodies};
 use crate::{felt, Felt, SecretFelt};
@@ -75,6 +77,11 @@ impl ProofInvocation {
     /// The invocation's JSON between `before` and `after` (public text), in one buffer sized
     /// exactly up front, so the calldata is never left behind by a reallocation.
     pub(super) fn json_within(&self, before: &str, after: &str) -> Zeroizing<Vec<u8>> {
+        // The calldata's hex passes through registers and stack temporaries: overwritten after.
+        scrubbed(|| self.json_between(before, after))
+    }
+
+    fn json_between(&self, before: &str, after: &str) -> Zeroizing<Vec<u8>> {
         let head = format!(
             "{{\"type\":\"INVOKE\",\"sender_address\":\"{}\",\"calldata\":[",
             felt::canonical(&self.pool)

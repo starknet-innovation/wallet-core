@@ -145,6 +145,21 @@ mod tests {
     /// `shadow_reads` only lends it to the commitment read's discovery body. The `CallSet`
     /// signature is the wallet's (`call_set::sign_call_set` takes its signing closure), so no
     /// privacy file reaches a key-taking Krusty export.
+    /// Every serialisation of a secret runs inside `scrub::scrubbed`, as the hashes do: the
+    /// invocation's JSON (calldata hex) and `generateRandom`'s reduction.
+    #[test]
+    fn secret_serialisation_runs_scrubbed() {
+        for (source, function) in [
+            (include_str!("invocation.rs"), "fn json_within("),
+            (include_str!("entropy.rs"), "fn generate_random("),
+        ] {
+            let body = source.split(function).nth(1).unwrap_or_default();
+            let body = body.split("\n}\n").next().unwrap_or_default();
+            let body = body.split("\n    }\n").next().unwrap_or_default();
+            assert!(body.contains("scrubbed("), "{function} runs scrubbed");
+        }
+    }
+
     #[test]
     fn privacy_code_never_derives_or_stores_key_material() {
         let sources = [
