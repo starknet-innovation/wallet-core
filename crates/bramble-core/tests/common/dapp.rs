@@ -3,7 +3,8 @@
 
 use std::sync::Arc;
 
-use bramble_core::{DappReply, DappSession, NetworkId, TokenPreferences, WalletCore};
+use bramble_core::{DappReply, DappSession, DappSignStep, NetworkId, TokenPreferences, WalletCore};
+use serde_json::{json, Value};
 use starknet_wallet_core::{kms, Felt};
 
 use super::account_id;
@@ -69,11 +70,78 @@ pub fn connected(core: &Arc<WalletCore>) -> Arc<DappSession> {
     dapp
 }
 
-/// The one reply an approval settles.
+/// The one reply an approval settles, for an account that needs no chain read (OpenZeppelin).
 pub fn approved(dapp: &DappSession, card: String, account: String) -> DappReply {
-    let settled = dapp.approve_sign_typed_data(card, account, NOW);
-    assert_eq!(settled.len(), 1);
-    settled[0].reply.clone()
+    approved_on(dapp, card, account, &Chain::none())
+}
+
+/// The one reply an approval settles, answering each live account read from `chain`.
+pub fn approved_on(dapp: &DappSession, card: String, account: String, chain: &Chain) -> DappReply {
+    let mut step = dapp.approve_sign_typed_data(card.clone(), account, NOW);
+    loop {
+        match step {
+            DappSignStep::Settled { settled } => {
+                assert_eq!(settled.len(), 1);
+                return settled[0].reply.clone();
+            }
+            DappSignStep::Read { id, body, .. } => {
+                step = dapp.answer_sign_read(card.clone(), id, chain.reply(id, &body));
+            }
+        }
+    }
+}
+
+/// Whether an approval answered nothing (a card already decided, expired or of another kind).
+pub fn answers_nothing(step: DappSignStep) -> bool {
+    matches!(step, DappSignStep::Settled { settled } if settled.is_empty())
+}
+
+/// A scripted node for one account's live reads: its class (`None`: not deployed) and its views'
+/// results by selector. A read nothing scripts panics.
+pub struct Chain {
+    pub class: Option<String>,
+    pub views: Vec<(&'static str, Vec<String>)>,
+}
+
+impl Chain {
+    pub fn none() -> Self {
+        Self {
+            class: None,
+            views: Vec::new(),
+        }
+    }
+
+    fn reply(&self, id: u64, body: &str) -> String {
+        let request: Value = serde_json::from_str(body).unwrap();
+        let answer = match request["method"].as_str().unwrap() {
+            "starknet_chainId" => json!({ "result": "0x534e5f5345504f4c4941" }),
+            "starknet_blockHashAndNumber" => {
+                json!({ "result": { "block_hash": "0xb10c", "block_number": 7 } })
+            }
+            "starknet_getClassHashAt" => match &self.class {
+                Some(class) => json!({ "result": class }),
+                None => json!({ "error": { "code": 20, "message": "Contract not found" } }),
+            },
+            "starknet_call" => {
+                let wanted = felt(
+                    request["params"]["request"]["entry_point_selector"]
+                        .as_str()
+                        .unwrap(),
+                );
+                let (_, result) = self
+                    .views
+                    .iter()
+                    .find(|(view, _)| felt(view) == wanted)
+                    .expect("a scripted view");
+                json!({ "result": result })
+            }
+            other => panic!("unexpected read {other}"),
+        };
+        let mut reply = answer;
+        reply["jsonrpc"] = json!("2.0");
+        reply["id"] = json!(id);
+        reply.to_string()
+    }
 }
 
 /// The signature array the page receives, as strings.

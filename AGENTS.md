@@ -141,7 +141,9 @@ Grep first; extend in place rather than adding a sibling.
   annotation flags (`verifyCalls`) are `send::review_flags` (`RiskFlag`, `ReviewContext`), over
   `call_decode::decode_call`'s `CallKind`; the full review is `Invoke::reviewed`, the only
   constructor, over `invoke::verify_calls` (the unrefused per-call review a stored multisig
-  intent's card reads too, `WalletCore::multisig_intent_review`) and `invoke::batch_flags`; the plan's card reads its flags through `Plan::risk_flags()`, and a batch's
+  intent's card reads too, `WalletCore::multisig_intent_review`) and `invoke::batch_flags`; a
+  queued dapp card's review, with the lookalike flag the signing refuses, is
+  `invoke::verify_calls_for_card` (never add that flag by hand); the plan's card reads its flags through `Plan::risk_flags()`, and a batch's
   activity text is `Invoke::with_activity_summary` or `with_dapp_origin`. A batch's allowance
   changes and its row's amount and token (`ActivityAsset`) reach the host in the plan's pending
   record (`PendingKind::Invoke`). The approve spellings are `call_decode::{APPROVE,
@@ -188,7 +190,10 @@ Grep first; extend in place rather than adding a sibling.
   (`tokens::TokenPreferences`), token identity, registry and spam (`registry.rs`), on-chain token
   reads (`token_meta.rs`), fiat and amount display (`fiat.rs`), the HTTP and portfolio RPC wire
   contract (`wire.rs`). Account ids and explorer links are `history::explorer`
-  (`activity_account_id`, `canonical_account_id`, `explorer_transaction_url`, ...).
+  (`activity_account_id`, `canonical_account_id`, `explorer_transaction_url`, ...). Which tracked
+  tokens a review trusts (`TokenPreferences::trusted`, never `tracked` filtered by hand), and a
+  site's token stored as the site's (`add_from_dapp`, `dappTokenIds`), are
+  `portfolio::token_sources`.
 - ERC-20 allowances live in `crates/wallet-core/src/allowances/`: the record, its id, scope and
   load rules and the unlimited cut-off (`record.rs`), eviction ranking (`retention.rs`), the log
   over `host::Storage` with its deltas and revoke settling (`store::AllowanceLog`), the
@@ -251,6 +256,9 @@ Grep first; extend in place rather than adding a sibling.
     then the invoke route's review (`send::invoke::verify_calls`,
     `multisig_review::is_poisoned`), never a second one; a queued card's lookalike payee is
     `RiskFlag::AddressPoisoning`.
+  - the chain methods' gates and results (`chain`: `add_chain`, `switch_chain` with
+    `switch_dedupe` and `held_account_on`, `deployment_data_gate` and `deployment_data`; a
+    chain id's network is `network_for_chain_id`).
   - connecting a site and the passive reads around it (`connect`: `Site`, `answer`,
     `request_accounts`, `approve_connect`, the result shapes `addresses` and `accounts_view`),
     in the extension's gate order: blocklist, lock, grant.
@@ -267,9 +275,14 @@ Grep first; extend in place rather than adding a sibling.
   undecided (`settle_expired`, and `withdraw` for a page that has gone) are `dapp_expiry.rs`;
   `wallet_signTypedData`'s card and its signature at approval
   (`approve_sign_typed_data`, through `signing_record` and `sign_for` under one session hold)
-  are `dapp_sign.rs`, which reviews an outside execution's calls with the invoke route's
+  are `dapp_sign.rs` (a Ready or Braavos account's live read before it, `dapp_sign_read.rs`,
+  over `send::plan_authorize`'s `Kind::Authorize`), which reviews an outside execution's calls with the invoke route's
   inputs (`trusted_recipients`, the tracked tokens from the session's `TokenPreferences`, the
-  allowance log), read before the session hold.
+  allowance log), read before the session hold. The card list and `deny` are `dapp_cards.rs`;
+  add-chain, switch-chain and deployment data (and the host's chain reads, `answer_read`) are
+  `dapp_chain.rs`; `wallet_watchAsset` is `dapp_watch.rs`; `wallet_addInvokeTransaction`'s card
+  and its plan (`approve_invoke`, `settle_invoke`, over `send::plan::TransferPlan`) are
+  `dapp_invoke.rs`.
 - Only `wallet-core` depends on Krusty (`kms.rs`, `nostr.rs`, `accounts/`, `send/`);
   `bramble-core` goes through `wallet-core` and never names `krusty_kms`.
 

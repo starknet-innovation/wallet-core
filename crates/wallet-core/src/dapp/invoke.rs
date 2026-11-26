@@ -22,6 +22,16 @@ pub struct InvokeLimits {
     pub felt_chars: usize,
 }
 
+/// `wallet_addInvokeTransaction`'s result once the node accepted the transaction
+/// (`invokeTxPayload`): `{ transaction_hash }`, padded to 64 digits.
+pub fn invoke_result(hash: &Felt) -> JsValue {
+    let hex = format!("{hash:x}");
+    JsValue::Object(vec![(
+        "transaction_hash".into(),
+        JsValue::String(format!("0x{hex:0>64}")),
+    )])
+}
+
 /// What an invoke's params held: the calls, and whether they came with a STRK20 proof.
 pub(super) struct InvokeParams {
     pub calls: Vec<Call>,

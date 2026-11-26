@@ -7,7 +7,9 @@
 use crate::common;
 
 use bramble_core::ledger::LedgerScheme;
-use bramble_core::{AccountFamily, DappCard, LedgerAccountRequest, NetworkId, SignRow};
+use bramble_core::{
+    AccountFamily, DappCard, DappReply, DappSignStep, LedgerAccountRequest, NetworkId, SignRow,
+};
 use common::dapp::*;
 use common::{account_id, imported, pending, selection, PASSWORD};
 
@@ -78,7 +80,11 @@ fn valid_request_never_auto_signs_it_queues_and_holds_until_approval() {
         .is_empty());
     assert_eq!(dapp.pending_approvals(NOW).len(), 1);
 
-    let settled = dapp.approve_sign_typed_data(card.clone(), account.id.clone(), NOW);
+    let DappSignStep::Settled { settled } =
+        dapp.approve_sign_typed_data(card.clone(), account.id.clone(), NOW)
+    else {
+        panic!("OpenZeppelin reads nothing before signing");
+    };
     assert_eq!(settled.len(), 1);
     assert_eq!(settled[0].request_id, 7);
     let signature = signature(&settled[0].reply);
@@ -94,9 +100,9 @@ fn valid_request_never_auto_signs_it_queues_and_holds_until_approval() {
         assert_eq!(part, &format!("{:#x}", felt(part)));
     }
     // A card is decided once.
-    assert!(dapp
-        .approve_sign_typed_data(card, account.id, NOW)
-        .is_empty());
+    assert!(answers_nothing(
+        dapp.approve_sign_typed_data(card, account.id, NOW)
+    ));
     assert!(dapp.pending_approvals(NOW).is_empty());
 }
 
@@ -126,7 +132,8 @@ fn returns_the_standard_argent_account_signature_for_approved_typed_data() {
     let dapp = connected(&core);
     let account = core.active_account().unwrap().unwrap();
     let card = pending_id(sign_request(&dapp, SITE, &sepolia_mail(), 1));
-    let signature = signature(&approved(&dapp, card, account.id));
+    let chain = ready_chain("argent 0.4.0", &account.public_key);
+    let signature = signature(&approved_on(&dapp, card, account.id, &chain));
     assert_eq!(signature.len(), 5);
     assert_eq!(&signature[..2], ["1", "0"]);
     assert_eq!(felt(&signature[2]), felt(&account.public_key));
@@ -147,32 +154,103 @@ fn class(label: &str) -> String {
         .class_hash
 }
 
-/// A connected site's request from `family` at `class_label` is refused before any card.
-fn refused_for(family: AccountFamily, class_label: &str) {
+/// The live reads of a Ready account running `class_label`, with `owner` its only signer.
+fn ready_chain(class_label: &str, owner: &str) -> Chain {
+    use starknet_wallet_core::send::plan_probe::{GET_GUARDIAN, GET_OWNER, GET_OWNER_TYPE};
+    Chain {
+        class: Some(class(class_label)),
+        views: vec![
+            (GET_OWNER, vec![owner.to_owned()]),
+            (GET_OWNER_TYPE, vec!["0x0".into()]),
+            (GET_GUARDIAN, vec!["0x0".into()]),
+        ],
+    }
+}
+
+/// A connected site's card from `family` stored at `stored`, approved against `chain`.
+fn approve_stored(family: AccountFamily, stored: &str, chain: impl Fn(&str) -> Chain) -> DappReply {
     let (_dir, _clock, core) = pending();
     core.restore_recovered_accounts(
         NetworkId::Sepolia,
-        vec![selection(family, 0, Some(&class(class_label)))],
+        vec![selection(family, 0, Some(&class(stored)))],
     )
     .unwrap();
     let dapp = connected(&core);
-    assert_eq!(code(&sign_request(&dapp, SITE, &sepolia_mail(), 1)), 163);
-    assert!(dapp.pending_approvals(NOW).is_empty());
+    let account = core.active_account().unwrap().unwrap();
+    let card = pending_id(sign_request(&dapp, SITE, &sepolia_mail(), 1));
+    let reply = approved_on(&dapp, card, account.id.clone(), &chain(&account.public_key));
+    if let DappReply::Result { .. } = &reply {
+        let signature = signature(&reply);
+        let (r, s) = (
+            &signature[signature.len() - 2],
+            &signature[signature.len() - 1],
+        );
+        assert!(verifies(&core, &sepolia_mail(), r, s));
+    }
+    reply
 }
 
-// "refuses typed data for an Argent account that still runs 0.3.x": here by the stored class,
-// since the live class read is not wired.
+// "refuses typed data for an Argent account that still runs 0.3.x", and signs for one stored at
+// 0.3.x that has since upgraded: the live class decides, never the stored one.
 #[test]
-fn refuses_typed_data_for_an_argent_account_that_still_runs_0_3_x() {
-    refused_for(AccountFamily::Argent, "argent 0.3.1");
-    refused_for(AccountFamily::Argent, "argent 0.3.0");
+fn an_argent_account_signs_by_the_class_it_runs_now() {
+    for stored in ["argent 0.3.1", "argent 0.3.0"] {
+        let still = approve_stored(AccountFamily::Argent, stored, |key| {
+            ready_chain(stored, key)
+        });
+        assert_eq!(code(&still), 163, "{stored}");
+        let upgraded = approve_stored(AccountFamily::Argent, stored, |key| {
+            ready_chain("argent 0.4.0", key)
+        });
+        assert_eq!(signature(&upgraded).len(), 5, "{stored}");
+    }
+    // Another owner cannot verify this wallet's signature.
+    let moved = approve_stored(AccountFamily::Argent, "argent 0.4.0", |_| {
+        ready_chain("argent 0.4.0", "0x1")
+    });
+    assert_eq!(code(&moved), 163);
 }
 
-// "refuses typed data for a 2FA Braavos account before using the key": every Braavos account,
-// until the live class and signer read is wired.
+/// The live reads of a Braavos account running its current implementation: `stark` its Stark
+/// signers, `strong` how many 2FA signers, no removal requested.
+fn braavos_chain(stark: &[&str], strong: usize) -> Chain {
+    use starknet_wallet_core::send::plan_probe::{GET_DEFERRED_REMOVE_SIGNERS, GET_SIGNERS};
+    let mut signers = vec![format!("{:#x}", stark.len())];
+    signers.extend(stark.iter().map(|key| (*key).to_owned()));
+    signers.push(format!("{strong:#x}"));
+    signers.extend((0..strong).map(|i| format!("{:#x}", 0x5000 + i)));
+    signers.push("0x0".into());
+    Chain {
+        class: Some(class("braavos current")),
+        views: vec![
+            (GET_SIGNERS, signers),
+            (GET_DEFERRED_REMOVE_SIGNERS, vec!["0x0".into()]),
+        ],
+    }
+}
+
+// "signs typed data for a Braavos account" `[r, s]`, and "refuses typed data for a 2FA Braavos
+// account before using the key".
 #[test]
-fn refuses_typed_data_for_any_braavos_account_until_the_live_check_lands() {
-    refused_for(AccountFamily::Braavos, "braavos 1.0.0");
+fn a_braavos_account_signs_only_with_its_key_first_and_no_2fa() {
+    let signed = approve_stored(AccountFamily::Braavos, "braavos 1.0.0", |key| {
+        braavos_chain(&[key], 0)
+    });
+    assert_eq!(signature(&signed).len(), 2);
+    let two_factor = approve_stored(AccountFamily::Braavos, "braavos 1.0.0", |key| {
+        braavos_chain(&[key], 1)
+    });
+    assert_eq!(code(&two_factor), 163);
+    let other = approve_stored(AccountFamily::Braavos, "braavos 1.0.0", |key| {
+        braavos_chain(&["0x1", key], 0)
+    });
+    assert_eq!(code(&other), 163);
+    // Not deployed: no contract can verify it.
+    let undeployed = approve_stored(AccountFamily::Braavos, "braavos 1.0.0", |key| Chain {
+        class: None,
+        ..braavos_chain(&[key], 0)
+    });
+    assert_eq!(code(&undeployed), 163);
 }
 
 // "a failed Ledger device sign settles the held dapp request with { error }": here a Ledger
@@ -203,9 +281,11 @@ fn deny_rejects_the_held_request_with_an_error() {
     assert_eq!(settled.len(), 1);
     assert_eq!(settled[0].request_id, 4);
     assert_eq!(code(&settled[0].reply), 113);
-    assert!(dapp
-        .approve_sign_typed_data(card, account_id(&core), NOW)
-        .is_empty());
+    assert!(answers_nothing(dapp.approve_sign_typed_data(
+        card,
+        account_id(&core),
+        NOW
+    )));
 }
 
 #[test]
@@ -218,9 +298,11 @@ fn an_expired_card_refuses_its_request() {
     assert_eq!(settled.len(), 1);
     assert_eq!(settled[0].request_id, 9);
     assert_eq!(code(&settled[0].reply), 113);
-    assert!(dapp
-        .approve_sign_typed_data(card, account_id(&core), NOW)
-        .is_empty());
+    assert!(answers_nothing(dapp.approve_sign_typed_data(
+        card,
+        account_id(&core),
+        NOW
+    )));
 }
 
 // "an unconnected origin cannot queue a signature"
@@ -256,7 +338,7 @@ fn approving_while_locked_refuses_and_spends_the_card() {
     assert_eq!(code(&approved(&dapp, card.clone(), id.clone())), 163);
     assert!(dapp.pending_approvals(NOW).is_empty());
     core.unlock(PASSWORD.into()).unwrap();
-    assert!(dapp.approve_sign_typed_data(card, id, NOW).is_empty());
+    assert!(answers_nothing(dapp.approve_sign_typed_data(card, id, NOW)));
 }
 
 // A card that survives a lock is still approvable once unlocked: it binds an account, not a

@@ -178,7 +178,13 @@ impl Plan {
     ) -> SendStep {
         match expect {
             Expect::ReviewChain => match judge::chain(answer, self.account.network) {
+                ChainAnswer::Match if matches!(self.kind, Kind::Authorize) => {
+                    self.probe(Probe::Authorize)
+                }
                 ChainAnswer::Match => self.probe(Probe::Review),
+                ChainAnswer::Unreadable if matches!(self.kind, Kind::Authorize) => {
+                    self.fail(SendFailureCode::NodeError, None)
+                }
                 ChainAnswer::Mismatch => self.fail(SendFailureCode::WrongChain, None),
                 ChainAnswer::Unreadable => self.review_unknown(),
             },
@@ -249,7 +255,7 @@ impl Plan {
                 work.fee.is_some() && (!work.requires_deployment || work.deploy_fee.is_some())
             }
             Kind::Deployment => !work.already_deployed && work.deploy_fee.is_some(),
-            Kind::Refresh { .. } => false,
+            Kind::Refresh { .. } | Kind::Authorize => false,
         }
     }
 
@@ -260,7 +266,9 @@ impl Plan {
         let (balance, spent) = match &self.kind {
             Kind::Transfer(t) => (t.fee_balance, t.is_strk.then_some(t.amount)),
             Kind::Invoke(invoke) => (invoke.fee_balance, None),
-            Kind::Deployment | Kind::Refresh { .. } => return FeeAffordability::Unknown,
+            Kind::Deployment | Kind::Refresh { .. } | Kind::Authorize => {
+                return FeeAffordability::Unknown
+            }
         };
         let total = match (
             self.work.requires_deployment,
@@ -326,7 +334,7 @@ impl Plan {
                 }
             }
             Kind::Invoke(invoke) => self.invoke_review(invoke.summary.clone()),
-            Kind::Deployment | Kind::Refresh { .. } => {
+            Kind::Deployment | Kind::Refresh { .. } | Kind::Authorize => {
                 let address = felt::canonical(&self.account.address);
                 TransferReview {
                     summary: DEPLOY_SUMMARY.into(),

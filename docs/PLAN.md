@@ -1179,7 +1179,7 @@ Features, smallest and least dependent first:
       placed is refused (114), where the extension shows the card and withholds Sign. Missing:
       a merkle field's root row and a revision 1 `string`'s ByteArray felt, which only Krusty's
       encoder computes (krusty-kms #280). Follow-ups, in order:
-      1. *Golden rows* (after #175 and Bramble #1066 merge; #175 needs a rebase). Bramble's
+      1. *Golden rows* (#175 merged; after Bramble #1066 merges). Bramble's
          `scripts/mobile-parity-dapp/typed-data.ts` records, for each `typedData` case the gate
          accepts, `decodeSignRequest` rendered through `signValueText` (`card: { domain,
          message, classified }`, each block `{ signed, unsigned }` as `[key, text]` pairs) and
@@ -1199,8 +1199,59 @@ Features, smallest and least dependent first:
          (capped at 48), the raw document behind "Raw typed data", and the
          `signing.outsideExecution` warning from `outside_execution` instead of parsing
          `summary`.
-    - Next here, in order: the remaining methods' gates and results; the live class read
-      (Braavos, upgraded Argent); Ledger typed data; the full export.
+    - In review: the chain methods (`dapp::chain`, `bramble-core`'s `dapp_chain.rs`).
+      `wallet_addStarknetChain` is answered at once (`true` for a built-in chain, 117 for any
+      other, nothing stored); `wallet_switchStarknetChain` queues a switch card for a connected
+      site (`DappCard::SwitchChain`, `approve_switch_chain`), which selects the account the
+      site's grant holds on that network, else `ensure_network_account`'s pick, and then shows a
+      connect card if the site landed outside its grant; `wallet_deploymentData` answers after
+      one chain read the host makes (`DappReply::Read`, `answer_read`), 115 when deployed, 116
+      for a class this wallet does not deploy (the extension's `accountDeployment` tries more
+      classes; mobile offers only what it would deploy itself), and its gates run again on the
+      reply.
+    - In review: `wallet_watchAsset` (`bramble-core`'s `dapp_watch.rs`). The blocklist, queue
+      room, then the token's name, symbol and decimals read from the chain (`DappReply::Read`);
+      a card (`DappCard::WatchAsset`, `approve_watch_asset`) queued whether or not the token is
+      tracked, an already-tracked one a notice whose close answers `true` (audit M1). Approved,
+      the token is stored as the site's: `preferences.json` gains the extension's
+      `dappTokenIds`, and every review reads `TokenPreferences::trusted` (`portfolio::
+      token_sources`), which leaves out a site's token unless it is exactly a curated one
+      (audit 171). The person's own add now keeps one record per address, as `upsertToken`
+      does. Collectibles are refused (163) while mobile shows no NFTs, and a read whose endpoint
+      fails is refused (114) rather than retried on the next endpoint. Added tokens stop at 50
+      per network for the person and sites alike (`MAX_ADDED_TOKENS_PER_NETWORK`, the
+      portfolio policy's `max_added_tokens`).
+    - In review: `wallet_addInvokeTransaction` (`bramble-core`'s `dapp_invoke.rs`). The
+      blocklist and queue room, the lock and the granted active account (a site granted
+      elsewhere is also shown a connect card), an account the wallet signs with, the batch's
+      bounds and the self-call refusal, then the unrefused review (`verify_calls`) on the card
+      (`DappCard::Invoke`), a poisoned payee flagged, not refused (Sherlock 140). Approving
+      (`approve_invoke`) re-checks all of it, reviews again with `Invoke::reviewed` (which
+      refuses the poisoned payee) and hands the host a `TransferPlan`, so the fee review, the
+      person's confirm and a Ledger account's device signature are every batch's. `settle_invoke`
+      answers the page: `{ transaction_hash }` once the node accepted it (`Plan::
+      accepted_invoke`), 113 if the plan closed unsigned, 163 if after; `withdraw` closes a plan
+      no page waits on. A divergence: the fee is estimated after approval, in the plan, not on
+      the card while it waits.
+    - *Decided* 2026-11-26: `wallet_addDeclareTransaction` stays refused (163) on mobile, a
+      deliberate divergence. Declaring a class is a developer workflow no mobile dapp needs, and
+      it would take a declare kind in the plan and Sierra class hashing, which Krusty does not
+      have (the extension leaves it to starknet.js when a site omits `class_hash`). Revisit if
+      product asks for it: requiring `class_hash` (which the node checks against the class)
+      avoids the hashing.
+    - In review: the live class read for typed data (`requireLiveAuthorizableClass`).
+      `approve_sign_typed_data` now returns a `DappSignStep`: OpenZeppelin signs at once; a
+      Ready or Braavos account first has its live state read, one read at a time
+      (`answer_sign_read`), through `Kind::Authorize`, a plan that never signs and runs the send
+      review's own account checks (`send::plan_authorize`): the endpoint's chain, then the class
+      at an accepted block, Ready's owner, owner type and no guardian, Braavos's key as first
+      Stark signer with no 2FA still active. So a Ready account stored at 0.3.x that has
+      upgraded signs, one still on 0.3.x does not, Braavos signs `[r, s]`, and every Ready
+      account is read before signing (it was not). Stricter than the extension, which checks
+      only a Ready account's class for typed data: its owner and guardian too, since a guardian
+      account cannot verify one signature. A failed read refuses (163), where the extension
+      tries its next endpoint.
+    - Next here, in order: Ledger typed data; the full export.
     - *Done* (#140): the connect-only slice is exported first, so Bramble can build and test
       the WebView bridge against real dapps while review and signing follow. Connect's card is
       a site and an account, so the slice does not wait on M19–M21.

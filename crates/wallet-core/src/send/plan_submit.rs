@@ -77,7 +77,7 @@ impl Plan {
         match &self.kind {
             Kind::Transfer(transfer) => Some(&transfer.calldata),
             Kind::Invoke(invoke) => Some(&invoke.calldata),
-            Kind::Deployment | Kind::Refresh { .. } => None,
+            Kind::Deployment | Kind::Refresh { .. } | Kind::Authorize => None,
         }
     }
 
@@ -348,6 +348,17 @@ impl Plan {
         )
     }
 
+    /// The invoke's hash once the node accepted its write (`Broadcast`), for a dapp's
+    /// `transaction_hash`; `None` before, or for a write that was not accepted.
+    pub fn accepted_invoke(&self) -> Option<Felt> {
+        self.work.invoke_hash.filter(|_| self.work.invoke_accepted)
+    }
+
+    /// Whether the plan has ended without a transaction to follow (refused, failed, closed).
+    pub fn is_closed(&self) -> bool {
+        matches!(self.stage, super::plan::Stage::Closed)
+    }
+
     fn on_invoke_write(
         &mut self,
         hash: Felt,
@@ -358,7 +369,10 @@ impl Plan {
         // extension, which records only after an accepted write, differs here on purpose): its
         // record stays and every failure carries its hash.
         let code = match judge::write(answer, &hash) {
-            WriteAnswer::Accepted => return self.broadcast(hash),
+            WriteAnswer::Accepted => {
+                self.work.invoke_accepted = true;
+                return self.broadcast(hash);
+            }
             WriteAnswer::Mismatch => Code::HashMismatch,
             WriteAnswer::Indeterminate => Code::SubmissionIndeterminate,
             WriteAnswer::NodeError => Code::NodeError,

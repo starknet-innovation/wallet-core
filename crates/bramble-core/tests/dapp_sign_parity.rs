@@ -59,6 +59,7 @@ fn page(reply: &DappReply) -> Value {
         DappReply::Result { json } => {
             json!({ "result": serde_json::from_str::<Value>(json).unwrap() })
         }
+        DappReply::Read { .. } => panic!("a typed-data request never asks the host for a read"),
     }
 }
 
@@ -66,6 +67,9 @@ fn kind(card: &DappCard) -> &'static str {
     match card {
         DappCard::Connect => "connect",
         DappCard::SignTypedData { .. } => "sign-typed-data",
+        DappCard::SwitchChain { .. } => "switch-chain",
+        DappCard::WatchAsset { .. } => "watch-asset",
+        DappCard::Invoke { .. } => "invoke",
     }
 }
 
