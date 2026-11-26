@@ -68,6 +68,7 @@ pub struct ProofInputs {
     pub limits: ProofLimits,
     /// The most nonzero notes the incoming walk keeps per token.
     pub max_notes: usize,
+    /// Clamped to `ProverRetry::CEILING`.
     pub retry: ProverRetry,
 }
 
@@ -226,6 +227,7 @@ impl<E: Entropy> ProofJob<E> {
             return Err(ProofRefusal::InvalidRoute);
         }
         inputs.limits = inputs.limits.clamped();
+        inputs.retry = inputs.retry.clamped();
         Ok(Self {
             chain_id,
             scope_chain_id: network.chain_id.clone(),
@@ -334,7 +336,7 @@ impl<E: Entropy> ProofJob<E> {
                     invocation,
                 },
                 PrivacyReply::WaitElapsed { now_ms },
-            ) => self.prove(invocation, attempt, now_ms),
+            ) => self.prove(host, invocation, attempt, now_ms),
             (stage, PrivacyReply::TransportFailure { id: got, .. }) => match stage {
                 Stage::Outgoing { id, .. } | Stage::Incoming { id, .. } if id == got => fail(
                     ProofRefusal::Discovery(super::types::PrivacyFailure::ServiceUnavailable),

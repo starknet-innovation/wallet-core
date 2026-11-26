@@ -203,17 +203,23 @@ impl<E: Entropy> ProofJob<E> {
                 Err(refusal) => return fail(refusal),
             };
         let invocation = ProofInvocation::new(pool, &calldata, nonce, signature);
-        self.prove(invocation, 0, now_ms)
+        self.prove(host, invocation, 0, now_ms)
     }
 
     /// Step 6: prove attempt `attempt` (from 0). The JSON-RPC id is the host clock of the reply
-    /// that started it, as the SDK's is `Date.now()`.
+    /// that started it, as the SDK's is `Date.now()`. The body re-posts the viewing key, so the
+    /// wallet is asked first, every attempt: a session that ended (during a wait, say) ends the
+    /// job `Locked`. The key it hands back is dropped unread.
     pub(super) fn prove(
         &mut self,
+        host: &dyn ProofHost,
         invocation: ProofInvocation,
         attempt: u32,
         now_ms: u64,
     ) -> ProofStep {
+        if self.viewing_key(host).is_none() {
+            return fail(ProofRefusal::Locked);
+        }
         let id = self.next_id();
         let body = prove_body(now_ms, self.inputs.proving_block, &invocation);
         self.stage = Stage::Proving {

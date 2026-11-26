@@ -58,6 +58,36 @@ pub struct ProverRetry {
 }
 
 impl ProverRetry {
+    /// The most any wallet on this core may ask for, from the SDK's own constants
+    /// (`proving-service.ts`). A wallet may tighten it, never widen it: every retry re-posts the
+    /// invocation, viewing key included.
+    ///
+    /// - `max_delay_ms`: `MAX_PROVE_BACKOFF_MS` (30 s), the cap the SDK always applies.
+    /// - `base_delay_ms`: the same 30 s; a larger base would only ever wait the cap.
+    /// - `max_retries`: 5, the retries the SDK's default backoff (`DEFAULT_PROVE_BASE_DELAY_MS`,
+    ///   1 s, doubling) takes to reach that cap (1, 2, 4, 8, 16 s; the next is capped). Beyond it
+    ///   every retry is one more full-cap wait. The SDK's default (`DEFAULT_PROVE_MAX_RETRIES`,
+    ///   3, Bramble's) is under it.
+    /// - `request_timeout_ms` is not clamped: the host enforces it on its own transport, and the
+    ///   core never reads it.
+    pub const CEILING: Self = Self {
+        max_retries: 5,
+        request_timeout_ms: u64::MAX,
+        base_delay_ms: 30_000,
+        max_delay_ms: 30_000,
+    };
+
+    /// This policy within [`ProverRetry::CEILING`].
+    pub fn clamped(&self) -> Self {
+        let ceiling = Self::CEILING;
+        Self {
+            max_retries: self.max_retries.min(ceiling.max_retries),
+            request_timeout_ms: self.request_timeout_ms,
+            base_delay_ms: self.base_delay_ms.min(ceiling.base_delay_ms),
+            max_delay_ms: self.max_delay_ms.min(ceiling.max_delay_ms),
+        }
+    }
+
     /// `callWithRetry`: after attempt `attempt` (from 0) came back [`ProveOutcome::Busy`], the
     /// wait before trying again, or `None` once the retries are spent.
     pub fn delay_ms(&self, attempt: u32) -> Option<u64> {

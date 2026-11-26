@@ -76,6 +76,33 @@ fn backoff_doubles_to_the_cap_and_stops_after_the_retries() {
     assert_eq!(off.delay_ms(0), None);
 }
 
+#[test]
+fn a_wider_retry_policy_is_clamped_to_the_sdks_constants() {
+    assert_eq!(
+        BRAMBLE.clamped(),
+        BRAMBLE,
+        "Bramble's policy passes unchanged"
+    );
+    let wide = ProverRetry {
+        max_retries: u32::MAX,
+        request_timeout_ms: 90_000,
+        base_delay_ms: u64::MAX,
+        max_delay_ms: u64::MAX,
+    };
+    let clamped = wide.clamped();
+    assert_eq!(
+        clamped,
+        ProverRetry {
+            max_retries: 5,
+            request_timeout_ms: 90_000,
+            base_delay_ms: 30_000,
+            max_delay_ms: 30_000,
+        }
+    );
+    assert_eq!(clamped.delay_ms(4), Some(30_000));
+    assert_eq!(clamped.delay_ms(5), None);
+}
+
 fn pool_message(payload: Value) -> Value {
     json!({ "from_address": POOL, "to_address": "0x0", "payload": payload })
 }

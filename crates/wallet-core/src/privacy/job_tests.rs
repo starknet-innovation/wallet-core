@@ -283,8 +283,13 @@ fn a_route_or_prover_url_is_refused_before_any_request() {
 fn wider_limits_are_clamped_to_the_ceiling() {
     let mut wide = inputs(vec![ReviewedAction::Register]);
     wide.limits.invoke_calldata_felts = usize::MAX;
+    wide.retry.max_retries = u32::MAX;
     let job = ProofJob::with_entropy(&network(), wide, Zeros).unwrap();
     assert_eq!(job.inputs.limits, ProofLimits::CEILING);
+    assert_eq!(
+        job.inputs.retry.max_retries,
+        ProverRetry::CEILING.max_retries
+    );
 }
 
 #[test]
