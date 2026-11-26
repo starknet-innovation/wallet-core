@@ -1,18 +1,19 @@
 //! `DappSession`: the in-app browser's half of P16 that the core owns, exported for the apps'
-//! WebView bridge. This first slice connects a site and answers the passive reads around it
+//! WebView bridge. It connects a site and answers the passive reads around it
 //! (`wallet_requestAccounts`, `getPermissions`, `requestChainId`, the discovery methods, and
 //! Bramble's `mc_accounts` and `mc_requestAccounts`), signs a site's SNIP-12 typed data once
-//! the person approves its card (`dapp_sign.rs`), and answers the chain methods (add-chain,
-//! switch-chain and deployment data, `dapp_chain.rs`), watch-asset (`dapp_watch.rs`) and a call
-//! batch (`dapp_invoke.rs`, through the plan the person confirms). A declare is refused, by
-//! decision, and the STRK20 methods wait on P15. Nothing signs without a queued card the person
-//! approved.
+//! the person approves its card (`dapp_sign.rs`, a Ledger's on its device in
+//! `dapp_sign_device.rs`), and answers the chain methods (add-chain, switch-chain and
+//! deployment data, `dapp_chain.rs`), watch-asset (`dapp_watch.rs`) and a call batch
+//! (`dapp_invoke.rs`, through the plan the person confirms). A declare is refused, by decision,
+//! and the STRK20 methods wait on P15. Nothing signs without a queued card the person approved.
 //!
 //! The host establishes the asking origin (the main frame's committed `https` origin) and passes
-//! each request with an id of its own. A request that needs the person comes back `Pending`; the
-//! host holds the page's reply and shows `pending_approvals`, and `approve_connect`,
-//! `approve_sign_typed_data`, `deny` and `settle_expired` hand back each held request's reply by
-//! that id.
+//! each request with an id of its own. A request that needs the person comes back `Pending` (or
+//! `Read` first, for a chain read the host makes); the host holds the page's reply, shows
+//! `pending_approvals`, and every decision, `settle_expired` and the step loops hand back each
+//! held request's reply by that id. `docs/dapp-host.md` is the host's whole contract: the loops
+//! per method, which calls renew the idle lock, the timers, and `withdraw` on navigation.
 //!
 //! Approvals live in memory: they die with the process, as the extension's die with its service
 //! worker. A card survives a lock, as the extension's do: a site asking to connect while the
