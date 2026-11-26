@@ -2,7 +2,7 @@
 //! under Speculos (see the line `header`). Every APDU the core sends must be the recorded request,
 //! in order; each recorded reply is fed back, and the core's outcome must be the extension's.
 
-mod plan_support;
+use crate::plan_support;
 
 use bramble_core::ledger::{ledger_account_path, LEDGER_APP_MIN};
 use plan_support::node::*;

@@ -12,7 +12,7 @@
 //! - `refusal`: what the invoke path refuses before reading anything is refused by `reviewed`,
 //!   and the batches on each bound pass.
 
-mod plan_support;
+use crate::plan_support;
 
 use bramble_core::catalogs::accounts::{send_authorization, AccountFamily};
 use bramble_core::catalogs::networks::registry;

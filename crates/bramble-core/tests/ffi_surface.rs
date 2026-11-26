@@ -331,6 +331,8 @@ fn multisig_transactions_take_and_return_no_key() {
         "import_multisig_intent",
         "multisig_intent_read",
         "multisig_intent_review",
+        "multisig_fee_replacement",
+        "remove_multisig_intent",
     ] {
         assert!(
             seen.iter().any(|seen| seen == name),

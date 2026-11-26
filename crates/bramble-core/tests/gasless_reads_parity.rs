@@ -4,7 +4,7 @@
 //! Cases the core's types cannot express (a negative or fractional number where it takes an
 //! unsigned integer, an extra key on a record) are asserted as such, never skipped silently.
 
-mod gasless_support;
+use crate::gasless_support;
 
 use bramble_core::gasless::{gasless_v2_classes, GASLESS_POLICY};
 use gasless_support::*;

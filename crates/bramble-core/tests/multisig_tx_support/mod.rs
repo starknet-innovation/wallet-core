@@ -408,3 +408,93 @@ pub fn drive_deployment(plan: &TransferPlan, mut step: SendStep, exchanges: &[Va
             .unwrap();
     }
 }
+
+/// Proposes `request` at chain nonce `nonce`, each stale hash's lookup answered `status`.
+pub fn propose_at(
+    wallet: &Wallet,
+    request: MultisigProposalRequest,
+    nonce: &str,
+    status: Value,
+    confirm_resend: bool,
+) -> MultisigTxStep {
+    let proposal = wallet
+        .core
+        .clone()
+        .propose_multisig_transaction(
+            wallet.current_authority(),
+            request,
+            wallet.tokens(),
+            confirm_resend,
+        )
+        .unwrap();
+    let recorded = phase(&wallet.net["proposal"]["prepare"]);
+    let mut step = proposal.advance(StepReply::Start).unwrap();
+    while let MultisigTxStep::Rpc { id, body, .. } = &step {
+        let sent: Value = serde_json::from_str(body).unwrap();
+        let reply = match sent["method"].as_str().unwrap() {
+            "starknet_getNonce" => json!({ "result": nonce }),
+            "starknet_getTransactionStatus" => status.clone(),
+            method => recorded
+                .iter()
+                .find(|exchange| exchange["method"] == method)
+                .unwrap()["reply"]
+                .clone(),
+        };
+        let mut body = reply;
+        body["jsonrpc"] = json!("2.0");
+        body["id"] = json!(id);
+        step = proposal
+            .advance(StepReply::Rpc {
+                id: *id,
+                body: body.to_string(),
+                now_ms: NOW_MS,
+            })
+            .unwrap();
+    }
+    step
+}
+
+/// Submits the ready intent and answers the write with the node's fee refusal, then the nonce
+/// read again with `nonce` (`None`: the read fails).
+pub fn fee_refused(wallet: &Wallet, ready: &MultisigIntent, nonce: Option<&str>) -> MultisigTxStep {
+    let submission = wallet
+        .core
+        .clone()
+        .submit_multisig_intent(ready.id.clone(), wallet.current_state(ready))
+        .unwrap();
+    let exchanges = phase(&wallet.net["proposal"]["submit"]);
+    let step = submission.advance(StepReply::Start).unwrap();
+    let MultisigTxStep::Rpc { id, .. } = step else {
+        panic!("{step:?}")
+    };
+    assert_eq!(exchanges[0]["method"], "starknet_chainId");
+    let step = submission
+        .advance(rpc_reply(id, &exchanges[0]["reply"]))
+        .unwrap();
+    let MultisigTxStep::Rpc { id, is_write, .. } = step else {
+        panic!("{step:?}")
+    };
+    assert!(is_write);
+    let refusal = json!({"jsonrpc": "2.0", "id": id, "error": {"code": 55,
+        "message": "Max L2 gas price (1) is lower than the actual gas price (2)"}});
+    let step = submission
+        .advance(StepReply::Rpc {
+            id,
+            body: refusal.to_string(),
+            now_ms: NOW_MS,
+        })
+        .unwrap();
+    let MultisigTxStep::Rpc { id, body: sent, .. } = step else {
+        panic!("{step:?}")
+    };
+    assert!(sent.contains("starknet_getNonce"));
+    let reply = match nonce {
+        Some(nonce) => StepReply::Rpc {
+            id,
+            body: body(id, json!(nonce)),
+            now_ms: NOW_MS,
+        },
+        None => StepReply::TransportFailure { id, now_ms: NOW_MS },
+    };
+    submission.advance(reply).unwrap()
+}

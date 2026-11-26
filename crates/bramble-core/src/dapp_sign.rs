@@ -23,8 +23,8 @@
 use starknet_wallet_core::allowances::record::AllowanceRecord;
 use starknet_wallet_core::catalog::TokenInfo;
 use starknet_wallet_core::dapp::{
-    describe_typed_data, review_outside_execution, CheckedTypedData, OutsideExecutionReview, Site,
-    Stage, WalletRpcError,
+    describe_typed_data, review_outside_execution, sign_rows, CheckedTypedData,
+    OutsideExecutionReview, Site, Stage, WalletRpcError,
 };
 use starknet_wallet_core::js::json::JsValue;
 use starknet_wallet_core::send::call_decode::Known;
@@ -44,6 +44,32 @@ use crate::send::types::RiskFlag;
 use crate::send::wallet_ext::known_token_addresses;
 use crate::wallet_accounts::{sign_for, signing_record};
 
+/// One decoded row of a sign card: the dotted path a value sits at and the text the card prints
+/// for it (the extension's `signValueText`). Both are display-safe: names outside the SNIP-12
+/// grammar are sketched in `«»`, and bidi, zero-width and control characters spelled `\uXXXX`.
+/// `signed` is false for a value the site sent that the hash does not cover, which the extension
+/// shows apart, as "shown by the site but NOT signed", capped at 48 rows.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct SignRow {
+    pub key: String,
+    pub value: String,
+    pub signed: bool,
+}
+
+/// A block's signed rows in the order the card shows them, then its unsigned ones.
+fn sign_rows(block: sign_rows::SignBlock) -> Vec<SignRow> {
+    let tagged = |rows: Vec<sign_rows::SignRow>, signed| {
+        rows.into_iter().map(move |row| SignRow {
+            key: row.key,
+            value: row.value,
+            signed,
+        })
+    };
+    tagged(block.signed, true)
+        .chain(tagged(block.unsigned, false))
+        .collect()
+}
+
 /// A typed-data card: the account it was reviewed for and the document as the page sent it.
 pub(crate) struct SignCard {
     pub(crate) account_id: String,
@@ -51,6 +77,9 @@ pub(crate) struct SignCard {
     pub(crate) network: NetworkId,
     summary: String,
     typed_data: JsValue,
+    domain: Vec<SignRow>,
+    message: Vec<SignRow>,
+    outside_execution: bool,
     call_summaries: Vec<String>,
     flags: Vec<RiskFlag>,
 }
@@ -63,6 +92,9 @@ impl SignCard {
             network: self.network,
             summary: self.summary.clone(),
             typed_data_json: self.typed_data.to_json(),
+            domain: self.domain.clone(),
+            message: self.message.clone(),
+            outside_execution: self.outside_execution,
             call_summaries: self.call_summaries.clone(),
             flags: self.flags.clone(),
         }
@@ -233,7 +265,12 @@ impl DappSession {
             ))
         });
         match card.unwrap_or_else(|_| Err(refused())) {
-            Ok(card) => self.queue(origin, Card::Sign(card), request_id, Shape::Signature),
+            Ok(card) => self.queue(
+                origin,
+                Card::Sign(Box::new(card)),
+                request_id,
+                Shape::Signature,
+            ),
             Err(refusal) => error(refusal),
         }
     }
@@ -248,6 +285,10 @@ fn admit(
 ) -> Result<SignCard, WalletRpcError> {
     let record = granted_signer(site, payload)?;
     let (_, review) = reviewed_hash(record, typed_data, inputs, Stage::Queue)?;
+    // A value the card could not place withholds Sign in the extension; here it is never queued.
+    let rows = CheckedTypedData::check(typed_data, &DAPP_POLICY.typed_data)?
+        .sign_rows()
+        .ok_or_else(WalletRpcError::invalid_request_payload)?;
     // The review's first line is the summary; the rest are the calls'.
     let (call_summaries, flags) = review.map_or_else(Default::default, |review| {
         (
@@ -261,6 +302,9 @@ fn admit(
         network: record.network(),
         summary: describe_typed_data(typed_data),
         typed_data: typed_data.clone(),
+        domain: sign_rows(rows.domain),
+        message: sign_rows(rows.message),
+        outside_execution: is_outside_execution(typed_data),
         call_summaries,
         flags,
     })

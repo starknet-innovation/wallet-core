@@ -67,6 +67,8 @@ mod multisig_tx_device;
 mod multisig_tx_import;
 mod multisig_tx_ops;
 mod multisig_tx_plans;
+mod multisig_tx_refresh;
+mod multisig_tx_remove;
 mod nostr;
 mod nostr_relay;
 mod portfolio;
@@ -116,6 +118,7 @@ pub use contact_card::{ContactCardParse, WalletContactCard};
 pub use contacts::Contact;
 pub use dapp_invoke::DappInvokeStart;
 pub use dapp_session::{DappApproval, DappCard, DappReply, DappSession, DappSettled};
+pub use dapp_sign::SignRow;
 pub use dapp_sign_read::DappSignStep;
 pub use ffi_coordination::{
     CoordinationSyncOutcome, CoordinationSyncStep, NostrSyncPlan, RelayPolicy,

@@ -3,7 +3,7 @@
 //! address, and its request makes the wallet.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod send_support;
+use crate::send_support;
 
 use bramble_core::ledger::{ledger_account_path, LedgerScheme};
 use bramble_core::{

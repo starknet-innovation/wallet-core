@@ -251,6 +251,10 @@ impl<'a> CheckedTypedData<'a> {
         self.value
     }
 
+    pub(super) fn graph(&self) -> &Graph<'a> {
+        &self.graph
+    }
+
     /// `typedDataHashForChain`: the message hash `account` signs, only when the domain declares a
     /// `chainId` (no `contains`) whose value, encoded under its declared type, is `chain_id`. So
     /// `"SN_MAIN"` and its numeric felt both bind mainnet; a missing, malformed or foreign chain

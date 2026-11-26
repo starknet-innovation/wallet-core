@@ -8,9 +8,11 @@
 //! empties it.
 
 use std::path::Path;
+use std::sync::{Mutex, PoisonError};
 
 use serde::{Deserialize, Serialize};
 use wallet_core::nostr::sync_window::SyncLookbacks;
+use wallet_core::send::multisig_intent::intent_id as intent_id_of;
 
 use crate::argent_multisig;
 use crate::contacts;
@@ -21,6 +23,10 @@ use crate::{multisig_constants, public_store, CoreError};
 
 /// The most held packages an earlier build stored.
 const MAX_HELD: usize = 50;
+/// `MAX_REMOVED_ACCOUNTS` and `MAX_REMOVED_INTENTS` (`coordination.ts`).
+// ponytail: restated by hand until Bramble's generator emits them into `generated/multisig.json`.
+pub const MAX_REMOVED_ACCOUNTS: usize = 20;
+pub const MAX_REMOVED_INTENTS: usize = 100;
 
 /// `NostrSyncCheckpoint`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -49,6 +55,17 @@ pub struct File {
     pub relay_url: Option<String>,
     pub checkpoints: Vec<Checkpoint>,
     pub held: Vec<Held>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub removed_intents: Vec<RemovedIntents>,
+}
+
+/// `RemovedIntents`: the intents the person removed on one multisig, newest first. A relay can
+/// serve a removed intent again under any event id, so the removal is what keeps it out.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RemovedIntents {
+    pub account_id: String,
+    pub intent_ids: Vec<String>,
 }
 
 fn is_relay_selection(urls: &[String]) -> bool {
@@ -84,6 +101,67 @@ pub fn is_checkpoint(checkpoint: &Checkpoint) -> bool {
         && checkpoint.synced_at <= c.max_sync_seconds
 }
 
+/// `isIntentIdFor`: `<account id>:<canonical hash>`.
+fn is_intent_id_for(account_id: &str, intent_id: &str) -> bool {
+    intent_id
+        .strip_prefix(account_id)
+        .and_then(|rest| rest.strip_prefix(':'))
+        .and_then(|hash| intent_id_of(account_id, hash))
+        .is_some_and(|id| id == intent_id)
+}
+
+/// `isRemovedIntents`.
+fn is_removed_intents(entry: &RemovedIntents) -> bool {
+    is_account_id(&entry.account_id)
+        && entry.intent_ids.len() <= MAX_REMOVED_INTENTS
+        && entry
+            .intent_ids
+            .iter()
+            .all(|id| is_intent_id_for(&entry.account_id, id))
+}
+
+/// `recordRemovedIntent`: puts `intent_id` first in its account's list, the account first, each
+/// list and the accounts capped, the oldest dropped. `false` (nothing changed) for an id that is
+/// not one of `account_id`'s.
+pub fn record_removed_intent(file: &mut File, account_id: &str, intent_id: &str) -> bool {
+    if !is_account_id(account_id) || !is_intent_id_for(account_id, intent_id) {
+        return false;
+    }
+    let mut intent_ids = vec![intent_id.to_string()];
+    if let Some(existing) = file
+        .removed_intents
+        .iter()
+        .find(|entry| entry.account_id == account_id)
+    {
+        intent_ids.extend(
+            existing
+                .intent_ids
+                .iter()
+                .filter(|id| *id != intent_id)
+                .cloned(),
+        );
+    }
+    intent_ids.truncate(MAX_REMOVED_INTENTS);
+    file.removed_intents
+        .retain(|entry| entry.account_id != account_id);
+    file.removed_intents.insert(
+        0,
+        RemovedIntents {
+            account_id: account_id.to_string(),
+            intent_ids,
+        },
+    );
+    file.removed_intents.truncate(MAX_REMOVED_ACCOUNTS);
+    true
+}
+
+/// `isRemovedIntent`.
+pub fn is_removed_intent(file: &File, account_id: &str, intent_id: &str) -> bool {
+    file.removed_intents.iter().any(|entry| {
+        entry.account_id == account_id && entry.intent_ids.iter().any(|id| id == intent_id)
+    })
+}
+
 fn is_held(held: &Held) -> bool {
     is_account_id(&held.account_id) && nostr::is_public_key(&held.event_id)
 }
@@ -114,7 +192,9 @@ pub fn load(dir: &Path) -> Result<File, CoreError> {
         && file.checkpoints.len() <= multisig_constants::get().coordination.max_checkpoints
         && file.checkpoints.iter().all(is_checkpoint)
         && file.held.len() <= MAX_HELD
-        && file.held.iter().all(is_held);
+        && file.held.iter().all(is_held)
+        && file.removed_intents.len() <= MAX_REMOVED_ACCOUNTS
+        && file.removed_intents.iter().all(is_removed_intents);
     if !valid {
         return Err(CoreError::Storage {
             reason: format!("{} unreadable", public_store::COORDINATION),
@@ -123,8 +203,21 @@ pub fn load(dir: &Path) -> Result<File, CoreError> {
     Ok(file)
 }
 
-/// Writes the file.
-pub fn store(dir: &Path, file: &File) -> Result<(), CoreError> {
+/// Serialises every read-modify-write of the file, so one writer cannot drop another's change
+/// (a removed intent's record above all).
+static WRITE: Mutex<()> = Mutex::new(());
+
+/// Loads the file, applies `change` and writes it back, under `WRITE`. Nothing is written when
+/// the file is unreadable.
+pub fn update<R>(dir: &Path, change: impl FnOnce(&mut File) -> R) -> Result<R, CoreError> {
+    let _write = WRITE.lock().unwrap_or_else(PoisonError::into_inner);
+    let mut file = load(dir)?;
+    let result = change(&mut file);
+    store(dir, &file)?;
+    Ok(result)
+}
+
+fn store(dir: &Path, file: &File) -> Result<(), CoreError> {
     public_store::write(dir, public_store::COORDINATION, file)
 }
 
@@ -239,6 +332,7 @@ mod tests {
                 checkpoint(&["wss://relay.example/a/../b"]),
             ],
             held: Vec::new(),
+            removed_intents: Vec::new(),
         };
         public_store::write(dir.path(), public_store::COORDINATION, &stored).unwrap();
         let loaded = load(dir.path()).unwrap();
@@ -248,5 +342,46 @@ mod tests {
             vec![checkpoint(&["wss://relay.example"])],
             "a checkpoint with no current spelling is dropped, so it resyncs"
         );
+    }
+
+    /// `recordRemovedIntent`: newest first, an id moved to the front once, each list and the
+    /// accounts capped with the oldest dropped, and only an account's own ids.
+    #[test]
+    fn removed_intents_keep_the_newest_and_only_valid_ids() {
+        let account = |n: usize| format!("SN_SEPOLIA:0x{}{n:03x}", "1".repeat(60));
+        let id = |account: &str, n: usize| format!("{account}:0x{:x}", n + 1);
+        let mut file = File::default();
+        let a = account(0);
+        assert!(!record_removed_intent(&mut file, &a, &id(&account(1), 0)));
+        assert!(!record_removed_intent(&mut file, &a, &format!("{a}:0x01")));
+        for n in 0..=MAX_REMOVED_INTENTS {
+            assert!(record_removed_intent(&mut file, &a, &id(&a, n)));
+        }
+        assert!(record_removed_intent(&mut file, &a, &id(&a, 50)));
+        let ids = &file.removed_intents[0].intent_ids;
+        assert_eq!(ids.len(), MAX_REMOVED_INTENTS);
+        assert_eq!(ids[0], id(&a, 50));
+        assert_eq!(ids[1], id(&a, MAX_REMOVED_INTENTS));
+        assert!(!is_removed_intent(&file, &a, &id(&a, 0)), "the oldest went");
+        assert!(is_removed_intent(&file, &a, &id(&a, 1)));
+        for n in 1..=MAX_REMOVED_ACCOUNTS {
+            let other = account(n);
+            assert!(record_removed_intent(&mut file, &other, &id(&other, 0)));
+        }
+        assert_eq!(file.removed_intents.len(), MAX_REMOVED_ACCOUNTS);
+        assert!(
+            !is_removed_intent(&file, &a, &id(&a, 1)),
+            "the oldest account went"
+        );
+
+        let dir = tempfile::tempdir().unwrap();
+        file.version = 1;
+        store(dir.path(), &file).unwrap();
+        assert_eq!(load(dir.path()).unwrap(), file);
+        file.removed_intents[0]
+            .intent_ids
+            .push("SN_SEPOLIA:0x1:0x1".into());
+        store(dir.path(), &file).unwrap();
+        assert!(load(dir.path()).is_err(), "an invalid record fails closed");
     }
 }

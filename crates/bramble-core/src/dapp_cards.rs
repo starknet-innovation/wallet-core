@@ -5,7 +5,7 @@ use starknet_wallet_core::dapp::connect::deny_connect;
 use starknet_wallet_core::js::json::JsValue;
 
 use crate::dapp_session::{
-    error, result, settled, Card, DappApproval, DappCard, DappSession, DappSettled,
+    error, result, Card, DappApproval, DappCard, DappReply, DappSession, DappSettled, Shape, Waiter,
 };
 use crate::dapp_watch::WatchCard;
 
@@ -73,4 +73,18 @@ impl DappSession {
         }
         settled(waiters, |_| error(deny_connect()))
     }
+}
+
+/// Each waiter's answer: `reply` for the shape its request was asked in.
+pub(crate) fn settled(
+    waiters: Vec<Waiter>,
+    reply: impl Fn(Shape) -> DappReply,
+) -> Vec<DappSettled> {
+    waiters
+        .into_iter()
+        .map(|waiter| DappSettled {
+            request_id: waiter.request_id,
+            reply: reply(waiter.shape),
+        })
+        .collect()
 }

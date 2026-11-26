@@ -4,7 +4,7 @@
 //! notice, and a site's token stored as the site's, which no review trusts (audit 171).
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod common;
+use crate::common;
 
 use std::sync::Arc;
 

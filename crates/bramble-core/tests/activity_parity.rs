@@ -3,7 +3,7 @@
 //! mobile:parity`): the fee read from a receipt reply, which rows take one after a status read,
 //! which stored rows validate, what the send path prices, and the text the row shows.
 
-mod portfolio_support;
+use crate::portfolio_support;
 
 use portfolio_support::Memory;
 use starknet_wallet_core::activity::detail::{fee_text, submitted_price, submitted_value_text};

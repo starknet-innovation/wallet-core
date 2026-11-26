@@ -11,7 +11,7 @@
 //! Every refusal's `name` is the extension's `WalletError`; the typed error stands in for it and
 //! its `Display` is the fixture's `message`.
 
-mod multisig_support;
+use crate::multisig_support;
 
 use bramble_core::catalogs::networks;
 use bramble_core::MULTISIG_FEE_OVERHEAD;

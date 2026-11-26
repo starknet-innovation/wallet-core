@@ -7,7 +7,7 @@
 //! notice sentences (`failureNoticeMessage`) are Bramble's copy and stay where that copy lives
 //! (mobile until 2.7).
 
-mod portfolio_support;
+use crate::portfolio_support;
 
 use bramble_core::{
     CONFIRMATION_DELAYS_MS, FEE_MARGIN_PERCENT, REVIEWED_FEE_HEADROOM, SEND_POLICY,

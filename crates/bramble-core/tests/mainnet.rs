@@ -2,14 +2,14 @@
 //! read from the environment only; it must never be committed or printed. Run:
 //!
 //!   BRAMBLE_MOBILE_MAINNET_MNEMONIC="…" BRAMBLE_MOBILE_MAINNET_ADDRESS=0x… \
-//!     cargo test --locked --test mainnet -- --ignored
+//!     cargo test --locked --test integration mainnet:: -- --ignored --skip privacy_mainnet
 //!
 //! Add `BRAMBLE_MOBILE_MAINNET_DISCOVERY=1` to also run account discovery against the bundled
 //! Mainnet RPC endpoints (read-only: `starknet_chainId`, `starknet_getClassHashAt`, and ERC-20
 //! `balanceOf`; nothing is signed or sent) through the curl helper in `common/live.rs`.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod common;
+use crate::common;
 
 use bramble_core::{AccountFamily, NetworkId, RecoverySelection, WalletCore};
 use common::live::{canonical, endpoint, refuse_ci, scan};

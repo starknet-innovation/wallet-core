@@ -2,7 +2,7 @@
 //! plan before anything is signed, with the extension's copy (`extension-transactions-copy.json`).
 //! Moved from mobile's `transactions_{argent_,braavos_}parity.rs` in Phase 2.3.
 
-mod plan_support;
+use crate::plan_support;
 
 use plan_support::*;
 use starknet_wallet_core::send::types::{SendError, SendFailureCode as Code, SendStep, StepReply};

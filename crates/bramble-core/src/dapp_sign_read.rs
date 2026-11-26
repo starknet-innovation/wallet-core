@@ -38,7 +38,7 @@ pub enum DappSignStep {
 /// An approved typed-data card waiting on its account's live read.
 pub(crate) struct PendingSign {
     origin: String,
-    card: SignCard,
+    card: Box<SignCard>,
     pub(crate) waiters: Vec<Waiter>,
     reviewed_account_id: String,
     plan: Plan,

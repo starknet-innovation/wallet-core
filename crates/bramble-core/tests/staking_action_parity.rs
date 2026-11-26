@@ -5,7 +5,7 @@
 //! amount and token (a claim names the rewards token, every other action the staked token), and
 //! the allowance filed; or the same refusal.
 
-mod staking_support;
+use crate::staking_support;
 
 use bramble_core::catalogs::networks;
 use bramble_core::SEND_POLICY;

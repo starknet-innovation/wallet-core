@@ -1,7 +1,7 @@
 //! Lifecycle invariants of `WalletCore`: what is reachable in each state, and what is persisted.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod common;
+use crate::common;
 
 use bramble_core::{
     AccountFamily, CoreError, NetworkId, RecoverySelection, WalletCore, WalletStatus,

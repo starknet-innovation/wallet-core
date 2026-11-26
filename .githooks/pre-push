@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Offline subset of CI: clippy (every profile) and the default-feature tests. The npm build, cargo-deny
-# (needs the advisory DB) and the wasm tests run in CI and in `tools/check.sh all`.
+# Offline subset of CI: clippy and the default-feature tests. The npm build, cargo-deny (needs the
+# advisory DB), mobile's test targets and the wasm tests run in CI and in `tools/check.sh all`.
 #
 # Enable once per clone:  git config core.hooksPath .githooks
 # Bypass one push:        git push --no-verify
@@ -8,6 +8,19 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 command -v cargo >/dev/null || { echo "pre-push: cargo not found, skipping"; exit 0; }
+
+# Skip when the commits this push adds (those no ref on the remote has yet) touch nothing cargo
+# reads. Crates' own Markdown counts: tests read the fixtures README.
+zero=0000000000000000000000000000000000000000
+changed=""
+while read -r _ local_sha _ _; do
+  [[ "$local_sha" == "$zero" ]] && continue # a branch deletion
+  changed+="$(git log --format= --name-only "$local_sha" --not --remotes="$1")"$'\n'
+done
+if ! grep -vE '^$|^docs/|^\.github/|^js/|^[^/]+\.md$' <<<"$changed" >/dev/null; then
+  echo "pre-push: no Rust-affecting changes, skipping cargo checks"
+  exit 0
+fi
 
 # Not mobile's test suite: it adds ~4 minutes even warm, and a push whose hook outlasts the remote
 # connection dies with exit 141. CI runs it on every PR.

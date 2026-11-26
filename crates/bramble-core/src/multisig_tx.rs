@@ -17,7 +17,8 @@ pub use wallet_core::send::multisig_intent::{IntentState, StaleReason};
 pub use wallet_core::send::multisig_invoke::MultisigCall;
 use wallet_core::send::multisig_invoke_plan::{MultisigFailure, MultisigStep};
 
-use wallet_core::accounts::multisig_change::review_config_change;
+use wallet_core::accounts::multisig_change::{review_config_change, ConfigReview};
+use wallet_core::accounts::multisig_records::Record;
 use wallet_core::js::felt::same_felt;
 use wallet_core::send::call_decode::Known;
 use wallet_core::send::invoke::{batch_flags, verify_calls};
@@ -104,6 +105,13 @@ pub enum MultisigProposalRequest {
     },
     /// `argentMultisigConfigChangeCall`: the self-call that makes `change`.
     ChangeSigners { change: ConfigChange },
+    /// "Update network fee" and "Propose again" (`data-ms-refresh-intent`, `openUpdatedIntent`):
+    /// the stored calls of this multisig's stale intent `intent_id`, proposed again at the
+    /// current nonce and fee and reviewed afresh. The host names the intent, never its calls.
+    /// Open `multisig_fee_replacement` first, as the extension does, rather than propose twice.
+    /// The calls may be a co-signer's imported batch: the proposal's `review()` is a summary
+    /// only, so open the new intent's card (`multisig_intent_review`) before anyone signs it.
+    Repropose { intent_id: String },
 }
 
 /// A stored signing intent as the screens show it. Everything here is public: the frozen
@@ -133,10 +141,33 @@ pub struct MultisigIntent {
     pub broadcast_transaction_hash: Option<String>,
     /// The package a co-signer imports (`argentMultisigIntentPackage`), compact JSON.
     pub package: String,
+    /// `configReviewFor`: the signer change the lone call makes, decoded against the multisig's
+    /// stored configuration while that is still the intent's snapshot. `None` for anything else:
+    /// more than one call, an ordinary call, a snapshot the stored configuration no longer
+    /// holds, or a call the strict parser refuses.
+    pub change: Option<ConfigChange>,
+    /// The configuration `change` leaves; set exactly when `change` is.
+    pub next_config: Option<ArgentMultisigConfig>,
 }
 
-pub(crate) fn intent_view(intent: &SigningIntent) -> MultisigIntent {
+/// `configReviewFor`: the change an intent's one call makes to the record's stored configuration,
+/// only while that configuration's threshold and GUIDs (in order) are the intent's snapshot. The
+/// stored configuration is `held_config`'s, as the proposal's review reads it: a record mobile
+/// deployed keeps only its `deployment`.
+fn config_review_for(intent: &SigningIntent, record: &Record) -> Option<ConfigReview> {
+    let class = multisig_constants::argent_multisig_class();
+    let [call] = intent.prepared.calls.as_slice() else {
+        return None;
+    };
+    let current = held_config(record, &intent.config_snapshot, class)?;
+    review_config_change(&record.address, &current, call, class).ok()
+}
+
+/// The screens' view of a stored intent. `record` is the multisig's stored record, read for
+/// `change`; without it (a listing whose record is gone) no change is decoded.
+pub(crate) fn intent_view(intent: &SigningIntent, record: Option<&Record>) -> MultisigIntent {
     let prepared = &intent.prepared;
+    let review = record.and_then(|record| config_review_for(intent, record));
     MultisigIntent {
         id: intent.id.clone(),
         multisig_id: intent.account_id.clone(),
@@ -157,6 +188,11 @@ pub(crate) fn intent_view(intent: &SigningIntent) -> MultisigIntent {
         calls: prepared.calls.clone(),
         broadcast_transaction_hash: intent.broadcast_transaction_hash.clone(),
         package: intent.package().to_json(),
+        change: review.as_ref().map(|review| review.change.clone()),
+        next_config: review.map(|review| ArgentMultisigConfig {
+            threshold: review.next_config.threshold,
+            signer_public_keys: review.next_config.signer_public_keys,
+        }),
     }
 }
 
@@ -356,15 +392,7 @@ impl WalletCore {
             .zip(as_calls(&intent.prepared.calls))
             .ok_or_else(|| invalid("invalid Argent multisig intent"))?;
         let class = multisig_constants::argent_multisig_class();
-        // `configReviewFor`: the stored configuration matches the snapshot and the lone call is
-        // a change of it. The stored configuration is `held_config`'s, as a proposal's review
-        // reads it: a record mobile deployed keeps only its `deployment`.
-        let config_change = match intent.prepared.calls.as_slice() {
-            [call] => held_config(&record, &intent.config_snapshot, class).is_some_and(|current| {
-                review_config_change(&record.address, &current, call, class).is_ok()
-            }),
-            _ => false,
-        };
+        let config_change = config_review_for(&intent, &record).is_some();
         let trusted = trusted_tokens(&tokens, network);
         let infos = token_infos(&trusted);
         let token_contracts: Vec<Felt> = known_token_addresses(network)

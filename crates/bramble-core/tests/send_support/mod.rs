@@ -4,8 +4,7 @@
 
 use std::sync::Arc;
 
-#[path = "../common/mod.rs"]
-mod common;
+use crate::common;
 
 pub use common::FakeClock;
 

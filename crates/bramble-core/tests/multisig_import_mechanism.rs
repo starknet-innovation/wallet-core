@@ -5,8 +5,8 @@
 //! Built from `extension-multisig-transactions-refusals.json`'s ready intent; the extension
 //! recorded no import cases, so these hold the Rust to the TypeScript rules directly.
 
-mod multisig_import_support;
-mod multisig_support;
+use crate::multisig_import_support;
+use crate::multisig_support;
 
 use multisig_import_support::*;
 use multisig_support::*;

@@ -2,7 +2,7 @@
 //! against what the extension's TypeScript produced (`fixtures/portfolio-parity.jsonl`), with
 //! Bramble's catalogs (`networks.json`, `token-registry.json`) as the arguments.
 
-mod portfolio_support;
+use crate::portfolio_support;
 
 use bramble_core::PORTFOLIO_POLICY;
 use portfolio_support::*;

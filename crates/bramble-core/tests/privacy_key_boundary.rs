@@ -2,8 +2,7 @@
 //! `Debug`, state, failure, error, or gate output. Keys come from the public parity phrase.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-#[path = "wallet_privacy_support/mod.rs"]
-mod privacy_support;
+use crate::wallet_privacy_support as privacy_support;
 
 use bramble_core::testing::strk20_viewing_key;
 use bramble_core::{PrivacyPurpose, PrivacyStep};

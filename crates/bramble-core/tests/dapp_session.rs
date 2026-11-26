@@ -5,7 +5,7 @@
 //! "returns no accounts without prompting for silent ungranted requests").
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod common;
+use crate::common;
 
 use std::sync::Arc;
 

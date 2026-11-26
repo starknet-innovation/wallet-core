@@ -4,7 +4,7 @@
 //! `transactions/chain-ops-switch.test.ts` and `portfolio/background-discovery-messages.test.ts`.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod common;
+use crate::common;
 
 use bramble_core::{
     DappCard, DappReply, DappSession, DappSettled, NetworkId, RpcResponse, TokenPreferences,

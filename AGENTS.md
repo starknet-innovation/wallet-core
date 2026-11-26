@@ -10,7 +10,10 @@ this file is the operational guide.
 - `bash tools/check.sh quick` before editing, to see any existing drift.
 - Read `docs/PLAN.md` and the affected crate's `Cargo.toml` and `src/lib.rs` before changing it.
 - Enable the hooks once per clone: `git config core.hooksPath .githooks` (pre-commit: fmt +
-  guardrails; pre-push: clippy + default-feature tests; CI adds mobile's suite).
+  guardrails; pre-push: clippy + default-feature tests, skipped when a push touches no Rust; CI
+  adds mobile's test targets). bramble-core's integration tests are one binary
+  (`tests/integration.rs`): add a file there as `mod <file>;`, and run it with
+  `cargo test -p bramble-core --test integration <file>::`.
 
 ## Commands
 
@@ -244,8 +247,10 @@ Grep first; extend in place rather than adding a sibling.
   - SNIP-12 typed data (`typed_data`): the gate (`CheckedTypedData::check`, the name grammar
     `is_safe_snip12_name`, revisions, merkle and enum rules, value conformance in
     `typed_data_values`, leaf readings in `typed_data_scalars`), the chain binding
-    (`message_hash_for_chain`, the only hash a dapp request gets, through Krusty) and the card
-    line (`describe_typed_data`).
+    (`message_hash_for_chain`, the only hash a dapp request gets, through Krusty), the card
+    line (`describe_typed_data`) and the card's decoded rows (`sign_rows`:
+    `CheckedTypedData::sign_rows`, the extension's `signValueText`, over
+    `typed_data_scalars::snip12_reading`).
   - a SNIP-9 outside execution in typed data (`outside_execution::review_outside_execution`,
     at `Stage::Queue` and again at `Stage::Sign`): its calls read with the hash's encoder,
     then the invoke route's review (`send::invoke::verify_calls`,

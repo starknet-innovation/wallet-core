@@ -2,7 +2,7 @@
 //! produced for the same inputs (`fixtures/portfolio-parity.jsonl`, `bun run mobile:parity`),
 //! with Bramble's catalogs (`networks.json`, `token-registry.json`) as the arguments.
 
-mod portfolio_support;
+use crate::portfolio_support;
 
 use bramble_core::PORTFOLIO_POLICY;
 use portfolio_support::*;

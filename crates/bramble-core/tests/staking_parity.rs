@@ -8,7 +8,7 @@
 //! The fixture's chain is the extension's test chain, whose staking contract is `0x5a1`, so the
 //! policy here is `STAKING_POLICY` with that contract on Mainnet; every other number is Bramble's.
 
-mod staking_support;
+use crate::staking_support;
 
 use bramble_core::staking::STAKING_POLICY;
 use serde_json::{json, Value};

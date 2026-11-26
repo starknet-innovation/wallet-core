@@ -114,6 +114,9 @@ fn proposal_call(
             return config_change_call(&record.address, change, class())
                 .map_err(|error| refused(error.message()));
         }
+        MultisigProposalRequest::Repropose { .. } => {
+            return Err(refused("a stale intent's calls are not one call"));
+        }
         MultisigProposalRequest::Transfer {
             token_id,
             recipient,
@@ -220,7 +223,8 @@ impl WalletCore {
         };
         self.require_unlocked()?;
         multisig_intents::upsert(self.data_dir(), &next)?;
-        Ok(intent_view(&next))
+        let record = self.multisig_record(&next.account_id).ok();
+        Ok(intent_view(&next, record.as_ref()))
     }
 }
 
@@ -231,11 +235,12 @@ impl WalletCore {
     pub fn multisig_intents(&self, multisig_id: String) -> Result<Vec<MultisigIntent>, CoreError> {
         self.require_unlocked()?;
         settle(self.data_dir(), &multisig_id)?;
+        let record = self.multisig_record(&multisig_id).ok();
         Ok(multisig_intents::load(self.data_dir())?
             .iter()
             .rev()
             .filter(|intent| intent.account_id == multisig_id)
-            .map(intent_view)
+            .map(|intent| intent_view(intent, record.as_ref()))
             .collect())
     }
 
@@ -317,8 +322,13 @@ impl WalletCore {
         let current = held_config(&record, &snapshot, class())
             .ok_or_else(|| refused("Argent multisig signer configuration changed on-chain"))?;
         let trusted = trusted_tokens(&tokens, network);
-        let call = proposal_call(&record, &trusted, &request)?;
-        let calls = normalize_calls(&[call]).map_err(|error| refused(&error.to_string()))?;
+        let calls = match &request {
+            MultisigProposalRequest::Repropose { intent_id } => {
+                self.stale_calls(intent_id, &record)?
+            }
+            request => vec![proposal_call(&record, &trusted, request)?],
+        };
+        let calls = normalize_calls(&calls).map_err(|error| refused(&error.to_string()))?;
         let infos = token_infos(&trusted);
         let known = Known {
             tokens: &infos,
@@ -446,6 +456,7 @@ impl WalletCore {
         let parsed = IntentPackage::parse(&package, class(), summary_length())
             .ok_or_else(|| refused(INVALID_PACKAGE))?;
         let next = self.import_package(&parsed, &state, &tokens)?;
-        Ok(intent_view(&next))
+        let record = self.multisig_record(&next.account_id).ok();
+        Ok(intent_view(&next, record.as_ref()))
     }
 }

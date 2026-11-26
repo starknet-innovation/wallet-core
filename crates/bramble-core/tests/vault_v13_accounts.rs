@@ -5,8 +5,7 @@
 //! `vault_v13_support::full()`. The other collections are `vault_v13_rules.rs`.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-#[path = "vault_v13_support/mod.rs"]
-mod support;
+use crate::vault_v13_support as support;
 
 use serde_json::{json, Value};
 use support::{at, check, full, kept_ids, text, Change, LEDGERW_PATH_12, MAINNET_CHAIN};

@@ -5,9 +5,8 @@
 //! `configMatchesIntent` holds only while the chain's threshold and GUIDs are the snapshot.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod common;
-mod multisig_support;
-mod multisig_tx_support;
+use crate::multisig_support;
+use crate::multisig_tx_support;
 
 use bramble_core::{CallKind, CoreError, MultisigProposalRequest, MultisigTxStep, StepReply};
 use multisig_support::fixture;
@@ -114,4 +113,68 @@ fn a_signer_change_pins_the_multisig() {
     assert_eq!(review.calls[0].contract_address, wallet.address());
     assert!(review.risk_flags.is_empty(), "{:?}", review.risk_flags);
     assert!(review.has_fresh_authority);
+}
+
+/// `configReviewFor` is null once the stored configuration is no longer the intent's snapshot:
+/// joining the multisig again with a fresh read of another signer set replaces `currentConfig`,
+/// and the stored signer change no longer decodes (nor pins the multisig).
+#[test]
+fn a_signer_change_decodes_only_while_the_stored_config_is_its_snapshot() {
+    let wallet = sepolia();
+    let path = format!(
+        "{}/tests/fixtures/extension-multisig-transactions-signers.json",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let signers: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    let case = &signers["cases"][0];
+    let proposal = wallet
+        .core
+        .clone()
+        .propose_multisig_transaction(
+            wallet.current_authority(),
+            MultisigProposalRequest::ChangeSigners {
+                change: serde_json::from_value(case["change"].clone()).unwrap(),
+            },
+            wallet.tokens(),
+            false,
+        )
+        .unwrap();
+    let step = proposal.advance(StepReply::Start).unwrap();
+    let MultisigTxStep::Proposed { intent_id } = drive(step, &phase(&case["prepare"]), |reply| {
+        proposal.advance(reply).unwrap()
+    }) else {
+        panic!("not proposed");
+    };
+    let listed = || {
+        let intents = wallet.core.multisig_intents(wallet.multisig_id()).unwrap();
+        assert_eq!(intents.len(), 1);
+        intents.into_iter().next().unwrap()
+    };
+    // The same signer set, now as `currentConfig`: still the snapshot, still decoded.
+    wallet
+        .core
+        .add_multisig(wallet.current_authority())
+        .unwrap();
+    let intent = listed();
+    assert_eq!(
+        serde_json::to_value(&intent.change).unwrap(),
+        case["review"]["config"]["change"]
+    );
+    assert_eq!(
+        serde_json::to_value(&intent.next_config.unwrap().signer_public_keys).unwrap(),
+        case["review"]["config"]["nextConfig"]["signerPublicKeys"]
+    );
+    // Another signer set replaces `currentConfig`: no change, and the self-call is unpinned.
+    let guids = wallet.guids();
+    wallet
+        .core
+        .add_multisig(wallet.authority(1, &guids[..2]))
+        .unwrap();
+    let intent = listed();
+    assert_eq!((intent.change, intent.next_config), (None, None));
+    let review = wallet
+        .core
+        .multisig_intent_review(intent_id, wallet.tokens(), wallet.current_authority())
+        .unwrap();
+    assert!(!review.risk_flags.is_empty());
 }

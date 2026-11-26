@@ -37,9 +37,10 @@ use crate::dapp::{
     read_page_request, PageRequest, DAPP_QUEUE_LIMITS, PHISHING_FEED, SUPPORTED_SPECS,
     SUPPORTED_WALLET_API,
 };
+pub(crate) use crate::dapp_cards::settled;
 use crate::dapp_chain::PendingRead;
 use crate::dapp_invoke::{InFlight, InvokeCard};
-use crate::dapp_sign::SignCard;
+use crate::dapp_sign::{SignCard, SignRow};
 use crate::dapp_sign_read::PendingSign;
 use crate::dapp_watch::{watch_dedupe, WatchCard};
 use crate::networks::NetworkId;
@@ -105,7 +106,11 @@ pub enum DappCard {
     Connect,
     /// Sign SNIP-12 typed data as `account_id` (echoed back to `approve_sign_typed_data`) on
     /// `network`. `summary` is `"<primaryType> · <domain.name>"`; `typed_data_json` is the
-    /// document the signature commits to, for the app to render. A SNIP-9 outside execution
+    /// document the signature commits to, for the app's "Raw typed data" disclosure; `domain`
+    /// and `message` are its decoded rows (the extension's `signing.domain` and
+    /// `signing.message`), the primary type the message's first signed row. `outside_execution`
+    /// is set for a SNIP-9 `OutsideExecution` primary type, calls or none, and the app shows the
+    /// extension's `signing.outsideExecution` warning for it. A SNIP-9 outside execution
     /// also carries its calls' summaries and the review's flags, as an invoke card does (both
     /// empty for any other document). One request, one card.
     SignTypedData {
@@ -114,6 +119,9 @@ pub enum DappCard {
         network: NetworkId,
         summary: String,
         typed_data_json: String,
+        domain: Vec<SignRow>,
+        message: Vec<SignRow>,
+        outside_execution: bool,
         call_summaries: Vec<String>,
         flags: Vec<RiskFlag>,
     },
@@ -143,7 +151,7 @@ pub enum DappCard {
 /// A queued card's payload.
 pub(crate) enum Card {
     Connect,
-    Sign(SignCard),
+    Sign(Box<SignCard>),
     SwitchChain(NetworkId),
     WatchAsset(WatchCard),
     Invoke(InvokeCard),
@@ -182,7 +190,7 @@ fn ask_accounts(site: &Site<'_>, silent: bool, shape: Shape) -> Outcome {
 
 pub(crate) struct Waiter {
     pub(crate) request_id: u64,
-    shape: Shape,
+    pub(crate) shape: Shape,
 }
 
 pub(crate) struct State {
@@ -367,19 +375,6 @@ impl DappSession {
         let waiters = state.waiters.remove(approval_id).unwrap_or_default();
         Some((approval.origin, approval.payload, waiters))
     }
-}
-
-pub(crate) fn settled(
-    waiters: Vec<Waiter>,
-    reply: impl Fn(Shape) -> DappReply,
-) -> Vec<DappSettled> {
-    waiters
-        .into_iter()
-        .map(|waiter| DappSettled {
-            request_id: waiter.request_id,
-            reply: reply(waiter.shape),
-        })
-        .collect()
 }
 
 #[uniffi::export]
