@@ -125,7 +125,7 @@ pub struct ActivityRowModel {
 fn status_label(status: TxStatus) -> &'static str {
     match status {
         TxStatus::Preconfirmed => "pre-confirmed",
-        other => crate::activity::store::status_text(other),
+        other => super::activity_rules::status_text(other),
     }
 }
 

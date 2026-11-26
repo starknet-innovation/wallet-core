@@ -8,13 +8,12 @@ use std::collections::HashSet;
 use serde_json::{json, Map, Value};
 
 use super::activity_rules::{
-    activity_token_address, direction_text, fee_json, is_recorded_token_address, parse_direction,
-    price_json, relay_execution, relay_json, submitted_price, transaction_fee, user_fee,
-    user_fee_json,
+    activity_token_address, direction_text, fee_json, is_recorded_token_address, kind_text,
+    parse_direction, parse_kind, parse_status, price_json, relay_execution, relay_json,
+    status_text, submitted_price, transaction_fee, user_fee, user_fee_json,
 };
 pub use super::activity_rules::{FeePayer, RelayExecution, UserFee};
 use super::explorer::is_account_id_for_network;
-use crate::activity::store::{kind_text, parse_kind, parse_status, status_text};
 use crate::js::felt::{
     address_label, canonical_felt, is_stark_field_element, same_felt, same_felt_value,
     uint256_felts,
