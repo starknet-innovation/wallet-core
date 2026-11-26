@@ -1165,6 +1165,34 @@ Features, smallest and least dependent first:
     - Merged (#170): `DappSession::is_blocked_site(origin)`, so the in-app browser can refuse to
       load a listed site, not only its requests: a mobile addition (the extension checks only
       requests). Before the host first calls `refresh_phishing_feed`, only the bundled list blocks.
+    - Open (#183, for #180): the sign card's decoded rows. `CheckedTypedData::sign_rows` ports
+      the side panel's decoder, and `DappCard::SignTypedData` carries `domain` and `message`
+      (`SignRow { key, value, signed }`, signed rows first) and `outside_execution` (set from
+      the primary type, calls or none). Not-signed rows occur in one case: a revision 0 domain's
+      undeclared `revision`, which Krusty drops before hashing. A document whose rows cannot be
+      placed is refused (114), where the extension shows the card and withholds Sign. Missing:
+      a merkle field's root row and a revision 1 `string`'s ByteArray felt, which only Krusty's
+      encoder computes (krusty-kms #280). Follow-ups, in order:
+      1. *Golden rows* (after #175 and Bramble #1066 merge; #175 needs a rebase). Bramble's
+         `scripts/mobile-parity-dapp/typed-data.ts` records, for each `typedData` case the gate
+         accepts, `decodeSignRequest` rendered through `signValueText` (`card: { domain,
+         message, classified }`, each block `{ signed, unsigned }` as `[key, text]` pairs) and
+         `isOutsideExecution`. It adds cases that reach rows the current 28 do not: a revision 0
+         domain with an undeclared `revision`, a revision 1 `string`, a three-leaf merkle tree,
+         and a key past 259 characters. `dapp_typed_data_parity.rs` compares
+         `sign_rows` to them, listing as deviations the root row and the ByteArray felt (until
+         step 2) and the documents Krusty refuses (no card).
+      2. *Krusty's felts* (when krusty-kms ships #280, bumped deliberately with
+         `starknet-types-core`). `sign_rows` prints the root as `<path> ⟨merkle root⟩` and the
+         ByteArray felt in `"text" (string = 0x…)`, through `kms.rs`. The `ponytail:` note in
+         `sign_rows.rs` goes, the ByteArray felt joins a merkle leaf's order key, and step 1's
+         two deviations flip to agreement.
+      3. *Release and mobile.* A tag carrying #183 (and step 2 when it lands), then Bramble
+         `mobile/p16-sign-typed-data`: rows under `signing.domain` and `signing.message`, the
+         not-signed rows apart under `signing.domainUnsigned` and `signing.messageUnsigned`
+         (capped at 48), the raw document behind "Raw typed data", and the
+         `signing.outsideExecution` warning from `outside_execution` instead of parsing
+         `summary`.
     - Next here, in order: the remaining methods' gates and results; the live class read
       (Braavos, upgraded Argent); Ledger typed data; the full export.
     - *Done* (#140): the connect-only slice is exported first, so Bramble can build and test
