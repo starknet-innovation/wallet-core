@@ -442,6 +442,10 @@ impl WalletCore {
         let (read, nonce) = state
             .finished()
             .ok_or(ImportRefusal::Import(ImportError::AuthorityUnavailable))?;
+        // ponytail: `get` and the `upsert` below are not one critical section, so a local sign
+        // landing between them makes this merge fail as "conflict", which a sync settles as
+        // final. Serialise intent mutations (the extension's `runActiveStateMutation`) if that
+        // race shows up; the local operations take no shared lock today.
         let stored = multisig_intents::get(self.data_dir(), &parsed.intent.id)?;
         let trusted = trusted_tokens(tokens, network);
         let infos = token_infos(&trusted);
