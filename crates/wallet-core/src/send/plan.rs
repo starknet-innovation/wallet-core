@@ -165,6 +165,8 @@ pub(crate) struct Work {
     pub pin_attempts: u8,
     /// Signed invoke hash retained for confirmation and interruption reporting.
     pub invoke_hash: Option<Felt>,
+    /// Whether the node accepted the invoke write.
+    pub invoke_accepted: bool,
     pub checkpoint: usize,
 }
 

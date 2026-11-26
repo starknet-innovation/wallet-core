@@ -164,7 +164,7 @@ pub(crate) fn is_entrypoint(name: &str) -> bool {
 /// The rules that need neither the wallet's context nor a selector: at least one call and no more
 /// than `policy` allows, each a non-zero contract with a grammatical entrypoint, and none to
 /// `sender` itself. Felts compare by value, so no spelling of the account slips past.
-pub(crate) fn check(sender: &Felt, calls: &[Call], policy: &Policy) -> Result<(), InvokeRefusal> {
+pub fn check(sender: &Felt, calls: &[Call], policy: &Policy) -> Result<(), InvokeRefusal> {
     if calls.is_empty() {
         return Err(InvokeRefusal::NoCalls);
     }

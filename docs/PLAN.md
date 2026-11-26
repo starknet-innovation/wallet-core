@@ -1168,8 +1168,26 @@ Features, smallest and least dependent first:
       fails is refused (114) rather than retried on the next endpoint. Added tokens stop at 50
       per network for the person and sites alike (`MAX_ADDED_TOKENS_PER_NETWORK`, the
       portfolio policy's `max_added_tokens`).
-    - Next here, in order: invoke and declare; the live class read (Braavos, upgraded Argent);
-      Ledger typed data; the full export.
+    - In review: `wallet_addInvokeTransaction` (`bramble-core`'s `dapp_invoke.rs`). The
+      blocklist and queue room, the lock and the granted active account (a site granted
+      elsewhere is also shown a connect card), an account the wallet signs with, the batch's
+      bounds and the self-call refusal, then the unrefused review (`verify_calls`) on the card
+      (`DappCard::Invoke`), a poisoned payee flagged, not refused (Sherlock 140). Approving
+      (`approve_invoke`) re-checks all of it, reviews again with `Invoke::reviewed` (which
+      refuses the poisoned payee) and hands the host a `TransferPlan`, so the fee review, the
+      person's confirm and a Ledger account's device signature are every batch's. `settle_invoke`
+      answers the page: `{ transaction_hash }` once the node accepted it (`Plan::
+      accepted_invoke`), 113 if the plan closed unsigned, 163 if after; `withdraw` closes a plan
+      no page waits on. A divergence: the fee is estimated after approval, in the plan, not on
+      the card while it waits.
+    - *Decided* 2026-11-26: `wallet_addDeclareTransaction` stays refused (163) on mobile, a
+      deliberate divergence. Declaring a class is a developer workflow no mobile dapp needs, and
+      it would take a declare kind in the plan and Sierra class hashing, which Krusty does not
+      have (the extension leaves it to starknet.js when a site omits `class_hash`). Revisit if
+      product asks for it: requiring `class_hash` (which the node checks against the class)
+      avoids the hashing.
+    - Next here, in order: the live class read (Braavos, upgraded Argent); Ledger typed data;
+      the full export.
     - *Done* (#140): the connect-only slice is exported first, so Bramble can build and test
       the WebView bridge against real dapps while review and signing follow. Connect's card is
       a site and an account, so the slice does not wait on M19–M21.

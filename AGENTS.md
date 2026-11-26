@@ -272,7 +272,9 @@ Grep first; extend in place rather than adding a sibling.
   inputs (`trusted_recipients`, the tracked tokens from the session's `TokenPreferences`, the
   allowance log), read before the session hold. The card list and `deny` are `dapp_cards.rs`;
   add-chain, switch-chain and deployment data (and the host's chain reads, `answer_read`) are
-  `dapp_chain.rs`; `wallet_watchAsset` is `dapp_watch.rs`.
+  `dapp_chain.rs`; `wallet_watchAsset` is `dapp_watch.rs`; `wallet_addInvokeTransaction`'s card
+  and its plan (`approve_invoke`, `settle_invoke`, over `send::plan::TransferPlan`) are
+  `dapp_invoke.rs`.
 - Only `wallet-core` depends on Krusty (`kms.rs`, `nostr.rs`, `accounts/`, `send/`);
   `bramble-core` goes through `wallet-core` and never names `krusty_kms`.
 

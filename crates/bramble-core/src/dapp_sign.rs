@@ -109,7 +109,7 @@ pub(crate) struct ReviewInputs {
 }
 
 impl ReviewInputs {
-    fn context(&self) -> ReviewContext<'_> {
+    pub(crate) fn context(&self) -> ReviewContext<'_> {
         ReviewContext {
             known: Known {
                 tokens: &self.tokens,
@@ -131,7 +131,11 @@ impl DappSession {
         typed_data: &JsValue,
         network: Option<NetworkId>,
     ) -> Option<ReviewInputs> {
-        let network = network.filter(|_| is_outside_execution(typed_data))?;
+        self.review_inputs_for(network.filter(|_| is_outside_execution(typed_data))?)
+    }
+
+    /// What the invoke route's review reads on `network`; `None` when any of it cannot be read.
+    pub(crate) fn review_inputs_for(&self, network: NetworkId) -> Option<ReviewInputs> {
         let tracked = trusted_tokens(&self.tokens, network);
         let trusted = self.wallet.trusted_recipients(network).ok()?;
         let token_contracts = known_token_addresses(network)

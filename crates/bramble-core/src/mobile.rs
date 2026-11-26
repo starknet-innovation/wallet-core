@@ -37,6 +37,7 @@ mod container;
 mod dapp_cards;
 mod dapp_chain;
 mod dapp_expiry;
+mod dapp_invoke;
 mod dapp_session;
 mod dapp_sign;
 mod dapp_sites;
@@ -112,6 +113,7 @@ pub use class_declared::ClassDeclaredRead;
 pub use clock::HostClock;
 pub use contact_card::{ContactCardParse, WalletContactCard};
 pub use contacts::Contact;
+pub use dapp_invoke::DappInvokeStart;
 pub use dapp_session::{DappApproval, DappCard, DappReply, DappSession, DappSettled};
 pub use ffi_coordination::{
     CoordinationSyncOutcome, CoordinationSyncStep, NostrSyncPlan, RelayPolicy,

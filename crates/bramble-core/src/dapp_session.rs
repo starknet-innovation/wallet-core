@@ -3,8 +3,10 @@
 //! (`wallet_requestAccounts`, `getPermissions`, `requestChainId`, the discovery methods, and
 //! Bramble's `mc_accounts` and `mc_requestAccounts`), signs a site's SNIP-12 typed data once
 //! the person approves its card (`dapp_sign.rs`), and answers the chain methods (add-chain,
-//! switch-chain and deployment data, `dapp_chain.rs`) and watch-asset (`dapp_watch.rs`); every
-//! other method is refused until its review lands. Nothing signs without a queued card the person approved.
+//! switch-chain and deployment data, `dapp_chain.rs`), watch-asset (`dapp_watch.rs`) and a call
+//! batch (`dapp_invoke.rs`, through the plan the person confirms). A declare is refused, by
+//! decision, and the STRK20 methods wait on P15. Nothing signs without a queued card the person
+//! approved.
 //!
 //! The host establishes the asking origin (the main frame's committed `https` origin) and passes
 //! each request with an id of its own. A request that needs the person comes back `Pending`; the
@@ -36,6 +38,7 @@ use crate::dapp::{
     SUPPORTED_WALLET_API,
 };
 use crate::dapp_chain::PendingRead;
+use crate::dapp_invoke::{InFlight, InvokeCard};
 use crate::dapp_sign::SignCard;
 use crate::dapp_watch::{watch_dedupe, WatchCard};
 use crate::networks::NetworkId;
@@ -124,6 +127,16 @@ pub enum DappCard {
         token: TokenConfig,
         already_tracked: bool,
     },
+    /// Submit a call batch from `account_id` on `network` (echoed by the card's id alone): each
+    /// call's summary and the review's flags. Approving starts a plan whose own review shows the
+    /// fee and takes the person's confirm.
+    Invoke {
+        account_id: String,
+        address: String,
+        network: NetworkId,
+        call_summaries: Vec<String>,
+        flags: Vec<RiskFlag>,
+    },
 }
 
 /// A queued card's payload.
@@ -132,6 +145,7 @@ pub(crate) enum Card {
     Sign(SignCard),
     SwitchChain(NetworkId),
     WatchAsset(WatchCard),
+    Invoke(InvokeCard),
 }
 
 /// Which result a held request wants.
@@ -145,6 +159,8 @@ pub(crate) enum Shape {
     Signature,
     /// `wallet_switchStarknetChain`, `wallet_watchAsset`: `true`.
     True,
+    /// `wallet_addInvokeTransaction`: `{ transaction_hash }`, answered by `settle_invoke`.
+    Invoke,
 }
 
 enum Outcome {
@@ -173,6 +189,8 @@ pub(crate) struct State {
     pub(crate) waiters: HashMap<String, Vec<Waiter>>,
     /// Requests waiting on the host's chain read, by its request id.
     pub(crate) reads: HashMap<u64, PendingRead>,
+    /// Approved invoke cards whose plans the host is running, by card id.
+    pub(crate) in_flight: HashMap<String, InFlight>,
 }
 
 /// The dapp requests of one wallet. Thread-safe; every method takes `&self`.
@@ -207,7 +225,9 @@ fn shaped(shape: Shape, account: Option<&DappAccount>) -> DappReply {
         Shape::Addresses => addresses(&accounts),
         Shape::View => accounts_view(&accounts),
         // Never held on a connect card.
-        Shape::Signature | Shape::True => return error(WalletRpcError::unknown_error()),
+        Shape::Signature | Shape::True | Shape::Invoke => {
+            return error(WalletRpcError::unknown_error())
+        }
     })
 }
 
@@ -298,7 +318,7 @@ impl DappSession {
             Card::Connect => Some(CONNECT_DEDUPE.into()),
             Card::SwitchChain(network) => Some(switch_dedupe(*network)),
             Card::WatchAsset(card) => Some(watch_dedupe(card.token.network, &card.token.address)),
-            Card::Sign(_) => None,
+            Card::Sign(_) | Card::Invoke(_) => None,
         };
         let queued = match state.queue.enqueue(origin, dedupe, card, now, None) {
             Ok(Ok(queued)) => queued,
@@ -313,6 +333,17 @@ impl DappSession {
             .or_default()
             .push(Waiter { request_id, shape });
         DappReply::Pending { approval_id: id }
+    }
+
+    /// `promptReconnectForStaleGrant`: a connect card for a site that holds a grant the active
+    /// account is not in. No page waits on it; a site asking to connect joins it.
+    pub(crate) fn queue_reconnect(&self, origin: &str) {
+        let mut state = crate::wallet::guard(&self.state);
+        let now = self.wallet.now().monotonic_ms;
+        let reconnect = Some(CONNECT_DEDUPE.into());
+        let _ = state
+            .queue
+            .enqueue(origin, reconnect, Card::Connect, now, None);
     }
 
     /// Takes `approval_id`'s card out of the queue, with the requests waiting on it, when `kind`
@@ -359,6 +390,7 @@ impl DappSession {
                 queue: ApprovalQueue::new(DAPP_QUEUE_LIMITS),
                 waiters: HashMap::new(),
                 reads: HashMap::new(),
+                in_flight: HashMap::new(),
             }),
             feed: Mutex::new(PhishingFeed::new(PHISHING_FEED)),
         })
@@ -394,6 +426,9 @@ impl DappSession {
             ) => return self.request_chain(&origin, request, shown, request_id),
             PageRequest::Spec(Request::WatchAsset(asset)) => {
                 return self.request_watch(&origin, asset, shown, request_id);
+            }
+            PageRequest::Spec(Request::AddInvoke { calls }) => {
+                return self.request_invoke(&origin, calls, request_id);
             }
             _ => {}
         }
