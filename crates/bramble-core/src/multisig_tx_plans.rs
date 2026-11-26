@@ -139,7 +139,7 @@ impl MultisigProposal {
         match multisig_intents::upsert(core.data_dir(), &intent) {
             Ok(()) => {
                 *self.stored.lock().unwrap_or_else(PoisonError::into_inner) =
-                    Some(intent_view(&intent));
+                    Some(intent_view(&intent, Some(&self.record)));
                 MultisigTxStep::Proposed {
                     intent_id: intent.id,
                 }
@@ -270,7 +270,7 @@ impl MultisigSubmission {
 impl MultisigSubmission {
     /// The intent being submitted, as it was when the plan was made.
     pub fn intent(&self) -> MultisigIntent {
-        intent_view(&self.intent)
+        intent_view(&self.intent, Some(&self.record))
     }
 
     /// Feeds the last reply (`Start` first). The session is checked once more after the chain is
