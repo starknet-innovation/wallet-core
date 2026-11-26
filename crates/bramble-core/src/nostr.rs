@@ -13,9 +13,7 @@ use crate::CoreError;
 pub use wallet_core::kms::utf16_length;
 #[cfg(any(test, feature = "testing"))]
 pub use wallet_core::nostr::parse_event_json;
-pub use wallet_core::nostr::{
-    is_public_key, safe_non_negative_integer, NostrApplicationData, NostrEvent,
-};
+pub use wallet_core::nostr::{is_public_key, NostrApplicationData, NostrEvent};
 
 /// The wallet's coordination public key: x-only, 64 lowercase hex characters.
 pub fn public_key(mnemonic: &str) -> Result<String, CoreError> {

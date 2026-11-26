@@ -12,6 +12,7 @@
 
 pub(crate) mod gasless;
 pub(crate) mod gasless_offers;
+pub(crate) mod gasless_sign;
 pub(crate) mod plan;
 pub(crate) mod revoke;
 pub(crate) mod swap;

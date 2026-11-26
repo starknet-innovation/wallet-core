@@ -1,27 +1,26 @@
 //! Coordination metadata (`coordination.json`) and the co-signer trust judgement, mirroring
 //! `packages/features/multisig/src/coordination.ts` and `multisig-coordination-ops.ts`.
 //!
-//! Checkpoints keep the extension's semantics exactly: every sync that reaches the open step
-//! advances `syncedAt` and marks every authenticated event id seen. The `held` list is mobile-only:
-//! intent import is deferred, so trusted packages are counted and their ids remembered (bounded,
-//! within the lookback window) instead of imported. It never freezes the checkpoint.
+//! Checkpoints keep the extension's semantics exactly: a sync receipts only the wraps it is
+//! finished with (imported, a no-op, or refused for good), and `syncedAt` stays just behind the
+//! oldest wrap it will try again (`retryable_synced_at`). The `held` list is an earlier mobile
+//! build's, from before a sync imported: it is still read, so such a file loads, and a sync
+//! empties it.
 
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use wallet_core::nostr::sync_window::SyncLookbacks;
 
 use crate::argent_multisig;
 use crate::contacts;
-use crate::multisig_store::{self, Authority, Record};
-use crate::nostr::{self, NostrApplicationData};
+use crate::multisig_store;
+use crate::nostr;
 use crate::nostr_relay::{is_relay_url, stored_relay_url};
 use crate::{multisig_constants, public_store, CoreError};
 
-/// Held packages remembered across all shared accounts.
+/// The most held packages an earlier build stored.
 const MAX_HELD: usize = 50;
-const INTENT_PACKAGE_KIND: &str = "bramble.argent-multisig-intent";
 
 /// `NostrSyncCheckpoint`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -33,7 +32,7 @@ pub struct Checkpoint {
     pub synced_at: u64,
 }
 
-/// One trusted package received while import is deferred. Ids only, never content.
+/// A trusted package an earlier build received before a sync imported. Ids only, never content.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Held {
@@ -147,9 +146,7 @@ pub fn checkpoint<'a>(
 }
 
 /// Mobile's sync window for `wallet_core::nostr::sync_window` (30 days back on a first sync, else
-/// three days behind the last checkpoint). Mobile records `syncedAt = now`: it holds packages
-/// instead of importing them, so no wrap is retryable and `retryable_synced_at` and
-/// `is_wrap_past_retry` have no call site until intent import lands.
+/// three days behind the last checkpoint, which a retryable wrap holds back).
 pub fn sync_lookbacks() -> SyncLookbacks {
     super::SYNC_LOOKBACKS
 }
@@ -189,127 +186,34 @@ pub fn record_sync(file: &mut File, checkpoint: Checkpoint) -> bool {
     true
 }
 
-/// Adds held packages, dropping duplicates and anything older than the 30-day lookback, keeping at
-/// most 50, newest first.
-pub fn record_held(file: &mut File, held: Vec<Held>, now: u64) {
-    let oldest = now.saturating_sub(multisig_constants::get().coordination.sync_lookback_seconds);
-    let mut all = held;
-    all.append(&mut file.held);
-    let mut kept: Vec<Held> = Vec::new();
-    for entry in all {
-        if entry.created_at >= oldest && !kept.iter().any(|k| k.event_id == entry.event_id) {
-            kept.push(entry);
-        }
-    }
-    kept.sort_by(|a, b| {
-        b.created_at
-            .cmp(&a.created_at)
-            .then_with(|| a.event_id.cmp(&b.event_id))
-    });
-    kept.truncate(MAX_HELD);
-    file.held = kept;
-}
-
-/// Whether a stored value is a canonical non-zero felt, as `canonicalNonZeroFelt`.
-fn canonical_non_zero(value: &Value) -> Option<String> {
-    let text = value.as_str()?;
-    crate::felt::parse_non_zero(text).filter(|f| crate::felt::canonical(f) == text)?;
-    Some(text.to_string())
-}
-
-/// `isConfigSnapshot`: pinned class, 1..=32 ascending canonical GUIDs, threshold in `1..=n`.
-fn config_snapshot(value: &Value) -> Option<Authority> {
-    let object = value.as_object()?;
-    if !object
-        .keys()
-        .all(|key| ["classHash", "signerGuids", "threshold"].contains(&key.as_str()))
-    {
-        return None;
-    }
-    if object.get("classHash")?.as_str()? != argent_multisig::class_hash() {
-        return None;
-    }
-    let signer_guids = object
-        .get("signerGuids")?
-        .as_array()?
-        .iter()
-        .map(canonical_non_zero)
-        .collect::<Option<Vec<String>>>()?;
-    let threshold =
-        u32::try_from(nostr::safe_non_negative_integer(object.get("threshold")?)?).ok()?;
-    multisig_store::is_authority(&signer_guids, threshold).then_some(Authority {
-        threshold,
-        signer_guids,
+/// `isSavedNostrContact`: the sender is a saved contact on `network_id`.
+pub fn is_saved_nostr_contact(
+    contacts: &[contacts::Entry],
+    sender: &str,
+    network_id: &str,
+) -> bool {
+    contacts.iter().any(|contact| {
+        contact.network_id == network_id && contact.nostr_public_key.as_deref() == Some(sender)
     })
 }
 
-const INTENT_KEYS: [&str; 8] = [
-    "accountId",
-    "broadcastTransactionHash",
-    "configSnapshot",
-    "id",
-    "prepared",
-    "signatures",
-    "state",
-    "summary",
-];
-
-/// The package's account id and snapshot, checked structurally (full intent validation needs the
-/// invoke-v3 re-hash and Stark signature verification, deferred with import).
-fn package_authority(content: &str) -> Option<(String, Authority)> {
-    let package: Value = serde_json::from_str(content).ok()?;
-    let object = package.as_object()?;
-    if !object
-        .keys()
-        .all(|key| ["intent", "kind", "version"].contains(&key.as_str()))
-        || object.get("kind")?.as_str()? != INTENT_PACKAGE_KIND
-        || nostr::safe_non_negative_integer(object.get("version")?)? != 1
-    {
-        return None;
-    }
-    let intent = object.get("intent")?.as_object()?;
-    if !intent.keys().all(|key| INTENT_KEYS.contains(&key.as_str())) {
-        return None;
-    }
-    let account_id = intent.get("accountId")?.as_str()?.to_string();
-    Some((account_id, config_snapshot(intent.get("configSnapshot")?)?))
-}
-
-/// Whether an authenticated package is a trusted co-signer update for `record`.
-///
-/// As `trustedSharedIntent`: the identifier is `bramble.multisig`, the package names this record,
-/// and the sender is a saved same-network contact whose Stark key GUID is in the snapshot. Because
-/// mobile holds packages instead of importing them, it also runs the comparison import would run:
-/// the snapshot must equal the record's stored authority. Without that, any saved contact could
-/// forge a snapshot listing itself.
-pub fn is_trusted(
-    opened: &NostrApplicationData,
+/// `isCoordinationSigner`: the sender is a saved contact on `network_id` whose Stark key's Argent
+/// signer GUID is in `signer_guids`. A key the GUID cannot be computed for is not a signer.
+pub fn is_saved_signer(
     contacts: &[contacts::Entry],
-    record: &Record,
-    authority: Option<&Authority>,
+    sender: &str,
+    network_id: &str,
+    signer_guids: &[String],
 ) -> bool {
-    if opened.identifier != multisig_constants::get().coordination.identifier
-        || !nostr::is_public_key(&opened.sender_public_key)
-    {
-        return false;
-    }
-    let Some((account_id, snapshot)) = package_authority(&opened.content) else {
-        return false;
-    };
-    let Some(authority) = authority else {
-        return false;
-    };
-    account_id == record.id
-        && snapshot == *authority
-        && contacts.iter().any(|contact| {
-            contact.network_id == record.network_id
-                && contact.nostr_public_key.as_deref() == Some(opened.sender_public_key.as_str())
-                && contact
-                    .public_key_x
-                    .as_deref()
-                    .and_then(|key| argent_multisig::signer_guid_hex(key).ok())
-                    .is_some_and(|guid| snapshot.signer_guids.contains(&guid))
-        })
+    contacts.iter().any(|contact| {
+        contact.network_id == network_id
+            && contact.nostr_public_key.as_deref() == Some(sender)
+            && contact
+                .public_key_x
+                .as_deref()
+                .and_then(|key| argent_multisig::signer_guid_hex(key).ok())
+                .is_some_and(|guid| signer_guids.contains(&guid))
+    })
 }
 
 #[cfg(test)]

@@ -326,6 +326,7 @@ fn multisig_transactions_take_and_return_no_key() {
         "prepare_multisig_deployment",
         "propose_multisig_transaction",
         "sign_multisig_intent",
+        "sign_multisig_intent_on_device",
         "submit_multisig_intent",
         "import_multisig_intent",
         "multisig_intent_read",
@@ -347,6 +348,7 @@ fn gasless_takes_no_calls_hash_or_signature_and_returns_none() {
     let source = [
         include_str!("../src/send/gasless.rs"),
         include_str!("../src/send/gasless_offers.rs"),
+        include_str!("../src/send/gasless_sign.rs"),
     ];
     let exported: Vec<Exported> = source.iter().flat_map(|s| exported_signatures(s)).collect();
     for exported in &exported {
@@ -377,7 +379,8 @@ fn gasless_takes_no_calls_hash_or_signature_and_returns_none() {
             "choose",
             "resume",
             "accept_submit_reply",
-            "gasless_offers"
+            "gasless_offers",
+            "advance_device"
         ]
     );
 }
@@ -444,6 +447,7 @@ fn no_export_takes_calls_to_sign() {
 fn the_dapp_session_signs_only_an_approved_card() {
     let names: Vec<String> = [
         include_str!("../src/dapp_session.rs"),
+        include_str!("../src/dapp_expiry.rs"),
         include_str!("../src/dapp_sign.rs"),
         include_str!("../src/dapp_sites.rs"),
     ]
@@ -460,6 +464,7 @@ fn the_dapp_session_signs_only_an_approved_card() {
             "approve_connect",
             "deny",
             "settle_expired",
+            "withdraw",
             "approve_sign_typed_data",
             "refresh_phishing_feed",
             "answer_phishing_feed",
