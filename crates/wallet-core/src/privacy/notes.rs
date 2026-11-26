@@ -11,6 +11,9 @@
 //! (matched on the exact `sender_addr` text, as the SDK's `Map<string, bigint>` does) or in an
 //! earlier page's cursor (matched numerically). Any violation is `None`: the caller fails
 //! `InvalidResponse` and nothing partial is shown.
+//!
+//! The reply readers (`page_channels`, `read_note`, `cursor_channels`, `cursor_complete`) are
+//! shared with the proof job's note walk (`incoming`), which keeps the notes themselves.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -28,14 +31,14 @@ pub struct Totals {
     known_senders: BTreeSet<U256>,
 }
 
-fn array(value: Option<&Ordered>) -> Option<&[Ordered]> {
+pub(super) fn array(value: Option<&Ordered>) -> Option<&[Ordered]> {
     match value? {
         Ordered::Array(items) => Some(items),
         _ => None,
     }
 }
 
-fn text(value: Option<&Ordered>) -> Option<&str> {
+pub(super) fn text(value: Option<&Ordered>) -> Option<&str> {
     match value? {
         Ordered::Str(text) => Some(text),
         _ => None,
@@ -52,26 +55,24 @@ impl Totals {
         limits: &Limits,
         requested: &BTreeSet<U256>,
     ) -> Option<()> {
-        let mut page_senders: Vec<&str> = Vec::new();
-        for channel in array(reply.get("channels"))? {
-            let sender = text(channel.get("sender_addr"))?;
-            // `BigInt(ch.channel_key)` must parse, or the SDK throws.
-            js_bigint(channel.get("channel_key")?)?;
-            page_senders.push(sender);
-        }
+        let page_senders: Vec<&str> = page_channels(reply)?
+            .into_iter()
+            .map(|(sender, _)| sender)
+            .collect();
         // `subchannels` is not read by the SDK's incoming discovery, so it is not judged here.
         for note in array(reply.get("notes"))? {
-            let token = js_bigint(note.get("token")?)?;
-            let sender_text = text(note.get("sender_addr"))?;
-            let sender = js_bigint(note.get("sender_addr")?)?;
-            js_bigint(note.get("salt")?)?;
-            let amount = js_bigint(note.get("amount")?)?;
-            if !page_senders.contains(&sender_text) && !self.known_senders.contains(&sender) {
+            let note = read_note(note)?;
+            if !page_senders.contains(&note.sender_text)
+                && !self.known_senders.contains(&note.sender)
+            {
                 return None;
             }
-            self.add(token, amount, limits, requested)?;
+            self.add(note.token, note.amount, limits, requested)?;
         }
-        self.record_cursor(reply.get("cursor")?)
+        let senders = cursor_channels(reply.get("cursor")?)?;
+        self.known_senders
+            .extend(senders.into_iter().map(|(sender, _)| sender));
+        Some(())
     }
 
     fn add(
@@ -107,51 +108,80 @@ impl Totals {
         Some(())
     }
 
-    /// `apiCursorToNotesCursor`: every sender and subchannel token key must be a big integer;
-    /// a missing `channel_key` reads as `0n`, which the SDK still accepts as a key.
-    fn record_cursor(&mut self, cursor: &Ordered) -> Option<()> {
-        let Ordered::Object(_) = cursor else {
-            return None;
-        };
-        let Some(channels) = cursor.get("channels") else {
-            return Some(());
-        };
-        let members = match channels {
-            Ordered::Object(members) => members,
-            Ordered::Null => return Some(()),
-            _ => return None,
-        };
-        let mut senders = Vec::with_capacity(members.len());
-        for (sender, channel) in members {
-            let sender = js_bigint(&Ordered::Str(sender.clone()))?;
-            match channel.get("channel_key") {
-                None | Some(Ordered::Null) => {}
-                Some(key) => {
-                    js_bigint(key)?;
-                }
-            }
-            match channel.get("subchannels") {
-                None | Some(Ordered::Null) => {}
-                Some(Ordered::Object(tokens)) => {
-                    for (token, _) in tokens {
-                        js_bigint(&Ordered::Str(token.clone()))?;
-                    }
-                }
-                Some(_) => return None,
-            }
-            senders.push(sender);
-        }
-        self.known_senders.extend(senders);
-        Some(())
-    }
-
     /// The total for one token (zero when no note was found).
     pub fn total(&self, token: &U256) -> U256 {
         self.totals.get(token).copied().unwrap_or(U256::ZERO)
     }
 }
 
-fn flag(value: Option<&Ordered>) -> Option<bool> {
+/// One reply's `channels` as the SDK's `channelKeyMap` reads them: each `sender_addr` as written
+/// (the map is keyed by that text) and `BigInt(channel_key)`, which must parse.
+pub(super) fn page_channels(reply: &Ordered) -> Option<Vec<(&str, U256)>> {
+    array(reply.get("channels"))?
+        .iter()
+        .map(|channel| {
+            Some((
+                text(channel.get("sender_addr"))?,
+                js_bigint(channel.get("channel_key")?)?,
+            ))
+        })
+        .collect()
+}
+
+/// The fields of one `incoming_state` note every reader parses: `BigInt` of the token, sender,
+/// salt and amount, and the sender as written.
+pub(super) struct ApiNote<'a> {
+    pub token: U256,
+    pub sender_text: &'a str,
+    pub sender: U256,
+    pub salt: U256,
+    pub amount: U256,
+}
+
+pub(super) fn read_note(note: &Ordered) -> Option<ApiNote<'_>> {
+    Some(ApiNote {
+        token: js_bigint(note.get("token")?)?,
+        sender_text: text(note.get("sender_addr"))?,
+        sender: js_bigint(note.get("sender_addr")?)?,
+        salt: js_bigint(note.get("salt")?)?,
+        amount: js_bigint(note.get("amount")?)?,
+    })
+}
+
+/// `apiCursorToNotesCursor`: each sender in a reply's cursor with its `channel_key` (`None` when
+/// absent or `null`, which the SDK reads as `0n`). Every sender and subchannel token key must be a
+/// big integer.
+pub(super) fn cursor_channels(cursor: &Ordered) -> Option<Vec<(U256, Option<U256>)>> {
+    let Ordered::Object(_) = cursor else {
+        return None;
+    };
+    let members = match cursor.get("channels") {
+        None | Some(Ordered::Null) => return Some(Vec::new()),
+        Some(Ordered::Object(members)) => members,
+        Some(_) => return None,
+    };
+    let mut senders = Vec::with_capacity(members.len());
+    for (sender, channel) in members {
+        let sender = js_bigint(&Ordered::Str(sender.clone()))?;
+        let key = match channel.get("channel_key") {
+            None | Some(Ordered::Null) => None,
+            Some(key) => Some(js_bigint(key)?),
+        };
+        match channel.get("subchannels") {
+            None | Some(Ordered::Null) => {}
+            Some(Ordered::Object(tokens)) => {
+                for (token, _) in tokens {
+                    js_bigint(&Ordered::Str(token.clone()))?;
+                }
+            }
+            Some(_) => return None,
+        }
+        senders.push((sender, key));
+    }
+    Some(senders)
+}
+
+pub(super) fn flag(value: Option<&Ordered>) -> Option<bool> {
     match value {
         None | Some(Ordered::Null) => Some(false),
         Some(Ordered::Bool(value)) => Some(*value),

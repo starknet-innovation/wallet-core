@@ -20,6 +20,7 @@ const GET_FEE_AMOUNT_SELECTOR: &str =
 /// The discovery paths, appended to the configured URL as the SDK does.
 pub const PREFLIGHT_PATH: &str = "/v1/sync/preflight_check";
 pub const INCOMING_PATH: &str = "/v1/sync/incoming_state";
+pub const OUTGOING_PATH: &str = "/v1/sync/outgoing_state";
 
 /// A pinned block, echoed exactly as the service first sent it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -84,13 +85,15 @@ pub fn preflight(
     with_key(&head, viewing_key, &tail)
 }
 
-/// `POST /v1/sync/incoming_state`: the first page (`cursor: {}`, no block) or a later one with the
-/// reply's cursor and the pinned block.
+/// `POST /v1/sync/incoming_state`: `cursor` is `{}` on the first page and the reply's cursor
+/// after; `block_ref` follows it when the caller has one (`discoverNotes` sends the pinned block
+/// from the second page on, and on the first page only when given a `blockIdentifier`).
 pub fn incoming(
     pool: &Felt,
     account: &Felt,
     viewing_key: &SecretFelt,
-    page: Option<(&Ordered, &BlockRef)>,
+    cursor: Option<&Ordered>,
+    block: Option<&BlockRef>,
 ) -> Zeroizing<Vec<u8>> {
     let mut head = String::from("{");
     member(&mut head, "contract_address", &felt::canonical(pool));
@@ -98,15 +101,45 @@ pub fn incoming(
     member(&mut head, "recipient_address", &felt::canonical(account));
     head.push(',');
     let mut tail = String::from(",\"cursor\":");
-    match page {
+    match cursor {
         None => tail.push_str("{}"),
-        Some((cursor, block)) => {
-            cursor.write(&mut tail);
-            tail.push_str(",\"block_ref\":");
-            block.write(&mut tail);
-        }
+        Some(cursor) => cursor.write(&mut tail),
+    }
+    if let Some(block) = block {
+        tail.push_str(",\"block_ref\":");
+        block.write(&mut tail);
     }
     tail.push('}');
+    with_key(&head, viewing_key, &tail)
+}
+
+/// `POST /v1/sync/outgoing_state`, as `discoverChannels` sends it for a recipient list: the
+/// cursor, the block, then every recipient as `toHex` writes it, in the caller's order.
+pub fn outgoing(
+    pool: &Felt,
+    account: &Felt,
+    viewing_key: &SecretFelt,
+    cursor: &Ordered,
+    block: &BlockRef,
+    recipients: &[Felt],
+) -> Zeroizing<Vec<u8>> {
+    let mut head = String::from("{");
+    member(&mut head, "contract_address", &felt::canonical(pool));
+    head.push(',');
+    member(&mut head, "sender_address", &felt::canonical(account));
+    head.push(',');
+    let mut tail = String::from(",\"cursor\":");
+    cursor.write(&mut tail);
+    tail.push_str(",\"block_ref\":");
+    block.write(&mut tail);
+    tail.push_str(",\"recipients\":[");
+    for (index, recipient) in recipients.iter().enumerate() {
+        if index > 0 {
+            tail.push(',');
+        }
+        write_str(&mut tail, &felt::canonical(recipient));
+    }
+    tail.push_str("]}");
     with_key(&head, viewing_key, &tail)
 }
 
@@ -145,7 +178,7 @@ mod tests {
     fn first_page_has_an_empty_cursor_and_no_block() {
         let one = Felt::ONE;
         let key = SecretFelt::new(Felt::THREE);
-        let body = incoming(&one, &Felt::TWO, &key, None);
+        let body = incoming(&one, &Felt::TWO, &key, None, None);
         assert_eq!(
             std::str::from_utf8(&body).unwrap(),
             r#"{"contract_address":"0x1","recipient_address":"0x2","viewing_key":"0x3","cursor":{}}"#
@@ -155,7 +188,8 @@ mod tests {
             &one,
             &Felt::TWO,
             &key,
-            Some((&cursor, &BlockRef::Number(7))),
+            Some(&cursor),
+            Some(&BlockRef::Number(7)),
         );
         assert!(std::str::from_utf8(&later)
             .unwrap()
@@ -177,8 +211,11 @@ mod tests {
             &max,
             &max,
             &key,
-            Some((&cursor, &BlockRef::Text("b".into()))),
+            Some(&cursor),
+            Some(&BlockRef::Text("b".into())),
         );
         assert_eq!(page.len(), page.capacity());
+        let walk = outgoing(&max, &max, &key, &cursor, &BlockRef::Number(1), &[max, max]);
+        assert_eq!(walk.len(), walk.capacity());
     }
 }

@@ -13,17 +13,24 @@
 //! the `CallSet` the SDK asks for (`call_set`) once its calls are bound to the reviewed actions
 //! (`pool_actions`), and judges what comes back (`engine_judge`). No flow uses it yet, so
 //! `CAPABILITIES` stays false.
+//!
+//! The port of the SDK's client (P15, issue #182) adds the proof job's discovery walks as sans-IO
+//! pieces: the outgoing channels (`outgoing`) and the spendable notes with their witnesses
+//! (`incoming`), over the types in `discovery`.
 
 mod bodies;
 pub mod call_set;
 pub mod config;
+pub mod discovery;
 pub mod engine;
 mod engine_judge;
 pub mod gates;
 pub mod home;
+pub mod incoming;
 mod json;
 mod judge;
 mod notes;
+pub mod outgoing;
 pub mod plan;
 mod plan_steps;
 mod pool_actions;
@@ -39,6 +46,9 @@ use crate::NetworkId;
 /// Longest `Post` reply the core parses. Hosts stop reading at this many bytes and report a longer
 /// reply as a transport failure.
 pub use judge::MAX_RESPONSE_BYTES;
+
+/// A discovery block, as the walks take the proving block and echo the service's.
+pub use bodies::BlockRef;
 
 /// What a wallet on this core can submit today: nothing (Bramble's `mobile/docs/privacy.md` §9).
 pub const CAPABILITIES: PrivacyCapabilities = PrivacyCapabilities {
@@ -97,7 +107,9 @@ mod tests {
     /// no privacy file derives a viewing key, reaches Krusty or touches the phrase or an account
     /// key. The key arrives only through `PrivacyHost::viewing_key`, as a `SecretFelt`, and only
     /// `plan_steps` (which asks for it) and `bodies` (which writes it) name it, besides `engine`,
-    /// whose job hands it to the engine, and `pool_actions`, which compares the key slot with it.
+    /// whose job hands it to the engine, `pool_actions`, which compares the key slot with it, and
+    /// the discovery walks (`discovery`, `incoming`, `outgoing`), which lend it to `bodies` and
+    /// hold the channel keys and witnesses the service derives from it as `SecretFelt`s.
     /// The `CallSet` signature is the wallet's (`engine::prove` takes its signing closure), so the
     /// engine files reach no key-taking Krusty export.
     #[test]
@@ -106,13 +118,16 @@ mod tests {
             ("bodies.rs", include_str!("bodies.rs")),
             ("call_set.rs", include_str!("call_set.rs")),
             ("config.rs", include_str!("config.rs")),
+            ("discovery.rs", include_str!("discovery.rs")),
             ("engine.rs", include_str!("engine.rs")),
             ("engine_judge.rs", include_str!("engine_judge.rs")),
             ("gates.rs", include_str!("gates.rs")),
             ("home.rs", include_str!("home.rs")),
+            ("incoming.rs", include_str!("incoming.rs")),
             ("json.rs", include_str!("json.rs")),
             ("judge.rs", include_str!("judge.rs")),
             ("notes.rs", include_str!("notes.rs")),
+            ("outgoing.rs", include_str!("outgoing.rs")),
             ("plan.rs", include_str!("plan.rs")),
             ("plan_steps.rs", include_str!("plan_steps.rs")),
             ("pool_actions.rs", include_str!("pool_actions.rs")),
@@ -138,16 +153,28 @@ mod tests {
                 names_key,
                 matches!(
                     name,
-                    "bodies.rs" | "engine.rs" | "plan.rs" | "plan_steps.rs" | "pool_actions.rs"
+                    "bodies.rs"
+                        | "discovery.rs"
+                        | "engine.rs"
+                        | "incoming.rs"
+                        | "outgoing.rs"
+                        | "plan.rs"
+                        | "plan_steps.rs"
+                        | "pool_actions.rs"
                 ),
                 "{name}: only the plan asks for the key, only the bodies write it, only the \
-                 engine's job carries it to the engine, and only the pool decoder compares it"
+                 engine's job carries it to the engine, only the pool decoder compares it, and \
+                 only the discovery walks lend it and hold what is derived from it"
             );
         }
         // The `CallSet` is signed by the wallet's signing path, through the closure `engine::prove`
         // is given; outside tests, no privacy file reaches a key-taking Krusty export.
+        // Nor do the discovery walks, which never read a secret back out either.
         for (name, source) in [
             ("call_set.rs", include_str!("call_set.rs")),
+            ("discovery.rs", include_str!("discovery.rs")),
+            ("incoming.rs", include_str!("incoming.rs")),
+            ("outgoing.rs", include_str!("outgoing.rs")),
             ("engine.rs", include_str!("engine.rs")),
             ("engine_judge.rs", include_str!("engine_judge.rs")),
             ("pool_actions.rs", include_str!("pool_actions.rs")),
