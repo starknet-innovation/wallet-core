@@ -462,3 +462,6 @@ mod fixture;
 
 #[path = "compiler_invoke_tests.rs"]
 mod invoke;
+
+#[path = "compiler_order_tests.rs"]
+mod order;

@@ -270,6 +270,46 @@ fn a_swapped_recipient_is_refused() {
     );
 }
 
+/// The reviewed send stays in; an extra note beside it, funded by extra spends, is what must be
+/// refused (`a_swapped_recipient_is_refused` is refused for the missing note instead). Only the
+/// account may receive a note no one reviewed.
+#[test]
+fn an_extra_note_to_anyone_but_the_account_is_refused() {
+    let funded = |extra: Vec<Felt>| {
+        vec![
+            use_note(STRK),
+            use_note(STRK),
+            enc_note(BOB, STRK, ONE),
+            extra,
+        ]
+    };
+    assert_eq!(
+        bound(&funded(enc_note(ACCOUNT, STRK, ONE)), &[send(BOB, ONE)]),
+        Ok(()),
+        "change to the account"
+    );
+    for extra in [enc_note(EVE, STRK, ONE), open_note(EVE, STRK)] {
+        assert_eq!(
+            bound(&funded(extra), &[send(BOB, ONE)]),
+            Err(ProofRefusal::UnboundSignRequest)
+        );
+    }
+    // Beside a reviewed open transfer too.
+    let open = ReviewedAction::OpenTransfer {
+        token: STRK,
+        recipient: BOB,
+    };
+    let beside_open = [
+        use_note(STRK),
+        open_note(BOB, STRK),
+        enc_note(EVE, STRK, ONE),
+    ];
+    assert_eq!(
+        bound(&beside_open, &[open]),
+        Err(ProofRefusal::UnboundSignRequest)
+    );
+}
+
 #[test]
 fn an_extra_withdraw_is_refused() {
     let extra = [
