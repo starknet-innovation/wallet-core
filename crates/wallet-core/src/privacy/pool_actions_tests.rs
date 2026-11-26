@@ -106,7 +106,15 @@ fn refuses_what_the_flows_do_not_produce() {
     let one_deposit = [deposit(STRK, ONE)];
     assert!(decode(&calldata_for(EVE, KEY, &one_deposit)).is_none());
     assert!(decode(&calldata_for(ACCOUNT, KEY, &[invoke_external(BOB)])).is_none());
-    assert!(decode(&calldata_for(ACCOUNT, KEY, &[open_note(BOB, STRK)])).is_none());
+    // An open note decodes (an `Open` transfer compiles to one); binding it is
+    // `an_open_note_binds_only_to_a_reviewed_open_transfer`.
+    assert_eq!(
+        decode(&calldata_for(ACCOUNT, KEY, &[open_note(BOB, STRK)])),
+        Some(vec![PoolAction::OpenNote {
+            recipient: BOB,
+            token: STRK
+        }])
+    );
     // Felts Cairo could not deserialize as the ABI's u32 index or u128 salt.
     let mut wide_index = open_channel(BOB);
     wide_index[2] = Felt::from(1u64 << 32);
@@ -381,4 +389,34 @@ fn a_channel_to_an_unreviewed_recipient_is_refused() {
         enc_note(BOB, STRK, ONE),
     ];
     assert_eq!(bound(&to_bob, &[send(BOB, ONE)]), Ok(()));
+}
+
+#[test]
+fn an_open_note_binds_only_to_a_reviewed_open_transfer() {
+    let open = |recipient| EngineAction::OpenTransfer {
+        token: STRK,
+        recipient,
+    };
+    let to_bob = [open_channel(BOB), open_note(BOB, STRK)];
+    assert_eq!(bound(&to_bob, &[open(BOB)]), Ok(()));
+    // Never unreviewed, not even to the account, nor in place of an amount, nor twice.
+    for (actions, reviewed) in [
+        (vec![open_note(BOB, STRK)], vec![send(BOB, ONE)]),
+        (
+            vec![deposit(STRK, ONE), open_note(ACCOUNT, STRK)],
+            vec![shield(ONE)],
+        ),
+        (vec![open_note(EVE, STRK)], vec![open(BOB)]),
+        (
+            vec![open_note(BOB, STRK), open_note(BOB, STRK)],
+            vec![open(BOB)],
+        ),
+        (vec![enc_note(BOB, STRK, ONE)], vec![open(BOB)]),
+        (vec![open_channel(BOB)], vec![open(BOB)]),
+    ] {
+        assert_eq!(
+            bound(&actions, &reviewed),
+            Err(ProofRefusal::UnboundSignRequest)
+        );
+    }
 }

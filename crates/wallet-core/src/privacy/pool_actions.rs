@@ -47,6 +47,12 @@ pub(super) enum PoolAction {
         token: Felt,
         amount: Felt,
     },
+    /// `CreateOpenNote`: a note for `recipient` whose amount is filled later. Allowed only as a
+    /// reviewed open transfer, never unreviewed, even to the account.
+    OpenNote {
+        recipient: Felt,
+        token: Felt,
+    },
     Withdraw {
         recipient: Felt,
         token: Felt,
@@ -81,6 +87,11 @@ fn action_from(variant: &str, members: &[&str], felts: &[Felt]) -> Option<PoolAc
         _ => {}
     }
     let token = field(members, felts, "token").filter(|token| *token != Felt::ZERO)?;
+    if variant == "CreateOpenNote" {
+        return field(members, felts, "recipient_addr")
+            .filter(|recipient| *recipient != Felt::ZERO)
+            .map(|recipient| PoolAction::OpenNote { recipient, token });
+    }
     let amount = field(members, felts, "amount").filter(|amount| *amount < U128_LIMIT)?;
     if variant == "Deposit" {
         return Some(PoolAction::Deposit { token, amount });
@@ -174,6 +185,10 @@ fn expected(action: &EngineAction, account: &Felt) -> Vec<PoolAction> {
             token: *token,
             amount: *amount,
         }],
+        EngineAction::OpenTransfer { token, recipient } => vec![PoolAction::OpenNote {
+            recipient: *recipient,
+            token: *token,
+        }],
         EngineAction::Withdraw {
             token,
             recipient,
@@ -202,7 +217,9 @@ pub(super) fn matches_review(
     let mut channel_to: Vec<Felt> = want
         .iter()
         .filter_map(|action| match action {
-            PoolAction::Note { recipient, .. } => Some(*recipient),
+            PoolAction::Note { recipient, .. } | PoolAction::OpenNote { recipient, .. } => {
+                Some(*recipient)
+            }
             _ => None,
         })
         .collect();

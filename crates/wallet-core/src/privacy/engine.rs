@@ -22,9 +22,9 @@ use crate::{Felt, SecretFelt, StarkSignature};
 /// The core's name for one proof, echoed back to the engine in `prove` and `cancel`.
 pub type JobId = u64;
 
-/// One reviewed action, as the SDK's builder takes it. Activation, shielding, unshielding and
-/// private sends; open notes (the SDK's `Open`), dapp invokes and shadow accounts join with their
-/// flows, and the binding in `pool_actions` with them.
+/// One reviewed action, as the SDK's builder takes it. Activation, shielding, unshielding,
+/// private sends and open notes (the SDK's `Open`); dapp invokes and shadow accounts join with
+/// their flows, and the binding in `pool_actions` with them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EngineAction {
     /// `register`: set the account's viewing key in the pool, alone or ahead of deposits.
@@ -41,6 +41,9 @@ pub enum EngineAction {
         recipient: Felt,
         amount: Felt,
     },
+    /// `with(token).transfer({amount: Open})`: an open note for `recipient`, whose amount a later
+    /// call fills (the SDK's `CreateOpenNote`).
+    OpenTransfer { token: Felt, recipient: Felt },
     /// `with(token).withdraw`: out of the pool to `recipient`'s public balance.
     Withdraw {
         token: Felt,
