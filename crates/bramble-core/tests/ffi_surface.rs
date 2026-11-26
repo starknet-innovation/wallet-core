@@ -348,6 +348,7 @@ fn gasless_takes_no_calls_hash_or_signature_and_returns_none() {
     let source = [
         include_str!("../src/send/gasless.rs"),
         include_str!("../src/send/gasless_offers.rs"),
+        include_str!("../src/send/gasless_sign.rs"),
     ];
     let exported: Vec<Exported> = source.iter().flat_map(|s| exported_signatures(s)).collect();
     for exported in &exported {
@@ -378,7 +379,8 @@ fn gasless_takes_no_calls_hash_or_signature_and_returns_none() {
             "choose",
             "resume",
             "accept_submit_reply",
-            "gasless_offers"
+            "gasless_offers",
+            "advance_device"
         ]
     );
 }
