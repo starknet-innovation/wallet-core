@@ -5,10 +5,9 @@
 //! fixture. Every key here is derived at run time from a published BIP-39 test phrase.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod common;
+use crate::common;
 
-#[path = "wallet_privacy_support/mod.rs"]
-mod privacy_support;
+use crate::wallet_privacy_support as privacy_support;
 
 use bramble_core::testing::{open_vault, seal_container_vault, v13_round_trip};
 use bramble_core::{AccountFamily, AccountRecord, CoreError, NetworkId, WalletCore};

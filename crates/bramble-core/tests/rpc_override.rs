@@ -2,7 +2,7 @@
 //! the preferences, one per network, tried before the bundled endpoints, which stay as failover.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod common;
+use crate::common;
 
 use bramble_core::catalogs::networks;
 use bramble_core::{supported_networks, CoreError, NetworkId, TokenPreferences};

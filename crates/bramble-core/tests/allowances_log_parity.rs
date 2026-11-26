@@ -4,8 +4,8 @@
 //! the core's log must leave the same stored value after each; then `recordApproveAllowances`
 //! over a submitted batch (`calls::record_submitted`).
 
-mod allowances_support;
-mod portfolio_support;
+use crate::allowances_support;
+use crate::portfolio_support;
 
 use allowances_support::{cases, felt, name, network, nft_contracts, readings, text, tokens};
 use bramble_core::ALLOWANCE_POLICY;

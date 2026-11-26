@@ -4,7 +4,7 @@
 //! `tests/background/approvals/outside-execution-sign.test.ts`.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod common;
+use crate::common;
 
 use bramble_core::{DappCard, DappSession, RiskFlagCode};
 use common::account_id;

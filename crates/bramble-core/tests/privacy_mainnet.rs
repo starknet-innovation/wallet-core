@@ -7,7 +7,7 @@
 //!
 //!   BRAMBLE_MOBILE_PRIVACY_LIVE_ACK="I understand this sends my viewing key to the privacy service" \
 //!   BRAMBLE_MOBILE_MAINNET_MNEMONIC="…" BRAMBLE_MOBILE_MAINNET_ADDRESS=0x… \
-//!     cargo test --locked --test privacy_mainnet -- --ignored --nocapture
+//!     cargo test --locked --test integration privacy_mainnet:: -- --ignored --nocapture
 //!
 //! `BRAMBLE_MOBILE_PRIVACY_DISCOVERY_URL` points discovery at another service (mobile/README.md).
 //!
@@ -16,8 +16,7 @@
 //! registration, per-token totals, the pool fee, each page's `block_ref`, and latencies.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-#[path = "wallet_privacy_support/mod.rs"]
-mod privacy_support;
+use crate::wallet_privacy_support as privacy_support;
 
 use std::io::Write;
 use std::process::{Command, Stdio};

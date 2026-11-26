@@ -10,9 +10,8 @@
 //! per-multisig flood (`MAX_INTENTS_PER_MULTISIG` packages; the store's own suite holds the cap).
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod common;
-mod multisig_support;
-mod multisig_tx_support;
+use crate::multisig_support;
+use crate::multisig_tx_support;
 
 use std::sync::Arc;
 

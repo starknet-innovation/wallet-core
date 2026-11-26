@@ -3,9 +3,8 @@
 //! Ledger Argent account (same key, another address), which the multisig accepts by key.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod common;
-mod multisig_support;
-mod multisig_tx_support;
+use crate::multisig_support;
+use crate::multisig_tx_support;
 
 use bramble_core::ledger::LedgerScheme;
 use bramble_core::{AccountFamily, LedgerAccountRequest, SendStep, StepReply};

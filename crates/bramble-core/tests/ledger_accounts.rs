@@ -4,9 +4,8 @@
 //! y-coordinate), the shape the extension's `addLedgerAccount` writes.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod send_support;
-#[path = "vault_v13_support/mod.rs"]
-mod support;
+use crate::send_support;
+use crate::vault_v13_support as support;
 
 use std::sync::Arc;
 

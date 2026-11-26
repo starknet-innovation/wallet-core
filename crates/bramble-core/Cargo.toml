@@ -10,6 +10,9 @@ readme = "README.md"
 description = "Bramble wallet core: wallet-core plus Bramble's policy, behind one UniFFI surface for the browser extension (WASM), iOS and Android"
 keywords = ["starknet", "wallet", "uniffi", "wasm", "bramble"]
 categories = ["cryptography::cryptocurrencies"]
+# One test binary (tests/integration.rs): each file under tests/ as its own binary linked
+# bramble-core ~110 times per build.
+autotests = false
 
 [lib]
 # staticlib: linked into the iOS app through an XCFramework.
@@ -22,6 +25,10 @@ name = "bramble_core"
 name = "uniffi-bindgen"
 path = "src/bin/uniffi-bindgen.rs"
 required-features = ["bindgen"]
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"
 
 [features]
 default = ["extension", "raw-keys"]
@@ -46,7 +53,7 @@ mobile = ["dep:bip39", "dep:zeroize"]
 testing = ["mobile"]
 
 [dependencies]
-starknet-wallet-core = { version = "=0.9.0", path = "../wallet-core" }
+starknet-wallet-core = { version = "=0.10.0", path = "../wallet-core" }
 # Bindings for Swift, Kotlin and (through uniffi-bindgen-react-native's wasm2 flavour) TypeScript.
 uniffi = { version = "=0.31.2" }
 thiserror = { version = "=2.0.21" }

@@ -4,14 +4,14 @@
 //! `tools/vendor-dataset/manifest/sepolia/` is listed. D1 means the default probe can recompute
 //! the address, so a miss is a bug (`docs/VENDOR_IMPORT_DATASET.md`). Read-only; never in CI.
 //!
-//!   cargo test --locked --test sepolia_dataset -- --ignored --nocapture
+//!   cargo test --locked --test integration sepolia_dataset:: -- --ignored --nocapture
 //!
 //! Seeds come from `.env.vendor-seeds.local` at the repository root, or `BRAMBLE_DATASET_ENV_FILE`,
 //! exactly as the dataset tools read them. A seed absent from the file is skipped with a note
 //! (S-RDY and S-XVS are app-made and arrive late). Only fixture ids and addresses are printed.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod common;
+use crate::common;
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;

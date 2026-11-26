@@ -5,7 +5,7 @@
 //! here, through the exported wrappers.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod common;
+use crate::common;
 
 use bramble_core::portfolio_testing::JsValue;
 use bramble_core::*;

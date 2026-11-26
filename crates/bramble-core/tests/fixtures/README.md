@@ -25,8 +25,9 @@ an extension bug fixed on Bramble `fix/review-decimal-recipient`; that exception
 copy. Every file is byte-identical to its copy at that commit; privacy SDK
 `vendor/starknet-privacy` at `b40bf109` (Bramble's pin).
 One exception to the single commit: `extension-ledger.jsonl` comes from Bramble commit
-`7cb47788c18d723effcceddb7b13e0235dfef64e` (`fixtures/ledger-speculos`, 2026-11-26), provisional
-until that branch merges. `bun run mobile:ledger` writes it by hand, not `mobile:parity`: it runs
+`cd1a18a10d84714ecbc92a37d65fbf75645a0e0f` (`feature/mobile-wallet`, 2026-11-26, merging
+Bramble #1061); first copied from its branch at `7cb47788c18d723effcceddb7b13e0235dfef64e`, and
+byte-identical at the merge. `bun run mobile:ledger` writes it by hand, not `mobile:parity`: it runs
 the extension's Ledger client against app-starknet 2.4.3 (the pinned Nano S+ ELF, sha256
 `8f15435c…`) in the digest-pinned Speculos image, seeded with the published parity phrase, so it
 needs Docker and the vendored app and nothing checks it for drift. Its two `plan` signatures are

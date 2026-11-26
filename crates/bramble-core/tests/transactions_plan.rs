@@ -6,7 +6,7 @@
 //! `transactions_lifecycle.rs`.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod send_support;
+use crate::send_support;
 
 use bramble_core::{ReviewFlag, SendError, SendFailureCode, SendStep, StepReply, TxStatus};
 use send_support::*;

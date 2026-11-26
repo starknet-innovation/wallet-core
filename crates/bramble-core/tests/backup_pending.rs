@@ -4,7 +4,7 @@
 //! once the password is proven, and still deletable.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod common;
+use crate::common;
 
 use bramble_core::testing::seal_envelope_vault;
 use bramble_core::{CoreError, NetworkId, WalletStatus};

@@ -3,7 +3,7 @@
 //! and Braavos share the pin; OpenZeppelin reads `latest` and is not part of this.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod send_support;
+use crate::send_support;
 
 use std::sync::Arc;
 

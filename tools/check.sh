@@ -11,7 +11,8 @@ usage() {
 Usage: bash tools/check.sh <mode>...
 
   quick       fmt + guardrails (the pre-commit hook)
-  push        lint + default-feature tests (the pre-push hook; CI also runs mobile's suite)
+  push        lint (less mobile's test targets) + default-feature tests (the pre-push hook; CI
+              runs the rest)
   rust        fmt + lint + test
   all         quick + lint + test + deny + secrets + package + wasm (run before handing off)
 
@@ -87,13 +88,23 @@ check_guardrails() {
     ((line <= 500)) || fail "$file: $line lines (cap 500)"
   done < <(git ls-files '*.rs' '*.ts' '*.mjs' '*.sh')
 
+  # 6. bramble-core builds one test binary (autotests = false), so a test file it does not list
+  #    would never run.
+  while IFS= read -r file; do
+    file="$(basename "$file" .rs)"
+    [[ "$file" == integration ]] && continue
+    grep -qx "mod $file;" crates/bramble-core/tests/integration.rs \
+      || fail "crates/bramble-core/tests/$file.rs: add \`mod $file;\` to tests/integration.rs"
+  done < <(git ls-files 'crates/bramble-core/tests/*.rs' | grep -v '/tests/.*/')
+
   ((failed == 0)) || exit 1
   echo "guardrails ok"
 }
 
+# `check_lint push` skips mobile's test targets (~40s); CI and `rust`/`all` lint them.
 check_lint() {
   run cargo clippy --all-targets --locked -- -D warnings
-  run cargo clippy --all-targets --locked -p bramble-core --no-default-features --features mobile,testing -- -D warnings
+  [[ "${1:-}" == push ]] || run cargo clippy --all-targets --locked -p bramble-core --no-default-features --features mobile,testing -- -D warnings
   run cargo clippy --locked --no-default-features --features bramble-core/mobile -- -D warnings
   run cargo clippy --locked --target wasm32-unknown-unknown -- -D warnings
 }
@@ -135,7 +146,7 @@ check_wasm() {
 for mode in "$@"; do
   case "$mode" in
     quick) check_fmt; check_guardrails ;;
-    push) check_lint; check_test_default ;;
+    push) check_lint push; check_test_default ;;
     rust) check_fmt; check_lint; check_test ;;
     all) check_fmt; check_guardrails; check_lint; check_test; check_deny; check_secrets; check_package; check_wasm ;;
     fmt) check_fmt ;;
