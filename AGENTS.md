@@ -206,8 +206,8 @@ Grep first; extend in place rather than adding a sibling.
   presentation (`appearance.rs`, `classify.rs`; a row's tracked token is
   `appearance::activity_tracked_token`), the feed's filter, amount sort and stale-axis reset
   (`history::filter`) and its per-counterparty summary (`history::party`); the one log is
-  `activity::ActivityLog` over `host::Storage` (status text and `monotonic` in
-  `activity::store`, the observation windows in `activity::observation`, the receipt fee and
+  `activity::ActivityLog` over `host::Storage` (`monotonic` in `activity::store`, the kind and
+  status text codecs in `history::activity_rules`, the observation windows in `activity::observation`, the receipt fee and
   value at submission an expanded row shows in `activity::detail`, the CSV export in
   `activity::csv`; a receipt's fee is `send::judge::receipt_fee`). The UTC date-time the export
   prints is `history::time::format_utc_date_time`; JavaScript string order is
