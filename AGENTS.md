@@ -214,7 +214,8 @@ Grep first; extend in place rather than adding a sibling.
   (`privacy::json`, stricter than `js::json`), routing and limits records (`config.rs`), and the
   gates (`gates.rs`, `home.rs`). `DeploymentState` is `send::types`. STRK20 proofs (P15) go
   through the wallet's engine (`engine::PrivacyEngine`, its records, `engine::prove`); the
-  `CallSet` digest and its signature check are `call_set.rs`, the engine's results are judged in
+  `CallSet` digest and its signature check are `call_set.rs`, the `compile_actions` decoder and
+  its binding to the reviewed actions `pool_actions.rs`, and the engine's results are judged in
   `engine_judge.rs`.
 - Nostr relay work lives beside the keys in `crates/wallet-core/src/nostr/`: the relay-URL
   grammar (`relay_url::is_nostr_relay_url`, which a custom RPC URL shares as
