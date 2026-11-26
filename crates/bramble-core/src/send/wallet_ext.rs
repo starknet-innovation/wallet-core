@@ -65,7 +65,7 @@ pub(crate) enum Use {
 /// base-class counterfactual is refused, since its deployment authorization is not established).
 /// Which classes are deployable is this catalog's rule; `Plan::new` then drops any deployment
 /// that does not reproduce the stored address, so nothing else is ever deployed.
-fn deployment(record: &StoredAccount, public_key: &Felt) -> Option<Deployment> {
+pub(crate) fn deployment(record: &StoredAccount, public_key: &Felt) -> Option<Deployment> {
     let class_hash = record.class_felt();
     let (salt, constructor_calldata) = match record.family() {
         AccountFamily::OpenZeppelin => (Felt::ZERO, vec![*public_key]),

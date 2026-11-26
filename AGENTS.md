@@ -246,6 +246,9 @@ Grep first; extend in place rather than adding a sibling.
     then the invoke route's review (`send::invoke::verify_calls`,
     `multisig_review::is_poisoned`), never a second one; a queued card's lookalike payee is
     `RiskFlag::AddressPoisoning`.
+  - the chain methods' gates and results (`chain`: `add_chain`, `switch_chain` with
+    `switch_dedupe` and `held_account_on`, `deployment_data_gate` and `deployment_data`; a
+    chain id's network is `network_for_chain_id`).
   - connecting a site and the passive reads around it (`connect`: `Site`, `answer`,
     `request_accounts`, `approve_connect`, the result shapes `addresses` and `accounts_view`),
     in the extension's gate order: blocklist, lock, grant.

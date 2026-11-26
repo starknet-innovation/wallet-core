@@ -33,6 +33,8 @@ impl DappSession {
     /// A card another page of the same site still waits on stays. Request ids must be unique
     /// across the host's pages.
     ///
+    /// A request answered `Read` is dropped too: `answer_read` then refuses it.
+    ///
     /// Only a request already answered `Pending` is held, so only that one can be withdrawn: a
     /// `request` still running when its page goes is queued after this returns. The host
     /// withdraws a `Pending` reply that arrives for a page that has gone, rather than dropping
@@ -43,6 +45,7 @@ impl DappSession {
     pub fn withdraw(&self, request_ids: Vec<u64>) {
         let mut state = guard(&self.state);
         let now = self.wallet.now().monotonic_ms;
+        state.reads.retain(|id, _| !request_ids.contains(id));
         let mut emptied = Vec::new();
         for (id, waiters) in state.waiters.iter_mut() {
             waiters.retain(|waiter| !request_ids.contains(&waiter.request_id));

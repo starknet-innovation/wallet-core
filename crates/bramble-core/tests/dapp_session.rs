@@ -221,7 +221,7 @@ fn reads_refusals_and_what_this_slice_does_not_answer() {
         code(&ask(&dapp, "wallet_requestAccounts", Some("[]"), 5)),
         114
     );
-    // Nothing that signs or writes is answered yet.
+    // A site it has not connected may not ask to switch the network.
     assert_eq!(
         code(&ask(
             &dapp,

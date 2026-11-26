@@ -1146,8 +1146,20 @@ Features, smallest and least dependent first:
       `withdraw(request_ids)` drops a gone page's requests and any card no page waits on, so a
       late approval cannot grant or sign for it: a mobile divergence (the extension keeps the
       card until a decision or its expiry).
-    - Next here, in order: the remaining methods' gates and results; the live class read
-      (Braavos, upgraded Argent); Ledger typed data; the full export.
+    - In review: the chain methods (`dapp::chain`, `bramble-core`'s `dapp_chain.rs`).
+      `wallet_addStarknetChain` is answered at once (`true` for a built-in chain, 117 for any
+      other, nothing stored); `wallet_switchStarknetChain` queues a switch card for a connected
+      site (`DappCard::SwitchChain`, `approve_switch_chain`), which selects the account the
+      site's grant holds on that network, else `ensure_network_account`'s pick, and then shows a
+      connect card if the site landed outside its grant; `wallet_deploymentData` answers after
+      one chain read the host makes (`DappReply::Read`, `answer_read`), 115 when deployed, 116
+      for a class this wallet does not deploy (the extension's `accountDeployment` tries more
+      classes; mobile offers only what it would deploy itself), and its gates run again on the
+      reply.
+    - Next here, in order: the remaining methods' gates and results (`wallet_watchAsset`, which
+      first needs `preferences.json`'s `dappTokenIds` so a site's token is not trusted by the
+      review, then invoke and declare); the live class read (Braavos, upgraded Argent); Ledger
+      typed data; the full export.
     - *Done* (#140): the connect-only slice is exported first, so Bramble can build and test
       the WebView bridge against real dapps while review and signing follow. Connect's card is
       a site and an account, so the slice does not wait on M19–M21.

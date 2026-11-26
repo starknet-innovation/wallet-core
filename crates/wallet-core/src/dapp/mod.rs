@@ -16,6 +16,7 @@
 pub mod add_chain;
 pub mod blocklist;
 pub mod budget;
+pub mod chain;
 pub mod connect;
 pub mod error;
 pub mod grants;

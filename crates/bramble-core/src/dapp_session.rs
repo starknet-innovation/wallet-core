@@ -1,9 +1,10 @@
 //! `DappSession`: the in-app browser's half of P16 that the core owns, exported for the apps'
 //! WebView bridge. This first slice connects a site and answers the passive reads around it
 //! (`wallet_requestAccounts`, `getPermissions`, `requestChainId`, the discovery methods, and
-//! Bramble's `mc_accounts` and `mc_requestAccounts`), and signs a site's SNIP-12 typed data once
-//! the person approves its card (`dapp_sign.rs`); every other method is refused until its review
-//! lands. Nothing signs without a queued card the person approved.
+//! Bramble's `mc_accounts` and `mc_requestAccounts`), signs a site's SNIP-12 typed data once
+//! the person approves its card (`dapp_sign.rs`), and answers the chain methods (add-chain,
+//! switch-chain and deployment data, `dapp_chain.rs`); every other method is refused until its
+//! review lands. Nothing signs without a queued card the person approved.
 //!
 //! The host establishes the asking origin (the main frame's committed `https` origin) and passes
 //! each request with an id of its own. A request that needs the person comes back `Pending`; the
@@ -19,6 +20,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+use starknet_wallet_core::dapp::chain::switch_dedupe;
 use starknet_wallet_core::dapp::connect::{
     self, accounts_view, addresses, approve_connect, deny_connect, request_accounts, Connection,
     CONNECT_DEDUPE,
@@ -34,15 +36,17 @@ use crate::dapp::{
     read_page_request, PageRequest, DAPP_QUEUE_LIMITS, PHISHING_FEED, SUPPORTED_SPECS,
     SUPPORTED_WALLET_API,
 };
+use crate::dapp_chain::PendingRead;
 use crate::dapp_sign::SignCard;
 use crate::networks::NetworkId;
 use crate::portfolio::tokens::TokenPreferences;
+use crate::rpc_request::RpcRequest;
 use crate::send::types::RiskFlag;
 use crate::vault_rules::is_wallet_origin;
 use crate::wallet::{Session, WalletCore};
 use crate::{felt, CoreError};
 
-const VERSIONS: Versions = Versions {
+pub(crate) const VERSIONS: Versions = Versions {
     specs: SUPPORTED_SPECS,
     wallet_api: SUPPORTED_WALLET_API,
 };
@@ -61,6 +65,12 @@ pub enum DappReply {
     /// Held for the person; settled later under the host's request id.
     Pending {
         approval_id: String,
+    },
+    /// The answer needs the chain: the host POSTs `requests` to an endpoint for `network` and
+    /// hands the replies to `answer_read` under this request's id.
+    Read {
+        network: NetworkId,
+        requests: Vec<RpcRequest>,
     },
 }
 
@@ -102,12 +112,17 @@ pub enum DappCard {
         call_summaries: Vec<String>,
         flags: Vec<RiskFlag>,
     },
+    /// Switch the wallet to `network` ("Switch network to …"). Approving lands on the account
+    /// the site's grant holds there, or the wallet's own pick, which the site does not see until
+    /// it connects again.
+    SwitchChain { network: NetworkId },
 }
 
 /// A queued card's payload.
 pub(crate) enum Card {
     Connect,
     Sign(SignCard),
+    SwitchChain(NetworkId),
 }
 
 /// Which result a held request wants.
@@ -119,6 +134,8 @@ pub(crate) enum Shape {
     View,
     /// `wallet_signTypedData`: the signature array.
     Signature,
+    /// `wallet_switchStarknetChain`: `true`.
+    True,
 }
 
 enum Outcome {
@@ -145,6 +162,8 @@ pub(crate) struct Waiter {
 pub(crate) struct State {
     pub(crate) queue: ApprovalQueue<Card>,
     pub(crate) waiters: HashMap<String, Vec<Waiter>>,
+    /// Requests waiting on the host's chain read, by its request id.
+    pub(crate) reads: HashMap<u64, PendingRead>,
 }
 
 /// The dapp requests of one wallet. Thread-safe; every method takes `&self`.
@@ -179,7 +198,7 @@ fn shaped(shape: Shape, account: Option<&DappAccount>) -> DappReply {
         Shape::Addresses => addresses(&accounts),
         Shape::View => accounts_view(&accounts),
         // Never held on a connect card.
-        Shape::Signature => return error(WalletRpcError::unknown_error()),
+        Shape::Signature | Shape::True => return error(WalletRpcError::unknown_error()),
     })
 }
 
@@ -255,7 +274,8 @@ impl DappSession {
         state.queue.can_admit(origin, now).is_ok()
     }
 
-    /// Queues `card` (a connect card joins its site's open one) and holds `request_id` on it.
+    /// Queues `card` (a connect card joins its site's open one, a switch card its site's open one
+    /// for the same network) and holds `request_id` on it.
     pub(crate) fn queue(
         &self,
         origin: &str,
@@ -265,7 +285,11 @@ impl DappSession {
     ) -> DappReply {
         let mut state = crate::wallet::guard(&self.state);
         let now = self.wallet.now().monotonic_ms;
-        let dedupe = matches!(card, Card::Connect).then(|| CONNECT_DEDUPE.into());
+        let dedupe = match &card {
+            Card::Connect => Some(CONNECT_DEDUPE.into()),
+            Card::SwitchChain(network) => Some(switch_dedupe(*network)),
+            Card::Sign(_) => None,
+        };
         let queued = match state.queue.enqueue(origin, dedupe, card, now, None) {
             Ok(Ok(queued)) => queued,
             Ok(Err(Refusal::SiteFull | Refusal::QueueFull)) | Err(_) => {
@@ -324,6 +348,7 @@ impl DappSession {
             state: Mutex::new(State {
                 queue: ApprovalQueue::new(DAPP_QUEUE_LIMITS),
                 waiters: HashMap::new(),
+                reads: HashMap::new(),
             }),
             feed: Mutex::new(PhishingFeed::new(PHISHING_FEED)),
         })
@@ -348,8 +373,16 @@ impl DappSession {
             Ok(page) => page,
             Err(refusal) => return Ok(error(refusal)),
         };
-        if let PageRequest::Spec(Request::SignTypedData { typed_data }) = &page {
-            return Ok(self.request_sign(&origin, typed_data, request_id));
+        match &page {
+            PageRequest::Spec(Request::SignTypedData { typed_data }) => {
+                return Ok(self.request_sign(&origin, typed_data, request_id));
+            }
+            PageRequest::Spec(
+                request @ (Request::AddChain(_)
+                | Request::SwitchChain { .. }
+                | Request::DeploymentData { .. }),
+            ) => return self.request_chain(&origin, request, shown, request_id),
+            _ => {}
         }
         let outcome = self.with_site(&origin, shown, false, |site, _| {
             Ok(match &page {
@@ -388,6 +421,7 @@ impl DappSession {
                     let card = match &approval.payload {
                         Card::Connect => DappCard::Connect,
                         Card::Sign(sign) => sign.card(),
+                        Card::SwitchChain(network) => DappCard::SwitchChain { network: *network },
                     };
                     (
                         approval.id.as_str().to_owned(),
