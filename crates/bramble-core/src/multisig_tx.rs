@@ -105,6 +105,13 @@ pub enum MultisigProposalRequest {
     },
     /// `argentMultisigConfigChangeCall`: the self-call that makes `change`.
     ChangeSigners { change: ConfigChange },
+    /// "Update network fee" and "Propose again" (`data-ms-refresh-intent`, `openUpdatedIntent`):
+    /// the stored calls of this multisig's stale intent `intent_id`, proposed again at the
+    /// current nonce and fee and reviewed afresh. The host names the intent, never its calls.
+    /// Open `multisig_fee_replacement` first, as the extension does, rather than propose twice.
+    /// The calls may be a co-signer's imported batch: the proposal's `review()` is a summary
+    /// only, so open the new intent's card (`multisig_intent_review`) before anyone signs it.
+    Repropose { intent_id: String },
 }
 
 /// A stored signing intent as the screens show it. Everything here is public: the frozen

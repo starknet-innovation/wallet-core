@@ -78,6 +78,7 @@ mod multisig_signers_parity;
 mod multisig_sync_import;
 mod multisig_tx_binding;
 mod multisig_tx_export;
+mod multisig_tx_refresh;
 mod multisig_tx_refusals;
 mod multisig_tx_stale;
 mod nostr_coordination_parity;
