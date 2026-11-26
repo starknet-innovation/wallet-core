@@ -1,10 +1,10 @@
 //! Flow tests for the Nostr and multisig surface: joins over recorded RPC bodies, the trust
-//! judgement (including a saved contact forging a snapshot), and the checkpoint and held-list
-//! rules the review fixed (`docs/nostr-multisig.md` §4, §5).
+//! judgement (including a saved contact forging a snapshot), and the checkpoint rules the review
+//! fixed (`docs/nostr-multisig.md` §4, §5).
 
 use super::*;
-use crate::coordination::Held;
-use crate::ffi_coordination::CoordinationSyncOutcome;
+use crate::ffi_coordination::{CoordinationSyncOutcome, CoordinationSyncStep};
+use crate::portfolio::tokens::TokenPreferences;
 use serde_json::{json, Value};
 
 const PHRASE: &str = "habit hope tip crystal because grunt nation idea electric witness alert like";
@@ -216,7 +216,7 @@ fn setups_require_a_local_deployment_signer_and_rederive() {
     assert!(core.multisigs(NetworkId::Sepolia).unwrap().is_empty());
 }
 
-/// Coordination sync flows (trust, held packages, checkpoints, lock and delete), split out to keep
+/// Coordination sync flows (trust, checkpoints, lock and delete), split out to keep
 /// each file under the size limit; they share this module's helpers.
 #[path = "ffi_coordination_tests.rs"]
 mod coordination_flows;

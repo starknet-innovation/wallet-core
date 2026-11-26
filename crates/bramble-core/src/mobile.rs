@@ -39,6 +39,7 @@ mod dapp_session;
 mod dapp_sign;
 mod dapp_sites;
 mod ffi_coordination;
+mod ffi_coordination_sync;
 mod ffi_nostr_multisig;
 mod ffi_staking;
 mod ffi_staking_action;
@@ -108,7 +109,9 @@ pub use clock::HostClock;
 pub use contact_card::{ContactCardParse, WalletContactCard};
 pub use contacts::Contact;
 pub use dapp_session::{DappApproval, DappCard, DappReply, DappSession, DappSettled};
-pub use ffi_coordination::{CoordinationSyncOutcome, NostrSyncPlan, RelayPolicy};
+pub use ffi_coordination::{
+    CoordinationSyncOutcome, CoordinationSyncStep, NostrSyncPlan, RelayPolicy,
+};
 pub use ffi_nostr_multisig::{
     argent_multisig_normalize, argent_multisig_predict, argent_signer_guid, multisig_limits,
     nostr_relay_url_normalize, wallet_contact_card_encode, wallet_contact_card_parse,

@@ -4,7 +4,7 @@
 //! coordination message goes to and is trusted from. Names follow the extension's
 //! `multisig-coordination-ops.ts`, `nostr-relay.ts`, `multisig-sync-window.ts`,
 //! `multisig-nostr-publish.ts` and `preferences-nostr.ts`. Plain Rust; the mobile wallet's
-//! coordination file, checkpoints, held packages and trust judgement (`file`, `mobile` only) are
+//! coordination file, checkpoints and sender rules (`file`, `mobile` only) are
 //! built on these.
 
 use starknet_wallet_core::accounts::multisig::signer_guid_hex;
@@ -22,6 +22,12 @@ pub use file::*;
 
 /// `MULTISIG_NOSTR_IDENTIFIER`: the application kind Krusty authenticates on coordination wraps.
 pub const MULTISIG_NOSTR_IDENTIFIER: &str = "bramble.multisig";
+
+/// `MULTISIG_STRK20_KEY_IDENTIFIER`: a co-owner's shared STRK20 viewing key.
+pub const MULTISIG_STRK20_KEY_IDENTIFIER: &str = "bramble.multisig.strk20-viewing-key";
+
+/// `MULTISIG_STRK20_AUTHORIZATION_IDENTIFIER`: a multisig's STRK20 pool authorization.
+pub const MULTISIG_STRK20_AUTHORIZATION_IDENTIFIER: &str = "bramble.multisig.strk20-authorization";
 
 /// `MULTISIG_NOSTR_RELAYS`: the reviewed defaults, used unless the person replaces them.
 pub const MULTISIG_NOSTR_RELAYS: [&str; 2] = ["wss://relay.primal.net", "wss://nos.lol"];

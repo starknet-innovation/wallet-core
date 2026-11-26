@@ -11,8 +11,8 @@ use std::collections::HashSet;
 
 use bramble_core::testing::{coordination_sender_trusted, publish_many, SyncJudge};
 use bramble_core::{
-    nostr_relay_url_normalize, CoreError, MultisigAuthorityRead, MultisigAuthorityStatus,
-    NetworkId, RelayStep, WalletCore,
+    nostr_relay_url_normalize, CoordinationSyncStep, CoreError, MultisigAuthorityRead,
+    MultisigAuthorityStatus, NetworkId, RelayStep, TokenPreferences, WalletCore,
 };
 use serde_json::{json, Value};
 use starknet_wallet_core::nostr::relay::{NostrGiftWrapDelivery, RelayError};
@@ -154,7 +154,10 @@ fn record_sync_at(core: &WalletCore, id: &str, now: u64) {
     for relay in 0..plan.relay_urls().len() as u32 {
         plan.accept_frame(relay, json!(["EOSE", "mcw-1"]).to_string());
     }
-    core.coordination_sync_finish(plan).unwrap();
+    let step = core
+        .coordination_sync_open(plan, TokenPreferences::new(None))
+        .unwrap();
+    assert!(matches!(step, CoordinationSyncStep::Done { .. }));
 }
 
 #[test]

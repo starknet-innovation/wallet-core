@@ -25,7 +25,7 @@ use crate::{rpc_override, CoreError};
 pub const CONTACTS: &str = "contacts.json";
 /// The shared-account registry.
 pub const MULTISIGS: &str = "multisigs.json";
-/// Relay choice, sync checkpoints, and held packages.
+/// Relay choice and sync checkpoints.
 pub const COORDINATION: &str = "coordination.json";
 /// Multisig signing intents: frozen transactions and their co-signers' signatures.
 pub const MULTISIG_INTENTS: &str = "multisig-intents.json";
