@@ -227,8 +227,8 @@ Grep first; extend in place rather than adding a sibling.
   `ProofLimits`, `CallAndProof`, `ProofRefusal`, `ProofSigner`, `AuthorizationRefusal`) and the
   final proof judge are `proof.rs`. An Argent multisig's `CallSet` aggregate is checked by
   `call_set::authorized_aggregate` (serialised through `send::multisig_invoke`); a job short of
-  its threshold ends `ProofStep::Held` with a `held::HeldProof` (redacted, sealed and restored
-  only at the key slot: `RedactedHeldProof`, `restore_calldata`), resumed by
+  its threshold ends `ProofStep::Held` with a `held::HeldProof` (redacted and restored only at
+  the key slot: `RedactedHeldProof`, `restore_calldata`), resumed by
   `ProofJob::resumed` (`job_resume.rs`: the proof window, `within_proof_window`). Shadow
   accounts (commitments, address, the anonymizer's `ComputeAndInvoke` data) are `shadow`, their
   two reads (the commitment read's discovery, `get_shadow_accounts` windows, body and judge)

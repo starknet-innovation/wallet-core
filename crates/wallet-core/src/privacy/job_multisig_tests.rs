@@ -1,5 +1,5 @@
 //! A multisig's proof job (S7) beyond what the recorded lines show (`strk20_multisig_parity`
-//! replays those): a held record tampered in each field, a lock on resume, the binding re-run,
+//! replays those): a held record with a tampered calldata felt, digest or key slot, a lock on resume, the binding re-run,
 //! the proof window's edges, and no randomness drawn on the resume path. Helpers are
 //! `job_tests.rs`'.
 
@@ -223,11 +223,9 @@ fn a_complete_aggregate_proves_without_holding() {
 
 #[test]
 fn a_tampered_held_record_is_refused_before_anything_is_sent() {
+    // The nonce and the block are not authenticated (`held`'s module doc): only what the digest
+    // and the key slot cover is refused here.
     let good = held();
-    let mut nonce = good.clone();
-    nonce.nonce += Felt::ONE;
-    let mut block = good.clone();
-    block.proving_block -= 1;
     let mut calldata = good.clone();
     let last = calldata.calldata.len() - 1;
     calldata.calldata[last] += Felt::ONE;
@@ -235,7 +233,7 @@ fn a_tampered_held_record_is_refused_before_anything_is_sent() {
     digest.digest += Felt::ONE;
     let mut marker = good.clone();
     marker.calldata[0] = MARKER;
-    for tampered in [nonce, block, calldata, digest, marker] {
+    for tampered in [calldata, digest, marker] {
         let owners = Owners::new(true);
         let mut job = resume(tampered.clone(), vec![ReviewedAction::Register]);
         let step = job

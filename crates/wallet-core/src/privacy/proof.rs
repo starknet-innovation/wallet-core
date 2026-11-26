@@ -205,7 +205,7 @@ pub enum ProofRefusal {
     InvalidProverReply,
     /// A multisig's `CallSet` aggregate was refused, before anything reached the prover.
     Authorization(AuthorizationRefusal),
-    /// A held proof does not restore (the key slot, the marker or the seal), or its calldata no
+    /// A held proof does not restore (the key slot or the marker), or its calldata no
     /// longer hashes to its digest; or the job resuming it is not a multisig's.
     HeldMismatch,
     /// A held proof's calldata no longer moves exactly the reviewed actions.

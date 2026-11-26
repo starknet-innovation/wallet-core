@@ -44,7 +44,7 @@
 //! Multisig (S7): an Argent multisig's `CallSet` aggregate is checked signer by signer
 //! (`call_set::authorized_aggregate`). A job short of its threshold ends holding the request
 //! (`held::HeldProof`, which holds the key in its calldata as `SecretFelt`s and leaves the core
-//! only redacted and sealed), and a later job resumes it (`job_resume`) after reading the pool's
+//! only redacted), and a later job resumes it (`job_resume`) after reading the pool's
 //! proof window.
 
 mod bodies;
@@ -149,8 +149,8 @@ mod tests {
     /// key. The key arrives only through `PrivacyHost::viewing_key`, as a `SecretFelt`, and only
     /// `plan_steps` and the proof job (`job`, `job_steps`, `job_resume`, which ask for it and hold
     /// the bound calldata), `bodies` and `invocation` (which write it) name it, besides `held`,
-    /// which takes it out of a held calldata's key slot, puts it back and seals the record under
-    /// it (inside `scrubbed`, so it is not in the second list),
+    /// which takes it out of a held calldata's key slot and puts it back (inside `scrubbed`, so it
+    /// is not in the second list),
     /// `pool_actions`, which compares the key slot with it, `call_set`, which hashes the calldata
     /// that holds it, `client_actions`, which writes it into the `compile_actions` calldata, and the
     /// discovery walks (`discovery`, `incoming`, `outgoing`), which lend it to `bodies` and hold the
@@ -174,7 +174,6 @@ mod tests {
         for (source, function) in [
             (include_str!("invocation.rs"), "fn json_within("),
             (include_str!("entropy.rs"), "fn generate_random("),
-            (include_str!("held.rs"), "fn seal("),
             (include_str!("held.rs"), "pub fn redact("),
             (include_str!("held.rs"), "pub fn restore_calldata("),
         ] {
@@ -264,7 +263,7 @@ mod tests {
                  discovery walks and the shadow reads lend it and hold what is derived from it, \
                  only the compiler and its simulator derive the channel keys from it, only \
                  the shadow commitments derive the identity key from it, and only the held \
-                 proof redacts, restores and seals under it"
+                 proof redacts and restores it"
             );
         }
         // The `CallSet` is signed by the wallet's signing path, through the closure
