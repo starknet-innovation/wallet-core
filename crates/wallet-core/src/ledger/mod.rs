@@ -22,9 +22,9 @@
 //! dashboard-and-reopen sequence that reads the OS version (`readLedgerOsAndRestoreStarknet`) and
 //! the transport are not here.
 //!
-//! The vectors are the library's encoding and the extension's tests. Golden transcripts from a
-//! device or Ledger's Speculos emulator are owed to a Bramble generator; none is in
-//! `tests/fixtures/` yet.
+//! The vectors here are the library's encoding and the extension's tests. Golden transcripts of the
+//! extension's client against the real Starknet app under Ledger's Speculos emulator are
+//! `bramble-core`'s `tests/fixtures/extension-ledger.jsonl`, replayed by its `ledger_parity.rs`.
 
 mod enumerate;
 mod management;
