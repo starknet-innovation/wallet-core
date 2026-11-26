@@ -17,7 +17,9 @@
 //!
 //! Minimum versions are a wallet's choice and arguments here (Bramble's are `bramble-core`'s
 //! `ledger`). One signature end to end, verified through Krusty against the account's stored key
-//! before it can be used, is `sign::DeviceSigning`; the readers alone never verify. A page of
+//! before it can be used, is `sign::DeviceSigning`; the readers alone never verify. That exchange
+//! under the wallet's rules (a lock stops it, a refusal parks it for a retry), for every signature
+//! a Ledger account makes, is `hash_signing::HashSigning`. A page of
 //! public keys for an account picker is `enumerate::KeyEnumeration`. The
 //! dashboard-and-reopen sequence that reads the OS version (`readLedgerOsAndRestoreStarknet`) and
 //! the transport are not here.
@@ -27,6 +29,7 @@
 //! `tests/fixtures/` yet.
 
 mod enumerate;
+mod hash_signing;
 mod management;
 mod path;
 mod rejection;
@@ -36,6 +39,8 @@ mod starknet;
 #[cfg(test)]
 mod enumerate_tests;
 #[cfg(test)]
+mod hash_signing_tests;
+#[cfg(test)]
 mod management_tests;
 #[cfg(test)]
 mod sign_tests;
@@ -43,6 +48,7 @@ mod sign_tests;
 mod starknet_tests;
 
 pub use enumerate::{DeviceKeyAt, EnumerationStep, KeyEnumeration, MAX_PAGE};
+pub use hash_signing::{DeviceKey, HashFailure, HashSigning, HashStep};
 pub use management::{
     app_state_request, check_firmware, firmware, open_starknet_request, os_version_request,
     parse_app_state, parse_os_version, quit_app_request, AppState, DeviceModel, Firmware,
