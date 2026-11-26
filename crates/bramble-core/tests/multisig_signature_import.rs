@@ -13,6 +13,15 @@ use bramble_core::{CoreError, IntentState, MultisigIntent, MultisigTxStep, StepR
 use multisig_support::fixture;
 use multisig_tx_support::*;
 use serde_json::Value;
+use starknet_wallet_core::sign_stark_hash;
+
+/// OpenZeppelin account `index` of the fixture phrase's signature over `hash`, as the export takes
+/// it: `(public key, r, s)`.
+fn signed(index: u32, hash: &str) -> (String, String, String) {
+    let (key, _) = multisig_support::signer(index);
+    let signature = sign_stark_hash(&key, hash).unwrap();
+    (signature.public_key, signature.r, signature.s)
+}
 
 fn reason(error: CoreError) -> String {
     match error {
@@ -104,7 +113,22 @@ fn a_bad_signature_is_refused_and_nothing_is_stored() {
     assert_ne!(upper, key);
     let invalid = "signature is not valid for this exact Argent multisig intent";
     let spelling = "invalid Argent multisig signature import";
+    // Valid Stark signatures that must still be refused: by a key outside the snapshot over the
+    // intent's own hash, and by the member who signs stage 1 over another hash.
+    let members = net["account"]["deployment"]["signerPublicKeys"].clone();
+    let non_member = signed(4, &intent.transaction_hash);
+    assert!(!members
+        .as_array()
+        .unwrap()
+        .contains(&Value::from(non_member.0.clone())));
+    let member = net["proposal"]["cosignerAccountIndexes"][0]
+        .as_u64()
+        .unwrap() as u32;
+    let elsewhere = signed(member, "0x1234");
+    assert_eq!(elsewhere.0, key);
     let cases = [
+        (non_member, invalid),
+        (elsewhere, invalid),
         ((key.clone(), r.clone(), tweaked), invalid),
         ((outsider, r.clone(), s.clone()), invalid),
         ((upper, r.clone(), s.clone()), spelling),

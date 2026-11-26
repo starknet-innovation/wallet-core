@@ -54,6 +54,7 @@ mod dapp_sites;
 mod dapp_sites_parity;
 mod dapp_typed_data_parity;
 mod ffi_surface;
+mod ffi_surface_signatures;
 mod fixtures;
 mod gasless;
 mod gasless_journal;

@@ -103,6 +103,10 @@ impl WalletCore {
     /// be a snapshot member's over the hash recomputed from the prepared transaction, by a signer
     /// that has not signed, below the threshold (`SigningIntent::with_signature`); the intent is
     /// stored with it in GUID order, ready at the threshold. Nothing here signs or holds a key.
+    ///
+    /// Unlike the extension, which takes no claim here, the import takes the signer's signing
+    /// claim (`claim_signing`), so a paste for a signer is refused while that signer's local or
+    /// Ledger signing (a live `MultisigDeviceSigning` included) is under way.
     pub fn import_multisig_signature(
         &self,
         intent_id: String,
