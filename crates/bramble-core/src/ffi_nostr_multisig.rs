@@ -378,11 +378,11 @@ impl WalletCore {
         // never intents with no account to show or remove them by.
         crate::multisig_intents::remove_account(self.data_dir(), &id)?;
         multisig_store::remove(self.data_dir(), &id)?;
-        let mut file = coordination::load(self.data_dir())?;
-        file.checkpoints
-            .retain(|checkpoint| checkpoint.account_id != id);
-        file.held.retain(|held| held.account_id != id);
-        coordination::store(self.data_dir(), &file)
+        coordination::update(self.data_dir(), |file| {
+            file.checkpoints
+                .retain(|checkpoint| checkpoint.account_id != id);
+            file.held.retain(|held| held.account_id != id);
+        })
     }
 }
 

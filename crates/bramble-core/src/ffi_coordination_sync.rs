@@ -237,18 +237,29 @@ impl WalletCore {
             *stage = Stage::Over;
             return Err(error);
         }
-        match self.import_package(&next.package, &read, &importing.tokens) {
-            Ok(intent) => {
-                if !importing.intent_ids.contains(&intent.id) {
-                    importing.intent_ids.push(intent.id);
+        // Removed while the host read: kept out for good, as at the queue.
+        // ponytail: a removal landing between this check and `import_package`'s upsert still
+        // stores the intent again; take one lock over both stores if that window matters.
+        let intent = &next.package.intent;
+        let removed = multisig_intents::get(self.data_dir(), &intent.id)
+            .ok()
+            .and_then(|current| self.kept_out(intent, current.as_ref()));
+        match removed {
+            Some(true) => importing.note(&next.event_id, next.created_at, true),
+            None => importing.note(&next.event_id, next.created_at, false),
+            Some(false) => match self.import_package(&next.package, &read, &importing.tokens) {
+                Ok(intent) => {
+                    if !importing.intent_ids.contains(&intent.id) {
+                        importing.intent_ids.push(intent.id);
+                    }
+                    importing.note(&next.event_id, next.created_at, true);
                 }
-                importing.note(&next.event_id, next.created_at, true);
-            }
-            Err(ImportRefusal::Wallet(CoreError::Locked)) => {
-                *stage = Stage::Over;
-                return Err(CoreError::Locked);
-            }
-            Err(refusal) => importing.note(&next.event_id, next.created_at, is_final(&refusal)),
+                Err(ImportRefusal::Wallet(CoreError::Locked)) => {
+                    *stage = Stage::Over;
+                    return Err(CoreError::Locked);
+                }
+                Err(refusal) => importing.note(&next.event_id, next.created_at, is_final(&refusal)),
+            },
         }
         self.advance_sync(&plan, &mut stage)
     }
@@ -261,6 +272,21 @@ fn sync_refused(reason: &str) -> CoreError {
 }
 
 impl WalletCore {
+    /// `isRemovedIntent` for an intent not stored (`current`): a relay can serve a removed
+    /// intent again under any event id, so the removal itself keeps it out, for good. `None`
+    /// when the coordination file is unreadable, which the next sync tries again.
+    fn kept_out(&self, intent: &SigningIntent, current: Option<&SigningIntent>) -> Option<bool> {
+        if current.is_some() {
+            return Some(false);
+        }
+        let file = coordination::load(self.data_dir()).ok()?;
+        Some(coordination::is_removed_intent(
+            &file,
+            &intent.account_id,
+            &intent.id,
+        ))
+    }
+
     fn require_session(&self, generation: u64) -> Result<(), CoreError> {
         if self.session_generation() == Some(generation) {
             Ok(())
@@ -285,13 +311,15 @@ impl WalletCore {
         }
         while let Some(next) = importing.queue.pop_front() {
             let intent = &next.package.intent;
-            // The extension also keeps an intent the person removed out (`isRemovedIntent`);
-            // mobile cannot remove one intent, so there is nothing to keep out yet.
             let Ok(current) = multisig_intents::get(self.data_dir(), &intent.id) else {
                 importing.note(&next.event_id, next.created_at, false);
                 continue;
             };
-            if !has_update(current.as_ref(), intent) {
+            let Some(removed) = self.kept_out(intent, current.as_ref()) else {
+                importing.note(&next.event_id, next.created_at, false);
+                continue;
+            };
+            if removed || !has_update(current.as_ref(), intent) {
                 importing.note(&next.event_id, next.created_at, true);
                 continue;
             }
@@ -316,24 +344,21 @@ impl WalletCore {
             intent_ids,
         };
         // As the extension, a checkpoint write failure does not fail the sync.
-        if let Ok(mut file) = coordination::load(self.data_dir()) {
-            let synced_at = retryable_synced_at(
-                i64::try_from(now).unwrap_or(i64::MAX),
-                oldest_retryable.and_then(|at| i64::try_from(at).ok()),
-                coordination::sync_lookbacks(),
-            );
-            coordination::record_sync(
-                &mut file,
-                Checkpoint {
-                    account_id: record.id,
-                    event_ids: receipted,
-                    relay_urls: plan.judge.relay_urls(),
-                    synced_at: u64::try_from(synced_at).unwrap_or(0),
-                },
-            );
+        let synced_at = retryable_synced_at(
+            i64::try_from(now).unwrap_or(i64::MAX),
+            oldest_retryable.and_then(|at| i64::try_from(at).ok()),
+            coordination::sync_lookbacks(),
+        );
+        let checkpoint = Checkpoint {
+            account_id: record.id,
+            event_ids: receipted,
+            relay_urls: plan.judge.relay_urls(),
+            synced_at: u64::try_from(synced_at).unwrap_or(0),
+        };
+        let _ = coordination::update(self.data_dir(), |file| {
+            coordination::record_sync(file, checkpoint);
             file.held.clear();
-            let _ = coordination::store(self.data_dir(), &file);
-        }
+        });
         Ok(CoordinationSyncStep::Done { outcome })
     }
 }

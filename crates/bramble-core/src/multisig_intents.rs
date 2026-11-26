@@ -128,6 +128,19 @@ pub fn upsert(dir: &Path, next: &SigningIntent) -> Result<(), CoreError> {
     write(dir, intents)
 }
 
+/// `removeIntent`: drops the intent `id`; `false` when none is stored.
+pub fn remove(dir: &Path, id: &str) -> Result<bool, CoreError> {
+    let _write = WRITE.lock().unwrap_or_else(PoisonError::into_inner);
+    let mut intents = load(dir)?;
+    let before = intents.len();
+    intents.retain(|intent| intent.id != id);
+    if intents.len() == before {
+        return Ok(false);
+    }
+    write(dir, intents)?;
+    Ok(true)
+}
+
 /// Drops every intent of a removed multisig (`removeMultisig`).
 pub fn remove_account(dir: &Path, account_id: &str) -> Result<(), CoreError> {
     let _write = WRITE.lock().unwrap_or_else(PoisonError::into_inner);

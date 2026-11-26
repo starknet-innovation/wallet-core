@@ -6,8 +6,8 @@
 //! signer's key) shares the extension's own packages. Each import is checked against the fresh
 //! read the sync hands out; a wrap is receipted only once the sync is finished with it.
 //!
-//! Not ported: "an intent the user removed" (mobile cannot remove one intent) and the
-//! per-multisig flood (`MAX_INTENTS_PER_MULTISIG` packages; the store's own suite holds the cap).
+//! "An intent the user removed" is `multisig_remove_intent`. Not ported: the per-multisig flood
+//! (`MAX_INTENTS_PER_MULTISIG` packages; the store's own suite holds the cap).
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
 use crate::multisig_support;
@@ -35,7 +35,7 @@ fn phrase() -> String {
 
 /// The fixture wallet on Sepolia, with the co-signer saved: a contact whose Nostr key is the
 /// phrase's address 1 and whose Stark key is the fixture's first co-signer.
-fn cosigned() -> Wallet {
+pub(crate) fn cosigned() -> Wallet {
     let net = fixture()["networks"][0].clone();
     let wallet = wallet(&net);
     assert_eq!(wallet.network, NetworkId::Sepolia);
@@ -60,27 +60,27 @@ fn cosigned() -> Wallet {
 }
 
 /// A package as the co-signer shares it, gift-wrapped for this wallet.
-fn share(wallet: &Wallet, package: &str) -> Value {
+pub(crate) fn share(wallet: &Wallet, package: &str) -> Value {
     let to = wallet.core.nostr_public_key().unwrap();
     let wrapped = wrap_gift(&phrase(), 1, &to, "bramble.multisig", package, NOW).unwrap();
     serde_json::from_str(&wrapped).unwrap()
 }
 
-fn proposal_package(wallet: &Wallet) -> String {
+pub(crate) fn proposal_package(wallet: &Wallet) -> String {
     wallet.net["proposal"]["proposalPackage"]
         .as_str()
         .unwrap()
         .into()
 }
 
-fn ready_package(wallet: &Wallet) -> String {
+pub(crate) fn ready_package(wallet: &Wallet) -> String {
     wallet.net["proposal"]["readyPackage"]
         .as_str()
         .unwrap()
         .into()
 }
 
-fn nonce_of(package: &str) -> String {
+pub(crate) fn nonce_of(package: &str) -> String {
     let package: Value = serde_json::from_str(package).unwrap();
     package["intent"]["prepared"]["nonce"]
         .as_str()
@@ -89,7 +89,7 @@ fn nonce_of(package: &str) -> String {
 }
 
 /// A chain holding the fixture's signers at `nonce`.
-fn chain_at<'a>(wallet: &'a Wallet, nonce: &str) -> impl Fn(&MultisigStateRead) + 'a {
+pub(crate) fn chain_at<'a>(wallet: &'a Wallet, nonce: &str) -> impl Fn(&MultisigStateRead) + 'a {
     let nonce = nonce.to_string();
     move |read| {
         let mut replies = wallet.authority_replies(wallet.threshold(), &wallet.guids());
@@ -111,7 +111,7 @@ fn node_down(read: &MultisigStateRead) {
 
 /// One sync at `NOW`: the relays return `events`, and every read the sync hands out is driven
 /// by `chain`. Returns the outcome and how many reads were asked for.
-fn sync(
+pub(crate) fn sync(
     wallet: &Wallet,
     events: &[Value],
     chain: &dyn Fn(&MultisigStateRead),
@@ -146,13 +146,13 @@ fn sync(
 }
 
 /// The wraps later syncs skip.
-fn receipts(wallet: &Wallet) -> Vec<String> {
+pub(crate) fn receipts(wallet: &Wallet) -> Vec<String> {
     let text = std::fs::read_to_string(wallet.dir.path().join("coordination.json")).unwrap();
     let file: Value = serde_json::from_str(&text).unwrap();
     serde_json::from_value(file["checkpoints"][0]["eventIds"].clone()).unwrap()
 }
 
-fn id_of(event: &Value) -> String {
+pub(crate) fn id_of(event: &Value) -> String {
     event["id"].as_str().unwrap().into()
 }
 
@@ -199,7 +199,7 @@ fn with_calls(package: &str, calls: &[(&str, &str, &[&str])]) -> String {
     package.to_string()
 }
 
-fn intent_id(package: &str) -> String {
+pub(crate) fn intent_id(package: &str) -> String {
     let package: Value = serde_json::from_str(package).unwrap();
     package["intent"]["id"].as_str().unwrap().into()
 }

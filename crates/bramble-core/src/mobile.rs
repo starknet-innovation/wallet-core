@@ -63,6 +63,7 @@ mod multisig_tx_import;
 mod multisig_tx_ops;
 mod multisig_tx_plans;
 mod multisig_tx_refresh;
+mod multisig_tx_remove;
 mod nostr;
 mod nostr_relay;
 mod portfolio;
