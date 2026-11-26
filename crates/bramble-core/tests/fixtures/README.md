@@ -22,7 +22,10 @@ padded address labels of #884 (`accounts-parity-rules.json`, `portfolio-parity.j
 (`extension-activity-detail.jsonl`) and the review copy (`extension-transactions-copy.json`).
 `transactions_rules_parity.rs` excuses the decimal recipients in `-verification.json`'s summaries,
 an extension bug fixed on Bramble `fix/review-decimal-recipient`; that exception goes with the next
-copy. Every file is byte-identical to its copy at that commit; privacy SDK
+copy. One file is from another commit: `extension-dapp.jsonl` (P16's generator), Bramble `7227638e4bb05d1ad5f350a38211cb662751cf12`
+(`fixtures/p16-dapp`, on `feature/mobile-wallet` at `25f66184d`, not yet pushed), which adds
+`scripts/mobile-parity-dapp/` and changes no other file; the next full copy brings every file to
+one commit again. Every file is byte-identical to its copy at that commit; privacy SDK
 `vendor/starknet-privacy` at `b40bf109` (Bramble's pin).
 Generators are under `scripts/` in Bramble; each fixture's is reached from
 `generate-mobile-parity-vectors.ts`.
@@ -78,6 +81,7 @@ Generators are under `scripts/` in Bramble; each fixture's is reached from
 | `vault-v14.json` | `generate-mobile-parity-vectors.ts` (`mobile-parity-vault-full.ts`) | `97a437888e92569c45b810d757633506bb971fd9f9f91199ec8bfe05f4e01a5b` |
 | `vault-v13-to-v14.json` | `generate-mobile-parity-vectors.ts` (`mobile-parity-vault-full.ts`) | `58e4671a1ebe15bef6159df851211390de48c11b42537c8d6fb2e70290067565` |
 | `extension-gasless.jsonl` | `mobile-parity-gasless/` | `c232ecadeb65c8dc36e64d3b51a091eb63c8923698f8d686b269845e4d9e45c7` |
+| `extension-dapp.jsonl` | `mobile-parity-dapp/` | `d1c50c9f685d70890ae67935a9b3eb0bc0c4b71d0c99794a6ee9d7eb31ebd10f` |
 
 Read today: `extension-parity.json` (`parity.rs`, `vault_parity.rs`),
 `accounts-parity-families-sepolia.json` and `nostr-multisig-parity.json` (`parity.rs`;
@@ -114,7 +118,11 @@ block `staking_action_parity.rs`), `vault-v13-full.json`, `vault-v14.json` and
 written back unchanged, and unlocking the migration's input writing back its output), and
 `extension-gasless.jsonl` (every line: `gasless_parity.rs` its `hash`, `review` and `offers`
 blocks, `gasless_reads_parity.rs` the rest; the lines the core departs from, its
-`knownExtensionBug` lines among them, are asserted as departures).
+`knownExtensionBug` lines among them, are asserted as departures), and `extension-dapp.jsonl`
+(every line: `dapp_request_parity.rs` its `request` block, `dapp_connect_parity.rs` `connect`,
+`grants` and `queue`, `dapp_sites_parity.rs` `site`, `feedParse` and `feed`,
+`dapp_typed_data_parity.rs` `typedData` and `outside`; each case the core departs from is listed
+there with its reason and asserted as a departure).
 `extension-privacy-copy.json` is the source of
 Bramble's generated Swift and Kotlin privacy copy; no Rust function returns those sentences, so
 no test here reads it. `extension-multisig-transactions.json` is read by
