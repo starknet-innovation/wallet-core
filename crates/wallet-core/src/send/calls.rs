@@ -130,12 +130,25 @@ pub fn erc20_approve(token: Felt, spender: Felt, amount: U256) -> Call {
 pub fn execute_calldata(calls: &[Call]) -> Vec<Felt> {
     let mut out = vec![Felt::from(calls.len() as u64)];
     for call in calls {
-        out.push(call.contract_address);
-        out.push(crate::kms::selector(&call.entrypoint));
-        out.push(Felt::from(call.calldata.len() as u64));
+        out.extend(call_head(
+            &call.contract_address,
+            &call.entrypoint,
+            call.calldata.len(),
+        ));
         out.extend_from_slice(&call.calldata);
     }
     out
+}
+
+/// What [`execute_calldata`] writes ahead of one call's calldata: the contract, the selector and
+/// the calldata's length. For a caller that lays the calldata into its own buffer (the
+/// key-bearing `compile_actions` in `privacy::invocation`) rather than copying it into a `Call`.
+pub(crate) fn call_head(contract: &Felt, entrypoint: &str, calldata_len: usize) -> [Felt; 3] {
+    [
+        *contract,
+        crate::kms::selector(entrypoint),
+        Felt::from(calldata_len as u64),
+    ]
 }
 
 /// `transaction.getExecuteCalldata([transfer(recipient, amount)], "1")`: the Cairo-1 account
