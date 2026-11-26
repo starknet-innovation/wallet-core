@@ -23,7 +23,9 @@ use super::client_actions::ClientAction;
 use super::discovery::{AddressMap, Note};
 use super::entropy::Entropy;
 use super::hashes::compute_note_id;
+use super::incoming::SpendableNotes;
 use super::outgoing::OutgoingChannels;
+use super::pool_actions::MAX_ACTIONS;
 use super::proof::ReviewedAction;
 use super::simulator::{transform, Simulator};
 use crate::send::u256::U256;
@@ -53,6 +55,12 @@ pub enum CompileRefusal {
     /// A created channel's key, as the service reported it, is not the one the account's viewing
     /// key derives for that recipient and public key. Stricter: the SDK trusts the service.
     ChannelKeyMismatch,
+    /// The spend needs more notes than one batch carries, though the account holds enough: the
+    /// token's deficit is covered only with notes the walk dropped for not being among its
+    /// `max_notes` largest, or the selection pushes the batch past the pool's `MAX_ACTIONS`
+    /// client actions where consolidating the notes into one would fit. The wallet should offer
+    /// to consolidate (a send to itself). The SDK has no cap and would try to prove it.
+    TooManyNotes,
     /// A selected note's id is not the one its witness proves. Stricter: the SDK trusts both.
     WitnessMismatch,
     /// An index would pass `u32`.
@@ -310,7 +318,8 @@ pub fn walk_inputs(
 }
 
 /// After discovery: the client actions for `reviewed`, from the outgoing walk's `channels` and
-/// the incoming walk's `notes` (empty when `walk_inputs` asked for no tokens), with the invoke
+/// the incoming walk's `notes` (empty when `walk_inputs` asked for no tokens; a bare note map
+/// converts with `SpendableNotes::from`), with the invoke
 /// phase naming `contracts`. Draws from `entropy` in the SDK's order; nothing is drawn if the job
 /// is refused before the first action.
 pub fn compile(
@@ -319,7 +328,7 @@ pub fn compile(
     reviewed: &[ReviewedAction],
     contracts: &Contracts,
     channels: &OutgoingChannels,
-    notes: &AddressMap<Vec<Note>>,
+    notes: &SpendableNotes,
     entropy: &mut impl Entropy,
 ) -> Result<Compiled, CompileRefusal> {
     let mut actions = collect(reviewed, contracts)?;
@@ -345,9 +354,16 @@ pub fn compile(
         }
         pool.setup_channel(*recipient, channel);
     }
-    transform(
+    let compiled = transform(
         account, contracts, &actions, &use_notes, &needed, &mut pool, entropy,
-    )
+    )?;
+    // The binding refuses a batch past `MAX_ACTIONS`; when the selected notes are what put it
+    // there, and one consolidated note would not, say so.
+    let count = compiled.actions.len();
+    if count > MAX_ACTIONS && !use_notes.is_empty() && count - use_notes.len() < MAX_ACTIONS {
+        return Err(CompileRefusal::TooManyNotes);
+    }
+    Ok(compiled)
 }
 
 /// The rest of `resolveNotes`: per token in `balances` order, a deficit takes the token's notes
@@ -358,8 +374,9 @@ pub fn compile(
 fn resolve_notes<'a>(
     account: &Felt,
     actions: &mut Actions,
-    notes: &'a AddressMap<Vec<Note>>,
+    spendable: &'a SpendableNotes,
 ) -> Result<Vec<(Felt, &'a Note)>, CompileRefusal> {
+    let notes = &spendable.notes;
     let mut use_notes = Vec::new();
     for (token, balance) in balances(actions)?.iter() {
         let (token, mut balance) = (*token, *balance);
@@ -379,7 +396,15 @@ fn resolve_notes<'a>(
             }
         }
         if balance.inflow < balance.outflow {
-            return Err(CompileRefusal::InsufficientBalance);
+            // Every kept note is in; the dropped ones would cover it only with more notes.
+            let held = spendable
+                .dropped
+                .get(&token)
+                .and_then(|dropped| balance.inflow.checked_add(*dropped));
+            return Err(match held {
+                Some(held) if held >= balance.outflow => CompileRefusal::TooManyNotes,
+                _ => CompileRefusal::InsufficientBalance,
+            });
         }
         if balance.inflow > balance.outflow {
             let surplus = balance

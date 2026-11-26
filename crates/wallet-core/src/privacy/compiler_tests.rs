@@ -92,12 +92,12 @@ fn note(token: Felt, amount: u128, nonce: u32) -> Note {
     }
 }
 
-fn notes(entries: Vec<(Felt, Vec<Note>)>) -> AddressMap<Vec<Note>> {
+fn notes(entries: Vec<(Felt, Vec<Note>)>) -> SpendableNotes {
     let mut notes = AddressMap::default();
     for (token, list) in entries {
         notes.insert(token, list);
     }
-    notes
+    notes.into()
 }
 
 fn send(token: Felt, recipient: Felt, amount: u128) -> ReviewedAction {
@@ -119,7 +119,7 @@ fn shield(token: Felt, amount: u128, recipient: Option<Felt>) -> ReviewedAction 
 fn run(
     reviewed: &[ReviewedAction],
     found: &OutgoingChannels,
-    notes: &AddressMap<Vec<Note>>,
+    notes: &SpendableNotes,
 ) -> Result<(Compiled, Vec<usize>), CompileRefusal> {
     let mut entropy = Counter::default();
     let compiled = compile(
@@ -137,7 +137,7 @@ fn run(
 fn refused(
     reviewed: &[ReviewedAction],
     found: &OutgoingChannels,
-    notes: &AddressMap<Vec<Note>>,
+    notes: &SpendableNotes,
 ) -> CompileRefusal {
     run(reviewed, found, notes).map(|_| ()).unwrap_err()
 }
@@ -301,7 +301,7 @@ fn registering_opens_the_own_channel_first_with_the_viewing_public_key() {
     assert_eq!(walks.recipients, [ACCOUNT, BOB]);
     assert!(walks.tokens.is_empty());
     let found = channels(vec![(BOB, precomputed(2))], Some(5));
-    let (compiled, reads) = run(&reviewed, &found, &AddressMap::default()).unwrap();
+    let (compiled, reads) = run(&reviewed, &found, &SpendableNotes::default()).unwrap();
     assert_eq!(
         shape(&compiled.actions),
         [
@@ -366,7 +366,7 @@ fn an_open_transfer_touches_no_balance() {
         vec![(ACCOUNT, keyed(1, &[])), (BOB, keyed(2, &[(STRK, 4)]))],
         None,
     );
-    let (compiled, reads) = run(&reviewed, &found, &AddressMap::default()).unwrap();
+    let (compiled, reads) = run(&reviewed, &found, &SpendableNotes::default()).unwrap();
     assert_eq!(shape(&compiled.actions), ["CreateOpenNote bob strk 4"]);
     assert_eq!(reads, [48]);
     assert!(binds(&compiled, &reviewed));
@@ -374,7 +374,7 @@ fn an_open_transfer_touches_no_balance() {
 
 #[test]
 fn every_refusal_is_its_own_variant() {
-    let none = AddressMap::default();
+    let none = SpendableNotes::default();
     let ready = channels(
         vec![(ACCOUNT, keyed(1, &[(STRK, 0)])), (BOB, keyed(2, &[]))],
         Some(2),
@@ -426,7 +426,7 @@ fn every_refusal_is_its_own_variant() {
         &[shield(STRK, 1, Some(BOB))],
         &CONTRACTS,
         &wrong,
-        &AddressMap::default(),
+        &SpendableNotes::default(),
         &mut entropy,
     );
     assert_eq!(result.unwrap_err(), CompileRefusal::ChannelKeyMismatch);

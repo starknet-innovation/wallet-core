@@ -5,9 +5,9 @@ use super::bodies::BlockRef;
 use super::call_set::{call_set_hash, sign_call_set, COMPILE_ACTIONS};
 use super::client_actions::compile_actions_calldata;
 use super::compiler::compile;
-use super::discovery::{AddressMap, Note, Walked};
+use super::discovery::Walked;
 use super::entropy::Entropy;
-use super::incoming::{IncomingWalk, INCOMING_PATH};
+use super::incoming::{IncomingWalk, SpendableNotes, INCOMING_PATH};
 use super::invocation::{pool_nonce, pool_nonce_request, ProofInvocation};
 use super::job::{fail, ProofHost, ProofJob, ProofPurpose, ProofStep, Stage};
 use super::outgoing::{OutgoingChannels, OutgoingWalk, OUTGOING_PATH};
@@ -95,7 +95,7 @@ impl<E: Entropy> ProofJob<E> {
             Ok(Walked::More(walk)) => self.post_outgoing(host, walk),
             // No token in deficit: the SDK skips `discoverNotes`.
             Ok(Walked::Done(channels)) if self.walks.tokens.is_empty() => {
-                self.compile(host, &channels, &AddressMap::default())
+                self.compile(host, &channels, &SpendableNotes::default())
             }
             Ok(Walked::Done(channels)) => {
                 let walk = IncomingWalk::new(
@@ -132,7 +132,7 @@ impl<E: Entropy> ProofJob<E> {
         &mut self,
         host: &dyn ProofHost,
         channels: &OutgoingChannels,
-        notes: &AddressMap<Vec<Note>>,
+        notes: &SpendableNotes,
     ) -> ProofStep {
         let Some(key) = self.viewing_key(host) else {
             return fail(ProofRefusal::Locked);

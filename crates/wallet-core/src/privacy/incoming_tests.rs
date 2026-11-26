@@ -41,6 +41,10 @@ fn more(walk: IncomingWalk, reply: &str) -> IncomingWalk {
 }
 
 fn done(walk: IncomingWalk, reply: &str) -> AddressMap<Vec<Note>> {
+    spendable(walk, reply).notes
+}
+
+fn spendable(walk: IncomingWalk, reply: &str) -> SpendableNotes {
     match walk.on_reply(200, reply.as_bytes()).unwrap() {
         Walked::Done(notes) => notes,
         Walked::More(_) => panic!("walk did not end"),
@@ -174,7 +178,7 @@ fn a_note_without_a_channel_key_is_refused() {
 }
 
 #[test]
-fn filtered_and_zero_notes_are_not_kept_and_the_cap_counts_nonzero_notes() {
+fn filtered_and_zero_notes_are_not_kept_and_the_cull_counts_nonzero_notes() {
     let notes = vec![
         note("0x6", T2, 0, "0x1", "1", "3"),
         note("0x5", T1, 0, "0x2", "0", "3"),
@@ -193,11 +197,15 @@ fn filtered_and_zero_notes_are_not_kept_and_the_cap_counts_nonzero_notes() {
         ],
         DONE,
     );
-    assert_eq!(
-        walk_with(1).on_reply(200, over.as_bytes()).unwrap_err(),
-        PrivacyFailure::InvalidResponse
-    );
+    // Past `max_notes` a note is culled, not refused: the earlier of two equal ones stays.
+    let found = spendable(walk_with(1), &over);
+    let t1 = found.notes.get(&felt(T1)).unwrap();
+    assert_eq!(t1.iter().map(|n| n.id).collect::<Vec<_>>(), [felt("0x2")]);
+    assert_eq!(found.dropped.get(&felt(T1)), Some(&U256::from_u128(1)));
 }
+
+#[path = "incoming_dust_tests.rs"]
+mod dust;
 
 #[test]
 fn malformed_notes_are_refused() {

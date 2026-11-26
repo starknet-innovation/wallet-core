@@ -8,9 +8,9 @@
 use serde_json::Value;
 use starknet_wallet_core::privacy::client_actions::{compile_actions_calldata, ClientAction};
 use starknet_wallet_core::privacy::compiler::{compile, walk_inputs, CompileRefusal, Compiled};
-use starknet_wallet_core::privacy::discovery::{AddressMap, Note, Walked};
+use starknet_wallet_core::privacy::discovery::Walked;
 use starknet_wallet_core::privacy::entropy::Entropy;
-use starknet_wallet_core::privacy::incoming::IncomingWalk;
+use starknet_wallet_core::privacy::incoming::{IncomingWalk, SpendableNotes};
 use starknet_wallet_core::privacy::outgoing::{OutgoingChannels, OutgoingWalk};
 use starknet_wallet_core::privacy::types::PrivacyFailure;
 use starknet_wallet_core::privacy::BlockRef;
@@ -139,8 +139,8 @@ fn run(job: &Value) -> (Result<Compiled, CompileRefusal>, Stream) {
         incoming.is_empty(),
         "{id}: tokensToDiscover"
     );
-    let notes: AddressMap<Vec<Note>> = if incoming.is_empty() {
-        AddressMap::default()
+    let notes = if incoming.is_empty() {
+        SpendableNotes::default()
     } else {
         replay(
             id,

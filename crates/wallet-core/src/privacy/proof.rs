@@ -144,7 +144,9 @@ pub enum ProofRefusal {
     /// The pool's nonce could not be read (transport failure, an error, or no nonce).
     NonceUnavailable,
     /// The compiled `compile_actions` is not the pool's one call for this account and viewing
-    /// key, or it moves value the job did not ask for (or omits some it did). A compiler bug.
+    /// key, or it moves value the job did not ask for (or omits some it did): a compiler bug. Also
+    /// a batch the reviewed actions alone put past the pool's `MAX_ACTIONS` (too many notes is
+    /// `Compile(TooManyNotes)`).
     UnboundSignRequest,
     /// The session ended: no viewing key, or the wallet refused to sign as locked.
     Locked,
