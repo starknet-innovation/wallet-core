@@ -227,7 +227,11 @@ Grep first; extend in place rather than adding a sibling.
   `ProofLimits`, `CallAndProof`, `ProofRefusal`) and the final proof judge are `proof.rs`. Shadow
   accounts (commitments, address, the anonymizer's `ComputeAndInvoke` data) are `shadow`, their
   two reads (the commitment read's discovery, `get_shadow_accounts` windows, body and judge)
-  `shadow_reads`; the invoke phase's contracts are `compiler::Contracts`. Bramble's placeholder
+  `shadow_reads`; the invoke phase's contracts are `compiler::Contracts`. The SDK's tagged
+  Poseidon and its allocation-free sponge (`tagged_hash`, `poseidon_hash_many`) are
+  `kms/poseidon.rs`, beside the viewing-key hashes, at the crate root; `privacy::hashes` reaches
+  them there, so `kms` imports nothing from `privacy`. A spend's notes are culled to the largest
+  per token by the incoming walk (`incoming::SpendableNotes`). Bramble's placeholder
   grammar, origin-bound shadow scope and scan limits are `bramble-core`'s `strk20.rs`.
 - Nostr relay work lives beside the keys in `crates/wallet-core/src/nostr/`: the relay-URL
   grammar (`relay_url::is_nostr_relay_url`, which a custom RPC URL shares as
