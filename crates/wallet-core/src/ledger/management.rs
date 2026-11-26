@@ -1,8 +1,8 @@
 //! The device's own commands around the Starknet app (`device-transition.ts`): which app is
 //! open, the OS version (read only from the dashboard), closing the open app and opening
 //! Starknet; then the device model and the firmware gate (`client.ts`). The sequence that leaves
-//! the app, reads the OS and reopens Starknet, reconnecting after each change, is the host's
-//! session and not here.
+//! the app, reads the OS and reopens Starknet is `transition::OsGate`; reconnecting after each
+//! change is the host's.
 
 use super::rejection::{thrown, LedgerRejection, RejectionCode, Thrown};
 use super::{apdu, split, Reply, Version, STATUS_OK};
@@ -74,6 +74,17 @@ pub enum DeviceModel {
 }
 
 impl DeviceModel {
+    /// The extension's name for the model (`LedgerDeviceModel`).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::NanoX => "nano-x",
+            Self::NanoSPlus => "nano-s-plus",
+            Self::Stax => "stax",
+            Self::Flex => "flex",
+            Self::NanoGen5 => "nano-gen5",
+        }
+    }
+
     /// `ledgerModelFromTargetId`. Low bits name a hardware revision and are ignored.
     fn from_target_id(target_id: u32) -> Option<Self> {
         match target_id & 0xffff_0000 {
@@ -99,7 +110,7 @@ fn unreadable() -> LedgerRejection {
 }
 
 /// A management reply's data. The status must be success, or the command was refused.
-fn data_of(reply: Reply<'_>) -> Result<&[u8], LedgerRejection> {
+pub(super) fn data_of(reply: Reply<'_>) -> Result<&[u8], LedgerRejection> {
     let reply = reply.map_err(|failure| thrown(Thrown::Transport(failure)))?;
     if reply.len() > MAX_RESPONSE_BYTES {
         return Err(unreadable());

@@ -65,6 +65,7 @@ mod history_parity;
 mod key_import;
 mod ledger_accounts;
 mod ledger_ble;
+mod ledger_os_gate;
 mod ledger_parity;
 mod ledger_reader;
 mod ledger_wallet;

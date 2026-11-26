@@ -604,8 +604,13 @@ Foundations, which the features need, and Ledger, which needs only the first:
     needs a phrase fails closed through `VaultPayload::phrase`;
   - the key picker (#135): `LedgerKeyReader` reads a page of up to five keys and
     `ledger_account_candidates` places their addresses.
-  Deliberate departures from the extension: the device OS gate is the host's connect flow; the
-  app version is read on every signature; a Braavos Ledger account's deployment, and adding a
+  - the device OS gate (#191): `LedgerOsGate` (over `wallet_core::ledger::OsGate`) runs the
+    extension's `readLedgerOsAndRestoreStarknet` and `assertLedgerFirmwareReady` as one
+    sans-IO sequence the apps call at the start of the connect flow. It reads the open app,
+    closes it if it is not the dashboard, reads the OS, reopens Starknet, and checks the model
+    and version against `LEDGER_OS_MIN`. After each close or open, the host reconnects to the same
+    device when the step asks it to.
+  Deliberate departures from the extension: the app version is read on every signature; a Braavos Ledger account's deployment, and adding a
   Braavos Ledger account, are refused (the extension proves one live on chain first); a Ledger
   account's privacy reads (`PrivacyError::LedgerAccount`) are refused until it signs on the
   device (the extension signs there); Nostr coordination needs a phrase. A Ledger deployer signs

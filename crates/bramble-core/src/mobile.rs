@@ -50,6 +50,7 @@ pub(crate) use wallet_core::js;
 mod key_import;
 mod kms;
 mod ledger_ble;
+mod ledger_os_gate;
 mod ledger_reader;
 mod ledger_wallet;
 pub use kms::Ladder;
@@ -132,6 +133,7 @@ pub use ledger_ble::{
     ledger_ble_frame_size, ledger_ble_link, LedgerBleExchange, LedgerBleFrame, LedgerBleLink,
     LedgerBleSpec, LedgerBleStep,
 };
+pub use ledger_os_gate::{LedgerOsGate, LedgerOsStep};
 pub use ledger_reader::{
     ledger_account_candidates, LedgerCandidate, LedgerKey, LedgerKeyReader, LedgerReadStep,
 };

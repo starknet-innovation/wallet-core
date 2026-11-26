@@ -156,7 +156,9 @@ Grep first; extend in place rather than adding a sibling.
   Ledger account are `bramble-core`'s `ledger_wallet.rs`; a vault's phrase is read only through
   `VaultPayload::phrase`, which refuses a wallet without one. A page of public keys for the
   account picker is `ledger::KeyEnumeration`, exported as `ledger_reader::LedgerKeyReader`
-  beside `ledger_account_candidates`. Ledger's Bluetooth framing is `ledger::ble`, exported as
+  beside `ledger_account_candidates`. The device OS gate (close the open app, read the OS on the
+  dashboard, reopen Starknet, check `LEDGER_OS_MIN`) is `ledger::OsGate`, exported as
+  `ledger_os_gate::LedgerOsGate`. Ledger's Bluetooth framing is `ledger::ble`, exported as
   `ledger_ble::LedgerBleExchange` beside `ledger_ble_link` (GATT specs, MTU request); it only carries bytes, and
   the apps' Bluetooth shims hold no protocol logic of their own.
 - AVNU swaps are `crates/wallet-core/src/swap/`: the quote (`quote.rs`: `PendingQuote`,
