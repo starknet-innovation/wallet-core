@@ -14,7 +14,6 @@ use super::invocation::ProofInvocation;
 use super::json::MAX_SAFE_INTEGER;
 use super::proof::{judge_proof, CallAndProof, Proof, ProofLimits, ProofRefusal, APPLY_ACTIONS};
 use crate::send::calls::Call;
-use crate::send::judge::{answer_within, Answer};
 use crate::{felt, Felt};
 
 /// Longest prove reply the core parses; hosts stop reading at this many bytes. The privacy
@@ -25,7 +24,7 @@ use crate::{felt, Felt};
 pub const MAX_PROVE_RESPONSE_BYTES: usize = super::judge::MAX_RESPONSE_BYTES;
 
 /// The prover's "service busy" JSON-RPC code, the one error it asks to be retried.
-const SERVICE_BUSY: i64 = -32005;
+const SERVICE_BUSY: f64 = -32005.0;
 /// The one HTTP status retried on the plain-fetch transport (`TRANSIENT_HTTP_STATUS`).
 const SERVICE_UNAVAILABLE: u16 = 503;
 
@@ -170,6 +169,13 @@ struct ScreeningSignature {
 /// Judges one prove attempt's reply: `callOnce`'s HTTP and JSON-RPC handling, the result schema,
 /// then `prove` and `buildExecuteResult` for `pool` under `limits` (clamped to
 /// `ProofLimits::CEILING`).
+///
+/// Its own envelope reading rather than `send::judge`'s, in two places as the SDK reads it (both
+/// change only whether a reply is retried or read, never what is accepted as a proof):
+/// `json.error` counts only when truthy, so `"error": null` beside a result is a result; and a
+/// busy error (`-32005`) is retried whatever its `id` and `jsonrpc` say, as `callOnce` checks
+/// neither. Stricter than the SDK everywhere else: a result, or any other error, must answer
+/// this request (`"jsonrpc":"2.0"`, this `id`).
 pub fn judge_prove_reply(
     status: u16,
     body: &[u8],
@@ -184,20 +190,40 @@ pub fn judge_prove_reply(
             ProveOutcome::Refused(ProofRefusal::ProverFailed)
         };
     }
-    let answer = std::str::from_utf8(body)
-        .ok()
-        .and_then(|text| answer_within(text, id, MAX_PROVE_RESPONSE_BYTES));
-    match answer {
-        Some(Answer::Error {
-            code: Some(SERVICE_BUSY),
-            ..
-        }) => ProveOutcome::Busy,
-        Some(Answer::Error { .. }) => ProveOutcome::Refused(ProofRefusal::ProverFailed),
-        Some(Answer::Result(result)) => match call_and_proof(result, pool, limits) {
-            Ok(proof) => ProveOutcome::Proved(proof),
-            Err(refusal) => ProveOutcome::Refused(refusal),
+    let invalid = ProveOutcome::Refused(ProofRefusal::InvalidProverReply);
+    if body.len() > MAX_PROVE_RESPONSE_BYTES {
+        return invalid;
+    }
+    let Ok(Value::Object(reply)) = serde_json::from_slice::<Value>(body) else {
+        return invalid;
+    };
+    let answers = reply.get("jsonrpc").and_then(Value::as_str) == Some("2.0")
+        && reply.get("id").and_then(Value::as_u64) == Some(id);
+    match reply.get("error").filter(|error| is_truthy(error)) {
+        // `error.code === SERVICE_BUSY_CODE`: a JavaScript number, so `-32005.0` too.
+        Some(error) if error.get("code").and_then(Value::as_f64) == Some(SERVICE_BUSY) => {
+            ProveOutcome::Busy
+        }
+        Some(_) if answers => ProveOutcome::Refused(ProofRefusal::ProverFailed),
+        None if answers => match reply.get("result") {
+            Some(result) => match call_and_proof(result.clone(), pool, limits) {
+                Ok(proof) => ProveOutcome::Proved(proof),
+                Err(refusal) => ProveOutcome::Refused(refusal),
+            },
+            None => invalid,
         },
-        None => ProveOutcome::Refused(ProofRefusal::InvalidProverReply),
+        _ => invalid,
+    }
+}
+
+/// JavaScript truthiness of a JSON value.
+fn is_truthy(value: &Value) -> bool {
+    match value {
+        Value::Null => false,
+        Value::Bool(value) => *value,
+        Value::Number(number) => number.as_f64().is_some_and(|n| n != 0.0),
+        Value::String(text) => !text.is_empty(),
+        Value::Array(_) | Value::Object(_) => true,
     }
 }
 

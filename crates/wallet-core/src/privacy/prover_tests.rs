@@ -216,6 +216,44 @@ fn refuses_an_unreadable_envelope() {
 }
 
 #[test]
+fn reads_the_envelope_as_call_once_does() {
+    // `if (json.error)`: a falsy error beside a result is a result.
+    for error in [json!(null), json!(false), json!(0), json!("")] {
+        let reply = json!({ "jsonrpc": "2.0", "id": 7, "error": error, "result": result() });
+        assert!(
+            matches!(
+                judge(200, reply.to_string().as_bytes()),
+                ProveOutcome::Proved(_)
+            ),
+            "{error}"
+        );
+    }
+    // A busy error is retried whatever its envelope says; `callOnce` reads neither.
+    for busy in [
+        json!({ "jsonrpc": "2.0", "id": 8, "error": { "code": -32005, "message": "m" } }),
+        json!({ "id": 7, "error": { "code": -32005, "message": "m" } }),
+        json!({ "error": { "code": -32005.0 } }),
+    ] {
+        assert_eq!(
+            judge(200, busy.to_string().as_bytes()),
+            ProveOutcome::Busy,
+            "{busy}"
+        );
+    }
+    // Every other error still has to answer this request.
+    let other = json!({ "jsonrpc": "2.0", "id": 8, "error": { "code": 55, "message": "m" } });
+    assert_eq!(
+        judge(200, other.to_string().as_bytes()),
+        ProveOutcome::Refused(ProofRefusal::InvalidProverReply)
+    );
+    let truthy = json!({ "jsonrpc": "2.0", "id": 7, "error": "x", "result": result() });
+    assert_eq!(
+        judge(200, truthy.to_string().as_bytes()),
+        ProveOutcome::Refused(ProofRefusal::ProverFailed)
+    );
+}
+
+#[test]
 fn the_result_schema_is_strict_at_every_level() {
     let mut cases: Vec<(&str, Value)> = Vec::new();
     let mut with = |name, edit: &dyn Fn(&mut Value)| {
