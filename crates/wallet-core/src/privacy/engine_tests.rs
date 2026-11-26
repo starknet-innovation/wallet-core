@@ -46,7 +46,15 @@ fn compile_actions(pool: Felt, user: Felt) -> Call {
     Call {
         contract_address: pool,
         entrypoint: COMPILE_ACTIONS.into(),
-        calldata: vec![user, VIEWING_KEY, Felt::ONE, Felt::from(5u64)],
+        // One `Deposit` (variant 5) of the job's token and amount.
+        calldata: vec![
+            user,
+            VIEWING_KEY,
+            Felt::ONE,
+            Felt::from(5u64),
+            Felt::from(0x57u64),
+            Felt::from(100u64),
+        ],
     }
 }
 
@@ -245,6 +253,61 @@ fn engine_failures_and_a_locked_wallet_cancel_the_job() {
     assert_eq!(locked, Err(ProofRefusal::Locked));
     assert!(engine.proved.borrow().is_empty());
     assert_eq!(*engine.cancelled.borrow(), vec![9]);
+}
+
+#[test]
+fn a_sign_request_moving_other_value_is_never_signed() {
+    let mut withdraw = compile_actions(POOL, ACCOUNT);
+    // `Withdraw(to, token, amount, random)` appended, the count raised to two.
+    withdraw.calldata[2] = Felt::TWO;
+    withdraw.calldata.extend([
+        Felt::from(0xe5eu64),
+        Felt::from(0x57u64),
+        Felt::from(100u64),
+        Felt::ONE,
+    ]);
+    let mut swapped_key = compile_actions(POOL, ACCOUNT);
+    swapped_key.calldata[1] = Felt::from(0x777u64);
+    for call in [withdraw, swapped_key] {
+        let engine = TestEngine::answering(vec![call], Ok(apply_actions(POOL)));
+        let (result, signed) = run(&engine);
+        assert_eq!(result, Err(ProofRefusal::UnboundSignRequest));
+        assert!(signed.is_empty());
+        assert_eq!(*engine.cancelled.borrow(), vec![9]);
+    }
+}
+
+#[test]
+fn a_panic_after_handover_still_cancels_the_job() {
+    let engine = TestEngine::honest();
+    let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        prove(&engine, job(), &public_key(), &proof_limits(), |_| {
+            panic!("signer panicked")
+        })
+    }));
+    assert!(unwound.is_err());
+    assert_eq!(*engine.cancelled.borrow(), vec![9]);
+}
+
+#[test]
+fn wider_limits_are_clamped_to_the_ceiling() {
+    let mut engine = TestEngine::honest();
+    engine.proof = Ok(EngineProof {
+        warnings: vec![
+            EngineWarning {
+                code: "USER_LINKAGE".into(),
+                message: String::new(),
+            };
+            65
+        ],
+        ..apply_actions(POOL)
+    });
+    let wide = ProofLimits {
+        sdk_warnings: usize::MAX,
+        ..ProofLimits::CEILING
+    };
+    let result = prove(&engine, job(), &public_key(), &wide, wallet_sign);
+    assert_eq!(result, Err(ProofRefusal::InvalidWarnings));
 }
 
 #[test]

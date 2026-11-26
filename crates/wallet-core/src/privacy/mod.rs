@@ -10,8 +10,9 @@
 //! wallet's, passed in (`config`, `crate::catalog`).
 //!
 //! Proofs (P15) go through an engine the wallet supplies (`engine::PrivacyEngine`): the core signs
-//! the `CallSet` the SDK asks for (`call_set`) and judges what comes back (`engine_judge`). No flow
-//! uses it yet, so `CAPABILITIES` stays false.
+//! the `CallSet` the SDK asks for (`call_set`) once its calls are bound to the reviewed actions
+//! (`pool_actions`), and judges what comes back (`engine_judge`). No flow uses it yet, so
+//! `CAPABILITIES` stays false.
 
 mod bodies;
 pub mod call_set;
@@ -25,6 +26,7 @@ mod judge;
 mod notes;
 pub mod plan;
 mod plan_steps;
+mod pool_actions;
 pub mod types;
 
 use gates::Outcome;
@@ -95,8 +97,9 @@ mod tests {
     /// no privacy file derives a viewing key, reaches Krusty or touches the phrase or an account
     /// key. The key arrives only through `PrivacyHost::viewing_key`, as a `SecretFelt`, and only
     /// `plan_steps` (which asks for it) and `bodies` (which writes it) name it, besides `engine`,
-    /// whose job hands it to the engine. The `CallSet` signature is the wallet's (`engine::prove`
-    /// takes its signing closure), so the engine files reach no key-taking Krusty export.
+    /// whose job hands it to the engine, and `pool_actions`, which compares the key slot with it.
+    /// The `CallSet` signature is the wallet's (`engine::prove` takes its signing closure), so the
+    /// engine files reach no key-taking Krusty export.
     #[test]
     fn privacy_code_never_derives_or_stores_key_material() {
         let sources = [
@@ -112,6 +115,7 @@ mod tests {
             ("notes.rs", include_str!("notes.rs")),
             ("plan.rs", include_str!("plan.rs")),
             ("plan_steps.rs", include_str!("plan_steps.rs")),
+            ("pool_actions.rs", include_str!("pool_actions.rs")),
             ("types.rs", include_str!("types.rs")),
         ];
         for (name, source) in sources {
@@ -134,10 +138,10 @@ mod tests {
                 names_key,
                 matches!(
                     name,
-                    "bodies.rs" | "engine.rs" | "plan.rs" | "plan_steps.rs"
+                    "bodies.rs" | "engine.rs" | "plan.rs" | "plan_steps.rs" | "pool_actions.rs"
                 ),
-                "{name}: only the plan asks for the key, only the bodies write it, and only the \
-                 engine's job carries it to the engine"
+                "{name}: only the plan asks for the key, only the bodies write it, only the \
+                 engine's job carries it to the engine, and only the pool decoder compares it"
             );
         }
         // The `CallSet` is signed by the wallet's signing path, through the closure `engine::prove`
@@ -146,6 +150,7 @@ mod tests {
             ("call_set.rs", include_str!("call_set.rs")),
             ("engine.rs", include_str!("engine.rs")),
             ("engine_judge.rs", include_str!("engine_judge.rs")),
+            ("pool_actions.rs", include_str!("pool_actions.rs")),
         ] {
             let body = source.split("#[cfg(test)]").next().unwrap_or_default();
             for forbidden in [

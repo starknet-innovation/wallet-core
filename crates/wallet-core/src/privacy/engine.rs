@@ -4,15 +4,17 @@
 //! judging of everything the engine returns (`call_set`, `engine_judge`).
 //!
 //! One job is one proof: `invocation` hands the engine the job (with the viewing key, its one
-//! crossing) and gets back the calls the SDK asks to sign; the core checks they are the pool's
-//! one `compile_actions` for this account, computes the `CallSet` digest itself, has the wallet
+//! crossing) and gets back the calls the SDK asks to sign; the core decodes them as the pool's one
+//! `compile_actions` for this account and this viewing key and binds the value they move to the
+//! job's reviewed actions (`pool_actions`), computes the `CallSet` digest itself, has the wallet
 //! sign it, and passes only the signature to `prove`. No signing callback reaches the engine.
 //! The proof that comes back is refused unless it is the configured pool's `apply_actions` within
 //! the wallet's bounds, with no SDK warning. Any refusal cancels the job.
 
-use super::call_set::{bound_sign_request, call_set_hash, sign_call_set};
+use super::call_set::{call_set_hash, sign_call_set};
 use super::config::is_service_url;
 use super::engine_judge::{judge_proof, judge_warnings};
+use super::pool_actions::bound_sign_request;
 use crate::send::calls::Call;
 use crate::send::types::SignRefusal;
 use crate::{Felt, SecretFelt, StarkSignature};
@@ -20,18 +22,12 @@ use crate::{Felt, SecretFelt, StarkSignature};
 /// The core's name for one proof, echoed back to the engine in `prove` and `cancel`.
 pub type JobId = u64;
 
-/// A transfer's amount: a fixed amount, or an open note (the SDK's `Open`).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TransferAmount {
-    Fixed(Felt),
-    Open,
-}
-
 /// One reviewed action, as the SDK's builder takes it. Activation, shielding, unshielding and
-/// private sends; dapp invokes, shadow accounts and surplus routing join with their flows.
+/// private sends; open notes (the SDK's `Open`), dapp invokes and shadow accounts join with their
+/// flows, and the binding in `pool_actions` with them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EngineAction {
-    /// `register`: set the account's viewing key in the pool. Alone in its job.
+    /// `register`: set the account's viewing key in the pool, alone or ahead of deposits.
     Register,
     /// `with(token).deposit`: public balance into the pool, to `recipient` or the account.
     Deposit {
@@ -43,7 +39,7 @@ pub enum EngineAction {
     Transfer {
         token: Felt,
         recipient: Felt,
-        amount: TransferAmount,
+        amount: Felt,
     },
     /// `with(token).withdraw`: out of the pool to `recipient`'s public balance.
     Withdraw {
@@ -67,12 +63,14 @@ pub struct EngineJob {
     pub actions: Vec<EngineAction>,
     /// The block the proof is made against (the extension's maturity read).
     pub proving_block: u64,
-    /// Where the engine may post the viewing key: `config::is_service_url`, checked before the
-    /// job is handed over.
+    /// Where the engine is told to post the viewing key, checked with `config::is_service_url`
+    /// before the job is handed over. That guards against a misconfigured route only: a hostile
+    /// engine can send the key anywhere it can reach, which only the app's native fetch bridge
+    /// (its origin allowlist) can stop.
     pub discovery_url: String,
     pub prover_url: String,
-    /// The network's RPC, for the pool's nonce. The SDK never posts the key there (the
-    /// extension never calls `simulate`), so it is not held to the service-URL rule.
+    /// The network's RPC, for the pool's nonce. Not checked: the extension's SDK never posts the
+    /// key there (it never calls `simulate`), and nothing here can make a hostile engine agree.
     pub node_url: String,
     pub viewing_key: SecretFelt,
 }
@@ -137,7 +135,8 @@ pub trait PrivacyEngine {
     fn cancel(&self, id: JobId);
 }
 
-/// The wallet's bounds on what the engine returns (the extension's `STRK20_LIMITS`).
+/// The wallet's bounds on what the engine returns (the extension's `STRK20_LIMITS`). `prove`
+/// clamps each to `ProofLimits::CEILING`, so a wallet can tighten them but never widen them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProofLimits {
     pub sdk_warnings: usize,
@@ -149,13 +148,41 @@ pub struct ProofLimits {
     pub proof_data_characters: usize,
 }
 
+impl ProofLimits {
+    /// The extension's `STRK20_LIMITS` for the protocol's call-and-proof envelope
+    /// (`@bramble/wallet-protocol/strk20`), the most any wallet on this core may admit.
+    pub const CEILING: Self = Self {
+        sdk_warnings: 64,
+        invoke_calldata_felts: 4096,
+        proof_output_felts: 4096,
+        proof_facts: 4096,
+        proof_data_characters: 512 * 1024,
+    };
+
+    fn clamped(&self) -> Self {
+        let ceiling = Self::CEILING;
+        Self {
+            sdk_warnings: self.sdk_warnings.min(ceiling.sdk_warnings),
+            invoke_calldata_felts: self
+                .invoke_calldata_felts
+                .min(ceiling.invoke_calldata_felts),
+            proof_output_felts: self.proof_output_felts.min(ceiling.proof_output_felts),
+            proof_facts: self.proof_facts.min(ceiling.proof_facts),
+            proof_data_characters: self
+                .proof_data_characters
+                .min(ceiling.proof_data_characters),
+        }
+    }
+}
+
 /// Why a proof was refused. No variant carries input or engine text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProofRefusal {
     /// A discovery or prover URL is not a service URL; the key was not handed over.
     InvalidRoute,
     Engine(EngineError),
-    /// The calls to sign are not the pool's one `compile_actions` for this account.
+    /// The calls to sign are not the pool's one `compile_actions` for this account and viewing
+    /// key, or they move value the job did not ask for (or omit some it did).
     UnboundSignRequest,
     /// The session ended before the `CallSet` was signed.
     Locked,
@@ -191,7 +218,8 @@ impl From<SignRefusal> for ProofRefusal {
 /// Runs one job to a judged proof. `public_key` is the account's signer key, which the
 /// signature must verify under; `sign` signs a hash with the account's key under the session
 /// the job was approved in (the plan's `PlanHost::sign`), and is called at most once, with the
-/// `CallSet` digest the core computed. Any refusal after the job was handed over cancels it.
+/// `CallSet` digest the core computed, and only once the calls are bound to `job.actions`. Any
+/// refusal after the job was handed over cancels it, and so does a panic.
 pub fn prove<E: PrivacyEngine + ?Sized>(
     engine: &E,
     job: EngineJob,
@@ -202,20 +230,46 @@ pub fn prove<E: PrivacyEngine + ?Sized>(
     if !is_service_url(&job.discovery_url) || !is_service_url(&job.prover_url) {
         return Err(ProofRefusal::InvalidRoute);
     }
+    let limits = &limits.clamped();
     let (id, chain_id, pool, account) = (job.id, job.chain_id, job.pool, job.account);
-    let run = || {
-        let request = engine.invocation(job)?;
-        judge_warnings(&request.warnings, limits)?;
-        bound_sign_request(&request.calls, &pool, &account, limits)?;
-        let hash = call_set_hash(&account, &request.calls, &chain_id);
-        let signature = sign_call_set(&hash, public_key, sign)?;
-        judge_proof(engine.prove(id, signature)?, &pool, limits)
+    // Kept to bind the calls to sign: the key slot must hold this key, and the actions are what
+    // was reviewed. Both stay in Rust and are dropped (the key zeroed) when `prove` returns.
+    let (viewing_key, reviewed) = (job.viewing_key.clone(), job.actions.clone());
+    let mut guard = CancelOnDrop {
+        engine,
+        id,
+        armed: true,
     };
-    let result = run();
-    if result.is_err() {
-        engine.cancel(id);
+    let request = engine.invocation(job)?;
+    judge_warnings(&request.warnings, limits)?;
+    bound_sign_request(
+        &request.calls,
+        &pool,
+        &account,
+        &viewing_key,
+        &reviewed,
+        limits,
+    )?;
+    let hash = call_set_hash(&account, &request.calls, &chain_id);
+    let signature = sign_call_set(&hash, public_key, sign)?;
+    let proof = judge_proof(engine.prove(id, signature)?, &pool, limits)?;
+    guard.armed = false;
+    Ok(proof)
+}
+
+/// Cancels the job unless disarmed: on every early return and on unwinding.
+struct CancelOnDrop<'a, E: PrivacyEngine + ?Sized> {
+    engine: &'a E,
+    id: JobId,
+    armed: bool,
+}
+
+impl<E: PrivacyEngine + ?Sized> Drop for CancelOnDrop<'_, E> {
+    fn drop(&mut self) {
+        if self.armed {
+            self.engine.cancel(self.id);
+        }
     }
-    result
 }
 
 #[cfg(test)]

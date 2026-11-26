@@ -5,7 +5,7 @@
 
 use starknet_types_core::hash::{Poseidon, StarkHash};
 
-use super::engine::{ProofLimits, ProofRefusal};
+use super::engine::ProofRefusal;
 use crate::felt;
 use crate::send::calls::Call;
 use crate::send::types::SignRefusal;
@@ -54,29 +54,6 @@ pub fn call_set_hash(account: &Felt, calls: &[Call], chain_id: &Felt) -> Felt {
     ])
 }
 
-/// Refuses calls to sign unless they are exactly one `compile_actions` on `pool` whose user
-/// (its first argument) is `account`, within the calldata bound. The extension's single-signer
-/// path signs whatever the SDK hands it; the core holds it to the one call the SDK makes
-/// (PLAN.md, "P15 spike findings").
-pub(super) fn bound_sign_request(
-    calls: &[Call],
-    pool: &Felt,
-    account: &Felt,
-    limits: &ProofLimits,
-) -> Result<(), ProofRefusal> {
-    match calls {
-        [call]
-            if call.contract_address == *pool
-                && call.entrypoint == COMPILE_ACTIONS
-                && call.calldata.len() <= limits.invoke_calldata_felts
-                && call.calldata.first() == Some(account) =>
-        {
-            Ok(())
-        }
-        _ => Err(ProofRefusal::UnboundSignRequest),
-    }
-}
-
 /// Signs `hash` through `sign` and returns the raw `[r, s]` the pool verifies. The signature
 /// must come from `public_key` and verify over `hash`, so a wallet that signed something else,
 /// or with another key, is refused before anything reaches the engine.
@@ -103,7 +80,6 @@ pub(super) fn sign_call_set(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::privacy::config::testing::proof_limits;
 
     fn call(contract: u64, entrypoint: &str, calldata: &[u64]) -> Call {
         Call {
@@ -146,31 +122,5 @@ mod tests {
         );
         let moved = [call(0x111, "approve", &[1, 3])];
         assert_ne!(call_set_hash(&account, &moved, &chain()), baseline);
-    }
-
-    #[test]
-    fn only_the_pools_one_compile_actions_for_this_account_is_signed() {
-        let (pool, account, limits) = (Felt::from(0x7u64), Felt::from(0x1234u64), proof_limits());
-        let bound = |calls: &[Call]| bound_sign_request(calls, &pool, &account, &limits);
-        let good = call(0x7, COMPILE_ACTIONS, &[0x1234, 0x99, 0]);
-        assert_eq!(bound(std::slice::from_ref(&good)), Ok(()));
-        for refused in [
-            vec![],
-            vec![good.clone(), good.clone()],
-            vec![call(0x8, COMPILE_ACTIONS, &[0x1234, 0x99, 0])],
-            vec![call(0x7, "apply_actions", &[0x1234, 0x99, 0])],
-            vec![call(0x7, "approve", &[0x1234, 0x99, 0])],
-            vec![call(0x7, COMPILE_ACTIONS, &[0x4321, 0x99, 0])],
-            vec![call(0x7, COMPILE_ACTIONS, &[])],
-        ] {
-            assert_eq!(bound(&refused), Err(ProofRefusal::UnboundSignRequest));
-        }
-        let mut long = good;
-        long.calldata
-            .resize(limits.invoke_calldata_felts + 1, Felt::ZERO);
-        assert_eq!(
-            bound(std::slice::from_ref(&long)),
-            Err(ProofRefusal::UnboundSignRequest)
-        );
     }
 }

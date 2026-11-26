@@ -57,6 +57,8 @@ pub(super) fn judge_proof(
     }
     let proved =
         !proof.data.is_empty() && !proof.output.is_empty() && !proof.proof_facts.is_empty();
+    // The call's calldata is not compared with the signed `compile_actions`, as in the extension:
+    // the pool verifies the proof, and the CallSet signature over it, on chain.
     if call.contract_address != *pool || call.entrypoint != APPLY_ACTIONS || !proved {
         return Err(ProofRefusal::UnboundCallOrProof);
     }
