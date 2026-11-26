@@ -174,7 +174,8 @@ pub(super) enum Stage {
 }
 
 /// One proof. Closed on lock, backgrounding, or a scope change; a new proof means a new job.
-/// `E` is the randomness the compiler draws (the OS's in production).
+/// `E` is the randomness the compiler draws: the OS's ([`ProofJob::new`]), or a replay's in tests
+/// ([`ProofJob::with_entropy`]).
 pub struct ProofJob<E: Entropy = OsEntropy> {
     pub(super) inputs: ProofInputs,
     /// The `CallSet`'s chain, `NetworkId::chain_id` of the catalog's network.
@@ -191,13 +192,24 @@ pub struct ProofJob<E: Entropy = OsEntropy> {
     pub(super) next_id: u64,
 }
 
+impl ProofJob<OsEntropy> {
+    /// A job on `network` (the wallet's catalog record) for `inputs`, drawing its randomness from
+    /// the OS CSPRNG. See [`ProofJob::with_entropy`] for the refusals.
+    pub fn new(network: &NetworkInfo, inputs: ProofInputs) -> Result<Self, ProofRefusal> {
+        Self::with_entropy(network, inputs, OsEntropy)
+    }
+}
+
 impl<E: Entropy> ProofJob<E> {
-    /// A job on `network` (the wallet's catalog record) for `inputs`, drawing from `entropy`.
+    /// THE TEST SEAM: [`ProofJob::new`] drawing from `entropy` instead of the OS, so a replay can
+    /// feed the bytes a recorded SDK job read. A wallet never calls this: the note salts and
+    /// randoms it draws are what keep a proof's notes unlinkable.
+    ///
     /// `InvalidRoute` when the catalog's chain id does not spell `NetworkId::chain_id` (a
     /// wrong-chain catalog must not sign), the route has OHTTP on, is another network's, names a
     /// pool its spelling does not parse to, or either URL is not a service URL: nothing is
     /// requested.
-    pub fn new(
+    pub fn with_entropy(
         network: &NetworkInfo,
         mut inputs: ProofInputs,
         entropy: E,
