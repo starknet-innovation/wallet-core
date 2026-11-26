@@ -102,6 +102,18 @@ fn replay<W>(
     completed
 }
 
+/// The replies of the walk that completed: those after the route's last 409.
+fn completed_replies(recorded: &[&Value]) -> Vec<Value> {
+    let start = recorded
+        .iter()
+        .rposition(|request| request["reply"]["status"] == 409)
+        .map_or(0, |at| at + 1);
+    recorded[start..]
+        .iter()
+        .map(|request| serde_json::from_str(request["reply"]["body"].as_str().unwrap()).unwrap())
+        .collect()
+}
+
 #[test]
 fn every_recorded_discovery_body_is_the_walks() {
     let (mut outgoing_walks, mut incoming_walks) = (0, 0);
@@ -125,6 +137,28 @@ fn every_recorded_discovery_body_is_the_walks() {
                     Walked::More(walk) => Ok(Some(walk)),
                     Walked::Done(found) => {
                         assert!(found.channels.keys().all(|r| recipients.contains(r)));
+                        // Every recipient any page named has a channel, keyed iff some page
+                        // reported it created (a precomputed entry never displaces one).
+                        let pages = completed_replies(&outgoing);
+                        let entries: Vec<&Value> = pages
+                            .iter()
+                            .flat_map(|page| page["channels"].as_array().unwrap())
+                            .collect();
+                        for recipient in &recipients {
+                            let named: Vec<&&Value> = entries
+                                .iter()
+                                .filter(|entry| hex(&entry["recipient_addr"]) == *recipient)
+                                .collect();
+                            let created = named.iter().any(|entry| entry["precomputed"] != true);
+                            assert_eq!(
+                                found.channels.get(recipient).map(|c| c.key.is_some()),
+                                (!named.is_empty()).then_some(created),
+                                "{}: channel",
+                                job.id
+                            );
+                        }
+                        let total = pages.last().unwrap()["cursor"]["total_n_channels"].as_u64();
+                        assert_eq!(found.total.map(u64::from), total, "{}: total", job.id);
                         Ok(None)
                     }
                 },
@@ -152,12 +186,29 @@ fn every_recorded_discovery_body_is_the_walks() {
                         assert!(notes
                             .iter()
                             .all(|(token, found)| { tokens.contains(token) && !found.is_empty() }));
+                        // Every page's notes in a wanted token are kept, whichever page carried
+                        // the sender's channel.
+                        for token in &tokens {
+                            let recorded = completed_replies(&incoming)
+                                .iter()
+                                .flat_map(|page| page["notes"].as_array().unwrap().clone())
+                                .filter(|note| hex(&note["token"]) == *token)
+                                .count();
+                            assert_eq!(
+                                notes.get(token).map_or(0, Vec::len),
+                                recorded,
+                                "{}: notes",
+                                job.id
+                            );
+                        }
                         Ok(None)
                     }
                 },
             );
         }
     }
-    // Every job discovers its channels; the four that spend notes discover those too.
-    assert_eq!((outgoing_walks, incoming_walks), (13, 4));
+    // 27 jobs, every one discovers its channels (`reorg-restart`'s first walk ends in a 409, so
+    // still 27 completed); the 12 that spend notes (`transfer`, `withdraw` with an amount)
+    // discover those too.
+    assert_eq!((outgoing_walks, incoming_walks), (27, 12));
 }
