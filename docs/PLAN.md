@@ -1186,8 +1186,19 @@ Features, smallest and least dependent first:
       have (the extension leaves it to starknet.js when a site omits `class_hash`). Revisit if
       product asks for it: requiring `class_hash` (which the node checks against the class)
       avoids the hashing.
-    - Next here, in order: the live class read (Braavos, upgraded Argent); Ledger typed data;
-      the full export.
+    - In review: the live class read for typed data (`requireLiveAuthorizableClass`).
+      `approve_sign_typed_data` now returns a `DappSignStep`: OpenZeppelin signs at once; a
+      Ready or Braavos account first has its live state read, one read at a time
+      (`answer_sign_read`), through `Kind::Authorize`, a plan that never signs and runs the send
+      review's own account checks (`send::plan_authorize`): the endpoint's chain, then the class
+      at an accepted block, Ready's owner, owner type and no guardian, Braavos's key as first
+      Stark signer with no 2FA still active. So a Ready account stored at 0.3.x that has
+      upgraded signs, one still on 0.3.x does not, Braavos signs `[r, s]`, and every Ready
+      account is read before signing (it was not). Stricter than the extension, which checks
+      only a Ready account's class for typed data: its owner and guardian too, since a guardian
+      account cannot verify one signature. A failed read refuses (163), where the extension
+      tries its next endpoint.
+    - Next here, in order: Ledger typed data; the full export.
     - *Done* (#140): the connect-only slice is exported first, so Bramble can build and test
       the WebView bridge against real dapps while review and signing follow. Connect's card is
       a site and an account, so the slice does not wait on M19–M21.

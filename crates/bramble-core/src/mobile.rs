@@ -40,6 +40,7 @@ mod dapp_expiry;
 mod dapp_invoke;
 mod dapp_session;
 mod dapp_sign;
+mod dapp_sign_read;
 mod dapp_sites;
 mod dapp_watch;
 mod ffi_coordination;
@@ -115,6 +116,7 @@ pub use contact_card::{ContactCardParse, WalletContactCard};
 pub use contacts::Contact;
 pub use dapp_invoke::DappInvokeStart;
 pub use dapp_session::{DappApproval, DappCard, DappReply, DappSession, DappSettled};
+pub use dapp_sign_read::DappSignStep;
 pub use ffi_coordination::{
     CoordinationSyncOutcome, CoordinationSyncStep, NostrSyncPlan, RelayPolicy,
 };

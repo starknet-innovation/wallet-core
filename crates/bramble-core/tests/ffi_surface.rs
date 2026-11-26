@@ -443,7 +443,9 @@ fn no_export_takes_calls_to_sign() {
 /// `approve_sign_typed_data`, takes a queued card's id (and the account the person reviewed),
 /// never a hash or a document: what it signs is only ever what the site queued and the person
 /// approved; the other decisions (`approve_switch_chain`, `approve_watch_asset`, and
-/// `approve_invoke`, whose plan the person still confirms) take only a card's id too. Keep that shape; widen this list deliberately. Every `dapp_*.rs` file is read.
+/// `approve_invoke`, whose plan the person still confirms) take only a card's id too; a typed-data
+/// approval's chain replies (`answer_sign_read`) only gate it. Keep that shape; widen this list
+/// deliberately.
 #[test]
 fn the_dapp_session_signs_only_an_approved_card() {
     // Every `dapp_*.rs` file, in name order, so a new one cannot add an export unseen.
@@ -466,33 +468,22 @@ fn the_dapp_session_signs_only_an_approved_card() {
         .map(|exported| exported.name().to_owned())
         .collect();
     assert_eq!(
-        names,
-        [
-            "pending_approvals",
-            "deny",
-            "approve_switch_chain",
-            "answer_read",
-            "settle_expired",
-            "withdraw",
-            "approve_invoke",
-            "settle_invoke",
-            "new",
-            "request",
-            "approve_connect",
-            "approve_sign_typed_data",
-            "refresh_phishing_feed",
-            "answer_phishing_feed",
-            "is_blocked_site",
-            "approve_watch_asset",
-        ]
+        names.join(" "),
+        "pending_approvals deny approve_switch_chain answer_read settle_expired \
+         withdraw approve_invoke settle_invoke new request approve_connect \
+         approve_sign_typed_data answer_sign_read refresh_phishing_feed \
+         answer_phishing_feed is_blocked_site approve_watch_asset"
     );
-    let signing = exported_signatures(include_str!("../src/dapp_sign.rs"));
+    let signing = exported_signatures(include_str!("../src/dapp_sign_read.rs"));
     assert_eq!(
         signing
             .iter()
             .map(|exported| exported.signature.as_str())
             .collect::<Vec<_>>(),
-        ["fn approve_sign_typed_data( &self, approval_id: String, \
-             reviewed_account_id: String, now_ms: f64, ) -> Vec<DappSettled>"]
+        [
+            "fn approve_sign_typed_data( &self, approval_id: String, \
+             reviewed_account_id: String, now_ms: f64, ) -> DappSignStep",
+            "fn answer_sign_read(&self, approval_id: String, id: u64, body: String) -> DappSignStep"
+        ]
     );
 }

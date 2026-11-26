@@ -46,6 +46,12 @@ impl DappSession {
         let mut state = guard(&self.state);
         let now = self.wallet.now().monotonic_ms;
         state.reads.retain(|id, _| !request_ids.contains(id));
+        // A typed-data read no page waits on any more is dropped before it can sign.
+        state.signing.retain(|_, sign| {
+            sign.waiters
+                .retain(|waiter| !request_ids.contains(&waiter.request_id));
+            !sign.waiters.is_empty()
+        });
         // A plan no page waits on any more is closed, so nothing more is signed for it.
         state.in_flight.retain(|_, flight| {
             flight
