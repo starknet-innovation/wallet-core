@@ -270,7 +270,8 @@ Grep first; extend in place rather than adding a sibling.
   undecided (`settle_expired`, and `withdraw` for a page that has gone) are `dapp_expiry.rs`;
   `wallet_signTypedData`'s card and its signature at approval
   (`approve_sign_typed_data`, through `signing_record` and `sign_for` under one session hold)
-  are `dapp_sign.rs`, which reviews an outside execution's calls with the invoke route's
+  are `dapp_sign.rs` (a Ready or Braavos account's live read before it, `dapp_sign_read.rs`,
+  over `send::plan_authorize`'s `Kind::Authorize`), which reviews an outside execution's calls with the invoke route's
   inputs (`trusted_recipients`, the tracked tokens from the session's `TokenPreferences`, the
   allowance log), read before the session hold. The card list and `deny` are `dapp_cards.rs`;
   add-chain, switch-chain and deployment data (and the host's chain reads, `answer_read`) are

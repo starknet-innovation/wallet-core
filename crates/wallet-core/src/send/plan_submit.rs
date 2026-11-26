@@ -77,7 +77,7 @@ impl Plan {
         match &self.kind {
             Kind::Transfer(transfer) => Some(&transfer.calldata),
             Kind::Invoke(invoke) => Some(&invoke.calldata),
-            Kind::Deployment | Kind::Refresh { .. } => None,
+            Kind::Deployment | Kind::Refresh { .. } | Kind::Authorize => None,
         }
     }
 

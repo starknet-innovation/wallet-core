@@ -25,6 +25,7 @@ pub mod multisig_invoke_plan;
 pub mod multisig_review;
 pub mod multisig_stale;
 pub mod plan;
+pub mod plan_authorize;
 mod plan_deploy;
 pub mod plan_device;
 pub mod plan_gasless;

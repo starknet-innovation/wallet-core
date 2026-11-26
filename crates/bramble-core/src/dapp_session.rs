@@ -40,6 +40,7 @@ use crate::dapp::{
 use crate::dapp_chain::PendingRead;
 use crate::dapp_invoke::{InFlight, InvokeCard};
 use crate::dapp_sign::SignCard;
+use crate::dapp_sign_read::PendingSign;
 use crate::dapp_watch::{watch_dedupe, WatchCard};
 use crate::networks::NetworkId;
 use crate::portfolio::model::TokenConfig;
@@ -191,6 +192,8 @@ pub(crate) struct State {
     pub(crate) reads: HashMap<u64, PendingRead>,
     /// Approved invoke cards whose plans the host is running, by card id.
     pub(crate) in_flight: HashMap<String, InFlight>,
+    /// Approved typed-data cards waiting on their account's live read, by card id.
+    pub(crate) signing: HashMap<String, PendingSign>,
 }
 
 /// The dapp requests of one wallet. Thread-safe; every method takes `&self`.
@@ -391,6 +394,7 @@ impl DappSession {
                 waiters: HashMap::new(),
                 reads: HashMap::new(),
                 in_flight: HashMap::new(),
+                signing: HashMap::new(),
             }),
             feed: Mutex::new(PhishingFeed::new(PHISHING_FEED)),
         })

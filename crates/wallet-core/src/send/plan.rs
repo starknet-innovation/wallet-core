@@ -167,6 +167,8 @@ pub(crate) struct Work {
     pub invoke_hash: Option<Felt>,
     /// Whether the node accepted the invoke write.
     pub invoke_accepted: bool,
+    /// `Kind::Authorize`: the live account accepts this wallet's signature.
+    pub authorized: bool,
     pub checkpoint: usize,
 }
 
@@ -416,6 +418,7 @@ impl Plan {
             Kind::Transfer(_) | Kind::Invoke(_) => self.work.invoke_hash,
             Kind::Deployment => self.work.deploy_hash,
             Kind::Refresh { hash } => Some(hash),
+            Kind::Authorize => None,
         }
     }
 
