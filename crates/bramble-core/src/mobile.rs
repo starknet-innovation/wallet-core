@@ -54,6 +54,7 @@ mod multisig_intents;
 mod multisig_rpc;
 mod multisig_store;
 mod multisig_tx;
+mod multisig_tx_device;
 mod multisig_tx_ops;
 mod multisig_tx_plans;
 mod nostr;
@@ -127,6 +128,7 @@ pub use multisig_tx::{
     MultisigIntentReview, MultisigProposal, MultisigProposalRequest, MultisigSubmission,
     MultisigTxFailure, MultisigTxStep, StaleReason,
 };
+pub use multisig_tx_device::{MultisigDeviceSigning, MultisigDeviceStep};
 pub use networks::{NetworkInfo, TokenInfo};
 pub use nostr_relay::RelayStep;
 pub use privacy::plan::PrivacyReadPlan;

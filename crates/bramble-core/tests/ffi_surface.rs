@@ -326,6 +326,7 @@ fn multisig_transactions_take_and_return_no_key() {
         "prepare_multisig_deployment",
         "propose_multisig_transaction",
         "sign_multisig_intent",
+        "sign_multisig_intent_on_device",
         "submit_multisig_intent",
         "import_multisig_intent",
         "multisig_intent_read",
