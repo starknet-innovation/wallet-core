@@ -6,10 +6,7 @@
 
 use crate::common;
 
-use bramble_core::ledger::LedgerScheme;
-use bramble_core::{
-    AccountFamily, DappCard, DappReply, DappSignStep, LedgerAccountRequest, NetworkId, SignRow,
-};
+use bramble_core::{AccountFamily, DappCard, DappReply, DappSignStep, NetworkId, SignRow};
 use common::dapp::*;
 use common::{account_id, imported, pending, selection, PASSWORD};
 
@@ -146,27 +143,6 @@ fn returns_the_standard_argent_account_signature_for_approved_typed_data() {
     ));
 }
 
-fn class(label: &str) -> String {
-    bramble_core::account_classes()
-        .into_iter()
-        .find(|class| class.label == label)
-        .unwrap()
-        .class_hash
-}
-
-/// The live reads of a Ready account running `class_label`, with `owner` its only signer.
-fn ready_chain(class_label: &str, owner: &str) -> Chain {
-    use starknet_wallet_core::send::plan_probe::{GET_GUARDIAN, GET_OWNER, GET_OWNER_TYPE};
-    Chain {
-        class: Some(class(class_label)),
-        views: vec![
-            (GET_OWNER, vec![owner.to_owned()]),
-            (GET_OWNER_TYPE, vec!["0x0".into()]),
-            (GET_GUARDIAN, vec!["0x0".into()]),
-        ],
-    }
-}
-
 /// A connected site's card from `family` stored at `stored`, approved against `chain`.
 fn approve_stored(family: AccountFamily, stored: &str, chain: impl Fn(&str) -> Chain) -> DappReply {
     let (_dir, _clock, core) = pending();
@@ -251,24 +227,6 @@ fn a_braavos_account_signs_only_with_its_key_first_and_no_2fa() {
         ..braavos_chain(&[key], 0)
     });
     assert_eq!(code(&undeployed), 163);
-}
-
-// "a failed Ledger device sign settles the held dapp request with { error }": here a Ledger
-// account is refused before any card, since the device path is not wired for typed data.
-#[test]
-fn a_ledger_account_cannot_queue_a_signature() {
-    let (_dir, _clock, core) = imported();
-    core.add_ledger_account(LedgerAccountRequest {
-        network: NetworkId::Sepolia,
-        family: AccountFamily::Argent,
-        scheme: LedgerScheme::Ready,
-        account_index: 3,
-        public_key_x: "0x426212993d56613e1886a4cbc5b58810570023581c2aab0b423277776b79d2e".into(),
-    })
-    .unwrap();
-    let dapp = connected(&core);
-    assert_eq!(code(&sign_request(&dapp, SITE, &sepolia_mail(), 1)), 163);
-    assert!(dapp.pending_approvals(NOW).is_empty());
 }
 
 // "deny rejects the held request with an error"

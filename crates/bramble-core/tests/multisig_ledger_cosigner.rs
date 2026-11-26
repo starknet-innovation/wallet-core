@@ -8,6 +8,7 @@
 use crate::ledger_cosign_support;
 use crate::multisig_tx_support;
 
+use crate::common::ledger_device::OK;
 use bramble_core::{CoreError, IntentState, MultisigDeviceStep, MultisigTxStep, StepReply};
 use ledger_cosign_support::*;
 use multisig_tx_support::*;

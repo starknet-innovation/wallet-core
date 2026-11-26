@@ -3,11 +3,16 @@
 
 use std::sync::Arc;
 
-use bramble_core::{DappReply, DappSession, DappSignStep, NetworkId, TokenPreferences, WalletCore};
+use bramble_core::ledger::LedgerScheme;
+use bramble_core::{
+    AccountFamily, DappReply, DappSession, DappSignStep, LedgerAccountRequest, NetworkId,
+    TokenPreferences, WalletCore,
+};
 use serde_json::{json, Value};
-use starknet_wallet_core::{kms, Felt};
+use starknet_wallet_core::{kms, sign_stark_hash, Felt, SecretFelt};
 
 use super::account_id;
+use super::ledger_device::Device;
 
 pub const SITE: &str = "https://app.example";
 pub const NOW: f64 = 1_800_000_000_000.0;
@@ -77,17 +82,82 @@ pub fn approved(dapp: &DappSession, card: String, account: String) -> DappReply 
 
 /// The one reply an approval settles, answering each live account read from `chain`.
 pub fn approved_on(dapp: &DappSession, card: String, account: String, chain: &Chain) -> DappReply {
-    let mut step = dapp.approve_sign_typed_data(card.clone(), account, NOW);
-    loop {
-        match step {
-            DappSignStep::Settled { settled } => {
-                assert_eq!(settled.len(), 1);
-                return settled[0].reply.clone();
-            }
-            DappSignStep::Read { id, body, .. } => {
-                step = dapp.answer_sign_read(card.clone(), id, chain.reply(id, &body));
-            }
+    let step = dapp.approve_sign_typed_data(card.clone(), account, NOW);
+    settled_reply(drive(dapp, &card, step, chain, None))
+}
+
+/// The one reply a step settles.
+pub fn settled_reply(step: DappSignStep) -> DappReply {
+    match step {
+        DappSignStep::Settled { settled } => {
+            assert_eq!(settled.len(), 1);
+            settled[0].reply.clone()
         }
+        other => panic!("not settled: {other:?}"),
+    }
+}
+
+/// Answers `card`'s reads from `chain` and its APDUs from `device` until it settles or parks
+/// (with no device, at its first APDU).
+pub fn drive(
+    dapp: &DappSession,
+    card: &str,
+    mut step: DappSignStep,
+    chain: &Chain,
+    mut device: Option<&mut Device>,
+) -> DappSignStep {
+    loop {
+        step = match step {
+            DappSignStep::Read { id, body, .. } => {
+                dapp.answer_sign_read(card.into(), id, chain.reply(id, &body))
+            }
+            DappSignStep::Device { apdu } if device.is_some() => {
+                let device = device.as_deref_mut().unwrap();
+                dapp.answer_sign_device(card.into(), device.answer(&apdu))
+            }
+            other => return other,
+        }
+    }
+}
+
+/// A Ledger key the published phrase does not derive.
+pub fn ledger_key() -> SecretFelt {
+    SecretFelt::new(Felt::from(0x1ed6e5_u64))
+}
+
+/// Adds `key` as a Ready (Argent) Ledger account on Sepolia, which becomes the active one.
+pub fn add_ledger(core: &WalletCore, key: &SecretFelt) {
+    let public_key_x = sign_stark_hash(key, "0x1").unwrap().public_key;
+    let added = core
+        .add_ledger_account(LedgerAccountRequest {
+            network: NetworkId::Sepolia,
+            family: AccountFamily::Argent,
+            scheme: LedgerScheme::Ready,
+            account_index: 0,
+            public_key_x,
+        })
+        .unwrap();
+    assert!(added.ledger);
+}
+
+pub fn class(label: &str) -> String {
+    bramble_core::account_classes()
+        .into_iter()
+        .find(|class| class.label == label)
+        .unwrap()
+        .class_hash
+}
+
+/// The live reads of a Ready account running `class_label`, with `owner` its only signer.
+pub fn ready_chain(class_label: &str, owner: &str) -> Chain {
+    use starknet_wallet_core::send::plan_probe::{GET_GUARDIAN, GET_OWNER, GET_OWNER_TYPE};
+    Chain {
+        class: Some(class(class_label)),
+        views: vec![
+            (GET_OWNER, vec![owner.to_owned()]),
+            (GET_OWNER_TYPE, vec!["0x0".into()]),
+            (GET_GUARDIAN, vec!["0x0".into()]),
+        ],
     }
 }
 

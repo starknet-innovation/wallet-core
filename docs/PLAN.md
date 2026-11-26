@@ -1252,7 +1252,21 @@ Features, smallest and least dependent first:
       only a Ready account's class for typed data: its owner and guardian too, since a guardian
       account cannot verify one signature. A failed read refuses (163), where the extension
       tries its next endpoint.
-    - Next here, in order: Ledger typed data; the full export.
+    - In review: Ledger typed data (`bramble-core`'s `dapp_sign_device.rs`), as the
+      extension's `executeSignApproval` routes a keyless account through `accountHashSigner`.
+      A Ledger account queues a typed-data card like any other and, once approved, takes the
+      live read first. Then every check runs under one session hold and the core computes the
+      message hash, an outside execution's review included (a lookalike payee is refused
+      before the device is asked for anything). The device blind-signs that hash through
+      `ledger::HashSigning`, one APDU at a time (`DappSignStep::Device`,
+      `answer_sign_device`, `sign_device_transport_failure`). A refusal parks at
+      `DeviceRetry` (`retry_sign_device`; `cancel_sign_device` refuses the page, as the side
+      panel's reject does), and a lock ends the exchange before another APDU.
+      The signature is verified against the stored key. Before it answers the page, the cheap
+      checks run again: the same session, the site not blocked, and the card's account still
+      the granted active one. The host never passes a hash, and `withdraw` drops a signing
+      whose page has gone.
+    - Next here: the full export.
     - *Done* (#140): the connect-only slice is exported first, so Bramble can build and test
       the WebView bridge against real dapps while review and signing follow. Connect's card is
       a site and an account, so the slice does not wait on M19–M21.

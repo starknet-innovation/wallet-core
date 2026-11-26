@@ -200,7 +200,7 @@ pub(crate) struct State {
     pub(crate) reads: HashMap<u64, PendingRead>,
     /// Approved invoke cards whose plans the host is running, by card id.
     pub(crate) in_flight: HashMap<String, InFlight>,
-    /// Approved typed-data cards waiting on their account's live read, by card id.
+    /// Approved typed-data cards waiting on their account's live read or device, by card id.
     pub(crate) signing: HashMap<String, PendingSign>,
 }
 

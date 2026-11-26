@@ -278,7 +278,9 @@ Grep first; extend in place rather than adding a sibling.
   are `dapp_sign.rs` (a Ready or Braavos account's live read before it, `dapp_sign_read.rs`,
   over `send::plan_authorize`'s `Kind::Authorize`), which reviews an outside execution's calls with the invoke route's
   inputs (`trusted_recipients`, the tracked tokens from the session's `TokenPreferences`, the
-  allowance log), read before the session hold. The card list and `deny` are `dapp_cards.rs`;
+  allowance log), read before the session hold. A Ledger account's approved card signs the
+  hash computed under that hold on its device (`dapp_sign_device.rs`, over
+  `ledger::HashSigning`); the host passes APDU replies, never a hash. The card list and `deny` are `dapp_cards.rs`;
   add-chain, switch-chain and deployment data (and the host's chain reads, `answer_read`) are
   `dapp_chain.rs`; `wallet_watchAsset` is `dapp_watch.rs`; `wallet_addInvokeTransaction`'s card
   and its plan (`approve_invoke`, `settle_invoke`, over `send::plan::TransferPlan`) are

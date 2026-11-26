@@ -50,6 +50,7 @@ mod dapp_invoke;
 mod dapp_request_parity;
 mod dapp_session;
 mod dapp_sign;
+mod dapp_sign_ledger;
 mod dapp_sign_outside;
 mod dapp_sign_parity;
 mod dapp_sites;
