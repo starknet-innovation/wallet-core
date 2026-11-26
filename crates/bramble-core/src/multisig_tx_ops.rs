@@ -220,7 +220,8 @@ impl WalletCore {
         };
         self.require_unlocked()?;
         multisig_intents::upsert(self.data_dir(), &next)?;
-        Ok(intent_view(&next))
+        let record = self.multisig_record(&next.account_id).ok();
+        Ok(intent_view(&next, record.as_ref()))
     }
 }
 
@@ -231,11 +232,12 @@ impl WalletCore {
     pub fn multisig_intents(&self, multisig_id: String) -> Result<Vec<MultisigIntent>, CoreError> {
         self.require_unlocked()?;
         settle(self.data_dir(), &multisig_id)?;
+        let record = self.multisig_record(&multisig_id).ok();
         Ok(multisig_intents::load(self.data_dir())?
             .iter()
             .rev()
             .filter(|intent| intent.account_id == multisig_id)
-            .map(intent_view)
+            .map(|intent| intent_view(intent, record.as_ref()))
             .collect())
     }
 
@@ -446,6 +448,7 @@ impl WalletCore {
         let parsed = IntentPackage::parse(&package, class(), summary_length())
             .ok_or_else(|| refused(INVALID_PACKAGE))?;
         let next = self.import_package(&parsed, &state, &tokens)?;
-        Ok(intent_view(&next))
+        let record = self.multisig_record(&next.account_id).ok();
+        Ok(intent_view(&next, record.as_ref()))
     }
 }

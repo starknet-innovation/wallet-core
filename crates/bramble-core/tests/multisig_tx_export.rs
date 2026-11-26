@@ -77,6 +77,8 @@ fn a_proposal_is_cosigned_and_submitted_as_the_extension_does() {
         assert_eq!(intent.package, package_of(&stages[0]["intent"]));
         assert_eq!(intent.transaction_hash, text(&proposal["transactionHash"]));
         assert_eq!(intent.state, IntentState::Collecting);
+        // A transfer is no signer change (`configReviewFor` is null).
+        assert_eq!((&intent.change, &intent.next_config), (&None, &None));
         assert_eq!(
             intent.max_fee.as_ref().unwrap().max_spend,
             text(&proposal["feeReview"]["overallFee"])
@@ -210,7 +212,18 @@ fn signer_changes_are_proposed_as_the_extension_proposes_them() {
             "{name}"
         );
         assert_eq!(intent.summary, review.summary, "{name}");
+        // `configReviewFor`: the stored intent carries the change the review decoded.
+        assert_eq!(intent.change, review.change, "{name}");
+        assert_eq!(intent.next_config, Some(next), "{name}");
     }
     let stored = wallet.core.multisig_intents(wallet.multisig_id()).unwrap();
     assert_eq!(stored.len(), 4);
+    for (intent, case) in stored.iter().rev().zip(cases) {
+        assert_eq!(
+            serde_json::to_value(&intent.change).unwrap(),
+            case["review"]["config"]["change"],
+            "{}",
+            text(&case["name"])
+        );
+    }
 }
