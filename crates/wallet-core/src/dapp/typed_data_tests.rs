@@ -12,7 +12,7 @@ pub(super) const ACCOUNT: &str =
     "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcde";
 
 /// The extension's `JSON_BUDGETS.typedData`.
-pub(super) const BUDGET: JsonBudget = JsonBudget {
+pub(in crate::dapp) const BUDGET: JsonBudget = JsonBudget {
     max_array_length: 1_024,
     max_bytes: 256 * 1024,
     max_depth: 24,
