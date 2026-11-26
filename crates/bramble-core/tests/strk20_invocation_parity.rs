@@ -13,6 +13,8 @@ use starknet_wallet_core::privacy::prover::{
 };
 use starknet_wallet_core::{felt, Felt, SecretFelt};
 
+use crate::strk20_support::is_multisig;
+
 /// The generator's pinned clock, the SDK's `Date.now()` JSON-RPC id.
 const PROVE_ID: u64 = 1_800_000_000_000;
 
@@ -24,11 +26,13 @@ const BRAMBLE_RETRY: ProverRetry = ProverRetry {
     max_delay_ms: 30_000,
 };
 
+/// The single-signer lines; the multisig ones are `strk20_multisig_parity`'s.
 fn jobs() -> Vec<(&'static str, Value)> {
     include_str!("fixtures/extension-strk20-jobs.jsonl")
         .lines()
         .filter(|line| !line.trim().is_empty())
         .map(|line| (line, serde_json::from_str(line).unwrap()))
+        .filter(|(_, job)| !is_multisig(job))
         .collect()
 }
 
@@ -161,10 +165,11 @@ fn invocations_prove_bodies_and_replies_are_the_sdks() {
     }
     // 36 proof jobs, 6 refused before signing (the 3 `kind` lines are reads, never signed): 30
     // reached the signer, 28 of them the prover (the two `USER_LINKAGE` jobs were refused by the
-    // extension after signing). S6 added 6 signed and proved invoke jobs.
+    // extension after signing). S6 added 6 signed and proved invoke jobs, and S7's fixture 6
+    // signed and proved single-signer jobs (the multisig lines are `strk20_multisig_parity`'s).
     assert_eq!(
         (replayed, proved_jobs),
-        (30, 28),
+        (36, 34),
         "every job that reached the signer"
     );
 }

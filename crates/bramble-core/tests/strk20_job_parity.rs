@@ -384,9 +384,11 @@ fn every_recorded_job_runs_as_the_sdk_ran_it() {
             refused += 1;
         }
     }
-    // Tracks the fixture (36 proof jobs and 3 shadow-account reads today): update it when the
-    // fixture is regenerated. S6 added 6 proved invoke jobs and 3 refusals.
-    assert_eq!((proved, refused, linked), (28, 6, 2));
+    // Tracks the fixture (42 single-signer proof jobs, 3 shadow-account reads and 6 multisig
+    // lines today): update it when the fixture is regenerated. S6 added 6 proved invoke jobs and
+    // 3 refusals; S7's fixture 6 proved single-signer jobs (the multisig lines are
+    // `strk20_multisig_parity`'s).
+    assert_eq!((proved, refused, linked), (34, 6, 2));
 }
 
 #[test]
