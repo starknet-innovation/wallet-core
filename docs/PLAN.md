@@ -146,6 +146,18 @@ read)` while it answers `CoordinationSyncStep::Read`, in place of `coordination_
 `DappSession::new` takes `TokenPreferences`, `deny_connect` becomes `deny` (any card), and
 `DappApproval` gains `card`; `GaslessSubmitStep::Device` and `DeviceRetry`, and
 `RiskFlagCode::AddressPoisoning`, join each app's exhaustive switch.
+`v0.11.0` carries #172–#202: the rest of P16's core (add-chain, switch-chain and deployment data,
+#176; watch-asset and `dappTokenIds`, #179; a site's call batch through a confirmed plan, #181;
+the sign card's decoded rows, #183; the live class read before typed data, so Ready and Braavos
+accounts sign, #188; Ledger typed data on the device, #200; the host contract,
+`docs/dapp-host.md`, #202), P8's device OS gate (`LedgerOsGate`, #199), the M18 follow-ups (an
+intent's signer change, #172; re-proposing a stale intent, #177; removing one, #190; importing a
+co-signer's signature, #193), and the module-layer guardrail (#196, #197). Mobile adopts, with the
+bump: `approve_sign_typed_data` returns a `DappSignStep` (`Read`, `Device`, `DeviceRetry`,
+`Settled`) in place of `[DappSettled]`; `DappCard::SignTypedData` gains `domain`, `message` and
+`outside_execution`; and `DappCard`'s `Invoke`, `SwitchChain` and `WatchAsset` and
+`DappReply::Read` join each app's exhaustive switch. Nothing in the apps calls `DappSession`'s
+review cards yet. `MultisigIntent` gains `change` and `next_config`.
 
 ### Next PRs
 
