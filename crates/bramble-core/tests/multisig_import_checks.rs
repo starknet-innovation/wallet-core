@@ -4,8 +4,8 @@
 //! transaction's account, and the stored intent it merges into. The extension recorded no import
 //! cases, so these hold the Rust to `importIntent` directly.
 
-mod multisig_import_support;
-mod multisig_support;
+use crate::multisig_import_support;
+use crate::multisig_support;
 
 use multisig_import_support::*;
 use multisig_support::*;

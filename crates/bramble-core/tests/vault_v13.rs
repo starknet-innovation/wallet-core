@@ -4,7 +4,7 @@
 //! and a wallet mobile builds for the same phrase and accounts seals an equal payload.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod common;
+use crate::common;
 
 use bramble_core::testing::{open_vault, v13_round_trip};
 use bramble_core::{AccountFamily, Ladder, NetworkId, RecoverySelection};

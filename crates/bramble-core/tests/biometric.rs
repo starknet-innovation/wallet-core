@@ -2,7 +2,7 @@
 //! only on a real enrolment change or a slot the wrap secret no longer opens.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod common;
+use crate::common;
 
 use bramble_core::{BiometricDomain, CoreError, NetworkId, WalletStatus};
 use common::{imported, PASSWORD, WRONG};

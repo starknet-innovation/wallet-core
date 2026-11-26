@@ -5,10 +5,8 @@
 //! the extension's co-signer made and every package is the recorded one.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod common;
-mod ledger_cosign_support;
-mod multisig_support;
-mod multisig_tx_support;
+use crate::ledger_cosign_support;
+use crate::multisig_tx_support;
 
 use bramble_core::{CoreError, IntentState, MultisigDeviceStep, MultisigTxStep, StepReply};
 use ledger_cosign_support::*;

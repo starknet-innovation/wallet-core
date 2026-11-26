@@ -8,7 +8,7 @@
 //! `transactions_refusal_parity.rs`, and mobile's lifecycle tests (locks, persistence) stay with
 //! its wallet.
 
-mod plan_support;
+use crate::plan_support;
 
 use plan_support::*;
 use serde_json::json;

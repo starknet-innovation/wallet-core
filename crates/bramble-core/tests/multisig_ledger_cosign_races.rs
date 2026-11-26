@@ -4,10 +4,7 @@
 //! an idle lock stops the device.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod common;
-mod ledger_cosign_support;
-mod multisig_support;
-mod multisig_tx_support;
+use crate::ledger_cosign_support;
 
 use bramble_core::testing::IDLE_LOCK_MS;
 use bramble_core::{CoreError, IntentState, MultisigDeviceStep};

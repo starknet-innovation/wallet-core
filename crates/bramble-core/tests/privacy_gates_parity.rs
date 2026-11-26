@@ -3,8 +3,8 @@
 //! journey and the unified Home balances, over Bramble's catalogs (`networks.json`,
 //! `privacy.json`).
 
-mod portfolio_support;
-mod privacy_support;
+use crate::portfolio_support;
+use crate::privacy_support;
 
 use portfolio_support::networks;
 use privacy_support::{routes, rules};

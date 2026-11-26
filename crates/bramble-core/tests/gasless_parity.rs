@@ -7,7 +7,7 @@
 //! The core departs from the fixture where it pins an extension defect (`knownExtensionBug`) or
 //! where the core is stricter; each departure is asserted as one, never skipped silently.
 
-mod gasless_support;
+use crate::gasless_support;
 
 use bramble_core::gasless::{gasless_v2_classes, GASLESS_POLICY};
 use gasless_support::*;

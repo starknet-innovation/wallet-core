@@ -4,7 +4,7 @@
 //! and `tests/background/transactions/chain-ops-invalid-inputs.test.ts` where they fit.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod common;
+use crate::common;
 
 use bramble_core::ledger::LedgerScheme;
 use bramble_core::{AccountFamily, DappCard, LedgerAccountRequest, NetworkId};

@@ -6,9 +6,8 @@
 //! and every stored intent's package must be the bytes the extension's co-signers exchanged.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod common;
-mod multisig_support;
-mod multisig_tx_support;
+use crate::multisig_support;
+use crate::multisig_tx_support;
 
 use bramble_core::{IntentState, MultisigProposalRequest, MultisigTxStep, SendStep, StepReply};
 use multisig_support::fixture;

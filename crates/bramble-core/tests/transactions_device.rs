@@ -1,7 +1,7 @@
 //! A Ledger account's send (P8): the plan hands its hashes to a scripted device, never to
 //! `PlanHost::sign`, and only a signature that verified against the account's key is written.
 
-mod plan_support;
+use crate::plan_support;
 
 use bramble_core::ledger::{ledger_account_path, LEDGER_APP_MIN};
 use plan_support::node::*;

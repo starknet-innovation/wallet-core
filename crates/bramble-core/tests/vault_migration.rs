@@ -6,7 +6,7 @@
 //! the ciphertexts differ by design (each seal draws its own IV and salt).
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod common;
+use crate::common;
 
 use std::sync::Arc;
 

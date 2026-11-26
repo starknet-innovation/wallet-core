@@ -4,7 +4,7 @@
 //! extension's `submitErc20Transfer` is `submitInvokeTransaction` with one call), and a scripted
 //! node drives a multicall, its refusals and its failures.
 
-mod plan_support;
+use crate::plan_support;
 
 use plan_support::node::*;
 use plan_support::*;

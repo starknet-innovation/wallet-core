@@ -4,7 +4,7 @@
 //! arguments and the activity log in memory. Mobile's key-boundary check is
 //! `starknet_wallet_core::portfolio`'s own unit test, over the core's sources.
 
-mod portfolio_support;
+use crate::portfolio_support;
 
 use bramble_core::{HISTORY_POLICY, PORTFOLIO_POLICY};
 use portfolio_support::{catalogs, Memory};

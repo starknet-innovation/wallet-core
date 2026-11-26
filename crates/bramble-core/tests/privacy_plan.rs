@@ -3,8 +3,8 @@
 //! where the viewing key may appear. Driven over a test `PrivacyHost`; the wallet's own checks
 //! (an unknown account, a locked wallet at prepare) are Bramble mobile's tests.
 
-mod portfolio_support;
-mod privacy_support;
+use crate::portfolio_support;
+use crate::privacy_support;
 
 use privacy_support::{
     account_address, drive, mainnet, mainnet_plan, routes, routing, run_mainnet, steady, wire,

@@ -10,8 +10,8 @@ rewriting it the way its row says, and the rewrite is reviewed as a change to st
 | File | What it pins | Written by | Read by |
 | --- | --- | --- | --- |
 | `vault-v3-container.json` | A version-3 records container with a biometric slot (wrap secret `[7; 32]`): an earlier build's vault, refused once its password is proven, still deletable | Mobile core at `88666b49`, once | `tests/backup_pending.rs` |
-| `rust-gift-wrap.json` | A gift wrap Rust sealed, which the extension must open | `BRAMBLE_WRITE_FIXTURES=1 cargo test -p bramble-core --features mobile,testing --test nostr_multisig_parity`; every run checks the committed one still opens | `tests/nostr_multisig_parity.rs`; Bramble's `tests/conformance/mobile-nostr-parity.test.ts` opens its own committed copy, refreshed by copying this file |
-| `ui-coordination.json` | The co-signer cards, predicted 2-of-2 address and one gift wrap the iOS UI suite drives coordination with | `BRAMBLE_WRITE_FIXTURES=1 cargo test -p bramble-core --features mobile,testing --test ui_coordination_fixture`; every run checks it | `tests/ui_coordination_fixture.rs`; Bramble's iOS UI tests (`mobile/ios/project.yml`) |
+| `rust-gift-wrap.json` | A gift wrap Rust sealed, which the extension must open | `BRAMBLE_WRITE_FIXTURES=1 cargo test -p bramble-core --features mobile,testing --test integration nostr_multisig_parity::`; every run checks the committed one still opens | `tests/nostr_multisig_parity.rs`; Bramble's `tests/conformance/mobile-nostr-parity.test.ts` opens its own committed copy, refreshed by copying this file |
+| `ui-coordination.json` | The co-signer cards, predicted 2-of-2 address and one gift wrap the iOS UI suite drives coordination with | `BRAMBLE_WRITE_FIXTURES=1 cargo test -p bramble-core --features mobile,testing --test integration ui_coordination_fixture::`; every run checks it | `tests/ui_coordination_fixture.rs`; Bramble's iOS UI tests (`mobile/ios/project.yml`) |
 
 | File | sha256 |
 | --- | --- |

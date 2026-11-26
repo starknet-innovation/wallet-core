@@ -5,8 +5,7 @@
 //! account's stored key reaches the relay, after its journal row.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod gasless_export_support;
-mod send_support;
+use crate::gasless_export_support;
 
 use std::sync::Arc;
 

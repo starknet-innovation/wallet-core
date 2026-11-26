@@ -8,7 +8,7 @@
 //! `calls` is call review (P1b) and is not read here; `deploySubmit` drives the deployment plan
 //! and lives with its wire in `multisig_deploy_parity.rs`.
 
-mod multisig_support;
+use crate::multisig_support;
 
 use bramble_core::MULTISIG_FEE_OVERHEAD;
 use multisig_support::*;
