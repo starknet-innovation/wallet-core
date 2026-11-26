@@ -400,6 +400,31 @@ fn a_lock_mid_sync_stops_it_and_records_nothing() {
 }
 
 #[test]
+fn a_saved_signer_forging_the_snapshot_is_refused_for_good_by_the_chain() {
+    let wallet = cosigned();
+    let proposal = proposal_package(&wallet);
+    // The co-signer's package claims a 3-of-3 the chain does not hold (still a valid package:
+    // the snapshot is not in the transaction hash, and the sender's key is in its set).
+    let mut forged: Value = serde_json::from_str(&proposal).unwrap();
+    assert_eq!(forged["intent"]["configSnapshot"]["threshold"], json!(2));
+    forged["intent"]["configSnapshot"]["threshold"] = json!(3);
+    let event = share(&wallet, &forged.to_string());
+    let (outcome, reads) = sync(
+        &wallet,
+        std::slice::from_ref(&event),
+        &chain_at(&wallet, &nonce_of(&proposal)),
+    );
+    // Trusted, so read; `ConfigChanged` is final.
+    assert_eq!((outcome.received, outcome.imported, reads), (1, 0, 1));
+    assert_eq!(receipts(&wallet), [id_of(&event)]);
+    assert!(wallet
+        .core
+        .multisig_intents(wallet.multisig_id())
+        .unwrap()
+        .is_empty());
+}
+
+#[test]
 fn an_unreadable_multisig_store_mid_sync_is_retried_not_receipted() {
     let wallet = cosigned();
     let proposal = proposal_package(&wallet);
