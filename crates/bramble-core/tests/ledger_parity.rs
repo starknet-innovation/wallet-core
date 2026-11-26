@@ -19,7 +19,7 @@ use starknet_wallet_core::send::sign::Deployment;
 use starknet_wallet_core::send::types::{SendStep, StepReply};
 use starknet_wallet_core::{felt, Felt, NetworkId};
 
-fn lines(block: &str) -> Vec<Value> {
+fn all_lines() -> Vec<Value> {
     let path = format!(
         "{}/tests/fixtures/extension-ledger.jsonl",
         env!("CARGO_MANIFEST_DIR")
@@ -28,8 +28,29 @@ fn lines(block: &str) -> Vec<Value> {
         .unwrap()
         .lines()
         .map(|line| serde_json::from_str::<Value>(line).unwrap())
-        .filter(|line| line["block"] == block)
         .collect()
+}
+
+fn lines(block: &str) -> Vec<Value> {
+    let mut lines = all_lines();
+    lines.retain(|line| line["block"] == block);
+    lines
+}
+
+/// Every line belongs to a block a test below replays, and the extension gated at Bramble's
+/// minimum: a block added in Bramble fails here rather than going unread.
+#[test]
+fn every_line_is_read_and_gated_at_bramble_s_minimum() {
+    let read = ["header", "version", "publicKey", "sign", "enumerate"];
+    for line in all_lines() {
+        let block = line["block"].as_str().unwrap();
+        assert!(read.contains(&block), "unread block {block}");
+    }
+    let v = LEDGER_APP_MIN;
+    assert_eq!(
+        lines("header")[0]["appMinimum"].as_str().unwrap(),
+        format!("{}.{}.{}", v.major, v.minor, v.patch)
+    );
 }
 
 fn line(block: &str, name: &str) -> Value {
@@ -188,7 +209,9 @@ fn every_signature_ends_as_the_extensions() {
 
 #[test]
 fn a_page_of_keys_reads_as_the_extensions() {
-    for line in lines("enumerate") {
+    let pages = lines("enumerate");
+    assert_eq!(pages.len(), 2);
+    for line in pages {
         let scheme = line["scheme"].as_str().unwrap();
         let start = line["startIndex"].as_u64().unwrap() as u32;
         let count = line["count"].as_u64().unwrap() as u32;
@@ -222,10 +245,13 @@ fn a_page_of_keys_reads_as_the_extensions() {
 fn the_picker_places_each_key_where_the_extension_does() {
     use bramble_core::ledger::LedgerScheme;
     use bramble_core::{ledger_account_candidates, AccountFamily, LedgerKeyReader, LedgerReadStep};
-    for line in lines("enumerate") {
+    let pages = lines("enumerate");
+    assert_eq!(pages.len(), 2);
+    for line in pages {
         let (scheme, family) = match line["scheme"].as_str().unwrap() {
             "LedgerW" => (LedgerScheme::Bramble, AccountFamily::OpenZeppelin),
-            _ => (LedgerScheme::Ready, AccountFamily::Argent),
+            "argentx" => (LedgerScheme::Ready, AccountFamily::Argent),
+            other => panic!("unknown scheme {other}"),
         };
         assert_eq!(
             line["family"],
