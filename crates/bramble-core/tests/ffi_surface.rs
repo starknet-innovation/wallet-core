@@ -462,7 +462,8 @@ fn the_dapp_session_signs_only_an_approved_card() {
             "settle_expired",
             "approve_sign_typed_data",
             "refresh_phishing_feed",
-            "answer_phishing_feed"
+            "answer_phishing_feed",
+            "is_blocked_site"
         ]
     );
     let signing = exported_signatures(include_str!("../src/dapp_sign.rs"));
