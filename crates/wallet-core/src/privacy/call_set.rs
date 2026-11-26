@@ -1,7 +1,8 @@
 //! The SNIP-12 `CallSet` the privacy pool verifies (the extension's `call-set-signer.ts`): the
 //! digest over the one `compile_actions` call the account signs, computed here from the core's own
 //! account and chain, and its signature, made by the wallet's signing path and checked before it
-//! is used.
+//! is used. For an Argent multisig the signature is the co-owners' aggregate over the same digest
+//! (the extension's `multisigStrk20CallSetAggregate`), checked here signer by signer.
 //!
 //! The call's calldata holds the viewing key, so it is hashed as the secrets it is held in: the
 //! sponge streams over them without a plain copy (`hashes::poseidon_hash_many`), inside
@@ -10,9 +11,11 @@
 use starknet_types_core::hash::{Poseidon, StarkHash};
 
 use super::hashes::poseidon_hash_many;
-use super::proof::ProofRefusal;
+use super::proof::{AuthorizationRefusal, ProofRefusal};
+use crate::accounts::multisig::{self, ArgentMultisigClass, ArgentMultisigConfig};
 use crate::felt;
 use crate::scrub::scrubbed;
+use crate::send::multisig_invoke::{signature_felts, MultisigSignature};
 use crate::send::types::SignRefusal;
 use crate::{selector, stark_signature_is_valid, Felt, SecretFelt, StarkSignature};
 
@@ -84,6 +87,70 @@ pub(super) fn sign_call_set(
             Ok(vec![r, s])
         }
         _ => Err(ProofRefusal::SigningFailed),
+    }
+}
+
+/// An Argent multisig's `CallSet` aggregate as the wallet gathered it, checked before it is used:
+/// `[count, then per signer: 0, public_key, r, s]` with exactly `config.threshold` signers, each a
+/// current signer, none twice, in ascending signer-GUID order, and each `(r, s)` a valid Stark
+/// signature over `hash`, the job's own digest. Returns the aggregate as the account's signature,
+/// serialised again through `send::multisig_invoke` (so it is the array that path would send).
+pub fn authorized_aggregate(
+    aggregate: &[Felt],
+    hash: &Felt,
+    config: &ArgentMultisigConfig,
+    class: &ArgentMultisigClass,
+) -> Result<Vec<Felt>, AuthorizationRefusal> {
+    use AuthorizationRefusal as Refusal;
+    let (count, entries) = aggregate.split_first().ok_or(Refusal::Malformed)?;
+    let signers: Vec<&[Felt]> = entries.chunks(4).collect();
+    let shaped = Felt::from(signers.len()) == *count
+        && signers
+            .iter()
+            .all(|signer| signer.len() == 4 && signer[0] == Felt::ZERO);
+    let threshold = config.threshold as usize;
+    if !shaped || signers.len() > threshold {
+        return Err(Refusal::Malformed);
+    }
+    if signers.len() < threshold {
+        return Err(Refusal::BelowThreshold);
+    }
+    let members: Vec<Option<Felt>> = config
+        .signer_public_keys
+        .iter()
+        .map(|key| felt::parse(key))
+        .collect();
+    let mut prior: Option<Felt> = None;
+    let mut seen: Vec<Felt> = Vec::with_capacity(signers.len());
+    for signer in &signers {
+        let (key, r, s) = (signer[1], signer[2], signer[3]);
+        if !members.contains(&Some(key)) {
+            return Err(Refusal::NotASigner);
+        }
+        if seen.contains(&key) {
+            return Err(Refusal::RepeatedSigner);
+        }
+        seen.push(key);
+        let guid = multisig::signer_guid(&key).map_err(|_| Refusal::NotASigner)?;
+        if prior.is_some_and(|prior| guid <= prior) {
+            return Err(Refusal::Unordered);
+        }
+        prior = Some(guid);
+        if !stark_signature_is_valid(&key, hash, &r, &s) {
+            return Err(Refusal::InvalidSignature);
+        }
+    }
+    let signatures: Vec<MultisigSignature> = signers
+        .iter()
+        .map(|signer| MultisigSignature {
+            public_key: felt::canonical(&signer[1]),
+            r: felt::canonical(&signer[2]),
+            s: felt::canonical(&signer[3]),
+        })
+        .collect();
+    match signature_felts(&signatures, config, class) {
+        Ok(felts) if felts == aggregate => Ok(felts),
+        _ => Err(Refusal::Malformed),
     }
 }
 
@@ -192,5 +259,103 @@ mod tests {
             sign_call_set(&hash, &public_key(), |_| Err(SignRefusal::Locked)),
             Err(ProofRefusal::Locked)
         );
+    }
+
+    mod aggregate {
+        use super::*;
+        use crate::accounts::multisig::tests::class;
+        use AuthorizationRefusal as Refusal;
+
+        const HASH: Felt = Felt::from_hex_unchecked("0xd16e57");
+
+        fn keys() -> Vec<SecretFelt> {
+            [0x111u64, 0x222, 0x333, 0x444]
+                .into_iter()
+                .map(|key| SecretFelt::new(Felt::from(key)))
+                .collect()
+        }
+
+        fn public(key: &SecretFelt) -> Felt {
+            felt::parse(&crate::sign_stark_hash(key, "0x1").unwrap().public_key).unwrap()
+        }
+
+        /// 2 of the first three keys; the fourth is an outsider.
+        fn config() -> ArgentMultisigConfig {
+            ArgentMultisigConfig {
+                threshold: 2,
+                signer_public_keys: keys()[..3]
+                    .iter()
+                    .map(|key| felt::canonical(&public(key)))
+                    .collect(),
+            }
+        }
+
+        /// One signer's `[0, key, r, s]` over `hash`, with its GUID.
+        fn entry(at: usize, hash: &Felt) -> (Felt, [Felt; 4]) {
+            let key = &keys()[at];
+            let signature = crate::sign_stark_hash(key, &felt::canonical(hash)).unwrap();
+            let public = public(key);
+            let guid = multisig::signer_guid(&public).unwrap();
+            let r = felt::parse(&signature.r).unwrap();
+            let s = felt::parse(&signature.s).unwrap();
+            (guid, [Felt::ZERO, public, r, s])
+        }
+
+        /// The entries in the order given, after the count.
+        fn listed(entries: &[[Felt; 4]]) -> Vec<Felt> {
+            let mut out = vec![Felt::from(entries.len())];
+            out.extend(entries.iter().flatten());
+            out
+        }
+
+        fn sorted(signers: &[usize], hash: &Felt) -> Vec<[Felt; 4]> {
+            let mut entries: Vec<_> = signers.iter().map(|at| entry(*at, hash)).collect();
+            entries.sort_by_key(|(guid, _)| *guid);
+            entries.into_iter().map(|(_, entry)| entry).collect()
+        }
+
+        fn check(aggregate: &[Felt]) -> Result<Vec<Felt>, Refusal> {
+            authorized_aggregate(aggregate, &HASH, &config(), &class())
+        }
+
+        #[test]
+        fn accepts_exactly_the_threshold_in_guid_order() {
+            let good = listed(&sorted(&[0, 2], &HASH));
+            assert_eq!(check(&good), Ok(good.clone()));
+        }
+
+        #[test]
+        fn refuses_every_other_aggregate() {
+            let pair = sorted(&[0, 2], &HASH);
+            let mut reversed = pair.clone();
+            reversed.reverse();
+            let mut wrong_type = pair.clone();
+            wrong_type[1][0] = Felt::ONE;
+            let mut miscounted = listed(&pair);
+            miscounted[0] = Felt::THREE;
+            let mut truncated = listed(&pair);
+            truncated.pop();
+            let outsider = sorted(&[0, 3], &HASH);
+            let other_hash = sorted(&[0, 2], &(HASH + Felt::ONE));
+            let mut swapped = pair.clone();
+            swapped[1][3] = pair[0][3];
+            let cases = [
+                (listed(&pair[..1]), Refusal::BelowThreshold),
+                (vec![Felt::ZERO], Refusal::BelowThreshold),
+                (listed(&sorted(&[0, 1, 2], &HASH)), Refusal::Malformed),
+                (vec![], Refusal::Malformed),
+                (miscounted, Refusal::Malformed),
+                (truncated, Refusal::Malformed),
+                (listed(&wrong_type), Refusal::Malformed),
+                (listed(&outsider), Refusal::NotASigner),
+                (listed(&[pair[0], pair[0]]), Refusal::RepeatedSigner),
+                (listed(&reversed), Refusal::Unordered),
+                (listed(&other_hash), Refusal::InvalidSignature),
+                (listed(&swapped), Refusal::InvalidSignature),
+            ];
+            for (aggregate, refusal) in cases {
+                assert_eq!(check(&aggregate), Err(refusal), "{aggregate:?}");
+            }
+        }
     }
 }

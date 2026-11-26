@@ -110,6 +110,11 @@ pub fn class_hash_at(id: u64, address: &Felt) -> String {
     )
 }
 
+/// `starknet_blockNumber` (starknet.js `getBlockNumber`), which sends no `params`.
+pub fn block_number(id: u64) -> String {
+    json!({ "id": id, "jsonrpc": "2.0", "method": "starknet_blockNumber" }).to_string()
+}
+
 /// `starknet_blockHashAndNumber` (starknet.js `getBlockLatestAccepted`).
 pub fn block_hash_and_number(id: u64) -> String {
     envelope(id, "starknet_blockHashAndNumber", json!([]))

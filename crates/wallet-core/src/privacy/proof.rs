@@ -5,6 +5,7 @@
 
 use super::compiler::CompileRefusal;
 use super::types::PrivacyFailure;
+use crate::accounts::multisig::{ArgentMultisigClass, ArgentMultisigConfig};
 use crate::js::num::utf16_len;
 use crate::send::calls::Call;
 use crate::send::types::SignRefusal;
@@ -75,6 +76,42 @@ pub enum ReviewedAction {
         calls: Vec<Call>,
         collect: CollectPolicy,
     },
+}
+
+/// Who authorises the `CallSet` digest a proof job computes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProofSigner {
+    /// One signer key: the wallet signs the digest (`ProofHost::sign`) and the signature must
+    /// verify under this public key.
+    Key(Felt),
+    /// An Argent multisig: the digest needs `config.threshold` of `config`'s signers, gathered by
+    /// the wallet (`ProofHost::authorization`) and checked here as the account would check them.
+    /// `class` is the wallet's pinned multisig class, whose signer limit bounds `config`.
+    Multisig {
+        config: ArgentMultisigConfig,
+        class: ArgentMultisigClass,
+    },
+}
+
+/// Why a multisig's `CallSet` aggregate was refused. The aggregate is
+/// `[count, then per signer: 0 (Starknet signer), public_key, r, s]`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuthorizationRefusal {
+    /// Fewer than the threshold signed, or the wallet still waits on co-owners where the
+    /// aggregate must be complete (a resumed proof).
+    BelowThreshold,
+    /// Not the aggregate's shape: its count does not match its entries, a signer is not the
+    /// Starknet signer type, it has more signatures than the threshold, or the multisig's
+    /// configuration does not normalise.
+    Malformed,
+    /// A signature's key is not one of the multisig's current signers.
+    NotASigner,
+    /// One signer appears twice.
+    RepeatedSigner,
+    /// The signers are not in ascending signer-GUID order.
+    Unordered,
+    /// A signature does not verify under its key over the job's own digest.
+    InvalidSignature,
 }
 
 /// A proof as `STRK20_PROOF`: opaque data plus felt outputs and facts.
@@ -166,6 +203,16 @@ pub enum ProofRefusal {
     ProverUnavailable,
     /// The prover's reply is not the `starknet_proveTransaction` result schema.
     InvalidProverReply,
+    /// A multisig's `CallSet` aggregate was refused, before anything reached the prover.
+    Authorization(AuthorizationRefusal),
+    /// A held proof does not restore (the key slot, the marker or the seal), or its calldata no
+    /// longer hashes to its digest; or the job resuming it is not a multisig's.
+    HeldMismatch,
+    /// A held proof's calldata no longer moves exactly the reviewed actions.
+    HeldUnbound,
+    /// The proof window could not be read (the block number or the pool's
+    /// `get_proof_validity_blocks`).
+    WindowUnavailable,
 }
 
 impl From<SignRefusal> for ProofRefusal {

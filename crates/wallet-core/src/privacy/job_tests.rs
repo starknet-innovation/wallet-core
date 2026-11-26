@@ -54,7 +54,7 @@ pub(super) fn network() -> NetworkInfo {
 pub(super) fn inputs(actions: Vec<ReviewedAction>) -> ProofInputs {
     ProofInputs {
         account: ACCOUNT,
-        public_key: public_key(),
+        signer: ProofSigner::Key(public_key()),
         actions,
         proving_block: 7000,
         route: mainnet(false),

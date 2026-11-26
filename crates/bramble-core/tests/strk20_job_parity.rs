@@ -21,15 +21,17 @@
 use std::cell::RefCell;
 use std::collections::{BTreeMap, VecDeque};
 
+use bramble_core::catalogs::multisig::argent_multisig_class;
 use bramble_core::catalogs::networks;
 use serde_json::Value;
+use starknet_wallet_core::accounts::multisig::ArgentMultisigConfig;
 use starknet_wallet_core::privacy::config::Route;
 use starknet_wallet_core::privacy::entropy::Entropy;
 use starknet_wallet_core::privacy::job::{
     ProofHost, ProofInputs, ProofJob, ProofPurpose, ProofStep,
 };
 use starknet_wallet_core::privacy::plan::PrivacyHost;
-use starknet_wallet_core::privacy::proof::{ProofLimits, ProofRefusal};
+use starknet_wallet_core::privacy::proof::{ProofLimits, ProofRefusal, ProofSigner};
 use starknet_wallet_core::privacy::prover::ProverRetry;
 use starknet_wallet_core::privacy::types::PrivacyReply;
 use starknet_wallet_core::send::types::SignRefusal;
@@ -56,7 +58,7 @@ fn hexes(value: &Value) -> Vec<Felt> {
     value.as_array().unwrap().iter().map(hex).collect()
 }
 
-fn network(job: &Value) -> NetworkId {
+pub fn network(job: &Value) -> NetworkId {
     match job["inputs"]["chainId"].as_str().unwrap() {
         "0x534e5f4d41494e" => NetworkId::Mainnet,
         "0x534e5f5345504f4c4941" => NetworkId::Sepolia,
@@ -64,13 +66,29 @@ fn network(job: &Value) -> NetworkId {
     }
 }
 
-fn inputs(job: &Value) -> ProofInputs {
+/// The account's signer key, or for a multisig line (`inputs.multisig`) its signers and
+/// threshold under Bramble's pinned class.
+fn signer(inputs: &Value) -> ProofSigner {
+    let Some(multisig) = inputs.get("multisig") else {
+        return ProofSigner::Key(hex(&inputs["accountPublicKey"]));
+    };
+    ProofSigner::Multisig {
+        config: ArgentMultisigConfig {
+            threshold: u32::try_from(multisig["threshold"].as_u64().unwrap()).unwrap(),
+            signer_public_keys: serde_json::from_value(multisig["signerPublicKeys"].clone())
+                .unwrap(),
+        },
+        class: argent_multisig_class().clone(),
+    }
+}
+
+pub fn inputs(job: &Value) -> ProofInputs {
     let inputs = &job["inputs"];
     let network = network(job);
     assert_eq!(network.chain_id(), hex(&inputs["chainId"]));
     ProofInputs {
         account: hex(&inputs["account"]),
-        public_key: hex(&inputs["accountPublicKey"]),
+        signer: signer(inputs),
         actions: reviewed(inputs),
         proving_block: inputs["provingBlock"].as_u64().unwrap(),
         route: Route {
@@ -90,10 +108,10 @@ fn inputs(job: &Value) -> ProofInputs {
 }
 
 /// Hands out the job's bytes, recording each read's length; a read past the end fails.
-struct Stream {
-    bytes: Vec<u8>,
-    at: usize,
-    reads: Vec<usize>,
+pub struct Stream {
+    pub bytes: Vec<u8>,
+    pub at: usize,
+    pub reads: Vec<usize>,
 }
 
 impl Entropy for Stream {
@@ -110,7 +128,7 @@ impl Entropy for Stream {
     }
 }
 
-fn stream(job: &Value) -> Stream {
+pub fn stream(job: &Value) -> Stream {
     let text = job["random"]["bytes"].as_str().unwrap();
     Stream {
         bytes: (0..text.len())
@@ -174,10 +192,10 @@ fn host(job: &Value) -> Host {
 }
 
 /// What a run left behind: the end step, the waits, and the recorded requests not used.
-struct Run {
-    end: ProofStep,
-    waits: Vec<u64>,
-    leftover: BTreeMap<String, usize>,
+pub struct Run {
+    pub end: ProofStep,
+    pub waits: Vec<u64>,
+    pub leftover: BTreeMap<String, usize>,
 }
 
 fn route_of(purpose: ProofPurpose) -> &'static str {
@@ -185,11 +203,24 @@ fn route_of(purpose: ProofPurpose) -> &'static str {
         ProofPurpose::OutgoingState => "outgoing",
         ProofPurpose::IncomingState => "incoming",
         ProofPurpose::PoolNonce => "nonce",
+        ProofPurpose::BlockNumber => "blockNumber",
+        ProofPurpose::ProofValidity => "call",
         ProofPurpose::Prove => "prover",
     }
 }
 
+/// A fresh job for the line, drawing the recorded bytes.
+pub fn fresh<'a>(job: &Value, stream: &'a mut Stream) -> ProofJob<&'a mut Stream> {
+    ProofJob::with_entropy(networks::info(network(job)), inputs(job), stream).unwrap()
+}
+
 fn run(job: &Value, host: &Host, stream: &mut Stream) -> Run {
+    replay(job, host, fresh(job, stream))
+}
+
+/// Drives `proof_job` from `Start` against the line's recorded requests, each route in its
+/// own order, until it ends.
+pub fn replay<E: Entropy>(job: &Value, host: &dyn ProofHost, mut proof_job: ProofJob<E>) -> Run {
     let id = job["id"].as_str().unwrap();
     let mut queues: BTreeMap<String, VecDeque<&Value>> = BTreeMap::new();
     for request in job["requests"].as_array().unwrap() {
@@ -202,8 +233,6 @@ fn run(job: &Value, host: &Host, stream: &mut Stream) -> Run {
             .and_then(VecDeque::pop_front)
             .unwrap_or_else(|| panic!("{id}: an invented {purpose:?} request"))
     };
-    let catalog = networks::info(network(job));
-    let mut proof_job = ProofJob::with_entropy(catalog, inputs(job), stream).unwrap();
     let mut waits = Vec::new();
     let mut step = proof_job
         .advance(host, PrivacyReply::Start { now_ms: NOW })
@@ -275,7 +304,10 @@ fn run(job: &Value, host: &Host, stream: &mut Stream) -> Run {
                 waits.push(*delay_ms);
                 PrivacyReply::WaitElapsed { now_ms: NOW }
             }
-            ProofStep::Finished { .. } | ProofStep::Failed { .. } => break,
+            ProofStep::Finished { .. }
+            | ProofStep::Held { .. }
+            | ProofStep::Expired
+            | ProofStep::Failed { .. } => break,
         };
         step = proof_job.advance(host, reply).unwrap();
     }

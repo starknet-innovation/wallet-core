@@ -197,6 +197,15 @@ pub fn call_felts(answer: Option<Answer>) -> Result<Vec<Felt>, bool> {
     }
 }
 
+/// A `starknet_blockNumber` reply: the number, `None` for an error or anything that is not a
+/// non-negative integer.
+pub fn block_number(answer: Option<Answer>) -> Option<u64> {
+    match answer? {
+        Answer::Result(result) => result.as_u64(),
+        Answer::Error { .. } => None,
+    }
+}
+
 /// A `starknet_getBlockWithTxHashes` reply's `timestamp`, with the same error split.
 pub fn block_timestamp(answer: Option<Answer>) -> Result<u64, bool> {
     match answer {
