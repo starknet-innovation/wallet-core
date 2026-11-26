@@ -13,13 +13,20 @@
 //! the `CallSet` the SDK asks for (`call_set`) once its calls are bound to the reviewed actions
 //! (`pool_actions`), and judges what comes back (`engine_judge`). No flow uses it yet, so
 //! `CAPABILITIES` stays false.
+//!
+//! The Rust port of the SDK's client (#182) starts from its primitives: the domain-tagged hashes
+//! (`hashes`, with the viewing-key ones in `kms.rs`), the `ClientAction` encoding
+//! (`client_actions`, sharing `pool_actions`' variant table) and its randomness (`entropy`).
 
 mod bodies;
 pub mod call_set;
+pub mod client_actions;
 pub mod config;
 pub mod engine;
 mod engine_judge;
+pub mod entropy;
 pub mod gates;
+pub mod hashes;
 pub mod home;
 mod json;
 mod judge;
@@ -97,7 +104,10 @@ mod tests {
     /// no privacy file derives a viewing key, reaches Krusty or touches the phrase or an account
     /// key. The key arrives only through `PrivacyHost::viewing_key`, as a `SecretFelt`, and only
     /// `plan_steps` (which asks for it) and `bodies` (which writes it) name it, besides `engine`,
-    /// whose job hands it to the engine, and `pool_actions`, which compares the key slot with it.
+    /// whose job hands it to the engine, `pool_actions`, which compares the key slot with it, and
+    /// `client_actions`, which writes it into the `compile_actions` calldata. Channel keys are
+    /// secrets too: `client_actions` carries them and `hashes` hashes one into a note id. The
+    /// hashes that consume the viewing key itself are `kms.rs`'s, reached through the crate root.
     /// The `CallSet` signature is the wallet's (`engine::prove` takes its signing closure), so the
     /// engine files reach no key-taking Krusty export.
     #[test]
@@ -105,10 +115,13 @@ mod tests {
         let sources = [
             ("bodies.rs", include_str!("bodies.rs")),
             ("call_set.rs", include_str!("call_set.rs")),
+            ("client_actions.rs", include_str!("client_actions.rs")),
             ("config.rs", include_str!("config.rs")),
             ("engine.rs", include_str!("engine.rs")),
             ("engine_judge.rs", include_str!("engine_judge.rs")),
+            ("entropy.rs", include_str!("entropy.rs")),
             ("gates.rs", include_str!("gates.rs")),
+            ("hashes.rs", include_str!("hashes.rs")),
             ("home.rs", include_str!("home.rs")),
             ("json.rs", include_str!("json.rs")),
             ("judge.rs", include_str!("judge.rs")),
@@ -138,18 +151,27 @@ mod tests {
                 names_key,
                 matches!(
                     name,
-                    "bodies.rs" | "engine.rs" | "plan.rs" | "plan_steps.rs" | "pool_actions.rs"
+                    "bodies.rs"
+                        | "client_actions.rs"
+                        | "engine.rs"
+                        | "hashes.rs"
+                        | "plan.rs"
+                        | "plan_steps.rs"
+                        | "pool_actions.rs"
                 ),
-                "{name}: only the plan asks for the key, only the bodies write it, only the \
-                 engine's job carries it to the engine, and only the pool decoder compares it"
+                "{name}: only the plan asks for the key, only the bodies and the client actions \
+                 write it, only the engine's job carries it to the engine, only the pool decoder \
+                 compares it, and only the note id hashes a channel key"
             );
         }
         // The `CallSet` is signed by the wallet's signing path, through the closure `engine::prove`
         // is given; outside tests, no privacy file reaches a key-taking Krusty export.
         for (name, source) in [
             ("call_set.rs", include_str!("call_set.rs")),
+            ("client_actions.rs", include_str!("client_actions.rs")),
             ("engine.rs", include_str!("engine.rs")),
             ("engine_judge.rs", include_str!("engine_judge.rs")),
+            ("entropy.rs", include_str!("entropy.rs")),
             ("pool_actions.rs", include_str!("pool_actions.rs")),
         ] {
             let body = source.split("#[cfg(test)]").next().unwrap_or_default();

@@ -14,6 +14,7 @@ use zeroize::Zeroizing;
 
 use crate::accounts::{family_address, AccountFamily, Ladder};
 use crate::felt;
+use crate::privacy::hashes::tagged_hash;
 use crate::scrub::scrubbed;
 use crate::Error;
 
@@ -371,6 +372,43 @@ pub fn derive_strk20_viewing_key(
         );
         checked_secret(viewing_key, "viewing key")
     })
+}
+
+/// The privacy SDK's `compute_channel_key(sender_addr, sender_private_key, recipient_addr,
+/// recipient_public_key)`: `hash(CHANNEL_KEY_TAG, ...)` over the sender's viewing key. The
+/// result opens the channel's notes, so it is held as a secret too.
+pub fn compute_channel_key(
+    sender_addr: &Felt,
+    sender_viewing_key: &SecretFelt,
+    recipient_addr: &Felt,
+    recipient_public_key: &Felt,
+) -> SecretFelt {
+    SecretFelt::new(tagged_hash(
+        "CHANNEL_KEY_TAG:V1",
+        &[
+            *sender_addr,
+            *sender_viewing_key.expose_secret(),
+            *recipient_addr,
+            *recipient_public_key,
+        ],
+    ))
+}
+
+/// The privacy SDK's `compute_identity_key(user_addr, user_private_key, contract_address)`:
+/// `hash(IDENTITY_KEY_TAG, ...)` over the user's viewing key, held as a secret.
+pub fn compute_identity_key(
+    user_addr: &Felt,
+    user_viewing_key: &SecretFelt,
+    contract_address: &Felt,
+) -> SecretFelt {
+    SecretFelt::new(tagged_hash(
+        "IDENTITY_KEY_TAG:V1",
+        &[
+            *user_addr,
+            *user_viewing_key.expose_secret(),
+            *contract_address,
+        ],
+    ))
 }
 
 /// `hash.getSelectorFromName`: `starknet_keccak` of `entrypoint`'s UTF-8 bytes, with no special
