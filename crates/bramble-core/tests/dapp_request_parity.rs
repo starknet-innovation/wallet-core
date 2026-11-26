@@ -8,7 +8,7 @@
 //! `inpage.js` runs in the page and refuses those before the bridge, so only the code is
 //! compared for a `page` refusal.
 
-mod dapp_parity_support;
+use crate::dapp_parity_support;
 
 use bramble_core::dapp::{read_page_request, PageRequest};
 use dapp_parity_support::*;

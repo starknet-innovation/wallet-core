@@ -6,7 +6,7 @@
 //! layout of its `test_chain`, behind the real Mainnet staking contract.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod staking_support;
+use crate::staking_support;
 
 use bramble_core::{
     staking_directory_request, staking_directory_view, CallKind, DirectoryView, FeeAffordability,

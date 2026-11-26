@@ -92,4 +92,12 @@ impl DappSession {
         let storage = Directory(self.wallet.data_dir());
         guard(&self.feed).answer(&storage, &outcome, now_ms);
     }
+
+    /// Whether the blocklist refuses `origin` (the bundled list, or the feed as last loaded), for
+    /// the in-app browser to stop a listed page before it renders. An origin it cannot read is
+    /// not blocked here; the host decides what to load. A mobile addition: the extension blocks
+    /// only a site's requests, and has no navigation check.
+    pub fn is_blocked_site(&self, origin: String) -> bool {
+        self.blocked(&origin)
+    }
 }

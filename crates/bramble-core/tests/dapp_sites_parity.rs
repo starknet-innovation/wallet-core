@@ -9,7 +9,7 @@
 //!   replies (a restart is a new feed over the same storage), fetches when the extension fetched
 //!   and holds the same list and health after each step.
 
-mod dapp_parity_support;
+use crate::dapp_parity_support;
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};

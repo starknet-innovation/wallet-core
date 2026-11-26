@@ -5,7 +5,7 @@
 //! `BRAMBLE_WRITE_FIXTURES=1`, and the extension must open it.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod common;
+use crate::common;
 
 use bramble_core::testing::{open_gift_wrap, wrap_gift};
 use bramble_core::{

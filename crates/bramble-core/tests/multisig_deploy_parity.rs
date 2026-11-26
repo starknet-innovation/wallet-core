@@ -10,7 +10,7 @@
 //! extension's estimate reads the chain id only when starknet.js hashes the query. The recorded
 //! `starknet_chainId` exchange is still required, once.
 
-mod plan_support;
+use crate::plan_support;
 
 use std::cell::RefCell;
 

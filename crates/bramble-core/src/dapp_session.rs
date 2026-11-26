@@ -138,13 +138,13 @@ fn ask_accounts(site: &Site<'_>, silent: bool, shape: Shape) -> Outcome {
 }
 
 pub(crate) struct Waiter {
-    request_id: u64,
+    pub(crate) request_id: u64,
     shape: Shape,
 }
 
-struct State {
-    queue: ApprovalQueue<Card>,
-    waiters: HashMap<String, Vec<Waiter>>,
+pub(crate) struct State {
+    pub(crate) queue: ApprovalQueue<Card>,
+    pub(crate) waiters: HashMap<String, Vec<Waiter>>,
 }
 
 /// The dapp requests of one wallet. Thread-safe; every method takes `&self`.
@@ -154,7 +154,7 @@ pub struct DappSession {
     /// The app's tracked tokens: an outside execution's review trusts them as the invoke route's
     /// does (`trustedTokens`).
     pub(crate) tokens: Arc<TokenPreferences>,
-    state: Mutex<State>,
+    pub(crate) state: Mutex<State>,
     /// Never held while taking `state` or the wallet's session.
     pub(crate) feed: Mutex<PhishingFeed>,
 }
@@ -457,23 +457,5 @@ impl DappSession {
         };
         self.record_seen(&origin, now_ms);
         settled(waiters, |_| error(deny_connect()))
-    }
-
-    /// The requests whose cards expired or were evicted since the last call, each answered as a
-    /// deny is (USER_REFUSED_OP, `DROPPED_APPROVAL_RESPONSE`): consent was never given. Call it
-    /// on a timer while any request is held, and after every other call.
-    pub fn settle_expired(&self) -> Vec<DappSettled> {
-        let mut state = crate::wallet::guard(&self.state);
-        let now = self.wallet.now().monotonic_ms;
-        state.queue.list(now);
-        let dropped = state.queue.take_dropped();
-        dropped
-            .into_iter()
-            .flat_map(|id| state.waiters.remove(id.as_str()).unwrap_or_default())
-            .map(|waiter| DappSettled {
-                request_id: waiter.request_id,
-                reply: error(WalletRpcError::user_refused_op()),
-            })
-            .collect()
     }
 }

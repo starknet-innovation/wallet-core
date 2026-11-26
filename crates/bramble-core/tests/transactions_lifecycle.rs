@@ -2,7 +2,7 @@
 //! wallet locked mid-send (review must-fix items 1, 2 and 4 in mobile/docs/transactions.md §10).
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod send_support;
+use crate::send_support;
 
 use bramble_core::{SendError, SendFailureCode, SendStep, StepReply, TxStatus};
 use send_support::*;

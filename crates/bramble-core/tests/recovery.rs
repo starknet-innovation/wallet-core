@@ -3,7 +3,7 @@
 //! restore checks (bounds, duplicates, classes, atomicity).
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod common;
+use crate::common;
 
 use bramble_core::{account_classes, AccountFamily, CoreError, NetworkId, RpcResponse};
 use common::{oz, pending, selection, Node, PASSWORD};

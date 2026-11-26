@@ -128,6 +128,10 @@ pub(super) enum Stage {
     Device(Box<super::plan_device::DeviceWait>),
     /// The device refused; waiting for `RetryDevice` (`plan_device`).
     DeviceRefused(Box<super::plan_device::DeviceWait>),
+    /// A device plan's transfer taken for gasless, waiting for its checked outside execution;
+    /// then that execution's signature (`plan_gasless`).
+    Relay,
+    Relayed(Vec<Felt>),
     Reviewed,
     Broadcasted,
     Finished(TxStatus),
@@ -201,6 +205,19 @@ impl Plan {
     /// the one outstanding, or a reply kind the current step does not expect, returns
     /// `OutOfOrder` and closes the plan (fail closed). A `Failed` step also closes it.
     pub fn advance(
+        &mut self,
+        host: &dyn PlanHost,
+        reply: StepReply,
+    ) -> Result<SendStep, SendError> {
+        // A relay's device exchange is driven only by `advance_relay` (fail closed).
+        if self.relaying() {
+            self.close();
+            return Err(SendError::OutOfOrder);
+        }
+        self.run(host, reply)
+    }
+
+    pub(super) fn run(
         &mut self,
         host: &dyn PlanHost,
         reply: StepReply,

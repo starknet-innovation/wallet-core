@@ -1,7 +1,7 @@
 //! The receipt fee a settled send records (P2), against a canned node through `WalletCore`.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod send_support;
+use crate::send_support;
 
 use bramble_core::{SendStep, StepReply, TxStatus};
 use send_support::*;

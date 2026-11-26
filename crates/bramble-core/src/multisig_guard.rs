@@ -182,18 +182,38 @@ pub(crate) fn settle(dir: &Path, account_id: &str) -> Result<(), CoreError> {
     Ok(())
 }
 
-/// Intents a submission is under way for in this process (`claimOperation("submit", ..)`).
-static SUBMITTING: Mutex<Option<HashSet<String>>> = Mutex::new(None);
+/// Operations under way in this process (`claimOperation`): a submission of an intent, and one
+/// signer's signature of it. The extension stores its claims and drops the signing ones on
+/// restart (`recoverSigningClaims`); here they live as long as the process.
+static CLAIMED: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 
-/// Held while one submission of an intent is live; released when dropped.
-pub(crate) struct SubmitClaim(String);
+/// Held while one operation is live; released when dropped.
+pub(crate) struct OperationClaim(String);
 
-impl SubmitClaim {
-    /// Claims `intent_id` in the wallet at `dir`; `None` while another submission of it holds
-    /// the claim.
-    pub(crate) fn take(dir: &Path, intent_id: &str) -> Option<Self> {
-        let key = format!("{}\n{intent_id}", dir.display());
-        let mut claims = SUBMITTING.lock().unwrap_or_else(PoisonError::into_inner);
+impl OperationClaim {
+    /// Claims the submission of `intent_id` in the wallet at `dir`; `None` while another
+    /// submission of it holds the claim.
+    pub(crate) fn submit(dir: &Path, intent_id: &str) -> Option<Self> {
+        Self::take(format!("{}\n{intent_id}", dir.display()))
+    }
+
+    /// Claims `signer_guid`'s signature of `intent_id` in session `generation`; `None` while
+    /// another signing by that signer holds it ("this signer already signed or is signing the
+    /// intent"). A claim from an ended session no longer blocks, as a lock rejects its signing.
+    pub(crate) fn sign(
+        dir: &Path,
+        intent_id: &str,
+        signer_guid: &Felt,
+        generation: u64,
+    ) -> Option<Self> {
+        Self::take(format!(
+            "{}\nsign\n{intent_id}\n{signer_guid:#x}\n{generation}",
+            dir.display()
+        ))
+    }
+
+    fn take(key: String) -> Option<Self> {
+        let mut claims = CLAIMED.lock().unwrap_or_else(PoisonError::into_inner);
         claims
             .get_or_insert_with(HashSet::new)
             .insert(key.clone())
@@ -201,9 +221,9 @@ impl SubmitClaim {
     }
 }
 
-impl Drop for SubmitClaim {
+impl Drop for OperationClaim {
     fn drop(&mut self) {
-        let mut claims = SUBMITTING.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut claims = CLAIMED.lock().unwrap_or_else(PoisonError::into_inner);
         if let Some(claims) = claims.as_mut() {
             claims.remove(&self.0);
         }

@@ -16,7 +16,7 @@ use wallet_core::send::multisig_invoke_plan::{MultisigStep, ProposePlan, SubmitP
 use wallet_core::send::multisig_stale::{fee_refused_reason, read_nonce, HashLookups, Resend};
 
 use crate::felt;
-use crate::multisig_guard::{journal, lookups_for, stale_resend, SubmitClaim};
+use crate::multisig_guard::{journal, lookups_for, stale_resend, OperationClaim};
 use crate::multisig_intents;
 use crate::multisig_tx::{
     intent_view, rpc_step, Bound, MultisigCallReview, MultisigIntent, MultisigTxFailure,
@@ -139,7 +139,7 @@ impl MultisigProposal {
         match multisig_intents::upsert(core.data_dir(), &intent) {
             Ok(()) => {
                 *self.stored.lock().unwrap_or_else(PoisonError::into_inner) =
-                    Some(intent_view(&intent));
+                    Some(intent_view(&intent, Some(&self.record)));
                 MultisigTxStep::Proposed {
                     intent_id: intent.id,
                 }
@@ -234,7 +234,7 @@ pub struct MultisigSubmission {
     bound: Bound<Submitting>,
     intent: SigningIntent,
     record: Record,
-    claim: Mutex<Option<SubmitClaim>>,
+    claim: Mutex<Option<OperationClaim>>,
 }
 
 impl MultisigSubmission {
@@ -244,7 +244,7 @@ impl MultisigSubmission {
         plan: SubmitPlan,
         intent: SigningIntent,
         record: Record,
-        claim: SubmitClaim,
+        claim: OperationClaim,
     ) -> Arc<Self> {
         let submitting = Submitting {
             plan,
@@ -270,7 +270,7 @@ impl MultisigSubmission {
 impl MultisigSubmission {
     /// The intent being submitted, as it was when the plan was made.
     pub fn intent(&self) -> MultisigIntent {
-        intent_view(&self.intent)
+        intent_view(&self.intent, Some(&self.record))
     }
 
     /// Feeds the last reply (`Start` first). The session is checked once more after the chain is

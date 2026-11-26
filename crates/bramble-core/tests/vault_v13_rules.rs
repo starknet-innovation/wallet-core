@@ -5,8 +5,7 @@
 //! account records are `vault_v13_accounts.rs`.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-#[path = "vault_v13_support/mod.rs"]
-mod support;
+use crate::vault_v13_support as support;
 
 use serde_json::{json, Value};
 use support::{check, full, opens, text, Change, ORIGIN, SEPOLIA_CHAIN};

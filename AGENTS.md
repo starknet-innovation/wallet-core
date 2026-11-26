@@ -10,7 +10,10 @@ this file is the operational guide.
 - `bash tools/check.sh quick` before editing, to see any existing drift.
 - Read `docs/PLAN.md` and the affected crate's `Cargo.toml` and `src/lib.rs` before changing it.
 - Enable the hooks once per clone: `git config core.hooksPath .githooks` (pre-commit: fmt +
-  guardrails; pre-push: clippy + default-feature tests; CI adds mobile's suite).
+  guardrails; pre-push: clippy + default-feature tests, skipped when a push touches no Rust; CI
+  adds mobile's test targets). bramble-core's integration tests are one binary
+  (`tests/integration.rs`): add a file there as `mod <file>;`, and run it with
+  `cargo test -p bramble-core --test integration <file>::`.
 
 ## Commands
 
@@ -153,7 +156,9 @@ Grep first; extend in place rather than adding a sibling.
   Ledger account are `bramble-core`'s `ledger_wallet.rs`; a vault's phrase is read only through
   `VaultPayload::phrase`, which refuses a wallet without one. A page of public keys for the
   account picker is `ledger::KeyEnumeration`, exported as `ledger_reader::LedgerKeyReader`
-  beside `ledger_account_candidates`.
+  beside `ledger_account_candidates`. Ledger's Bluetooth framing is `ledger::ble`, exported as
+  `ledger_ble::LedgerBleExchange` beside `ledger_ble_link` (GATT specs, MTU request); it only carries bytes, and
+  the apps' Bluetooth shims hold no protocol logic of their own.
 - AVNU swaps are `crates/wallet-core/src/swap/`: the quote (`quote.rs`: `PendingQuote`,
   `SwapQuote`, the value check), the build and its reply judge (`build.rs`: `PendingBuild`), the
   build policy and floor (`policy.rs`: `build_policy`, `reviewed_min_buy_amount`) and the frozen
@@ -212,7 +217,11 @@ Grep first; extend in place rather than adding a sibling.
   `plan_steps.rs`), the discovery and pool-fee bodies (`bodies.rs`, the only writer of the key),
   reply judging (`judge.rs`, `notes.rs`), the order-keeping JSON the cursor echo needs
   (`privacy::json`, stricter than `js::json`), routing and limits records (`config.rs`), and the
-  gates (`gates.rs`, `home.rs`). `DeploymentState` is `send::types`.
+  gates (`gates.rs`, `home.rs`). `DeploymentState` is `send::types`. STRK20 proofs (P15) go
+  through the wallet's engine (`engine::PrivacyEngine`, its records, `engine::prove`); the
+  `CallSet` digest and its signature check are `call_set.rs`, the `compile_actions` decoder and
+  its binding to the reviewed actions `pool_actions.rs`, and the engine's results are judged in
+  `engine_judge.rs`.
 - Nostr relay work lives beside the keys in `crates/wallet-core/src/nostr/`: the relay-URL
   grammar (`relay_url::is_nostr_relay_url`, which a custom RPC URL shares as
   `is_custom_rpc_url`; the endpoint redactor `redact_endpoints` sits beside it), relay selection, frame parsing, gift-wrap batches and
@@ -251,8 +260,10 @@ Grep first; extend in place rather than adding a sibling.
   `SITE_LISTS`, `PHISHING_FEED`).
   The apps reach all of it through `bramble-core`'s `dapp_session::DappSession` (the request,
   the cards (`DappCard`), their decisions and expiry; grants are written to the vault's
-  `kept.origin_grants` through `WalletCore::commit`); its blocklist, feed refresh and card
-  warnings are `dapp_sites.rs`; `wallet_signTypedData`'s card and its signature at approval
+  `kept.origin_grants` through `WalletCore::commit`); its blocklist, feed refresh, card
+  warnings and navigation check (`is_blocked_site`) are `dapp_sites.rs`; cards that end
+  undecided (`settle_expired`, and `withdraw` for a page that has gone) are `dapp_expiry.rs`;
+  `wallet_signTypedData`'s card and its signature at approval
   (`approve_sign_typed_data`, through `signing_record` and `sign_for` under one session hold)
   are `dapp_sign.rs`, which reviews an outside execution's calls with the invoke route's
   inputs (`trusted_recipients`, the tracked tokens from the session's `TokenPreferences`, the

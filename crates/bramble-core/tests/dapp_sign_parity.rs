@@ -15,8 +15,8 @@
 
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod common;
-mod dapp_parity_support;
+use crate::common;
+use crate::dapp_parity_support;
 
 use bramble_core::{DappCard, DappReply, DappSession, NetworkId, TokenPreferences, WalletCore};
 use common::dapp::{pending_id, NOW};

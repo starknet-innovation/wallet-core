@@ -5,7 +5,7 @@
 //! mechanism is wallet-core's `allowances` (its unit tests carry the extension's cases).
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod send_support;
+use crate::send_support;
 
 use std::path::Path;
 use std::sync::Arc;

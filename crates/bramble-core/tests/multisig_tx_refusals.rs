@@ -5,9 +5,8 @@
 //! Nostr message. A refused operation stores nothing it should not.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod common;
-mod multisig_support;
-mod multisig_tx_support;
+use crate::multisig_support;
+use crate::multisig_tx_support;
 
 use bramble_core::{
     ConfigChange, CoreError, IntentState, MultisigProposalRequest, MultisigTxFailure,

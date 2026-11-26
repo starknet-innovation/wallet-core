@@ -1,7 +1,7 @@
 //! A Ledger account's send (P8): the plan hands its hashes to a scripted device, never to
 //! `PlanHost::sign`, and only a signature that verified against the account's key is written.
 
-mod plan_support;
+use crate::plan_support;
 
 use bramble_core::ledger::{ledger_account_path, LEDGER_APP_MIN};
 use plan_support::node::*;
@@ -315,8 +315,9 @@ fn a_lock_stops_the_device_before_it_asks_the_person() {
 }
 
 #[test]
-fn a_ledger_send_is_never_offered_gasless() {
-    // A transfer whose STRK cannot pay its fee qualifies for gasless, except on a device.
+fn a_ledger_send_is_offered_gasless_as_any_other() {
+    // A transfer whose STRK cannot pay its fee qualifies for gasless, on a device too: its outside
+    // execution is signed there (`gasless_ledger.rs`).
     let host = Host::new();
     let account = oz_account(&host);
     let token = Token {
@@ -352,7 +353,7 @@ fn a_ledger_send_is_never_offered_gasless() {
         plan.gasless_basis().is_some()
     };
     assert!(short(false));
-    assert!(!short(true));
+    assert!(short(true));
 }
 
 #[test]

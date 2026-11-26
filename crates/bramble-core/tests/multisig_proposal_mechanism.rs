@@ -3,7 +3,7 @@
 //! out of order, a node error, a wrong chain, a lock before the write, a different hash, an
 //! expired fee ceiling, a tampered intent). Replies come from the Sepolia capture.
 
-mod multisig_support;
+use crate::multisig_support;
 
 use bramble_core::MULTISIG_FEE_OVERHEAD;
 use multisig_support::*;

@@ -11,7 +11,7 @@
 //! Krusty hashes less than starknet.js (`typed_data.rs`'s module doc); each case where the
 //! extension signs and the core fails closed is listed as a deviation.
 
-mod dapp_parity_support;
+use crate::dapp_parity_support;
 
 use bramble_core::catalogs::networks::registry;
 use bramble_core::dapp::DAPP_POLICY;

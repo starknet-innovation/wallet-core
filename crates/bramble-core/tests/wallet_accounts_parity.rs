@@ -7,7 +7,7 @@
 //! checked by wallet-core's `accounts_parity.rs`, which owns `family_address`.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod common;
+use crate::common;
 
 use bramble_core::testing::{deployed_recovery_candidate, recovery_candidate};
 use bramble_core::{

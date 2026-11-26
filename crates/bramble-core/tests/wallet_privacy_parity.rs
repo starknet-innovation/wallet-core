@@ -5,8 +5,7 @@
 //! `privacy_gates_parity.rs`), run over the same fixtures.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-#[path = "wallet_privacy_support/mod.rs"]
-mod privacy_support;
+use crate::wallet_privacy_support as privacy_support;
 
 use bramble_core::testing::{privacy as hooks, strk20_viewing_key, strk20_viewing_public_key};
 use bramble_core::{Ladder, NetworkId};

@@ -34,10 +34,12 @@ mod clock;
 mod contact_card;
 mod contacts;
 mod container;
+mod dapp_expiry;
 mod dapp_session;
 mod dapp_sign;
 mod dapp_sites;
 mod ffi_coordination;
+mod ffi_coordination_sync;
 mod ffi_nostr_multisig;
 mod ffi_staking;
 mod ffi_staking_action;
@@ -47,6 +49,7 @@ mod history;
 pub(crate) use wallet_core::js;
 mod key_import;
 mod kms;
+mod ledger_ble;
 mod ledger_reader;
 mod ledger_wallet;
 pub use kms::Ladder;
@@ -55,8 +58,11 @@ mod multisig_intents;
 mod multisig_rpc;
 mod multisig_store;
 mod multisig_tx;
+mod multisig_tx_device;
+mod multisig_tx_import;
 mod multisig_tx_ops;
 mod multisig_tx_plans;
+mod multisig_tx_refresh;
 mod nostr;
 mod nostr_relay;
 mod portfolio;
@@ -105,7 +111,9 @@ pub use clock::HostClock;
 pub use contact_card::{ContactCardParse, WalletContactCard};
 pub use contacts::Contact;
 pub use dapp_session::{DappApproval, DappCard, DappReply, DappSession, DappSettled};
-pub use ffi_coordination::{CoordinationSyncOutcome, NostrSyncPlan, RelayPolicy};
+pub use ffi_coordination::{
+    CoordinationSyncOutcome, CoordinationSyncStep, NostrSyncPlan, RelayPolicy,
+};
 pub use ffi_nostr_multisig::{
     argent_multisig_normalize, argent_multisig_predict, argent_signer_guid, multisig_limits,
     nostr_relay_url_normalize, wallet_contact_card_encode, wallet_contact_card_parse,
@@ -118,6 +126,10 @@ pub use ffi_staking::{
 };
 pub use ffi_staking_action::{StakingPlan, StakingPreparation};
 pub use groups::AccountGroup;
+pub use ledger_ble::{
+    ledger_ble_frame_size, ledger_ble_link, LedgerBleExchange, LedgerBleFrame, LedgerBleLink,
+    LedgerBleSpec, LedgerBleStep,
+};
 pub use ledger_reader::{
     ledger_account_candidates, LedgerCandidate, LedgerKey, LedgerKeyReader, LedgerReadStep,
 };
@@ -128,6 +140,7 @@ pub use multisig_tx::{
     MultisigIntentReview, MultisigProposal, MultisigProposalRequest, MultisigSubmission,
     MultisigTxFailure, MultisigTxStep, StaleReason,
 };
+pub use multisig_tx_device::{MultisigDeviceSigning, MultisigDeviceStep};
 pub use networks::{NetworkInfo, TokenInfo};
 pub use nostr_relay::RelayStep;
 pub use privacy::plan::PrivacyReadPlan;

@@ -5,7 +5,7 @@
 //! its site's warnings.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod common;
+use crate::common;
 
 use bramble_core::{
     DappReply, DappSession, HttpMethod, HttpOutcome, NetworkId, SiteWarning, TokenPreferences,
@@ -75,7 +75,10 @@ fn a_bundled_blocked_site_learns_nothing_and_queues_no_card() {
         "https://app.claim-starknet.com",
     ] {
         assert_learns_nothing(&dapp, origin);
+        assert!(dapp.is_blocked_site(origin.into()));
     }
+    assert!(!dapp.is_blocked_site("https://notclaim-starknet.com".into()));
+    assert!(!dapp.is_blocked_site("not an origin".into()));
     assert!(dapp.pending_approvals(NOW).is_empty());
     assert_eq!(
         ask(
@@ -104,8 +107,10 @@ fn the_live_feed_blocks_and_survives_a_restart() {
         .starts_with("https://raw.githubusercontent.com/MetaMask/"));
     pending(ask(&dapp, site, "wallet_requestAccounts", 1));
 
+    assert!(!dapp.is_blocked_site(site.into()));
     dapp.answer_phishing_feed(feed(r#"{"blacklist":["Evil.Example."]}"#), NOW);
     assert_learns_nothing(&dapp, site);
+    assert!(dapp.is_blocked_site(site.into()));
     // The card it queued before is now flagged, and approving it is refused.
     let card = &dapp.pending_approvals(NOW)[0];
     assert!(card.blocked);
@@ -127,6 +132,7 @@ fn the_live_feed_blocks_and_survives_a_restart() {
     let dapp = DappSession::new(core, TokenPreferences::new(None));
     assert!(dapp.refresh_phishing_feed(NOW + HOUR).is_none());
     assert_learns_nothing(&dapp, site);
+    assert!(dapp.is_blocked_site(site.into()));
     assert!(dapp.refresh_phishing_feed(NOW + 7.0 * HOUR).is_some());
 }
 

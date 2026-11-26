@@ -4,7 +4,7 @@
 //! placed address is the one the canned node knows.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod send_support;
+use crate::send_support;
 
 use bramble_core::ledger::LedgerScheme;
 use bramble_core::testing::open_vault;

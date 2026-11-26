@@ -18,7 +18,7 @@ use wallet_core::accounts::multisig_records::{self, Record};
 use wallet_core::send::call_decode::Known;
 use wallet_core::send::calls::{self, SendAmountError};
 use wallet_core::send::multisig_deploy::{deployment_plan, MultisigDeployRefusal};
-use wallet_core::send::multisig_import::{held_config, import_intent, ImportContext, ImportError};
+use wallet_core::send::multisig_import::{held_config, ImportError};
 use wallet_core::send::multisig_intent::{
     ConfigSnapshot, IntentPackage, IntentState, SigningIntent,
 };
@@ -27,9 +27,10 @@ use wallet_core::send::multisig_invoke_plan::{ProposePlan, SubmitPlan};
 use wallet_core::send::multisig_review::review_calls;
 use wallet_core::Felt;
 
+use crate::account_store::{StoredAccount, VaultPayload};
 use crate::allowances::{token_infos, trusted_tokens};
 use crate::argent_multisig::ArgentMultisigConfig;
-use crate::multisig_guard::{settle, SubmitClaim};
+use crate::multisig_guard::{settle, OperationClaim};
 use crate::multisig_rpc::{MultisigAuthorityRead, MultisigStateRead};
 use crate::multisig_tx::{
     intent_view, MultisigCall, MultisigCallReview, MultisigIntent, MultisigProposal,
@@ -46,7 +47,7 @@ use crate::wallet_accounts::{sign_for, signing_record};
 use crate::{felt, multisig_constants, multisig_intents, multisig_store, CoreError};
 use wallet_core::allowances::retention::Ranking;
 
-fn refused(reason: &str) -> CoreError {
+pub(crate) fn refused(reason: &str) -> CoreError {
     CoreError::InvalidInput {
         reason: reason.into(),
     }
@@ -56,12 +57,50 @@ const NOT_FOUND: &str = "Argent multisig not found";
 const INTENT_NOT_FOUND: &str = "intent not found";
 const INVALID_PACKAGE: &str = "invalid Argent multisig intent package";
 
-fn class() -> &'static ArgentMultisigClass {
+pub(crate) fn class() -> &'static ArgentMultisigClass {
     multisig_constants::argent_multisig_class()
 }
 
-fn summary_length() -> usize {
+pub(crate) fn summary_length() -> usize {
     multisig_constants::get().limits.summary_length
+}
+
+fn guid_of(public_key: &str) -> Option<Felt> {
+    felt::parse(public_key).and_then(|key| signer_guid(&key).ok())
+}
+
+/// The vault record `signer_account_id`, refused unless it may co-sign `intent`: on the
+/// multisig's network, its key a member of the snapshot that has not signed yet. Returns it with
+/// its signer GUID.
+pub(crate) fn cosigner<'a>(
+    payload: &'a VaultPayload,
+    intent: &SigningIntent,
+    record: &Record,
+    signer_account_id: &str,
+) -> Result<(&'a StoredAccount, Felt), CoreError> {
+    let signer = signing_record(payload, signer_account_id)
+        .ok()
+        .filter(|signer| signer.network().catalog_id() == record.network_id)
+        .ok_or_else(|| refused("selected signer account is unavailable on this network"))?;
+    let not_member = || refused("selected account is not a current Argent multisig signer");
+    let guid = guid_of(&signer.public_key).ok_or_else(not_member)?;
+    if !intent
+        .config_snapshot
+        .signer_guids
+        .contains(&felt::canonical(&guid))
+    {
+        return Err(not_member());
+    }
+    if intent
+        .signatures
+        .iter()
+        .any(|signed| guid_of(&signed.public_key) == Some(guid))
+    {
+        return Err(refused(
+            "this Argent multisig signer already signed the intent",
+        ));
+    }
+    Ok((signer, guid))
 }
 
 /// The one call `request` names, built here from `record` (the multisig that sends it).
@@ -74,6 +113,9 @@ fn proposal_call(
         MultisigProposalRequest::ChangeSigners { change } => {
             return config_change_call(&record.address, change, class())
                 .map_err(|error| refused(error.message()));
+        }
+        MultisigProposalRequest::Repropose { .. } => {
+            return Err(refused("a stale intent's calls are not one call"));
         }
         MultisigProposalRequest::Transfer {
             token_id,
@@ -114,7 +156,7 @@ impl WalletCore {
     }
 
     /// Every address the person recognises on `network` (`trusted_recipients`), for the review.
-    fn review_trusted(&self, network: NetworkId) -> Result<Vec<Felt>, CoreError> {
+    pub(crate) fn review_trusted(&self, network: NetworkId) -> Result<Vec<Felt>, CoreError> {
         self.trusted_recipients(network)
             .map_err(|error| match error {
                 SendError::Locked => CoreError::Locked,
@@ -127,6 +169,63 @@ impl WalletCore {
     pub(crate) fn stored_intent(&self, id: &str) -> Result<SigningIntent, CoreError> {
         multisig_intents::get(self.data_dir(), id)?.ok_or_else(|| refused(INTENT_NOT_FOUND))
     }
+
+    /// The collecting intent `intent_id` and its multisig, once `state` shows the chain still
+    /// holds the intent's snapshot and nonce (`signIntent`'s `resolveLocalSigning`).
+    pub(crate) fn collecting_intent(
+        &self,
+        intent_id: &str,
+        state: &MultisigStateRead,
+    ) -> Result<(SigningIntent, Record), CoreError> {
+        let intent = self.stored_intent(intent_id)?;
+        if intent.state != IntentState::Collecting {
+            return Err(refused(
+                "Argent multisig intent is not collecting signatures",
+            ));
+        }
+        let record = self.multisig_record(&intent.account_id)?;
+        self.require_chain(&intent, &record, state)?;
+        Ok((intent, record))
+    }
+
+    /// Claims `guid`'s signature of `intent_id` for the live session (`claimOperation("sign",
+    /// ..)`), so one signer never signs one intent twice at once. Call inside the session.
+    pub(crate) fn claim_signing(
+        &self,
+        intent_id: &str,
+        guid: &Felt,
+    ) -> Result<OperationClaim, CoreError> {
+        let generation = self.lock_epoch.load(std::sync::atomic::Ordering::SeqCst);
+        OperationClaim::sign(self.data_dir(), intent_id, guid, generation)
+            .ok_or_else(|| refused("this signer already signed or is signing the intent"))
+    }
+
+    /// Stores `intent` with `signature` added in GUID order, ready at the threshold
+    /// (`persistSignature`). The store validates the result, every signature over the hash
+    /// recomputed from the prepared transaction.
+    pub(crate) fn store_signature(
+        &self,
+        intent: SigningIntent,
+        signature: MultisigSignature,
+    ) -> Result<MultisigIntent, CoreError> {
+        let mut signatures = intent.signatures.clone();
+        signatures.push(signature);
+        signatures.sort_by_cached_key(|signed| guid_of(&signed.public_key));
+        let ready = signatures.len() == intent.config_snapshot.threshold as usize;
+        let next = SigningIntent {
+            signatures,
+            state: if ready {
+                IntentState::Ready
+            } else {
+                IntentState::Collecting
+            },
+            ..intent
+        };
+        self.require_unlocked()?;
+        multisig_intents::upsert(self.data_dir(), &next)?;
+        let record = self.multisig_record(&next.account_id).ok();
+        Ok(intent_view(&next, record.as_ref()))
+    }
 }
 
 #[uniffi::export]
@@ -136,11 +235,12 @@ impl WalletCore {
     pub fn multisig_intents(&self, multisig_id: String) -> Result<Vec<MultisigIntent>, CoreError> {
         self.require_unlocked()?;
         settle(self.data_dir(), &multisig_id)?;
+        let record = self.multisig_record(&multisig_id).ok();
         Ok(multisig_intents::load(self.data_dir())?
             .iter()
             .rev()
             .filter(|intent| intent.account_id == multisig_id)
-            .map(intent_view)
+            .map(|intent| intent_view(intent, record.as_ref()))
             .collect())
     }
 
@@ -222,8 +322,13 @@ impl WalletCore {
         let current = held_config(&record, &snapshot, class())
             .ok_or_else(|| refused("Argent multisig signer configuration changed on-chain"))?;
         let trusted = trusted_tokens(&tokens, network);
-        let call = proposal_call(&record, &trusted, &request)?;
-        let calls = normalize_calls(&[call]).map_err(|error| refused(&error.to_string()))?;
+        let calls = match &request {
+            MultisigProposalRequest::Repropose { intent_id } => {
+                self.stale_calls(intent_id, &record)?
+            }
+            request => vec![proposal_call(&record, &trusted, request)?],
+        };
+        let calls = normalize_calls(&calls).map_err(|error| refused(&error.to_string()))?;
         let infos = token_infos(&trusted);
         let known = Known {
             tokens: &infos,
@@ -274,67 +379,24 @@ impl WalletCore {
     /// Co-signs a collecting intent with the vault record `signer_account_id` (`signIntent`):
     /// the record must be on the multisig's network, its key a member of the snapshot that has
     /// not signed yet, and `state` (`multisig_intent_read` of this intent, driven to its end) must
-    /// show the snapshot and the prepared nonce, and no stale version of the calls on chain. The key signs the frozen hash inside the core; the intent is stored with
-    /// the signature in GUID order, ready at the threshold.
+    /// show the snapshot and the prepared nonce, and no stale version of the calls on chain. The key
+    /// signs the frozen hash inside the core; the intent is stored with the signature in GUID
+    /// order, ready at the threshold. A Ledger record is refused here: it co-signs on its device
+    /// (`sign_multisig_intent_on_device`).
     pub fn sign_multisig_intent(
         &self,
         intent_id: String,
         signer_account_id: String,
         state: Arc<MultisigStateRead>,
     ) -> Result<MultisigIntent, CoreError> {
-        let intent = self.stored_intent(&intent_id)?;
-        if intent.state != IntentState::Collecting {
-            return Err(refused(
-                "Argent multisig intent is not collecting signatures",
-            ));
-        }
-        let record = self.multisig_record(&intent.account_id)?;
-        self.require_chain(&intent, &record, &state)?;
-        let guid_of = |public_key: &str| felt::parse(public_key).and_then(|k| signer_guid(&k).ok());
-        let signature = self.with_session(true, |session| {
-            let signer = signing_record(&session.payload, &signer_account_id)
-                .ok()
-                .filter(|signer| signer.network().catalog_id() == record.network_id)
-                .ok_or_else(|| refused("selected signer account is unavailable on this network"))?;
-            let guid = guid_of(&signer.public_key).ok_or_else(|| {
-                refused("selected account is not a current Argent multisig signer")
-            })?;
-            if !intent
-                .config_snapshot
-                .signer_guids
-                .contains(&felt::canonical(&guid))
-            {
-                return Err(refused(
-                    "selected account is not a current Argent multisig signer",
-                ));
-            }
-            if intent
-                .signatures
-                .iter()
-                .any(|signed| guid_of(&signed.public_key) == Some(guid))
-            {
-                return Err(refused(
-                    "this Argent multisig signer already signed the intent",
-                ));
-            }
-            sign_for(&session.payload, signer, &intent.prepared.transaction_hash)
+        let (intent, record) = self.collecting_intent(&intent_id, &state)?;
+        let (signature, _claim) = self.with_session(true, |session| {
+            let (signer, guid) = cosigner(&session.payload, &intent, &record, &signer_account_id)?;
+            let claim = self.claim_signing(&intent.id, &guid)?;
+            let signature = sign_for(&session.payload, signer, &intent.prepared.transaction_hash)?;
+            Ok((signature, claim))
         })?;
-        let mut signatures = intent.signatures.clone();
-        signatures.push(MultisigSignature::from(signature));
-        signatures.sort_by_cached_key(|signed| guid_of(&signed.public_key));
-        let ready = signatures.len() == intent.config_snapshot.threshold as usize;
-        let next = SigningIntent {
-            signatures,
-            state: if ready {
-                IntentState::Ready
-            } else {
-                IntentState::Collecting
-            },
-            ..intent
-        };
-        self.require_unlocked()?;
-        multisig_intents::upsert(self.data_dir(), &next)?;
-        Ok(intent_view(&next))
+        self.store_signature(intent, MultisigSignature::from(signature))
     }
 
     /// Submits a ready (or fee-stale) intent with its threshold signature (`submitIntent`).
@@ -370,7 +432,7 @@ impl WalletCore {
         let plan = SubmitPlan::new(&intent, &config, class(), summary_length())
             .map_err(|error| refused(&error.to_string()))?;
         let generation = self.session_generation().ok_or(CoreError::Locked)?;
-        let claim = SubmitClaim::take(self.data_dir(), &intent.id)
+        let claim = OperationClaim::submit(self.data_dir(), &intent.id)
             .ok_or_else(|| refused("Argent multisig submission claim exists"))?;
         Ok(MultisigSubmission::new(
             &self, generation, plan, intent, record, claim,
@@ -393,34 +455,8 @@ impl WalletCore {
         }
         let parsed = IntentPackage::parse(&package, class(), summary_length())
             .ok_or_else(|| refused(INVALID_PACKAGE))?;
-        let record = self
-            .multisig_record(&parsed.intent.account_id)
-            .map_err(|_| refused(ImportError::UnknownAccount.message()))?;
-        let network = NetworkId::from_catalog_id(&record.network_id)
-            .ok_or_else(|| refused(ImportError::UnknownAccount.message()))?;
-        let (read, nonce) = state
-            .finished()
-            .ok_or_else(|| refused(ImportError::AuthorityUnavailable.message()))?;
-        let stored = multisig_intents::get(self.data_dir(), &parsed.intent.id)?;
-        let trusted = trusted_tokens(&tokens, network);
-        let infos = token_infos(&trusted);
-        let known = Known {
-            tokens: &infos,
-            nft_contracts: &[],
-        };
-        let trusted = self.review_trusted(network)?;
-        let wallet = ImportContext {
-            record: &record,
-            stored: stored.as_ref(),
-            class: class(),
-            known: &known,
-            trusted: &trusted,
-            summary_length: summary_length(),
-        };
-        let next = import_intent(&parsed, &read, &nonce, &wallet)
-            .map_err(|error| refused(error.message()))?;
-        self.require_unlocked()?;
-        multisig_intents::upsert(self.data_dir(), &next)?;
-        Ok(intent_view(&next))
+        let next = self.import_package(&parsed, &state, &tokens)?;
+        let record = self.multisig_record(&next.account_id).ok();
+        Ok(intent_view(&next, record.as_ref()))
     }
 }

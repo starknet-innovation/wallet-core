@@ -3,8 +3,7 @@
 //! discovery bodies and every judged reply, over Bramble's routing (`privacy.json`). The gates
 //! are `privacy_gates_parity.rs`.
 
-mod portfolio_support;
-mod privacy_support;
+use crate::privacy_support;
 
 use privacy_support::{
     read_routing, routes, run_mainnet, steady, wire, Script, PHRASE, ROUTING_JSON,

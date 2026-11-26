@@ -3,8 +3,7 @@
 //! and the pause before a repeat.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod gasless_export_support;
-mod send_support;
+use crate::gasless_export_support;
 
 use bramble_core::{
     activity_needs_observation, GaslessFeeError, GaslessSubmitStep, HttpOutcome, NetworkId,

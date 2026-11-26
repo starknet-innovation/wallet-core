@@ -5,7 +5,7 @@
 //! Ported from `packages/features/transactions/tests/routing/fee-funds.test.ts` and
 //! `background-invoke-approval.test.ts` ("the verdict rides the fee review").
 
-mod plan_support;
+use crate::plan_support;
 
 use plan_support::node::*;
 use plan_support::*;

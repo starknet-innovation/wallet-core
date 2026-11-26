@@ -5,7 +5,7 @@
 //! "returns no accounts without prompting for silent ungranted requests").
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod common;
+use crate::common;
 
 use std::sync::Arc;
 
@@ -298,4 +298,36 @@ fn a_failed_grant_write_connects_nothing() {
     core.lock();
     core.unlock(PASSWORD.into()).unwrap();
     assert_eq!(ask(&dapp, "wallet_getPermissions", None, 3), ok("[]"));
+}
+
+// `withdraw`, a mobile divergence: a page that has gone takes its requests with it, and a card no
+// page waits on any more is withdrawn, so a late approval grants nothing.
+#[test]
+fn a_withdrawn_page_leaves_a_shared_card_and_a_lone_card_is_withdrawn() {
+    let (_dir, _clock, core) = imported();
+    let id = account_id(&core);
+    let dapp = DappSession::new(core.clone(), TokenPreferences::new(None));
+    // Two pages of the site share one connect card; the first goes.
+    let card = pending(ask(&dapp, "wallet_requestAccounts", None, 1));
+    assert_eq!(pending(ask(&dapp, "wallet_requestAccounts", None, 2)), card);
+    dapp.withdraw(vec![1]);
+    assert_eq!(dapp.pending_approvals(NOW).len(), 1);
+    let settled = dapp.approve_connect(card, id.clone(), NOW);
+    assert_eq!(
+        settled.iter().map(|s| s.request_id).collect::<Vec<_>>(),
+        [2]
+    );
+
+    // A page alone on its card: withdrawing it drops the card, and approving it grants nothing.
+    let other = "https://other.example";
+    let ask_other = |method: &str, request_id| {
+        dapp.request(other.into(), method.into(), None, NET, request_id)
+            .unwrap()
+    };
+    let card = pending(ask_other("wallet_requestAccounts", 3));
+    dapp.withdraw(vec![3, 99]);
+    assert!(dapp.pending_approvals(NOW).is_empty());
+    assert!(dapp.approve_connect(card, id, NOW).is_empty());
+    assert!(dapp.settle_expired().is_empty());
+    assert_eq!(ask_other("wallet_getPermissions", 4), ok("[]"));
 }

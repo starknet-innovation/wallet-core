@@ -6,7 +6,7 @@
 //! table, the salt) go in as `ScanConfig`; `starknet_wallet_core::accounts` decides. Also
 //! Krusty against the class table (`accounts.json`), as mobile's catalog tests checked it.
 
-mod accounts_support;
+use crate::accounts_support;
 
 use std::cell::Cell;
 

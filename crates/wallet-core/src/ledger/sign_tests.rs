@@ -7,13 +7,13 @@ use super::rejection::RejectionCode as C;
 use super::*;
 use crate::{kms, Felt};
 
-const MIN: Version = Version {
+pub(super) const MIN: Version = Version {
     major: 2,
     minor: 4,
     patch: 0,
 };
 
-fn path(index: u32) -> LedgerPath {
+pub(super) fn path(index: u32) -> LedgerPath {
     let h = PathComponent::hardened;
     LedgerPath::new([
         h(2645),
@@ -31,23 +31,23 @@ fn felt(hex: &str) -> Felt {
 }
 
 /// A device holding one key: its public key and its signature over a hash.
-struct Device {
+pub(super) struct Device {
     key: SecretFelt,
 }
 
 impl Device {
-    fn new(key: &str) -> Self {
+    pub(super) fn new(key: &str) -> Self {
         Self {
             key: SecretFelt::new(felt(key)),
         }
     }
 
-    fn public_key(&self) -> Felt {
+    pub(super) fn public_key(&self) -> Felt {
         felt(&kms::stark_public_key(&self.key).unwrap())
     }
 
     /// `getPubKey`'s reply: a format byte, X, an arbitrary Y, then 0x9000.
-    fn public_key_reply(&self) -> Vec<u8> {
+    pub(super) fn public_key_reply(&self) -> Vec<u8> {
         [
             &[0x04][..],
             &self.public_key().to_bytes_be(),
@@ -58,7 +58,7 @@ impl Device {
     }
 
     /// `signHash`'s final reply: 0x41, r, s, a recovery byte, then 0x9000.
-    fn signature_reply(&self, hash: &Felt) -> Vec<u8> {
+    pub(super) fn signature_reply(&self, hash: &Felt) -> Vec<u8> {
         let signature = kms::sign_stark_hash(&self.key, &format!("{hash:#x}")).unwrap();
         let (r, s) = (felt(&signature.r), felt(&signature.s));
         [
@@ -71,10 +71,10 @@ impl Device {
     }
 }
 
-const OK: &[u8] = &[0x90, 0x00];
-const VERSION_2_4_0: &[u8] = &[2, 4, 0, 0x90, 0x00];
+pub(super) const OK: &[u8] = &[0x90, 0x00];
+pub(super) const VERSION_2_4_0: &[u8] = &[2, 4, 0, 0x90, 0x00];
 
-fn hash() -> Felt {
+pub(super) fn hash() -> Felt {
     felt("0x2d1a9e9e5e8f2b6a4a2c0b5d7e3f1a9c8b7d6e5f4a3b2c1d0e9f8a7b6c5d4e3")
 }
 

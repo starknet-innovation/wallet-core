@@ -8,7 +8,7 @@
 //! - `queue`: `ApprovalQueue` under `DAPP_QUEUE_LIMITS` queues, joins, refuses, expires and
 //!   evicts as the extension's queue and signature waiters did, at the same clock.
 
-mod dapp_parity_support;
+use crate::dapp_parity_support;
 
 use std::collections::HashMap;
 
