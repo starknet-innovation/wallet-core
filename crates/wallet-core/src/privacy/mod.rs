@@ -19,7 +19,9 @@
 //! (`client_actions`, sharing `pool_actions`' variant table) and its randomness (`entropy`).
 //!
 //! Its proof job's discovery walks are sans-IO pieces too: the outgoing channels (`outgoing`) and
-//! the spendable notes with their witnesses (`incoming`), over the types in `discovery`.
+//! the spendable notes with their witnesses (`incoming`), over the types in `discovery`. Between
+//! and after them, the compiler (`compiler`, over the pool simulator in `simulator`) says what
+//! the walks must fetch and turns what they found into the job's client actions.
 //!
 //! It builds the proof invocation itself (`invocation`) and talks to the prover as plain bodies
 //! and judged replies (`prover`); the job that drives them replaces the engine.
@@ -27,6 +29,7 @@
 mod bodies;
 pub mod call_set;
 pub mod client_actions;
+pub mod compiler;
 pub mod config;
 pub mod discovery;
 pub mod engine;
@@ -45,6 +48,7 @@ pub mod plan;
 mod plan_steps;
 mod pool_actions;
 pub mod prover;
+mod simulator;
 pub mod types;
 
 use gates::Outcome;
@@ -125,6 +129,8 @@ mod tests {
     /// too: `client_actions` carries them and `hashes` hashes one into a note id. The hashes that
     /// consume the viewing key itself are `kms.rs`'s, reached through the crate root. Like
     /// `bodies`, `invocation` exposes the secret to serialise it, so it is not in the second list.
+    /// The compiler and its simulator hold the viewing key to derive channel keys through the crate
+    /// root (`compute_channel_key`), and the simulator its public key (`stark_public_key`).
     /// The `CallSet` signature is the wallet's (`engine::prove` takes its signing closure), so the
     /// engine files reach no key-taking Krusty export.
     #[test]
@@ -133,6 +139,7 @@ mod tests {
             ("bodies.rs", include_str!("bodies.rs")),
             ("call_set.rs", include_str!("call_set.rs")),
             ("client_actions.rs", include_str!("client_actions.rs")),
+            ("compiler.rs", include_str!("compiler.rs")),
             ("config.rs", include_str!("config.rs")),
             ("discovery.rs", include_str!("discovery.rs")),
             ("engine.rs", include_str!("engine.rs")),
@@ -151,6 +158,7 @@ mod tests {
             ("plan_steps.rs", include_str!("plan_steps.rs")),
             ("pool_actions.rs", include_str!("pool_actions.rs")),
             ("prover.rs", include_str!("prover.rs")),
+            ("simulator.rs", include_str!("simulator.rs")),
             ("types.rs", include_str!("types.rs")),
         ];
         for (name, source) in sources {
@@ -175,6 +183,7 @@ mod tests {
                     name,
                     "bodies.rs"
                         | "client_actions.rs"
+                        | "compiler.rs"
                         | "discovery.rs"
                         | "engine.rs"
                         | "hashes.rs"
@@ -184,19 +193,22 @@ mod tests {
                         | "plan.rs"
                         | "plan_steps.rs"
                         | "pool_actions.rs"
+                        | "simulator.rs"
                 ),
                 "{name}: only the plan asks for the key, only the bodies, the client actions and \
                  the invocation write it, only the engine's job carries it to the engine, only the \
-                 pool decoder compares it, only the note id hashes a channel key, and only the \
-                 discovery walks lend it and hold what is derived from it"
+                 pool decoder compares it, only the note id hashes a channel key, only the \
+                 discovery walks lend it and hold what is derived from it, and only the compiler \
+                 and its simulator derive the channel keys from it"
             );
         }
         // The `CallSet` is signed by the wallet's signing path, through the closure `engine::prove`
         // is given; outside tests, no privacy file reaches a key-taking Krusty export.
-        // Nor do the discovery walks, which never read a secret back out either.
+        // Nor do the discovery walks or the compiler, which never read a secret back out either.
         for (name, source) in [
             ("call_set.rs", include_str!("call_set.rs")),
             ("client_actions.rs", include_str!("client_actions.rs")),
+            ("compiler.rs", include_str!("compiler.rs")),
             ("discovery.rs", include_str!("discovery.rs")),
             ("incoming.rs", include_str!("incoming.rs")),
             ("outgoing.rs", include_str!("outgoing.rs")),
@@ -205,6 +217,7 @@ mod tests {
             ("entropy.rs", include_str!("entropy.rs")),
             ("pool_actions.rs", include_str!("pool_actions.rs")),
             ("prover.rs", include_str!("prover.rs")),
+            ("simulator.rs", include_str!("simulator.rs")),
         ] {
             let body = source.split("#[cfg(test)]").next().unwrap_or_default();
             for forbidden in [
@@ -214,6 +227,11 @@ mod tests {
                 "stark_public_key",
                 "expose_secret",
             ] {
+                // The one exception: registering, the simulator puts the account's viewing public
+                // key on its own channel (`derivePublicKey`), as the pool will.
+                if (name, forbidden) == ("simulator.rs", "stark_public_key") {
+                    continue;
+                }
                 assert!(
                     !body.contains(forbidden),
                     "{name} must not reference {forbidden}"

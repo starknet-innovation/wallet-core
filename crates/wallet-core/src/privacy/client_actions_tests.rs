@@ -97,18 +97,8 @@ fn every_variant_matches_the_layout() {
 #[test]
 fn round_trips_through_the_pool_decoder() {
     let key = SecretFelt::new(KEY);
+    // Every action decodes, in order, the open note (an `Open` transfer's) included.
     let calldata = compile_actions_calldata(&ACCOUNT, &key, &every_variant()).unwrap();
-    // The decoder refuses `CreateOpenNote` (no wallet flow produces one), so the whole span.
-    assert_eq!(
-        decode_compile_actions(&plain(&calldata), &ACCOUNT, &key),
-        None
-    );
-    // Without the open note, every action decodes, in order.
-    let actions: Vec<ClientAction> = every_variant()
-        .into_iter()
-        .filter(|action| !matches!(action, ClientAction::CreateOpenNote { .. }))
-        .collect();
-    let calldata = compile_actions_calldata(&ACCOUNT, &key, &actions).unwrap();
     assert_eq!(
         decode_compile_actions(&plain(&calldata), &ACCOUNT, &key),
         Some(vec![
@@ -119,6 +109,10 @@ fn round_trips_through_the_pool_decoder() {
                 recipient: BOB,
                 token: STRK,
                 amount: f(70),
+            },
+            PoolAction::OpenNote {
+                recipient: BOB,
+                token: STRK,
             },
             PoolAction::Deposit {
                 token: STRK,
