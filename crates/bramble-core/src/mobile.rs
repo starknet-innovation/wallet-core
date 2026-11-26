@@ -34,6 +34,7 @@ mod clock;
 mod contact_card;
 mod contacts;
 mod container;
+mod dapp_expiry;
 mod dapp_session;
 mod dapp_sign;
 mod dapp_sites;
