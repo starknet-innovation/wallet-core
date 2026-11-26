@@ -168,8 +168,14 @@ The porting is mostly done; what decides the pace now is the mobile screens:
   feature that submits calls.
 - **D1 Ledger transport** (P8). *Decided* 2026-11-23 (product owner): Bluetooth first on both
   apps (Nano X, Stax, Flex), Android USB (Nano S Plus) as a follow-up, since iOS cannot reach a
-  Ledger over USB at all; Ledger's own mobile SDK for the link to start with, ported into the core
-  later; Ledger-only wallets (no phrase) at full parity.
+  Ledger over USB at all; Ledger-only wallets (no phrase) at full parity. *Amended* 2026-11-26
+  (product owner, after a spike): the core owns Ledger's Bluetooth framing from the start
+  (`ledger::ble`, exported as `LedgerBleExchange` and `ledger_ble_link`) and each app keeps only a thin CoreBluetooth or
+  `BluetoothGatt` shim, in place of Ledger's mobile SDK. That SDK (Device Management Kit 1.0.0,
+  its BLE kit 0.1.0) publishes binaries whose source repository is not public; on Android it
+  forced minSdk 30, compileSdk 37 and Kotlin 2.4 and added 133 modules (about 11 MB of debug dex)
+  with Ledger's servers compiled in, and on iOS it needs a Kotlin/Native toolchain. Whatever
+  carries the APDUs sees every blind-signed hash, so it stays small and reviewed from source.
 - **D2 Dapp transport** (P16): an in-app browser that injects the extension's provider, or
   WalletConnect, or both. *Decided* 2026-11-25: an in-app browser, as the P16 spike recommends
   (see "P16 spike findings" under P16 in [Parity](#parity)), since every Starknet dapp already speaks
@@ -240,7 +246,7 @@ these close.
 
 | PR | Repo | Needs | What it is |
 | --- | --- | --- | --- |
-| P8 Ledger | here, then both | D1 (settled) | as the extension's v1: blind signing only. The Starknet app's version, public-key and `signHash` commands with the extension's minimum app version and its status-word catalogue (`ledger-protocol/`, 1,096; `background/ledger/`, 847), as sans-IO APDU bytes here; a signing step in `Plan` that hands the hash to the host's device and takes a signature back, verified against the record's stored `publicKeyX` before anything is broadcast, and never falls back to a key (`account-hash-signer.ts`); Ledger records made operable; and a vault with no phrase opened and created, for Ledger-only onboarding. The apps link to the device through Ledger's Device Management Kit (`LedgerHQ/device-sdk-mobile`, Kotlin Multiplatform; Android native, iOS through Objective-C interop; 0.0.x as of 2026-11, so pinned exactly and checked for maintenance first). It has no Starknet signer module, so it only scans, pairs and moves the core's APDUs (its raw APDU call). Bluetooth first; Android USB a follow-up. Later: Ledger's Bluetooth framing moves into the core and the kit goes. The generator records APDU transcripts against the Starknet Ledger app; *proposed*: under Ledger's Speculos emulator, so CI needs no device |
+| P8 Ledger | here, then both | D1 (settled) | as the extension's v1: blind signing only. The Starknet app's version, public-key and `signHash` commands with the extension's minimum app version and its status-word catalogue (`ledger-protocol/`, 1,096; `background/ledger/`, 847), as sans-IO APDU bytes here; a signing step in `Plan` that hands the hash to the host's device and takes a signature back, verified against the record's stored `publicKeyX` before anything is broadcast, and never falls back to a key (`account-hash-signer.ts`); Ledger records made operable; and a vault with no phrase opened and created, for Ledger-only onboarding. The apps link to the device over Bluetooth with the core's framing (`ledger::ble`: the GATT identifiers per model, the MTU handshake, frames out and the reply in, refusing a wrong tag, a sequence gap or an overrun) and a thin CoreBluetooth or `BluetoothGatt` shim each that only scans, pairs, writes and listens (D1, amended 2026-11-26). Bluetooth first; Android USB a follow-up. The generator records APDU transcripts against the Starknet Ledger app; *proposed*: under Ledger's Speculos emulator, so CI needs no device |
 | P16 Dapp connect | here, then both | D2 (settled), X2 | in progress (see "P16 progress" under P16 in [Parity](#parity)). request validation, grants (the vault's `originGrants`, and the per-account revocation P7 left, `withoutOriginAccess`), the approval queue and its review budget, typed-data review and signing (SNIP-12), add-chain and watch-asset, the blocklist and phishing feed as a sans-IO body and judge (`background/provider/`, 2,453; `background/approvals/`, 4,169; `permissions/`, 905). The core takes a request (origin, method, params) and returns a review, a grant or a refusal, whatever carried it. Mobile builds the transport: for a browser, a WebView whose bridge binds every request to the top frame's origin as the platform reports it and refuses frames it cannot attribute. P9's poisoned-payee refusal must not reach the site before the person acts |
 | P15 STRK20 | here, then both | D3 (settled), the P15 spike | activate, shield, unshield and private send; then shadow accounts and multisig STRK20 (`privacy/`, 9,279; `background/privacy/`, 5,872), over 2.4d's read plan. The core owns the policy, the review and the extension's own rules around the SDK; the SDK is an engine the core drives through a trait, and each app runs the same pinned bundle the extension vendors (its pin, its digests) in a sandboxed runtime the spike picks. The largest step: six PRs in that order. Later: the SDK's client ported to Rust, once upstream leaves release candidates or StarkWare ships one, with its crypto from Krusty (the core adds none of its own), and the embedded runtime goes |
 
@@ -583,7 +589,7 @@ Foundations, which the features need, and Ledger, which needs only the first:
   multisig intent are refused until each signs on the device (the extension signs each there);
   Nostr coordination needs a phrase. A Ledger deployer signs an Argent multisig's deployment on
   its device (#138).
-  Left: the Bramble screens (connect over the Device Management Kit, pick, sign) and the
+  Left: the Bramble screens (connect over each app's Bluetooth shim and the core's framing, pick, sign) and the
   generator's transcripts under Speculos.
 - **P9 Call batches.** `send::Kind` is a transfer, a deployment or a refresh; a single-signer
   account cannot submit arbitrary calls. Swap, staking, a revoke and a dapp's invoke all do. Add
@@ -2109,5 +2115,5 @@ Added 2026-11-09 after reviewing the first day's work. Items marked *proposed* a
   [Road to parity](#road-to-parity), D2, and the P16 spike findings).
 - Whether Ledger on mobile is Bluetooth only, and whether iOS can reach the device at all the way
   the app needs (P8). Settled 2026-11-23: Bluetooth first on both apps, Android USB later (iOS
-  has no USB route to a Ledger), through Ledger's Device Management Kit until the framing moves
-  into the core; Ledger-only wallets supported (see [Road to parity](#road-to-parity), D1).
+  has no USB route to a Ledger), with the core's Bluetooth framing and a thin shim per app (amended
+  2026-11-26, in place of Ledger's mobile SDK); Ledger-only wallets supported (see [Road to parity](#road-to-parity), D1).
