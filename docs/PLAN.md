@@ -1090,11 +1090,14 @@ Features, smallest and least dependent first:
     - In review: SNIP-12 typed data (`dapp::typed_data`: the gate, chain binding and summary)
       and its signing at approval (`bramble-core`'s `dapp_sign.rs`:
       `approve_sign_typed_data`, `DappCard::SignTypedData`, and `deny` for any card). Signs for
-      vault-key OpenZeppelin and Ready (signer-array class) accounts; Ledger, Braavos, a Ready
-      account stored at Argent 0.3.x and a SNIP-9 OutsideExecution are refused (163) until the
-      device path, the live class read and the OutsideExecution review land.
-    - Next here, in order: the remaining methods' gates and results; the OutsideExecution
-      review; the full export.
+      vault-key OpenZeppelin and Ready (signer-array class) accounts; Ledger, Braavos and a Ready
+      account stored at Argent 0.3.x are refused (163) until the device path and the live class
+      read land. A SNIP-9 outside execution in typed data (`dapp::outside_execution`) is reviewed
+      as an invoke's calls are: flags and call summaries on the card at queue time, a self-call
+      refused, and at approval a lookalike payee, spender or operator refused (`refuse_poisoned`,
+      re-read trusted set). A lock does not drop typed-data cards, as in the extension.
+    - Next here, in order: the remaining methods' gates and results; the live class read
+      (Braavos, upgraded Argent); Ledger typed data; the full export.
     - *Done* (#140): the connect-only slice is exported first, so Bramble can build and test
       the WebView bridge against real dapps while review and signing follow. Connect's card is
       a site and an account, so the slice does not wait on M19–M21.

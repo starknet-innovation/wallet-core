@@ -20,7 +20,7 @@ use crate::js::json::JsValue;
 use crate::send::call_decode::decoded_entrypoints;
 use crate::send::calls::Call;
 use crate::send::invoke::{batch_flags, verify_calls};
-use crate::send::multisig_review::is_poisoned;
+use crate::send::multisig_review::{is_poisoned, refuse_poisoned};
 use crate::send::review_flags::{ReviewContext, RiskFlag};
 use crate::{felt, kms, Felt, NetworkId};
 
@@ -165,7 +165,11 @@ pub fn review_outside_execution(
         .iter()
         .map(|call| is_poisoned(account, call, context.trusted))
         .collect();
-    if stage == Stage::Sign && poisoned.contains(&true) {
+    // `refuseOnPoisonedRecipient` at signing: the batch review's own rule, so a lookalike payee,
+    // or a grant's lookalike spender or operator, is refused here as on the invoke route.
+    if stage == Stage::Sign
+        && refuse_poisoned(account, &calls, &context.known, &[], context.trusted).is_err()
+    {
         return Err(WalletRpcError::unknown_error());
     }
     let mut reviewed = verify_calls(network, account, &calls, context);

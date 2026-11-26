@@ -36,6 +36,8 @@ use crate::dapp::{
 };
 use crate::dapp_sign::SignCard;
 use crate::networks::NetworkId;
+use crate::portfolio::tokens::TokenPreferences;
+use crate::send::types::RiskFlag;
 use crate::vault_rules::is_wallet_origin;
 use crate::wallet::{Session, WalletCore};
 use crate::{felt, CoreError};
@@ -88,13 +90,17 @@ pub enum DappCard {
     Connect,
     /// Sign SNIP-12 typed data as `account_id` (echoed back to `approve_sign_typed_data`) on
     /// `network`. `summary` is `"<primaryType> · <domain.name>"`; `typed_data_json` is the
-    /// document the signature commits to, for the app to render. One request, one card.
+    /// document the signature commits to, for the app to render. A SNIP-9 outside execution
+    /// also carries its calls' summaries and the review's flags, as an invoke card does (both
+    /// empty for any other document). One request, one card.
     SignTypedData {
         account_id: String,
         address: String,
         network: NetworkId,
         summary: String,
         typed_data_json: String,
+        call_summaries: Vec<String>,
+        flags: Vec<RiskFlag>,
     },
 }
 
@@ -145,6 +151,9 @@ struct State {
 #[derive(uniffi::Object)]
 pub struct DappSession {
     pub(crate) wallet: Arc<WalletCore>,
+    /// The app's tracked tokens: an outside execution's review trusts them as the invoke route's
+    /// does (`trustedTokens`).
+    pub(crate) tokens: Arc<TokenPreferences>,
     state: Mutex<State>,
     /// Never held while taking `state` or the wallet's session.
     pub(crate) feed: Mutex<PhishingFeed>,
@@ -308,9 +317,10 @@ pub(crate) fn settled(
 #[uniffi::export]
 impl DappSession {
     #[uniffi::constructor]
-    pub fn new(wallet: Arc<WalletCore>) -> Arc<Self> {
+    pub fn new(wallet: Arc<WalletCore>, tokens: Arc<TokenPreferences>) -> Arc<Self> {
         Arc::new(Self {
             wallet,
+            tokens,
             state: Mutex::new(State {
                 queue: ApprovalQueue::new(DAPP_QUEUE_LIMITS),
                 waiters: HashMap::new(),

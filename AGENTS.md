@@ -254,7 +254,9 @@ Grep first; extend in place rather than adding a sibling.
   `kept.origin_grants` through `WalletCore::commit`); its blocklist, feed refresh and card
   warnings are `dapp_sites.rs`; `wallet_signTypedData`'s card and its signature at approval
   (`approve_sign_typed_data`, through `signing_record` and `sign_for` under one session hold)
-  are `dapp_sign.rs`.
+  are `dapp_sign.rs`, which reviews an outside execution's calls with the invoke route's
+  inputs (`trusted_recipients`, the tracked tokens from the session's `TokenPreferences`, the
+  allowance log), read before the session hold.
 - Only `wallet-core` depends on Krusty (`kms.rs`, `nostr.rs`, `accounts/`, `send/`);
   `bramble-core` goes through `wallet-core` and never names `krusty_kms`.
 

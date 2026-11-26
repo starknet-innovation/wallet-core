@@ -467,3 +467,17 @@ fn the_poisoning_flag_carries_the_extensions_sentence() {
 
 #[path = "outside_execution_trusted_tests.rs"]
 mod trusted;
+
+// `verify-spender-poisoning.test.ts` (Bramble #1038) through this route: a grant whose spender
+// mimics a contact is refused at approval, as the invoke route refuses it (`refuse_poisoned`),
+// and an approve to the contact itself is not.
+#[test]
+fn refuses_at_approval_a_grant_to_a_spender_that_mimics_a_contact() {
+    let grant = |spender| outside(&[call(ETH, "approve", &[spender, "0x1", "0x0"])], 2);
+    let contact = [felt(CONTACT)];
+    assert_eq!(
+        review(&grant(CONTACT_LOOKALIKE), &contact, &[], Stage::Sign),
+        refused()
+    );
+    assert!(review(&grant(CONTACT), &contact, &[], Stage::Sign).is_ok());
+}

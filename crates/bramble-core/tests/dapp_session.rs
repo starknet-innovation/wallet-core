@@ -9,7 +9,7 @@ mod common;
 
 use std::sync::Arc;
 
-use bramble_core::{DappReply, DappSession, DappSettled, NetworkId, WalletCore};
+use bramble_core::{DappReply, DappSession, DappSettled, NetworkId, TokenPreferences, WalletCore};
 use common::{account_id, imported, open, PASSWORD};
 
 const SITE: &str = "https://app.example";
@@ -56,7 +56,7 @@ fn a_site_asked_while_locked_connects_after_unlock_and_stays_connected() {
     let id = account_id(&core);
     let address = address(&core);
     core.lock();
-    let dapp = DappSession::new(core.clone());
+    let dapp = DappSession::new(core.clone(), TokenPreferences::new(None));
 
     // Locked looks unconnected: asked, never refused.
     assert_eq!(ask(&dapp, "wallet_getPermissions", None, 1), ok("[]"));
@@ -101,7 +101,7 @@ fn a_site_asked_while_locked_connects_after_unlock_and_stays_connected() {
     drop(dapp);
     let core = open(dir.path(), &clock);
     core.unlock(PASSWORD.into()).unwrap();
-    let dapp = DappSession::new(core.clone());
+    let dapp = DappSession::new(core.clone(), TokenPreferences::new(None));
     assert_eq!(
         ask(&dapp, "wallet_requestAccounts", None, 5),
         ok(&format!(r#"["{address}"]"#))
@@ -141,7 +141,7 @@ fn a_site_asked_while_locked_connects_after_unlock_and_stays_connected() {
 #[test]
 fn denying_refuses_every_waiting_request() {
     let (_dir, _clock, core) = imported();
-    let dapp = DappSession::new(core);
+    let dapp = DappSession::new(core, TokenPreferences::new(None));
     let card = pending(ask(&dapp, "wallet_requestAccounts", None, 1));
     pending(ask(&dapp, "mc_requestAccounts", None, 2));
     let refused = || DappReply::Error {
@@ -162,7 +162,7 @@ fn denying_refuses_every_waiting_request() {
 #[test]
 fn approving_for_an_account_no_longer_active_grants_nothing() {
     let (_dir, _clock, core) = imported();
-    let dapp = DappSession::new(core.clone());
+    let dapp = DappSession::new(core.clone(), TokenPreferences::new(None));
     let card = pending(ask(&dapp, "wallet_requestAccounts", None, 1));
     let settled = dapp.approve_connect(card, "SN_SEPOLIA:0x1".into(), NOW);
     assert_eq!(code(&settled[0].reply), 163);
@@ -180,7 +180,7 @@ fn approving_for_an_account_no_longer_active_grants_nothing() {
 #[test]
 fn an_expired_card_refuses_its_requests() {
     let (_dir, clock, core) = imported();
-    let dapp = DappSession::new(core);
+    let dapp = DappSession::new(core, TokenPreferences::new(None));
     pending(ask(&dapp, "wallet_requestAccounts", None, 9));
     assert!(dapp.settle_expired().is_empty());
     clock.advance(5 * 60 * 1_000);
@@ -195,7 +195,7 @@ fn an_expired_card_refuses_its_requests() {
 #[test]
 fn reads_refusals_and_what_this_slice_does_not_answer() {
     let (_dir, _clock, core) = imported();
-    let dapp: Arc<DappSession> = DappSession::new(core);
+    let dapp: Arc<DappSession> = DappSession::new(core, TokenPreferences::new(None));
     assert_eq!(
         ask(&dapp, "wallet_requestChainId", None, 1),
         ok(r#""0x534e5f5345504f4c4941""#)
@@ -251,7 +251,7 @@ fn reads_refusals_and_what_this_slice_does_not_answer() {
 #[test]
 fn a_card_holds_eight_requests_and_the_queue_fifty_sites() {
     let (_dir, _clock, core) = imported();
-    let dapp = DappSession::new(core);
+    let dapp = DappSession::new(core, TokenPreferences::new(None));
     let card = pending(ask(&dapp, "wallet_requestAccounts", None, 1));
     for request_id in 2..=8 {
         assert_eq!(
@@ -288,7 +288,7 @@ fn a_failed_grant_write_connects_nothing() {
     use std::os::unix::fs::PermissionsExt;
     let (dir, _clock, core) = imported();
     let id = account_id(&core);
-    let dapp = DappSession::new(core.clone());
+    let dapp = DappSession::new(core.clone(), TokenPreferences::new(None));
     let card = pending(ask(&dapp, "wallet_requestAccounts", None, 1));
     std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o555)).unwrap();
     let settled = dapp.approve_connect(card, id, NOW);
