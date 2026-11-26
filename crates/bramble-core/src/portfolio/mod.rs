@@ -21,4 +21,6 @@ pub const PORTFOLIO_POLICY: wallet_core::portfolio::PortfolioPolicy =
         schema: "bramble.mobile.portfolio.v1",
         price_api_base: "https://api.coingecko.com/api/v3",
         price_network: wallet_core::NetworkId::Mainnet,
+        // `MAX_ADDED_TOKENS_PER_NETWORK`: a private balance reads at most 64 tokens.
+        max_added_tokens: 50,
     };

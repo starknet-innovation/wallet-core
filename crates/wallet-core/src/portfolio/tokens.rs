@@ -46,9 +46,11 @@ pub struct AddTokenOutcome {
 }
 
 #[derive(Debug, Clone)]
-struct Prefs {
-    tokens: Vec<TokenConfig>,
-    hidden: Vec<String>,
+pub(super) struct Prefs {
+    pub(super) tokens: Vec<TokenConfig>,
+    pub(super) hidden: Vec<String>,
+    /// `dappTokenIds`: tracked tokens a site added, which the review does not trust (audit 171).
+    pub(super) dapp: Vec<String>,
     currency: DisplayCurrency,
     explorer_fallback: Vec<(NetworkId, bool)>,
 }
@@ -67,6 +69,7 @@ impl Prefs {
         Self {
             tokens,
             hidden: Vec::new(),
+            dapp: Vec::new(),
             currency: DisplayCurrency::Usd,
             explorer_fallback: Vec::new(),
         }
@@ -105,6 +108,17 @@ fn is_token_id(id: &str) -> bool {
     (1..=200).contains(&utf16_len(id))
 }
 
+// A list of unique token ids.
+fn token_ids(value: &JsValue) -> Option<Vec<String>> {
+    let ids: Vec<String> = value
+        .as_array()?
+        .iter()
+        .map(|v| v.as_str().filter(|s| is_token_id(s)).map(str::to_string))
+        .collect::<Option<_>>()?;
+    let unique = ids.iter().enumerate().all(|(i, id)| !ids[..i].contains(id));
+    unique.then_some(ids)
+}
+
 fn parse_prefs(value: &JsValue) -> Option<Prefs> {
     let tokens = value
         .get("tokens")?
@@ -112,16 +126,12 @@ fn parse_prefs(value: &JsValue) -> Option<Prefs> {
         .iter()
         .map(parse_token)
         .collect::<Option<Vec<_>>>()?;
-    let hidden: Vec<String> = value
-        .get("hiddenTokens")?
-        .as_array()?
-        .iter()
-        .map(|v| v.as_str().filter(|s| is_token_id(s)).map(str::to_string))
-        .collect::<Option<_>>()?;
-    let unique = hidden
-        .iter()
-        .enumerate()
-        .all(|(i, id)| !hidden[..i].contains(id));
+    let hidden = token_ids(value.get("hiddenTokens")?)?;
+    // Absent in files written before sites could add tokens.
+    let dapp = match value.get("dappTokenIds") {
+        None => Vec::new(),
+        Some(ids) => token_ids(ids)?,
+    };
     let currency = DisplayCurrency::from_code(value.get("displayCurrency")?.as_str()?)?;
     let mut explorer_fallback = Vec::new();
     for (key, allowed) in value.get("explorerFallback")?.as_object()? {
@@ -130,9 +140,10 @@ fn parse_prefs(value: &JsValue) -> Option<Prefs> {
         };
         explorer_fallback.push((network_from_code(key)?, *allowed));
     }
-    unique.then_some(Prefs {
+    Some(Prefs {
         tokens,
         hidden,
+        dapp,
         currency,
         explorer_fallback,
     })
@@ -146,10 +157,10 @@ fn parse_prefs(value: &JsValue) -> Option<Prefs> {
 /// lock.
 #[derive(Debug)]
 pub struct TokenPreferences<'a> {
-    prefs: Prefs,
+    pub(super) prefs: Prefs,
     read_only: bool,
-    catalogs: Catalogs<'a>,
-    policy: PortfolioPolicy,
+    pub(super) catalogs: Catalogs<'a>,
+    pub(super) policy: PortfolioPolicy,
 }
 
 impl<'a> TokenPreferences<'a> {
@@ -192,13 +203,11 @@ impl<'a> TokenPreferences<'a> {
     }
 
     /// The tracked tokens on `network` the Send review treats as known token contracts
-    /// (`trustedTokens`): every one except those the spam heuristic flags. Pass to
-    /// `TransferRequest.tracked_tokens`.
+    /// (`trustedTokens`): see [`Self::trusted`]. Pass to `TransferRequest.tracked_tokens`.
     pub fn trusted_token_addresses(&self, network: NetworkId) -> Vec<String> {
-        self.tracked(network)
+        self.trusted(network)
             .into_iter()
-            .filter(|t| !t.likely_spam)
-            .map(|t| t.token.address)
+            .map(|token| token.address)
             .collect()
     }
 
@@ -216,7 +225,10 @@ impl<'a> TokenPreferences<'a> {
         Ok(())
     }
 
-    /// `upsertToken` then, for a likely-spam token, `setTokenHidden(true)` (`handleAddToken`).
+    /// The person's add (`upsertToken(.., "user")` then, for a likely-spam token,
+    /// `setTokenHidden(true)`, `handleAddToken`): one record per address on a network, so it
+    /// replaces any record of the same address (carrying its hidden flag), and the token is no
+    /// longer a site's, so the review trusts it.
     pub fn add(&mut self, token: TokenConfig) -> Result<AddTokenOutcome, Error> {
         let token = with_token_id(
             token.network,
@@ -228,9 +240,24 @@ impl<'a> TokenPreferences<'a> {
         if !is_token_config(&token) {
             return Err(Error::invalid("Invalid token"));
         }
+        self.require_room(&token)?;
         let spam = !token_spam_reasons(self.catalogs.registry, token.clone()).is_empty();
         let prefs = &mut self.prefs;
-        prefs.tokens.retain(|t| t.id != token.id);
+        let replaced: Vec<String> = prefs
+            .tokens
+            .iter()
+            .filter(|t| {
+                t.id == token.id
+                    || (t.network == token.network && same_felt(&t.address, &token.address))
+            })
+            .map(|t| t.id.clone())
+            .collect();
+        if replaced.iter().any(|id| prefs.hidden.contains(id)) {
+            prefs.hidden.retain(|id| !replaced.contains(id));
+            prefs.hidden.push(token.id.clone());
+        }
+        prefs.tokens.retain(|t| !replaced.contains(&t.id));
+        prefs.dapp.retain(|id| !replaced.contains(id));
         prefs.tokens.push(token.clone());
         if spam && !prefs.hidden.contains(&token.id) {
             prefs.hidden.push(token.id.clone());
@@ -317,11 +344,14 @@ impl<'a> TokenPreferences<'a> {
             .iter()
             .map(|(n, allowed)| (network_code(*n).to_string(), Value::Bool(*allowed)))
             .collect();
-        Some(
-            json!({ "schema": self.policy.schema, "tokens": tokens, "hiddenTokens": prefs.hidden,
-                    "displayCurrency": prefs.currency.code(), "explorerFallback": fallback })
-            .to_string(),
-        )
+        let mut doc = json!({ "schema": self.policy.schema, "tokens": tokens,
+                              "hiddenTokens": prefs.hidden, "displayCurrency": prefs.currency.code(),
+                              "explorerFallback": fallback });
+        // Written only once a site has added a token, as the extension keeps it absent.
+        if !prefs.dapp.is_empty() {
+            doc["dappTokenIds"] = json!(prefs.dapp);
+        }
+        Some(doc.to_string())
     }
 }
 

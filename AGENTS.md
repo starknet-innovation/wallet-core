@@ -185,7 +185,10 @@ Grep first; extend in place rather than adding a sibling.
   (`tokens::TokenPreferences`), token identity, registry and spam (`registry.rs`), on-chain token
   reads (`token_meta.rs`), fiat and amount display (`fiat.rs`), the HTTP and portfolio RPC wire
   contract (`wire.rs`). Account ids and explorer links are `history::explorer`
-  (`activity_account_id`, `canonical_account_id`, `explorer_transaction_url`, ...).
+  (`activity_account_id`, `canonical_account_id`, `explorer_transaction_url`, ...). Which tracked
+  tokens a review trusts (`TokenPreferences::trusted`, never `tracked` filtered by hand), and a
+  site's token stored as the site's (`add_from_dapp`, `dappTokenIds`), are
+  `portfolio::token_sources`.
 - ERC-20 allowances live in `crates/wallet-core/src/allowances/`: the record, its id, scope and
   load rules and the unlimited cut-off (`record.rs`), eviction ranking (`retention.rs`), the log
   over `host::Storage` with its deltas and revoke settling (`store::AllowanceLog`), the
@@ -267,7 +270,9 @@ Grep first; extend in place rather than adding a sibling.
   (`approve_sign_typed_data`, through `signing_record` and `sign_for` under one session hold)
   are `dapp_sign.rs`, which reviews an outside execution's calls with the invoke route's
   inputs (`trusted_recipients`, the tracked tokens from the session's `TokenPreferences`, the
-  allowance log), read before the session hold.
+  allowance log), read before the session hold. The card list and `deny` are `dapp_cards.rs`;
+  add-chain, switch-chain and deployment data (and the host's chain reads, `answer_read`) are
+  `dapp_chain.rs`; `wallet_watchAsset` is `dapp_watch.rs`.
 - Only `wallet-core` depends on Krusty (`kms.rs`, `nostr.rs`, `accounts/`, `send/`);
   `bramble-core` goes through `wallet-core` and never names `krusty_kms`.
 

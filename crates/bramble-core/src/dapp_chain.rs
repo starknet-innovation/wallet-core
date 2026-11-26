@@ -21,6 +21,7 @@ use crate::dapp::DAPP_QUEUE_LIMITS;
 use crate::dapp_session::{
     error, result, settled, Card, DappReply, DappSession, DappSettled, Shape, VERSIONS,
 };
+use crate::dapp_watch::WatchRead;
 use crate::networks::NetworkId;
 use crate::rpc_request::{RpcRequest, RpcResponse};
 use crate::send::{deployment_status_request, judge_deployment_status};
@@ -30,9 +31,24 @@ use crate::{felt, CoreError};
 /// The JSON-RPC id of the one read a deployment-data request makes.
 const READ_ID: u64 = 1;
 
+/// A request waiting on the host's chain read.
+pub(crate) enum PendingRead {
+    Deployment(DeploymentRead),
+    WatchAsset(WatchRead),
+}
+
+impl PendingRead {
+    fn origin(&self) -> &str {
+        match self {
+            Self::Deployment(read) => &read.origin,
+            Self::WatchAsset(read) => &read.origin,
+        }
+    }
+}
+
 /// A deployment-data request waiting on its chain read: the account the gates passed for and the
 /// deployment this wallet builds for it.
-pub(crate) struct PendingRead {
+pub(crate) struct DeploymentRead {
     origin: String,
     account_id: String,
     address: String,
@@ -40,7 +56,7 @@ pub(crate) struct PendingRead {
     deployment: Option<Deployment>,
 }
 
-fn refused() -> DappReply {
+pub(crate) fn refused() -> DappReply {
     error(WalletRpcError::unknown_error())
 }
 
@@ -96,7 +112,7 @@ impl DappSession {
             };
             let deployment = felt::parse_non_zero(&record.public_key)
                 .and_then(|key| crate::send::wallet_ext::deployment(record, &key));
-            Ok(Ok(PendingRead {
+            Ok(Ok(DeploymentRead {
                 origin: origin.to_owned(),
                 account_id: record.id.clone(),
                 address: record.address.clone(),
@@ -112,23 +128,37 @@ impl DappSession {
             return Ok(refused());
         };
         let network = read.network;
+        let requests = vec![RpcRequest::new(READ_ID, body)];
+        Ok(self.hold_read(request_id, PendingRead::Deployment(read), network, requests))
+    }
+
+    /// Holds `read` under the host's `request_id` and asks the host for `requests` on `network`.
+    pub(crate) fn hold_read(
+        &self,
+        request_id: u64,
+        read: PendingRead,
+        network: NetworkId,
+        requests: Vec<RpcRequest>,
+    ) -> DappReply {
         let mut state = guard(&self.state);
+        let origin = read.origin();
         // The queue's caps, so one site's reads cannot crowd out another's.
-        let from_site = state.reads.values().filter(|r| r.origin == origin).count();
+        let from_site = state
+            .reads
+            .values()
+            .filter(|r| r.origin() == origin)
+            .count();
         if state.reads.len() >= DAPP_QUEUE_LIMITS.max_pending
             || from_site >= DAPP_QUEUE_LIMITS.max_per_origin
         {
-            return Ok(refused());
+            return refused();
         }
         match state.reads.entry(request_id) {
             // A host reusing a request id it is still waiting on is not attributing replies.
-            Entry::Occupied(_) => return Ok(refused()),
+            Entry::Occupied(_) => return refused(),
             Entry::Vacant(slot) => slot.insert(read),
         };
-        Ok(DappReply::Read {
-            network,
-            requests: vec![RpcRequest::new(READ_ID, body)],
-        })
+        DappReply::Read { network, requests }
     }
 
     /// The approved switch: the grant re-checked before switching (a revoked or locked site is
@@ -192,12 +222,22 @@ impl DappSession {
     }
 
     /// The host's replies to a `Read` reply's requests, for `request_id`. A transport failure is
-    /// answered with an empty body. The request's gates run again, so an account the site lost,
-    /// or a lock, while the read was out refuses it (UNKNOWN_ERROR); so does an id with no read.
+    /// answered with an empty body. Deployment data: the request's gates run again, so an
+    /// account the site lost, or a lock, while the read was out refuses it (UNKNOWN_ERROR).
+    /// Watch-asset: the token is judged and its card queued (`Pending`). An id with no read is
+    /// refused.
     pub fn answer_read(&self, request_id: u64, responses: Vec<RpcResponse>) -> DappReply {
-        let Some(read) = guard(&self.state).reads.remove(&request_id) else {
-            return refused();
-        };
+        let read = guard(&self.state).reads.remove(&request_id);
+        match read {
+            Some(PendingRead::Deployment(read)) => self.answer_deployment(read, responses),
+            Some(PendingRead::WatchAsset(read)) => self.answer_watch(read, request_id, responses),
+            None => refused(),
+        }
+    }
+}
+
+impl DappSession {
+    fn answer_deployment(&self, read: DeploymentRead, responses: Vec<RpcResponse>) -> DappReply {
         let body = responses
             .into_iter()
             .find(|response| response.id == READ_ID)

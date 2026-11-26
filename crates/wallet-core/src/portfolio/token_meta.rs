@@ -188,6 +188,31 @@ pub fn token_metadata_judge(
     first_id: u64,
     replies: Vec<RpcReply>,
 ) -> TokenMetaOutcome {
+    judge_named(network, address, first_id, replies, None)
+}
+
+/// The same judge for a site's `wallet_watchAsset` (`watchAssetToken`): an unusable on-chain name
+/// falls back to the site's `name` (trimmed) before the symbol, and a name that is still not a
+/// token name refuses the token. Decimals, symbol and address come from the chain only.
+pub fn watch_asset_metadata_judge(
+    network: NetworkId,
+    address: String,
+    first_id: u64,
+    replies: Vec<RpcReply>,
+    site_name: Option<&str>,
+) -> TokenMetaOutcome {
+    judge_named(network, address, first_id, replies, Some(site_name))
+}
+
+// `site_name` is `None` for the wallet's own add, `Some` for a site's request (whose own name
+// may itself be absent).
+fn judge_named(
+    network: NetworkId,
+    address: String,
+    first_id: u64,
+    replies: Vec<RpcReply>,
+    site_name: Option<Option<&str>>,
+) -> TokenMetaOutcome {
     let mut results = Vec::new();
     for offset in 0..3 {
         let id = first_id + offset;
@@ -234,8 +259,14 @@ pub fn token_metadata_judge(
     let name = if is_token_name(&trimmed) {
         trimmed
     } else {
-        symbol.clone()
+        match site_name.flatten() {
+            Some(site) => js_trim(site).to_owned(),
+            None => symbol.clone(),
+        }
     };
+    if !is_token_name(&name) {
+        return failed();
+    }
     TokenMetaOutcome::Token {
         token: with_token_id(network, &address, &symbol, &name, decimals as u8),
     }
