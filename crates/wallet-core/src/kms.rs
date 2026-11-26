@@ -383,15 +383,17 @@ pub fn compute_channel_key(
     recipient_addr: &Felt,
     recipient_public_key: &Felt,
 ) -> SecretFelt {
-    SecretFelt::new(tagged_hash(
-        "CHANNEL_KEY_TAG:V1",
-        &[
-            *sender_addr,
-            *sender_viewing_key.expose_secret(),
-            *recipient_addr,
-            *recipient_public_key,
-        ],
-    ))
+    scrubbed(|| {
+        SecretFelt::new(tagged_hash(
+            "CHANNEL_KEY_TAG:V1",
+            &[
+                *sender_addr,
+                *sender_viewing_key.expose_secret(),
+                *recipient_addr,
+                *recipient_public_key,
+            ],
+        ))
+    })
 }
 
 /// The privacy SDK's `compute_identity_key(user_addr, user_private_key, contract_address)`:
@@ -401,14 +403,16 @@ pub fn compute_identity_key(
     user_viewing_key: &SecretFelt,
     contract_address: &Felt,
 ) -> SecretFelt {
-    SecretFelt::new(tagged_hash(
-        "IDENTITY_KEY_TAG:V1",
-        &[
-            *user_addr,
-            *user_viewing_key.expose_secret(),
-            *contract_address,
-        ],
-    ))
+    scrubbed(|| {
+        SecretFelt::new(tagged_hash(
+            "IDENTITY_KEY_TAG:V1",
+            &[
+                *user_addr,
+                *user_viewing_key.expose_secret(),
+                *contract_address,
+            ],
+        ))
+    })
 }
 
 /// `hash.getSelectorFromName`: `starknet_keccak` of `entrypoint`'s UTF-8 bytes, with no special
