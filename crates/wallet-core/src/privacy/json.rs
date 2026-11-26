@@ -11,6 +11,7 @@
 //! grammar: decimal or `0x` hex text, or a safe non-negative integer. It yields a `U256`; a value
 //! that does not fit is at least 2^256 and so refused by every caller's `< P` bound anyway.
 
+use std::collections::HashSet;
 use std::fmt;
 
 use serde::de::{self, Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
@@ -234,8 +235,10 @@ impl<'de> Visitor<'de> for OrderedVisitor {
 
     fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Ordered, A::Error> {
         let mut members: Vec<(String, Ordered)> = Vec::new();
+        // A set, not a scan of `members`: one hostile object can hold a whole reply's keys.
+        let mut seen = HashSet::new();
         while let Some((key, value)) = map.next_entry::<String, Ordered>()? {
-            if members.iter().any(|(existing, _)| *existing == key) {
+            if !seen.insert(key.clone()) {
                 return Err(de::Error::custom("duplicate key"));
             }
             members.push((key, value));
@@ -309,6 +312,26 @@ mod tests {
         let mut plain = String::new();
         cursor.write(&mut plain);
         assert_eq!(*out, plain);
+    }
+
+    #[test]
+    fn a_reply_sized_object_parses_or_is_refused_in_one_pass() {
+        // About 2 MiB of distinct keys in one object: a scan per key would compare each with
+        // every earlier one, some 10^10 comparisons; the set makes it one lookup each.
+        let keys = 130_000;
+        let mut text = String::from("{");
+        for at in 0..keys {
+            text.push_str(&format!("\"key{at:08}\":0,"));
+        }
+        let unique = format!("{}\"last\":1}}", text);
+        assert!(unique.len() <= super::super::judge::MAX_RESPONSE_BYTES);
+        let Some(Ordered::Object(members)) = super::super::judge::parse_body(unique.as_bytes())
+        else {
+            panic!("a large object of distinct keys parses");
+        };
+        assert_eq!(members.len(), keys + 1);
+        let repeated = format!("{}\"key00000000\":1}}", text);
+        assert_eq!(super::super::judge::parse_body(repeated.as_bytes()), None);
     }
 
     #[test]

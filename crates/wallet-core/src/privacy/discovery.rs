@@ -7,6 +7,7 @@
 //! prints nothing at all: amounts and senders are private too. Failures are fixed
 //! `PrivacyFailure` variants and carry none of it.
 
+use std::collections::BTreeMap;
 use std::fmt;
 
 use super::bodies::BlockRef;
@@ -20,21 +21,30 @@ use crate::{Felt, SecretFelt};
 /// JavaScript `Map`, setting a key that is already present keeps its position, and removing one
 /// forgets it.
 ///
+/// Looked up through an index, so a map the service fills (a page's senders, a recipient's
+/// subchannel tokens) costs `O(log n)` per lookup rather than a scan. Removing an entry shifts the
+/// ones after it and reindexes them; only a job's recipient maps ever remove.
+///
 /// Growing one reallocates, which frees the old block with the moved entries' bytes still in it:
 /// `SecretFelt` wipes on drop, not on a move. Where the size is known it is allocated once
 /// (`with_capacity`); where the service decides it (the incoming walk's cursor senders and their
 /// channel keys) those keys can be left behind in freed memory until it is reused.
-// ponytail: linear lookups; the maps hold a job's recipients and tokens, a handful of entries.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct AddressMap<V> {
     entries: Vec<(Felt, V)>,
+    /// Each key's position in `entries`.
+    index: BTreeMap<Felt, usize>,
+}
+
+impl<V: fmt::Debug> fmt::Debug for AddressMap<V> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_map().entries(self.iter()).finish()
+    }
 }
 
 impl<V> Default for AddressMap<V> {
     fn default() -> Self {
-        Self {
-            entries: Vec::new(),
-        }
+        Self::with_capacity(0)
     }
 }
 
@@ -43,55 +53,65 @@ impl<V> AddressMap<V> {
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             entries: Vec::with_capacity(capacity),
+            index: BTreeMap::new(),
         }
     }
 
-    fn position(&self, key: &Felt) -> Option<usize> {
-        self.entries.iter().position(|(k, _)| k == key)
-    }
-
     pub fn get(&self, key: &Felt) -> Option<&V> {
-        self.entries.iter().find(|(k, _)| k == key).map(|(_, v)| v)
+        self.entries.get(*self.index.get(key)?).map(|(_, v)| v)
     }
 
     pub fn get_mut(&mut self, key: &Felt) -> Option<&mut V> {
-        self.entries
-            .iter_mut()
-            .find(|(k, _)| k == key)
-            .map(|(_, v)| v)
+        self.entries.get_mut(*self.index.get(key)?).map(|(_, v)| v)
     }
 
     pub fn contains_key(&self, key: &Felt) -> bool {
-        self.position(key).is_some()
+        self.index.contains_key(key)
     }
 
     /// `map.set(key, value)`.
     pub fn insert(&mut self, key: Felt, value: V) {
         match self.get_mut(&key) {
             Some(slot) => *slot = value,
-            None => self.entries.push((key, value)),
+            None => {
+                self.index.insert(key, self.entries.len());
+                self.entries.push((key, value));
+            }
         }
     }
 
     /// `map.get(key)` on a map with a default factory, which inserts the default when missing.
     pub fn get_or_insert_with(&mut self, key: Felt, default: impl FnOnce() -> V) -> &mut V {
-        let index = match self.position(&key) {
-            Some(index) => index,
+        let at = match self.index.get(&key) {
+            Some(at) => *at,
             None => {
+                self.index.insert(key, self.entries.len());
                 self.entries.push((key, default()));
                 self.entries.len() - 1
             }
         };
-        &mut self.entries[index].1
+        &mut self.entries[at].1
     }
 
     pub fn remove(&mut self, key: &Felt) -> Option<V> {
-        let index = self.position(key)?;
-        Some(self.entries.remove(index).1)
+        let at = self.index.remove(key)?;
+        let (_, value) = self.entries.remove(at);
+        for (k, _) in &self.entries[at..] {
+            if let Some(position) = self.index.get_mut(k) {
+                *position -= 1;
+            }
+        }
+        Some(value)
     }
 
     pub fn retain(&mut self, mut keep: impl FnMut(&Felt, &V) -> bool) {
         self.entries.retain(|(k, v)| keep(k, v));
+        self.index = self
+            .entries
+            .iter()
+            .enumerate()
+            .map(|(at, (k, _))| (*k, at))
+            .collect();
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&Felt, &V)> {

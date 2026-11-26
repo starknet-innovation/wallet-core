@@ -330,3 +330,89 @@ fn the_total_is_read_only_from_the_final_cursor() {
     assert_eq!(found.total, Some(u32::MAX));
     assert!(found.channels.is_empty());
 }
+
+/// One page naming `n` recipients nobody asked about, each with a channel and a subchannel, and
+/// one of them twice in two spellings, around the requested 0x5.
+fn crowded(n: u64) -> String {
+    let mut channels = vec![
+        r#"{"recipient_addr":"0x5","recipient_public_key":"0x55","channel_key":"0x9"}"#.to_owned(),
+    ];
+    let mut subs = vec![format!(
+        r#"{{"recipient_addr":"0x5","token":"{T1}","last_note_index":2}}"#
+    )];
+    for at in 0..n {
+        let addr = format!("{:#x}", 0x1000 + at);
+        channels.push(format!(
+            r#"{{"recipient_addr":"{addr}","recipient_public_key":"0x1","channel_key":"0x2"}}"#
+        ));
+        subs.push(format!(
+            r#"{{"recipient_addr":"{addr}","token":"{T2}","last_note_index":null}}"#
+        ));
+    }
+    channels.push(
+        r#"{"recipient_addr":"0x01000","recipient_public_key":"0x1","channel_key":"0x2"}"#.into(),
+    );
+    format!(
+        r#"{{"block_ref":7,"channels":[{}],"subchannels":[{}],"cursor":{{"channel_discovery_complete":false}}}}"#,
+        channels.join(","),
+        subs.join(",")
+    )
+}
+
+#[test]
+fn recipients_not_requested_are_read_then_ignored() {
+    let walk = more(walk(&["0x5"]), &crowded(5_000));
+    // Only what the job asked about is held.
+    assert_eq!(
+        (
+            walk.created.len(),
+            walk.spellings.len(),
+            walk.subchannels.len()
+        ),
+        (1, 1, 1)
+    );
+    assert_eq!(walk.subchannel_count, 1);
+    let found = done(
+        walk,
+        r#"{"block_ref":7,"channels":[],"subchannels":[],"cursor":{"channel_discovery_complete":true,"total_n_channels":9}}"#,
+    );
+    let channels: Vec<_> = found.channels.iter().collect();
+    assert_eq!(channels.len(), 1);
+    assert_eq!(*channels[0].0, felt("0x5"));
+    assert_eq!(
+        channels[0].1.tokens.get(&felt(T1)),
+        Some(&TokenChannel {
+            token_index: 0,
+            note_nonce: 3
+        })
+    );
+    // An unrequested entry is still judged.
+    let bad = r#"{"block_ref":7,"channels":[{"recipient_addr":"0x6","recipient_public_key":"0x1","channel_key":"0x0"}],"subchannels":[],"cursor":{"channel_discovery_complete":false}}"#;
+    assert!(self::walk(&["0x5"]).on_reply(200, bad.as_bytes()).is_err());
+}
+
+#[test]
+fn a_walk_keeps_at_most_max_subchannels() {
+    let subs = |n: usize| {
+        let subs: Vec<String> = (0..n)
+            .map(|at| {
+                format!(
+                    r#"{{"recipient_addr":"0x5","token":"{:#x}","last_note_index":null}}"#,
+                    0x1000 + at
+                )
+            })
+            .collect();
+        format!(
+            r#"{{"block_ref":7,"channels":[],"subchannels":[{}],"cursor":{{"channel_discovery_complete":false}}}}"#,
+            subs.join(",")
+        )
+    };
+    let walk = more(walk(&["0x5"]), &subs(MAX_SUBCHANNELS));
+    assert_eq!(walk.subchannel_count, MAX_SUBCHANNELS);
+    assert_eq!(
+        self::walk(&["0x5"])
+            .on_reply(200, subs(MAX_SUBCHANNELS + 1).as_bytes())
+            .err(),
+        Some(PrivacyFailure::InvalidResponse)
+    );
+}

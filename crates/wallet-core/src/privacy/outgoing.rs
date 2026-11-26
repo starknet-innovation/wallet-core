@@ -12,9 +12,12 @@
 //! indexer throws anyway once it completes without one. It is not ported: `total` is `None` and
 //! the compiler (S3) refuses to open a channel without it.
 //!
-//! Stricter than the SDK, which trusts the reply: every field is read into a fixed shape, an
-//! address keeps one spelling for the whole walk (the SDK keys its maps by the text), channel keys
-//! are nonzero, indices are `u32`, and a later page must answer from the first page's block.
+//! Stricter than the SDK, which trusts the reply: every field is read into a fixed shape, a
+//! requested recipient keeps one spelling for the whole walk (the SDK keys its maps by the text),
+//! channel keys are nonzero, indices are `u32`, at most `MAX_SUBCHANNELS` subchannels are kept,
+//! and a later page must answer from the first page's block. Entries for recipients not requested
+//! are read and judged, then ignored as they arrive rather than filtered at the end: the result
+//! is the same, and the walk holds no more than the job asked about.
 
 /// The path the walk's bodies are posted to, appended to the discovery URL.
 pub use super::bodies::OUTGOING_PATH;
@@ -66,7 +69,14 @@ pub struct OutgoingWalk {
     precomputed: AddressMap<Felt>,
     /// `subchannelsByRecipient`.
     subchannels: AddressMap<AddressMap<Subchannel>>,
+    /// Subchannels kept so far, at most `MAX_SUBCHANNELS`.
+    subchannel_count: usize,
 }
+
+/// The most subchannels (recipient, token) one outgoing walk keeps. Only the account itself
+/// opens its outgoing subchannels, a few per recipient it pays; more is a service inflating the
+/// walk, which is refused rather than held.
+pub const MAX_SUBCHANNELS: usize = 4096;
 
 impl std::fmt::Debug for OutgoingWalk {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -91,15 +101,17 @@ impl OutgoingWalk {
         Self {
             pool,
             account,
-            recipients,
             proving_block,
             cursor,
             block: None,
             pages: 0,
-            spellings: AddressMap::default(),
-            created: AddressMap::default(),
-            precomputed: AddressMap::default(),
-            subchannels: AddressMap::default(),
+            // Only requested recipients are kept, so these are sized once.
+            spellings: AddressMap::with_capacity(recipients.len()),
+            created: AddressMap::with_capacity(recipients.len()),
+            precomputed: AddressMap::with_capacity(recipients.len()),
+            subchannels: AddressMap::with_capacity(recipients.len()),
+            subchannel_count: 0,
+            recipients,
         }
     }
 
@@ -141,13 +153,19 @@ impl OutgoingWalk {
         Ok(Walked::More(self))
     }
 
-    /// `accumulateOutgoingResponse`.
+    /// `accumulateOutgoingResponse`, keeping only the requested recipients (`finish` would drop
+    /// the rest; every entry is still read and judged). A page may add at most
+    /// `MAX_SUBCHANNELS` subchannels across the walk.
     fn fold(&mut self, reply: &Ordered) -> Option<()> {
         for channel in array(reply.get("channels"))? {
             let recipient = self.recipient(channel)?;
             let public_key = felt_of(js_bigint(channel.get("recipient_public_key")?)?)?;
             let key = channel_key(js_bigint(channel.get("channel_key")?)?)?;
-            if flag(channel.get("precomputed"))? {
+            let precomputed = flag(channel.get("precomputed"))?;
+            let Some(recipient) = recipient else {
+                continue;
+            };
+            if precomputed {
                 // A precomputed entry never displaces a created one.
                 if !self.created.contains_key(&recipient) {
                     self.precomputed.insert(recipient, public_key);
@@ -164,6 +182,12 @@ impl OutgoingWalk {
                 Ordered::Null => None,
                 value => Some(index(Some(value))?),
             };
+            let Some(recipient) = recipient else {
+                continue;
+            };
+            if self.subchannel_count >= MAX_SUBCHANNELS {
+                return None;
+            }
             let tokens = self
                 .subchannels
                 .get_or_insert_with(recipient, AddressMap::default);
@@ -171,22 +195,30 @@ impl OutgoingWalk {
                 Some(existing) if existing.spelling != spelling => return None,
                 // Non-null overrides null; null never overrides.
                 Some(existing) => existing.last_index = last_index.or(existing.last_index),
-                None => tokens.insert(
-                    token,
-                    Subchannel {
-                        spelling: spelling.to_owned(),
-                        last_index,
-                    },
-                ),
+                None => {
+                    self.subchannel_count += 1;
+                    tokens.insert(
+                        token,
+                        Subchannel {
+                            spelling: spelling.to_owned(),
+                            last_index,
+                        },
+                    );
+                }
             }
         }
         Some(())
     }
 
-    fn recipient(&mut self, entry: &Ordered) -> Option<Felt> {
+    /// An entry's recipient: `Some(None)` for one not requested (read, then ignored), `None`
+    /// for a malformed one or a requested one spelled two ways.
+    fn recipient(&mut self, entry: &Ordered) -> Option<Option<Felt>> {
         let (spelling, recipient) = felt_str(entry.get("recipient_addr"))?;
+        if !self.recipients.contains(&recipient) {
+            return Some(None);
+        }
         same_spelling(&mut self.spellings, spelling, recipient)?;
-        Some(recipient)
+        Some(Some(recipient))
     }
 
     /// `buildChannelMap`, then the requested-recipient filter.
