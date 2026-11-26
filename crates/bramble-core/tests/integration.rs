@@ -5,6 +5,7 @@ mod accounts_support;
 mod allowances_support;
 #[cfg(feature = "testing")]
 mod common;
+mod dapp_parity_support;
 #[cfg(feature = "testing")]
 mod gasless_export_support;
 mod gasless_support;
@@ -43,10 +44,15 @@ mod biometric;
 mod calls_review_parity;
 mod catalogs;
 mod create_lock_race;
+mod dapp_connect_parity;
+mod dapp_request_parity;
 mod dapp_session;
 mod dapp_sign;
 mod dapp_sign_outside;
+mod dapp_sign_parity;
 mod dapp_sites;
+mod dapp_sites_parity;
+mod dapp_typed_data_parity;
 mod ffi_surface;
 mod fixtures;
 mod gasless;
