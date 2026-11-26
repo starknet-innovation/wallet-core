@@ -8,9 +8,17 @@
 //! while one discovery body is built, and it leaves the core only inside that zeroizing body,
 //! for a non-OHTTP discovery URL (§1.1). Routing, limits and the network catalog are the
 //! wallet's, passed in (`config`, `crate::catalog`).
+//!
+//! Proofs (P15) go through an engine the wallet supplies (`engine::PrivacyEngine`): the core signs
+//! the `CallSet` the SDK asks for (`call_set`) once its calls are bound to the reviewed actions
+//! (`pool_actions`), and judges what comes back (`engine_judge`). No flow uses it yet, so
+//! `CAPABILITIES` stays false.
 
 mod bodies;
+pub mod call_set;
 pub mod config;
+pub mod engine;
+mod engine_judge;
 pub mod gates;
 pub mod home;
 mod json;
@@ -18,6 +26,7 @@ mod judge;
 mod notes;
 pub mod plan;
 mod plan_steps;
+mod pool_actions;
 pub mod types;
 
 use gates::Outcome;
@@ -87,12 +96,18 @@ mod tests {
     /// The equivalent of Bramble mobile's `privacy_key_boundary.rs` source scan for this module:
     /// no privacy file derives a viewing key, reaches Krusty or touches the phrase or an account
     /// key. The key arrives only through `PrivacyHost::viewing_key`, as a `SecretFelt`, and only
-    /// `plan_steps` (which asks for it) and `bodies` (which writes it) name it.
+    /// `plan_steps` (which asks for it) and `bodies` (which writes it) name it, besides `engine`,
+    /// whose job hands it to the engine, and `pool_actions`, which compares the key slot with it.
+    /// The `CallSet` signature is the wallet's (`engine::prove` takes its signing closure), so the
+    /// engine files reach no key-taking Krusty export.
     #[test]
     fn privacy_code_never_derives_or_stores_key_material() {
         let sources = [
             ("bodies.rs", include_str!("bodies.rs")),
+            ("call_set.rs", include_str!("call_set.rs")),
             ("config.rs", include_str!("config.rs")),
+            ("engine.rs", include_str!("engine.rs")),
+            ("engine_judge.rs", include_str!("engine_judge.rs")),
             ("gates.rs", include_str!("gates.rs")),
             ("home.rs", include_str!("home.rs")),
             ("json.rs", include_str!("json.rs")),
@@ -100,6 +115,7 @@ mod tests {
             ("notes.rs", include_str!("notes.rs")),
             ("plan.rs", include_str!("plan.rs")),
             ("plan_steps.rs", include_str!("plan_steps.rs")),
+            ("pool_actions.rs", include_str!("pool_actions.rs")),
             ("types.rs", include_str!("types.rs")),
         ];
         for (name, source) in sources {
@@ -120,9 +136,35 @@ mod tests {
             let names_key = source.contains("SecretFelt") || source.contains("viewing_key(");
             assert_eq!(
                 names_key,
-                matches!(name, "bodies.rs" | "plan.rs" | "plan_steps.rs"),
-                "{name}: only the plan asks for the key and only the bodies write it"
+                matches!(
+                    name,
+                    "bodies.rs" | "engine.rs" | "plan.rs" | "plan_steps.rs" | "pool_actions.rs"
+                ),
+                "{name}: only the plan asks for the key, only the bodies write it, only the \
+                 engine's job carries it to the engine, and only the pool decoder compares it"
             );
+        }
+        // The `CallSet` is signed by the wallet's signing path, through the closure `engine::prove`
+        // is given; outside tests, no privacy file reaches a key-taking Krusty export.
+        for (name, source) in [
+            ("call_set.rs", include_str!("call_set.rs")),
+            ("engine.rs", include_str!("engine.rs")),
+            ("engine_judge.rs", include_str!("engine_judge.rs")),
+            ("pool_actions.rs", include_str!("pool_actions.rs")),
+        ] {
+            let body = source.split("#[cfg(test)]").next().unwrap_or_default();
+            for forbidden in [
+                "sign_stark_hash",
+                "account_keypair",
+                "derive_",
+                "stark_public_key",
+                "expose_secret",
+            ] {
+                assert!(
+                    !body.contains(forbidden),
+                    "{name} must not reference {forbidden}"
+                );
+            }
         }
     }
 }

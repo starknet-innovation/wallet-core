@@ -983,6 +983,22 @@ Features, smallest and least dependent first:
     accounts, whose scope is a dapp's origin, after P16; (6) multisig STRK20, after X1. Unknown
     until built: the bundle's size, its cold start in a WebView, and whether proving's 180 s budget
     survives an app in the background.
+  - *Progress.* PR 1's core slice is built, unexported (`parity/p15-engine`, #168):
+    `privacy::engine` (the trait as above, without `shadow_commitment`, which waits for PR 5;
+    actions `Register`, `Deposit`, `Transfer` with a fixed amount, `Withdraw`; open notes wait for
+    their flow), `privacy::call_set` (the digest against the protocol's golden vector, and the
+    wallet's signature checked against the account's key before it reaches the engine),
+    `privacy::pool_actions` (before anything is signed, the one `compile_actions` call is decoded
+    with the extension's `pool-call-decode.ts` layout, its user and key slot must be this account
+    and this viewing key, and the value it moves must be exactly the job's actions, allowing spent
+    notes, channels to the account or a reviewed note recipient, and notes back to the account; an
+    empty review, or a span that moves nothing, is refused) and `privacy::engine_judge`
+    (`official-sdk-results.ts`; the `apply_actions` calldata is not compared with what was signed,
+    as in the extension). The discovery and prover URL check guards against a misconfigured route,
+    not a hostile engine, which only the native fetch bridge's allowlist can fence; the node URL is
+    not checked. A refused job is cancelled on every early return, and on a panic only in builds
+    that unwind (release builds abort). Left of PR 1: the extension's rules around the SDK,
+    Bramble's limits (clamped here to `ProofLimits::CEILING`) and its runtime host.
 - **P16 Dapp connect, approvals and anti-phishing.** The core takes request validation, grants
   (the vault's `originGrants`, P7), typed-data and invoke review (P9), add-chain and watch-asset,
   and the blocklist and phishing feed: `background/provider/` (2,453), `background/approvals/`
