@@ -2,7 +2,7 @@
 //! what the extension's TypeScript produced (`fixtures/portfolio-parity.jsonl`). Moved from
 //! mobile's `tests/history_parity.rs` (plan step 2.4c).
 
-mod portfolio_support;
+use crate::portfolio_support;
 
 use bramble_core::HISTORY_POLICY;
 use portfolio_support::*;

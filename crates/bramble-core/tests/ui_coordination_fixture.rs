@@ -7,7 +7,7 @@
 //! identity the UI wallet (account 0 only) never holds, with no second phrase in the repository.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod common;
+use crate::common;
 
 use bramble_core::testing::{nostr_public_key_at, open_gift_wrap, wrap_gift};
 use bramble_core::{

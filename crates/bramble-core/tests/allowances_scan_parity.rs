@@ -5,7 +5,7 @@
 //! (the same block ids, and a bound the extension omits omitted), and, fed the same answers,
 //! reach the same result, or the same transport failure for the host to fail over on.
 
-mod allowances_support;
+use crate::allowances_support;
 
 use allowances_support::{cases, name, same_felt, text};
 use bramble_core::ALLOWANCE_POLICY;

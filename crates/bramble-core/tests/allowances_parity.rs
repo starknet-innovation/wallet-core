@@ -5,7 +5,7 @@
 //! that settle a revoke. The log, recording and the chain reads are `allowances_log_parity.rs`
 //! and `allowances_scan_parity.rs`.
 
-mod allowances_support;
+use crate::allowances_support;
 
 use allowances_support::{
     amount, cases, felt, name, network, nft_contracts, readings, record, records, text, tokens,

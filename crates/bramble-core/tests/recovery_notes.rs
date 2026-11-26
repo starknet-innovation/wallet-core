@@ -2,7 +2,7 @@
 //! their signer state and the pool's registered key, and word them as the extension's picker.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod common;
+use crate::common;
 
 use bramble_core::testing;
 use bramble_core::{account_classes, Ladder, NetworkId, RpcResponse};

@@ -3,7 +3,7 @@
 //! cases (contacts, tracked tokens, a locked wallet preparing) stay with mobile's wallet, and the
 //! request checks `prepare_transfer` made are `Transfer::new`'s here.
 
-mod plan_support;
+use crate::plan_support;
 
 use plan_support::node::*;
 use plan_support::*;

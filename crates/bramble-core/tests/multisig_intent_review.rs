@@ -5,9 +5,8 @@
 //! `configMatchesIntent` holds only while the chain's threshold and GUIDs are the snapshot.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod common;
-mod multisig_support;
-mod multisig_tx_support;
+use crate::multisig_support;
+use crate::multisig_tx_support;
 
 use bramble_core::{CallKind, CoreError, MultisigProposalRequest, MultisigTxStep, StepReply};
 use multisig_support::fixture;

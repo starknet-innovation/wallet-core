@@ -5,7 +5,7 @@
 //! its site's warnings.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod common;
+use crate::common;
 
 use bramble_core::{
     DappReply, DappSession, HttpMethod, HttpOutcome, NetworkId, SiteWarning, TokenPreferences,

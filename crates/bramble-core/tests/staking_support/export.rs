@@ -14,8 +14,7 @@ use starknet_wallet_core::staking::read::{
     STAKER_POOL_INFO,
 };
 
-#[path = "../send_support/mod.rs"]
-mod send_support;
+use crate::send_support;
 pub use send_support::*;
 
 /// `STAKING_POLICY`'s Mainnet staking contract.

@@ -7,7 +7,7 @@
 //! same OpenZeppelin key seals the record the extension sealed.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod common;
+use crate::common;
 
 use bramble_core::testing::{open_vault, seal_container_vault, v13_round_trip};
 use bramble_core::{AccountFamily, NetworkId};

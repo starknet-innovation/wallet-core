@@ -7,9 +7,8 @@
 //! multisig never leaves its intents behind.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod common;
-mod multisig_support;
-mod multisig_tx_support;
+use crate::multisig_support;
+use crate::multisig_tx_support;
 
 use bramble_core::{
     CoreError, IntentState, MultisigIntent, MultisigTxFailure, MultisigTxStep, SendStep,

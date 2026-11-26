@@ -5,7 +5,7 @@
 //! `activityRowMatches`, and `activityPartySummary` with its parts (and, in the mobile build,
 //! bramble-core's `activity_party_summary` with the feed's blank-search gate).
 
-mod portfolio_support;
+use crate::portfolio_support;
 
 use bramble_core::catalogs::networks;
 use portfolio_support::{at, list, text, token};

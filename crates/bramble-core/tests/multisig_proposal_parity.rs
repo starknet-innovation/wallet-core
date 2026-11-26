@@ -11,7 +11,7 @@
 //! `rpc_bodies` writes keys sorted, as every send-path parity test compares them. Intents and
 //! packages are compared as exact strings.
 
-mod multisig_support;
+use crate::multisig_support;
 
 use bramble_core::MULTISIG_FEE_OVERHEAD;
 use multisig_support::*;

@@ -4,8 +4,8 @@
 //! the advisory verdicts a deployed candidate carries. The plan's canned node (`plan_support`)
 //! answers one account; this one answers the forty addresses a batch probes.
 
-mod accounts_support;
-mod plan_support;
+use crate::accounts_support;
+use crate::plan_support;
 
 use std::collections::{HashMap, HashSet};
 

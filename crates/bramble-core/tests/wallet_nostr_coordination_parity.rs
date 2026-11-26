@@ -5,7 +5,7 @@
 //! fixture's `event` with the id `n` as 64-digit hex and the case's `created_at`.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod common;
+use crate::common;
 
 use std::collections::HashSet;
 

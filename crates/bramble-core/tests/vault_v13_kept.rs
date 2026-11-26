@@ -6,9 +6,8 @@
 //! key places it is operated, signing only on its device (P8).
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod common;
-#[path = "vault_v13_support/mod.rs"]
-mod support;
+use crate::common;
+use crate::vault_v13_support as support;
 
 use std::sync::Arc;
 

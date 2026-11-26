@@ -4,7 +4,7 @@
 //! sentences (`activityEmptyCopy`), which are Bramble's copy and are asserted where that copy
 //! lives (mobile until 2.7).
 
-mod portfolio_support;
+use crate::portfolio_support;
 
 use bramble_core::HISTORY_POLICY;
 use portfolio_support::*;

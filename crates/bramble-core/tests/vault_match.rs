@@ -4,7 +4,7 @@
 //! extension keeps signing with it.
 #![cfg(feature = "testing")]
 
-mod common;
+use crate::common;
 
 use bramble_core::testing::{open_vault, seal_container_vault};
 use bramble_core::{AccountFamily, NetworkId, UnusableReason, WalletCore};

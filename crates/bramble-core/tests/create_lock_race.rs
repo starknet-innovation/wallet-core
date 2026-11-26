@@ -1,5 +1,5 @@
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
-mod common;
+use crate::common;
 
 use std::thread;
 use std::time::Duration;

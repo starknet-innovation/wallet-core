@@ -4,7 +4,7 @@
 //! extension's own v13 vault is `vault_v13.rs`.
 #![cfg(feature = "testing")] // Mobile's suite: `--features mobile,testing`.
 
-mod common;
+use crate::common;
 
 use bramble_core::testing::{open_vault, seal_container_vault};
 use bramble_core::{account_classes, AccountFamily, CoreError, NetworkId};
