@@ -450,8 +450,8 @@ fn every_recorded_job_runs_as_the_sdk_ran_it() {
             refused += 1;
         }
     }
-    // Tracks the fixture (13 lines today): update it when the fixture is regenerated.
-    assert_eq!((proved, refused, linked), (11, 1, 1));
+    // Tracks the fixture (27 lines today): update it when the fixture is regenerated.
+    assert_eq!((proved, refused, linked), (22, 3, 2));
 }
 
 #[test]
