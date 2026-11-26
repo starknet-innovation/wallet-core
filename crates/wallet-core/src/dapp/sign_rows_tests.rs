@@ -216,9 +216,9 @@ fn a_legacy_domains_undeclared_revision_is_shown_as_not_signed() {
     assert!(decoded.message.unsigned.is_empty());
 }
 
-#[test]
-fn a_key_longer_than_the_card_prints_withholds_the_rows() {
-    // Five nested 64-character names spell a 324-character key.
+/// `levels` nested structs, each field name 64 characters, so the deepest key is
+/// `65 * levels - 1` long.
+fn nested(levels: usize) -> Json {
     let name = |level: usize| format!("{level}{}", "n".repeat(63));
     let own = |level: usize| match level {
         0 => "Message".to_string(),
@@ -226,8 +226,8 @@ fn a_key_longer_than_the_card_prints_withholds_the_rows() {
     };
     let mut types = json!({});
     let mut message = json!("0x1");
-    for level in (0..5).rev() {
-        let ty = if level == 4 {
+    for level in (0..levels).rev() {
+        let ty = if level + 1 == levels {
             "felt".into()
         } else {
             own(level + 1)
@@ -235,7 +235,18 @@ fn a_key_longer_than_the_card_prints_withholds_the_rows() {
         types[own(level)] = json!([{ "name": name(level), "type": ty }]);
         message = json!({ name(level): message });
     }
-    assert_eq!(rows(&rev1(types, message)), None);
+    rev1(types, message)
+}
+
+#[test]
+fn a_key_longer_than_the_card_prints_withholds_the_rows() {
+    // Four levels spell a 259-character key, the most the card prints; five spell 324.
+    let decoded = rows(&nested(4)).expect("a 259-character key is printed");
+    assert_eq!(
+        decoded.message.signed.last().map(|row| row.key.len()),
+        Some(259)
+    );
+    assert_eq!(rows(&nested(5)), None);
 }
 
 #[test]
