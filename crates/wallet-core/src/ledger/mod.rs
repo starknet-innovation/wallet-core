@@ -20,12 +20,14 @@
 //! before it can be used, is `sign::DeviceSigning`; the readers alone never verify. A page of
 //! public keys for an account picker is `enumerate::KeyEnumeration`. The
 //! dashboard-and-reopen sequence that reads the OS version (`readLedgerOsAndRestoreStarknet`) and
-//! the transport are not here.
+//! the transport's I/O are not here; the transport's Bluetooth framing, which only carries bytes, is
+//! `ble`.
 //!
 //! The vectors are the library's encoding and the extension's tests. Golden transcripts from a
 //! device or Ledger's Speculos emulator are owed to a Bramble generator; none is in
 //! `tests/fixtures/` yet.
 
+pub mod ble;
 mod enumerate;
 mod management;
 mod path;
@@ -33,6 +35,8 @@ mod rejection;
 mod sign;
 mod starknet;
 
+#[cfg(test)]
+mod ble_tests;
 #[cfg(test)]
 mod enumerate_tests;
 #[cfg(test)]

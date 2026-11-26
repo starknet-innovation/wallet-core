@@ -47,6 +47,7 @@ mod history;
 pub(crate) use wallet_core::js;
 mod key_import;
 mod kms;
+mod ledger_ble;
 mod ledger_reader;
 mod ledger_wallet;
 pub use kms::Ladder;
@@ -118,6 +119,10 @@ pub use ffi_staking::{
 };
 pub use ffi_staking_action::{StakingPlan, StakingPreparation};
 pub use groups::AccountGroup;
+pub use ledger_ble::{
+    ledger_ble_frame_size, ledger_ble_link, LedgerBleExchange, LedgerBleFrame, LedgerBleLink,
+    LedgerBleSpec, LedgerBleStep,
+};
 pub use ledger_reader::{
     ledger_account_candidates, LedgerCandidate, LedgerKey, LedgerKeyReader, LedgerReadStep,
 };
