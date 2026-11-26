@@ -1096,6 +1096,9 @@ Features, smallest and least dependent first:
       as an invoke's calls are: flags and call summaries on the card at queue time, a self-call
       refused, and at approval a lookalike payee, spender or operator refused (`refuse_poisoned`,
       re-read trusted set). A lock does not drop typed-data cards, as in the extension.
+      `withdraw(request_ids)` drops a gone page's requests and any card no page waits on, so a
+      late approval cannot grant or sign for it: a mobile divergence (the extension keeps the
+      card until a decision or its expiry).
     - Next here, in order: the remaining methods' gates and results; the live class read
       (Braavos, upgraded Argent); Ledger typed data; the full export.
     - *Done* (#140): the connect-only slice is exported first, so Bramble can build and test

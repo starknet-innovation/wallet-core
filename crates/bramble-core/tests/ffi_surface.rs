@@ -444,6 +444,7 @@ fn no_export_takes_calls_to_sign() {
 fn the_dapp_session_signs_only_an_approved_card() {
     let names: Vec<String> = [
         include_str!("../src/dapp_session.rs"),
+        include_str!("../src/dapp_expiry.rs"),
         include_str!("../src/dapp_sign.rs"),
         include_str!("../src/dapp_sites.rs"),
     ]
@@ -460,6 +461,7 @@ fn the_dapp_session_signs_only_an_approved_card() {
             "approve_connect",
             "deny",
             "settle_expired",
+            "withdraw",
             "approve_sign_typed_data",
             "refresh_phishing_feed",
             "answer_phishing_feed"
