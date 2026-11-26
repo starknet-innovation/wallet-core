@@ -244,3 +244,35 @@ fn a_page_that_went_closes_its_plan() {
     assert_eq!(plan.signatures_made(), 0);
     assert!(dapp.settle_invoke(card).is_empty());
 }
+
+/// `address` with its visible `0x` + four and last four kept (`addressLabel`), the rest changed.
+fn lookalike(address: &str) -> String {
+    let padded = format!("{:0>64}", address.trim_start_matches("0x"));
+    format!("0x{}{}{}", &padded[..4], "1".repeat(56), &padded[60..])
+}
+
+// "flags a transfer to a lookalike on the card and refuses it at execution" (Sherlock 140): the
+// site learns nothing at request, and nothing reaches a signature.
+#[test]
+fn a_batch_paying_a_lookalike_is_flagged_then_refused_at_approval() {
+    let (_dir, core, dapp) = connected();
+    let own = core.active_account().unwrap().unwrap().address;
+    let card = pending(ask(
+        &dapp,
+        "wallet_addInvokeTransaction",
+        Some(&transfer(&lookalike(&own))),
+        1,
+    ));
+    let DappCard::Invoke { flags, .. } = &dapp.pending_approvals(NOW)[0].card else {
+        panic!("not an invoke card");
+    };
+    let codes: Vec<_> = flags.iter().map(|flag| flag.code).collect();
+    assert!(
+        codes.contains(&bramble_core::RiskFlagCode::AddressPoisoning),
+        "{codes:?}"
+    );
+    let DappInvokeStart::Settled { settled } = dapp.approve_invoke(card, None, NOW) else {
+        panic!("a plan paying a lookalike");
+    };
+    assert_eq!(code(&settled[0].reply), 163);
+}

@@ -7,9 +7,10 @@
 //! Gate order at request: the blocklist and queue room, then the lock and the granted active
 //! account (a site that holds a grant elsewhere is also shown a connect card, as
 //! `promptReconnectForStaleGrant` does), an account this wallet signs with, the batch's bounds
-//! and the self-call refusal (`invoke::check`), then the unrefused review (`verify_calls`: the
-//! calls' summaries and flags). A poisoned payee or spender is flagged on the card, not refused:
-//! an instant refusal would tell the site which addresses the person has paid (Sherlock 140).
+//! and the self-call refusal (`invoke::check`), then the unrefused review
+//! (`verify_calls_for_card`: the calls' summaries and flags). A poisoned payee or spender is
+//! flagged on the card, not refused: an instant refusal would tell the site which addresses the
+//! person has paid (Sherlock 140).
 //!
 //! Approving a card (`approve_invoke`) re-checks the site, the lock and the account, reviews the
 //! batch again with `Invoke::reviewed` (which now refuses a poisoned payee) and hands the host the
@@ -24,7 +25,7 @@ use std::sync::Arc;
 use starknet_wallet_core::dapp::invoke::invoke_result;
 use starknet_wallet_core::dapp::{Site, WalletRpcError};
 use starknet_wallet_core::send::calls::Call;
-use starknet_wallet_core::send::invoke::{batch_flags, check, verify_calls, Invoke};
+use starknet_wallet_core::send::invoke::{batch_flags, check, verify_calls_for_card, Invoke};
 use starknet_wallet_core::send::plan::Kind;
 use starknet_wallet_core::send::u256::U256;
 
@@ -139,7 +140,8 @@ impl DappSession {
         let account = &acting.account;
         check(&account.address, calls, &SEND_POLICY).ok()?;
         let inputs = self.review_inputs_for(acting.network)?;
-        let reviewed = verify_calls(acting.network, &account.address, calls, &inputs.context());
+        let reviewed =
+            verify_calls_for_card(acting.network, &account.address, calls, &inputs.context());
         Some(InvokeCard {
             account_id: acting.account_id.clone(),
             address: felt::canonical(&account.address),
