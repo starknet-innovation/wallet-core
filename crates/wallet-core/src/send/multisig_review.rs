@@ -248,6 +248,16 @@ pub(crate) fn refuse_poisoned(
     Ok(())
 }
 
+/// `addressPoisoningFlag` for one call: whether its payee mimics `account` or an address in
+/// `trusted`.
+pub(crate) fn is_poisoned(account: &Felt, call: &Call, trusted: &[Felt]) -> bool {
+    recipient_for_flags(&call.entrypoint, &call.calldata).is_some_and(|recipient| {
+        std::iter::once(account)
+            .chain(trusted)
+            .any(|address| is_lookalike_address(&recipient, address))
+    })
+}
+
 /// The batch's one line: the first summary and a count of the rest, cut to `summary_length`
 /// UTF-16 units; `empty` when there are none.
 pub(crate) fn batch_line<S: AsRef<str>>(

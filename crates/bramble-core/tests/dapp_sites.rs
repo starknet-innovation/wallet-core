@@ -7,7 +7,9 @@
 
 mod common;
 
-use bramble_core::{DappReply, DappSession, HttpMethod, HttpOutcome, NetworkId, SiteWarning};
+use bramble_core::{
+    DappReply, DappSession, HttpMethod, HttpOutcome, NetworkId, SiteWarning, TokenPreferences,
+};
 use common::{account_id, imported, open, PASSWORD};
 
 const NOW: f64 = 1_800_000_000_000.0;
@@ -67,7 +69,7 @@ fn assert_learns_nothing(dapp: &DappSession, origin: &str) {
 #[test]
 fn a_bundled_blocked_site_learns_nothing_and_queues_no_card() {
     let (_dir, _clock, core) = imported();
-    let dapp = DappSession::new(core);
+    let dapp = DappSession::new(core, TokenPreferences::new(None));
     for origin in [
         "https://claim-starknet.com",
         "https://app.claim-starknet.com",
@@ -93,7 +95,7 @@ fn a_bundled_blocked_site_learns_nothing_and_queues_no_card() {
 #[test]
 fn the_live_feed_blocks_and_survives_a_restart() {
     let (dir, clock, core) = imported();
-    let dapp = DappSession::new(core.clone());
+    let dapp = DappSession::new(core.clone(), TokenPreferences::new(None));
     let site = "https://app.evil.example";
     let request = dapp.refresh_phishing_feed(NOW).expect("nothing cached");
     assert_eq!(request.method, HttpMethod::Get);
@@ -122,7 +124,7 @@ fn the_live_feed_blocks_and_survives_a_restart() {
 
     drop(dapp);
     let core = open(dir.path(), &clock);
-    let dapp = DappSession::new(core);
+    let dapp = DappSession::new(core, TokenPreferences::new(None));
     assert!(dapp.refresh_phishing_feed(NOW + HOUR).is_none());
     assert_learns_nothing(&dapp, site);
     assert!(dapp.refresh_phishing_feed(NOW + 7.0 * HOUR).is_some());
@@ -133,7 +135,7 @@ fn the_live_feed_blocks_and_survives_a_restart() {
 #[test]
 fn a_card_carries_its_sites_warnings_and_the_wallet_remembers_it() {
     let (dir, _clock, core) = imported();
-    let dapp = DappSession::new(core.clone());
+    let dapp = DappSession::new(core.clone(), TokenPreferences::new(None));
     let site = "https://starknet.io.zip";
     let card = pending(ask(&dapp, site, "wallet_requestAccounts", 1));
     let listed = &dapp.pending_approvals(NOW)[0];
@@ -148,7 +150,7 @@ fn a_card_carries_its_sites_warnings_and_the_wallet_remembers_it() {
             SiteWarning::FirstSeen,
         ]
     );
-    dapp.deny_connect(card, NOW);
+    dapp.deny(card, NOW);
 
     pending(ask(&dapp, site, "wallet_requestAccounts", 2));
     let warnings = |now| dapp.pending_approvals(now)[0].warnings.clone();

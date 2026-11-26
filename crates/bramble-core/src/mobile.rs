@@ -35,6 +35,7 @@ mod contact_card;
 mod contacts;
 mod container;
 mod dapp_session;
+mod dapp_sign;
 mod dapp_sites;
 mod ffi_coordination;
 mod ffi_nostr_multisig;
@@ -104,7 +105,7 @@ pub use class_declared::ClassDeclaredRead;
 pub use clock::HostClock;
 pub use contact_card::{ContactCardParse, WalletContactCard};
 pub use contacts::Contact;
-pub use dapp_session::{DappApproval, DappReply, DappSession, DappSettled};
+pub use dapp_session::{DappApproval, DappCard, DappReply, DappSession, DappSettled};
 pub use ffi_coordination::{CoordinationSyncOutcome, NostrSyncPlan, RelayPolicy};
 pub use ffi_nostr_multisig::{
     argent_multisig_normalize, argent_multisig_predict, argent_signer_guid, multisig_limits,

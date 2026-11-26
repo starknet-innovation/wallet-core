@@ -437,13 +437,15 @@ fn no_export_takes_calls_to_sign() {
     }
 }
 
-/// P16: a site's requests reach the wallet only through `DappSession`, and none of its exports
-/// signs yet. When typed data and invoke review land, each signing export must take a queued,
-/// approved card's id; widen this list deliberately then.
+/// P16: a site's requests reach the wallet only through `DappSession`. The one export that signs,
+/// `approve_sign_typed_data`, takes a queued card's id (and the account the person reviewed),
+/// never a hash or a document: what it signs is only ever what the site queued and the person
+/// approved. Each new signing export must keep that shape; widen this list deliberately.
 #[test]
-fn the_dapp_session_exports_only_the_connect_slice() {
+fn the_dapp_session_signs_only_an_approved_card() {
     let names: Vec<String> = [
         include_str!("../src/dapp_session.rs"),
+        include_str!("../src/dapp_sign.rs"),
         include_str!("../src/dapp_sites.rs"),
     ]
     .into_iter()
@@ -457,10 +459,20 @@ fn the_dapp_session_exports_only_the_connect_slice() {
             "request",
             "pending_approvals",
             "approve_connect",
-            "deny_connect",
+            "deny",
             "settle_expired",
+            "approve_sign_typed_data",
             "refresh_phishing_feed",
             "answer_phishing_feed"
         ]
+    );
+    let signing = exported_signatures(include_str!("../src/dapp_sign.rs"));
+    assert_eq!(
+        signing
+            .iter()
+            .map(|exported| exported.signature.as_str())
+            .collect::<Vec<_>>(),
+        ["fn approve_sign_typed_data( &self, approval_id: String, \
+             reviewed_account_id: String, now_ms: f64, ) -> Vec<DappSettled>"]
     );
 }

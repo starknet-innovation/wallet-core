@@ -230,6 +230,16 @@ Grep first; extend in place rather than adding a sibling.
     `granted_account`, `with_origin_grant`, `without_origin_access`, `connected_sites`).
   - the approval queue (`queue::ApprovalQueue`: caps, eviction, TTL over the host's monotonic
     clock, dedupe and waiters, reservations, fee revisions; dropped ids via `take_dropped`).
+  - SNIP-12 typed data (`typed_data`): the gate (`CheckedTypedData::check`, the name grammar
+    `is_safe_snip12_name`, revisions, merkle and enum rules, value conformance in
+    `typed_data_values`, leaf readings in `typed_data_scalars`), the chain binding
+    (`message_hash_for_chain`, the only hash a dapp request gets, through Krusty) and the card
+    line (`describe_typed_data`).
+  - a SNIP-9 outside execution in typed data (`outside_execution::review_outside_execution`,
+    at `Stage::Queue` and again at `Stage::Sign`): its calls read with the hash's encoder,
+    then the invoke route's review (`send::invoke::verify_calls`,
+    `multisig_review::is_poisoned`), never a second one; a queued card's lookalike payee is
+    `RiskFlag::AddressPoisoning`.
   - connecting a site and the passive reads around it (`connect`: `Site`, `answer`,
     `request_accounts`, `approve_connect`, the result shapes `addresses` and `accounts_view`),
     in the extension's gate order: blocklist, lock, grant.
@@ -240,9 +250,13 @@ Grep first; extend in place rather than adding a sibling.
   `bramble-core`'s `dapp.rs` (`DAPP_POLICY`, `DAPP_QUEUE_LIMITS`, `read_page_request`,
   `SITE_LISTS`, `PHISHING_FEED`).
   The apps reach all of it through `bramble-core`'s `dapp_session::DappSession` (the request,
-  the cards, their decisions and expiry; grants are written to the vault's `kept.origin_grants`
-  through `WalletCore::commit`); its blocklist, feed refresh and card warnings are
-  `dapp_sites.rs`.
+  the cards (`DappCard`), their decisions and expiry; grants are written to the vault's
+  `kept.origin_grants` through `WalletCore::commit`); its blocklist, feed refresh and card
+  warnings are `dapp_sites.rs`; `wallet_signTypedData`'s card and its signature at approval
+  (`approve_sign_typed_data`, through `signing_record` and `sign_for` under one session hold)
+  are `dapp_sign.rs`, which reviews an outside execution's calls with the invoke route's
+  inputs (`trusted_recipients`, the tracked tokens from the session's `TokenPreferences`, the
+  allowance log), read before the session hold.
 - Only `wallet-core` depends on Krusty (`kms.rs`, `nostr.rs`, `accounts/`, `send/`);
   `bramble-core` goes through `wallet-core` and never names `krusty_kms`.
 
