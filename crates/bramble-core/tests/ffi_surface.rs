@@ -442,19 +442,31 @@ fn no_export_takes_calls_to_sign() {
 /// P16: a site's requests reach the wallet only through `DappSession`. The one export that signs,
 /// `approve_sign_typed_data`, takes a queued card's id (and the account the person reviewed),
 /// never a hash or a document: what it signs is only ever what the site queued and the person
-/// approved. Each new signing export must keep that shape; widen this list deliberately.
+/// approved; the switch decision (`approve_switch_chain`) takes only a card's id too. Each new
+/// export must keep that shape; widen this list deliberately. Every `dapp_*.rs` file is read.
 #[test]
 fn the_dapp_session_signs_only_an_approved_card() {
-    let names: Vec<String> = [
-        include_str!("../src/dapp_session.rs"),
-        include_str!("../src/dapp_expiry.rs"),
-        include_str!("../src/dapp_sign.rs"),
-        include_str!("../src/dapp_sites.rs"),
-    ]
-    .into_iter()
-    .flat_map(exported_signatures)
-    .map(|exported| exported.name().to_owned())
-    .collect();
+    let files = [
+        ("dapp_session.rs", include_str!("../src/dapp_session.rs")),
+        ("dapp_chain.rs", include_str!("../src/dapp_chain.rs")),
+        ("dapp_expiry.rs", include_str!("../src/dapp_expiry.rs")),
+        ("dapp_sign.rs", include_str!("../src/dapp_sign.rs")),
+        ("dapp_sites.rs", include_str!("../src/dapp_sites.rs")),
+    ];
+    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    for entry in std::fs::read_dir(src).unwrap() {
+        let name = entry.unwrap().file_name().into_string().unwrap();
+        let read = files.iter().any(|(file, _)| *file == name);
+        assert!(
+            !name.starts_with("dapp_") || read,
+            "{name} is not read here"
+        );
+    }
+    let names: Vec<String> = files
+        .into_iter()
+        .flat_map(|(_, source)| exported_signatures(source))
+        .map(|exported| exported.name().to_owned())
+        .collect();
     assert_eq!(
         names,
         [
@@ -463,6 +475,8 @@ fn the_dapp_session_signs_only_an_approved_card() {
             "pending_approvals",
             "approve_connect",
             "deny",
+            "approve_switch_chain",
+            "answer_read",
             "settle_expired",
             "withdraw",
             "approve_sign_typed_data",
