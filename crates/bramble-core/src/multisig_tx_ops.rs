@@ -18,7 +18,7 @@ use wallet_core::accounts::multisig_records::{self, Record};
 use wallet_core::send::call_decode::Known;
 use wallet_core::send::calls::{self, SendAmountError};
 use wallet_core::send::multisig_deploy::{deployment_plan, MultisigDeployRefusal};
-use wallet_core::send::multisig_import::{held_config, import_intent, ImportContext, ImportError};
+use wallet_core::send::multisig_import::{held_config, ImportError};
 use wallet_core::send::multisig_intent::{
     ConfigSnapshot, IntentPackage, IntentState, SigningIntent,
 };
@@ -47,7 +47,7 @@ use crate::wallet_accounts::{sign_for, signing_record};
 use crate::{felt, multisig_constants, multisig_intents, multisig_store, CoreError};
 use wallet_core::allowances::retention::Ranking;
 
-fn refused(reason: &str) -> CoreError {
+pub(crate) fn refused(reason: &str) -> CoreError {
     CoreError::InvalidInput {
         reason: reason.into(),
     }
@@ -57,11 +57,11 @@ const NOT_FOUND: &str = "Argent multisig not found";
 const INTENT_NOT_FOUND: &str = "intent not found";
 const INVALID_PACKAGE: &str = "invalid Argent multisig intent package";
 
-fn class() -> &'static ArgentMultisigClass {
+pub(crate) fn class() -> &'static ArgentMultisigClass {
     multisig_constants::argent_multisig_class()
 }
 
-fn summary_length() -> usize {
+pub(crate) fn summary_length() -> usize {
     multisig_constants::get().limits.summary_length
 }
 
@@ -153,7 +153,7 @@ impl WalletCore {
     }
 
     /// Every address the person recognises on `network` (`trusted_recipients`), for the review.
-    fn review_trusted(&self, network: NetworkId) -> Result<Vec<Felt>, CoreError> {
+    pub(crate) fn review_trusted(&self, network: NetworkId) -> Result<Vec<Felt>, CoreError> {
         self.trusted_recipients(network)
             .map_err(|error| match error {
                 SendError::Locked => CoreError::Locked,
@@ -447,76 +447,5 @@ impl WalletCore {
             .ok_or_else(|| refused(INVALID_PACKAGE))?;
         let next = self.import_package(&parsed, &state, &tokens)?;
         Ok(intent_view(&next))
-    }
-}
-
-/// Why `import_package` refused: the shared import rule's refusal, kept typed so a coordination
-/// sync can tell a final refusal from a passing one, or the wallet's own (lock, storage, the
-/// intent store's "invalid", "conflict" and "store full").
-pub(crate) enum ImportRefusal {
-    Import(ImportError),
-    Wallet(CoreError),
-}
-
-impl From<ImportRefusal> for CoreError {
-    fn from(refusal: ImportRefusal) -> Self {
-        match refusal {
-            ImportRefusal::Import(error) => refused(error.message()),
-            ImportRefusal::Wallet(error) => error,
-        }
-    }
-}
-
-impl From<CoreError> for ImportRefusal {
-    fn from(error: CoreError) -> Self {
-        Self::Wallet(error)
-    }
-}
-
-impl WalletCore {
-    /// `import_multisig_intent` past the parse, which a coordination sync shares: stores the
-    /// merged intent and returns it.
-    pub(crate) fn import_package(
-        &self,
-        parsed: &IntentPackage,
-        state: &MultisigStateRead,
-        tokens: &TokenPreferences,
-    ) -> Result<SigningIntent, ImportRefusal> {
-        // Only a record that is not there is `UnknownAccount` (final); an unreadable store is the
-        // wallet's error, which a sync tries again.
-        let record = multisig_store::load(self.data_dir())?
-            .records
-            .into_iter()
-            .find(|record| record.id == parsed.intent.account_id)
-            .ok_or(ImportRefusal::Import(ImportError::UnknownAccount))?;
-        let network = NetworkId::from_catalog_id(&record.network_id)
-            .ok_or(ImportRefusal::Import(ImportError::UnknownAccount))?;
-        let (read, nonce) = state
-            .finished()
-            .ok_or(ImportRefusal::Import(ImportError::AuthorityUnavailable))?;
-        // ponytail: `get` and the `upsert` below are not one critical section, so a local sign
-        // landing between them makes this merge fail as "conflict", which a sync settles as
-        // final. Serialise intent mutations (the extension's `runActiveStateMutation`) if that
-        // race shows up; the local operations take no shared lock today.
-        let stored = multisig_intents::get(self.data_dir(), &parsed.intent.id)?;
-        let trusted = trusted_tokens(tokens, network);
-        let infos = token_infos(&trusted);
-        let known = Known {
-            tokens: &infos,
-            nft_contracts: &[],
-        };
-        let trusted = self.review_trusted(network)?;
-        let wallet = ImportContext {
-            record: &record,
-            stored: stored.as_ref(),
-            class: class(),
-            known: &known,
-            trusted: &trusted,
-            summary_length: summary_length(),
-        };
-        let next = import_intent(parsed, &read, &nonce, &wallet).map_err(ImportRefusal::Import)?;
-        self.require_unlocked()?;
-        multisig_intents::upsert(self.data_dir(), &next)?;
-        Ok(next)
     }
 }

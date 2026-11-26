@@ -16,7 +16,7 @@ use crate::ffi_coordination::{
 };
 use crate::multisig_rpc::MultisigStateRead;
 use crate::multisig_store::Record;
-use crate::multisig_tx_ops::ImportRefusal;
+use crate::multisig_tx_import::ImportRefusal;
 use crate::networks::NetworkId;
 use crate::nostr::NostrApplicationData;
 use crate::portfolio::tokens::TokenPreferences;
