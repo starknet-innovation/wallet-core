@@ -113,7 +113,11 @@ impl DappSession {
         };
         let network = read.network;
         let mut state = guard(&self.state);
-        if state.reads.len() >= DAPP_QUEUE_LIMITS.max_pending {
+        // The queue's caps, so one site's reads cannot crowd out another's.
+        let from_site = state.reads.values().filter(|r| r.origin == origin).count();
+        if state.reads.len() >= DAPP_QUEUE_LIMITS.max_pending
+            || from_site >= DAPP_QUEUE_LIMITS.max_per_origin
+        {
             return Ok(refused());
         }
         match state.reads.entry(request_id) {

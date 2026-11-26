@@ -258,4 +258,15 @@ fn deployment_data_is_answered_after_the_chain_says_the_account_is_undeployed() 
     read(8);
     dapp.withdraw(vec![8]);
     assert_eq!(code(&answer(&dapp, 8, UNDEPLOYED)), 163);
+    // A site holds at most five reads open, as it holds five cards; a reused id is refused.
+    for request_id in 9..14 {
+        read(request_id);
+    }
+    assert_eq!(code(&ask(&dapp, "wallet_deploymentData", None, 14)), 163);
+    assert_eq!(code(&ask(&dapp, "wallet_deploymentData", None, 9)), 163);
+    assert!(matches!(
+        answer(&dapp, 9, UNDEPLOYED),
+        DappReply::Result { .. }
+    ));
+    read(14);
 }
