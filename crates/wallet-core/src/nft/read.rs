@@ -26,8 +26,12 @@ pub enum ReadStep<T> {
 pub(super) enum Rung {
     /// The call's result array.
     Answer(Vec<JsValue>),
-    /// The node refused this entrypoint, or answered with something that is not an array.
+    /// The node refused this entrypoint.
     Skip,
+    /// A result that is neither an array nor `null`. Each read says what the extension did with
+    /// it: indexing it gives nothing (skip), or calling an array method on it throws a
+    /// `TypeError` that `isTransportRpcError` fails over on.
+    NotArray,
     Transport,
 }
 
@@ -90,7 +94,7 @@ impl Ladder {
             Reply::Transport | Reply::Result(JsValue::Null) => Rung::Transport,
             Reply::Semantic => Rung::Skip,
             Reply::Result(JsValue::Array(items)) => Rung::Answer(items),
-            Reply::Result(_) => Rung::Skip,
+            Reply::Result(_) => Rung::NotArray,
         }
     }
 
