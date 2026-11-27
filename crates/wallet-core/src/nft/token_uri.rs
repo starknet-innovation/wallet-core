@@ -62,7 +62,8 @@ impl TokenUriRead {
     /// counts as no answer.
     pub fn judge(&mut self, reply: &RpcReply, next_id: u64) -> ReadStep<String> {
         let answer = match self.ladder.rung(reply) {
-            Rung::Transport => return ReadStep::Transport,
+            // `decodeShortStringArray` calls `response.every` on it and throws: next endpoint.
+            Rung::Transport | Rung::NotArray => return ReadStep::Transport,
             Rung::Skip => return self.ladder.next(next_id),
             Rung::Answer(answer) => answer,
         };

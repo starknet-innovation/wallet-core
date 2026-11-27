@@ -1438,13 +1438,15 @@ Features, smallest and least dependent first:
   - *Order.* Generator first (G-NFT, Bramble: discovery replies, metadata cases, re-proof
     outcomes and both transfers through the extension's own code), then the core and its
     export, then the screens (M-NFT). About P12's size.
-  - *Status (2026-11-27).* PRs open, none merged:
-    - G-NFT: Bramble #1077.
-    - Fixtures: #213.
-    - Core: (a) discovery #214, (b) re-proof, token URI and metadata #215, (c) the send #216,
-      (d) the watched list #217.
-    - The export, images only: `ffi_nft*.rs`, with `NFT_POLICY` and `NFT_METADATA_LIMITS`. No
-      animation crosses it, and a watch or a send needs the core's own ownership read.
+  - *Status (2026-11-27).* Core and export on `main`:
+    - G-NFT: Bramble #1077 (open).
+    - Fixtures #213; core (a) discovery #214, (b) re-proof, token URI and metadata #215,
+      (c) the send #216, (d) the watched list #217; the export #218, images only
+      (`ffi_nft*.rs`, with `NFT_POLICY` and `NFT_METADATA_LIMITS`). No animation crosses it,
+      and a watch or a send needs the core's own ownership read.
+    - Follow-ups after review: the watched-list exports refuse while locked and a read is
+      bound to its session; a token URI read fails over on a non-array result; a metadata
+      fetch is `https` only; and the two decisions below.
 
     Not yet ported:
     - The gallery's merge of discovered and watched NFTs, with its re-proof and coverage
@@ -1453,11 +1455,16 @@ Features, smallest and least dependent first:
     - A site's `wallet_watchAsset` for an NFT. Mobile still refuses it; it needs a card in
       `DappSession`.
 
-    Known departures:
-    - The send card names the recipient as `address_label`; the extension's live code prints
-      it in decimal.
-    - An image URL with a literal `{id}` is dropped rather than respelled. The extension
-      shows it as `%7Bid%7D`.
+    Matched by decision (2026-11-27): the send names its recipient in decimal, as the
+    extension's live send does, and art and metadata URLs are read as `new URL` reads them and
+    shown as its `href` (`js::url`).
+
+    Known departures, both failing closed:
+    - A host only IDNA can read (non-ASCII, or an `xn--` label) is dropped. The extension
+      shows it in punycode.
+    - A metadata URI that normalises to an image `data:` URI (a padded one) is no metadata
+      here. The extension would `fetch` the data URI and parse its body; the core's fetch is
+      an `https` GET only.
 
     M-NFT waits on legal (3.1.1).
 

@@ -3,13 +3,12 @@
 //! only a self-contained `data:text/html` document; anything else is dropped (`""`) so the card
 //! shows its placeholder.
 //!
-//! The URL is checked without a URL parser, through the endpoint grammar
-//! (`nostr::relay_url::is_custom_rpc_url`): a spelling the WHATWG parser would rewrite is dropped
-//! rather than rewritten, except the case of the scheme and host and a missing root path, which
-//! are spelled here as the parser prints them.
+//! A URL is read as `new URL` reads it (`js::url::parse_https`) and kept as its `href`, and the
+//! local and private host checks run on the parsed hostname, so they judge the host a client
+//! connects to.
 
-use crate::js::num::{utf16_len, utf16_slice};
-use crate::nostr::relay_url::is_custom_rpc_url;
+use crate::js::num::{js_trim, string_to_number, utf16_len, utf16_slice};
+use crate::js::url::parse_https;
 
 /// The gateway an `ipfs://` reference is read through (`IPFS_GATEWAY`); only the host is fixed.
 pub const IPFS_GATEWAY: &str = "https://ipfs.io/ipfs/";
@@ -35,61 +34,51 @@ pub enum NftAnimation {
     Html(String),
 }
 
-// `isPrivateIpv4`, over a dotted quad.
+// `isPrivateIpv4`: four parts, each `Number(part)` an integer from 0 to 255.
 fn is_private_ipv4(host: &str) -> bool {
-    let parts: Vec<u8> = host
-        .split('.')
-        .filter_map(|part| part.parse().ok())
-        .collect();
-    let [first, second, _, _] = parts[..] else {
+    let parts: Vec<f64> = host.split('.').map(string_to_number).collect();
+    if parts.len() != 4
+        || parts
+            .iter()
+            .any(|part| part.fract() != 0.0 || !(0.0..=255.0).contains(part))
+    {
         return false;
-    };
-    host.split('.').count() == 4
-        && (first == 0
-            || first == 10
-            || first == 127
-            || (first == 169 && second == 254)
-            || (first == 172 && (16..=31).contains(&second))
-            || (first == 192 && second == 168)
-            || first >= 224)
+    }
+    let (first, second) = (parts[0], parts[1]);
+    first == 0.0
+        || first == 10.0
+        || first == 127.0
+        || (first == 169.0 && second == 254.0)
+        || (first == 172.0 && (16.0..=31.0).contains(&second))
+        || (first == 192.0 && second == 168.0)
+        || first >= 224.0
 }
 
-/// `normalizeNftHttpsUrl`: a public `https` URL as the parser prints it, or `""` for anything
-/// longer than `max_length` (UTF-16 units, before trimming), not `https`, with credentials, or
-/// on a local or private host (`localhost`, `*.localhost`, `*.local`, an IPv6 literal, a private
-/// or reserved IPv4 address).
+/// `normalizeNftHttpsUrl`: `new URL(value.trim()).href` for a public `https` URL, or `""` for
+/// anything longer than `max_length` (UTF-16 units, before trimming), not `https`, with
+/// credentials, or on a local or private host (`localhost`, `*.localhost`, `*.local`, an IPv6
+/// literal, a private or reserved IPv4 address). A host only IDNA could read is dropped too
+/// (`js::url`).
 pub fn normalize_https_url(value: &str, max_length: usize) -> String {
     if utf16_len(value) > max_length {
         return String::new();
     }
-    let trimmed = crate::js::num::js_trim(value);
-    let Some(rest) = trimmed
-        .get(..8)
-        .filter(|scheme| scheme.eq_ignore_ascii_case("https://"))
-        .and_then(|_| trimmed.get(8..))
-    else {
+    let Some(url) = parse_https(js_trim(value)) else {
         return String::new();
     };
-    let split = rest.find(['/', '?', '#']).unwrap_or(rest.len());
-    let (authority, tail) = rest.split_at(split);
-    let authority = authority.to_ascii_lowercase();
-    let root = if tail.starts_with('/') { "" } else { "/" };
-    let href = format!("https://{authority}{root}{tail}");
-    // The grammar refuses credentials, so `authority` is `host[:port]`.
-    let host = match authority.rfind(':').filter(|_| !authority.ends_with(']')) {
-        Some(index) => &authority[..index],
-        None => &authority,
-    };
-    let host = host.strip_suffix('.').unwrap_or(host);
-    let local = host == "localhost"
+    // `normalizeHostname`: lowercase, one trailing dot dropped.
+    let host = url.hostname.strip_suffix('.').unwrap_or(&url.hostname);
+    let local = url.credentials
+        || host == "localhost"
         || host.ends_with(".localhost")
         || host.ends_with(".local")
-        || host.contains([':', '['])
+        || host.contains(':')
         || is_private_ipv4(host);
-    if local || !is_custom_rpc_url(&href) {
-        return String::new();
+    if local {
+        String::new()
+    } else {
+        url.href
     }
-    href
 }
 
 fn is_base64_payload(payload: &str) -> bool {
@@ -142,7 +131,7 @@ pub fn normalize_image_url(
     max_url_length: usize,
     max_data_uri_length: usize,
 ) -> String {
-    let trimmed = crate::js::num::js_trim(value);
+    let trimmed = js_trim(value);
     if trimmed.starts_with("data:") {
         return image_data_uri(trimmed, max_data_uri_length);
     }
@@ -160,7 +149,7 @@ pub fn normalize_image_url(
 /// UTF-16 units, verbatim; a remote animation is dropped so an opened collectible never makes a
 /// request.
 pub fn normalize_animation_uri(value: &str, max_length: usize) -> Option<NftAnimation> {
-    let trimmed = crate::js::num::js_trim(value);
+    let trimmed = js_trim(value);
     if !trimmed.starts_with("data:") || utf16_len(trimmed) > max_length {
         return None;
     }
@@ -177,7 +166,7 @@ pub fn normalize_animation_uri(value: &str, max_length: usize) -> Option<NftAnim
 
 /// `clampNftText`: trimmed and cut to `max_length` UTF-16 units.
 pub fn clamp_text(value: &str, max_length: usize) -> String {
-    utf16_slice(crate::js::num::js_trim(value), 0, max_length)
+    utf16_slice(js_trim(value), 0, max_length)
 }
 
 #[cfg(test)]
