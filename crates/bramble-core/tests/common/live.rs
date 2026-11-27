@@ -1,8 +1,10 @@
-//! Live-network helpers for the opt-in suites (`mainnet`, `sepolia_dataset`). The HTTP helper
-//! shells out to `curl` and exists only in tests, so the core stays sans-IO. Read-only: the scan
-//! sends `starknet_chainId`, `starknet_getClassHashAt` and ERC-20 `balanceOf`, never a write.
+//! Live-network helpers for the opt-in suites (`mainnet`, `sepolia_dataset`, `privacy_mainnet`,
+//! `strk20_live_smoke`). The HTTP helpers shell out to `curl` and exist only in tests, so the core
+//! stays sans-IO. Read-only: the scan sends `starknet_chainId`, `starknet_getClassHashAt` and
+//! ERC-20 `balanceOf`, never a write.
 
-use std::process::Command;
+use std::io::Write;
+use std::process::{Command, Stdio};
 
 use bramble_core::{
     rpc_chain_id_request, rpc_verify_chain_id, supported_networks, NetworkId, RecoveryCandidate,
@@ -30,6 +32,41 @@ pub fn canonical(value: &str) -> String {
         .trim_start_matches("0x")
         .trim_start_matches('0')
         .to_lowercase()
+}
+
+/// The `curl` that POSTs a JSON body read from stdin to `url`: HTTPS only, no redirects, at most
+/// `limit` bytes back, `timeout_ms` in all, and the HTTP status after a last newline. The body is
+/// never an argument (it may hold a viewing key), and nothing is echoed: errors go nowhere.
+pub fn curl_post(url: &str, limit: u64, timeout_ms: u64) -> Command {
+    let mut curl = Command::new("curl");
+    let timeout = format!("{}.{:03}", timeout_ms / 1000, timeout_ms % 1000);
+    curl.args(["-sS", "--proto", "=https", "--max-redirs", "0"])
+        .args(["--max-time", &timeout])
+        .args(["--max-filesize", &limit.to_string()])
+        .args(["-H", "Content-Type: application/json"])
+        .args(["--data-binary", "@-", "-w", "\n%{http_code}", url])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    curl
+}
+
+/// POSTs `body` through [`curl_post`]; `(status, reply)`, or `None` on a transport failure, a
+/// timeout, or a reply over `limit`.
+pub fn post_json(url: &str, body: &[u8], limit: u64, timeout_ms: u64) -> Option<(u16, Vec<u8>)> {
+    let mut child = curl_post(url, limit, timeout_ms).spawn().ok()?;
+    child.stdin.take()?.write_all(body).ok()?;
+    let output = child.wait_with_output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let split = output.stdout.iter().rposition(|b| *b == b'\n')?;
+    let status = std::str::from_utf8(&output.stdout[split + 1..])
+        .ok()?
+        .parse()
+        .ok()?;
+    let reply = output.stdout[..split].to_vec();
+    (reply.len() as u64 <= limit).then_some((status, reply))
 }
 
 pub fn post(url: &str, body: &str) -> String {

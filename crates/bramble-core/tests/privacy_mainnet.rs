@@ -18,8 +18,6 @@
 
 use crate::wallet_privacy_support as privacy_support;
 
-use std::io::Write;
-use std::process::{Command, Stdio};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use bramble_core::{
@@ -43,43 +41,9 @@ fn now_ms() -> u64 {
         .map_or(0, |elapsed| elapsed.as_millis() as u64)
 }
 
-/// POSTs `body` over HTTPS with curl; `(status, reply)` or `None` on a transport failure.
+/// POSTs `body` over HTTPS with curl (`common::live::post_json`, 60 s).
 fn post(url: &str, body: &[u8], limit: u64) -> Option<(u16, Vec<u8>)> {
-    let mut child = Command::new("curl")
-        .args([
-            "-sS",
-            "--proto",
-            "=https",
-            "--max-redirs",
-            "0",
-            "--max-time",
-            "60",
-        ])
-        .args(["--max-filesize", &limit.to_string()])
-        .args([
-            "-H",
-            "Content-Type: application/json",
-            "--data-binary",
-            "@-",
-        ])
-        .args(["-w", "\n%{http_code}", url])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .ok()?;
-    child.stdin.take()?.write_all(body).ok()?;
-    let output = child.wait_with_output().ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let split = output.stdout.iter().rposition(|b| *b == b'\n')?;
-    let status = std::str::from_utf8(&output.stdout[split + 1..])
-        .ok()?
-        .parse()
-        .ok()?;
-    let reply = output.stdout[..split].to_vec();
-    (reply.len() as u64 <= limit).then_some((status, reply))
+    crate::common::live::post_json(url, body, limit, 60_000)
 }
 
 fn rpc(url: &str, body: &str) -> Option<String> {
