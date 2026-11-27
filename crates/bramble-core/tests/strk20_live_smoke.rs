@@ -6,8 +6,8 @@
 //! Stage A (the only stage) proves and stops: it reads the latest block, runs the job to its end,
 //! and prints a report with no secret in it. It SENDS THE DEV WALLET'S VIEWING KEY to the
 //! configured discovery service and prover (that is the protocol) and signs one `CallSet` digest;
-//! it submits nothing on chain. Stage B (submitting `apply_actions` with its proof) is not
-//! possible on this core yet: [`STAGE_B`] says what is missing.
+//! it submits nothing on chain. Stage B (submitting `apply_actions` with its proof) is not run
+//! here: [`STAGE_B`] says why.
 //!
 //! Named simplification, the proving block: the extension (`official-sdk-maturity.ts`) proves at
 //! `latest - PROVING_BLOCK_DEPTH` (10) only once that block is past the accepted block of the
@@ -53,10 +53,10 @@ const RPC_TIMEOUT_MS: u64 = 30_000;
 /// The bound the walk parity tests use; a dev wallet holds far fewer notes.
 const MAX_NOTES: usize = 64;
 
-pub const STAGE_B: &str = "stage B (submission) is not available: this core cannot build a \
-     proof-bearing INVOKE (SNIP-36). send::sign::invoke_hash hashes no proof_facts, \
-     send::rpc_bodies::add_invoke sends no proof or proof_facts, and no send::plan kind carries \
-     a proof (P15). Nothing was submitted.";
+pub const STAGE_B: &str = "stage B (submission) is not run by this harness: the core builds a \
+     proof-bearing INVOKE (SNIP-36, send::invoke::Invoke::with_proof through send::plan::Plan), \
+     but submitting one on chain waits for its own step with the dev wallet's owner. Nothing was \
+     submitted.";
 
 /// Moves one request. The live harness's is `Curl`; the offline tests' is a stub.
 pub trait Transport {
