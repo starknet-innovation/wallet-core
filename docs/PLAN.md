@@ -1358,8 +1358,11 @@ Features, smallest and least dependent first:
     Known departures:
     - The send card names the recipient as `address_label`; the extension's live code prints
       it in decimal.
-    - An image URL with a literal `{id}` is dropped rather than respelled. The extension
-      shows it as `%7Bid%7D`.
+    - An art or metadata URL the WHATWG parser would respell or keep oddly is dropped
+      rather than respelled, since the core checks it without a URL parser. This covers a
+      literal `{id}`, a space, non-ASCII text, a fragment, `'` in the query, and an explicit
+      `:443`. The extension shows these, percent-encoded where needed, so some real art is
+      missing on mobile.
 
     M-NFT waits on legal (3.1.1).
 
