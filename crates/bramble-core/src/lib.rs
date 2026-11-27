@@ -51,6 +51,7 @@ pub mod coordination;
 pub mod dapp;
 pub mod gasless;
 pub mod ledger;
+pub mod nft;
 pub mod staking;
 pub mod swap;
 
