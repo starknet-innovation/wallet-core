@@ -1,9 +1,8 @@
 //! The automatic (and standalone) account deployment inside a plan, as the extension's
 //! `ensureAccountDeployed` / `submitAccountDeployment`: re-estimate against the separately
 //! reviewed deployment fee, sign `compute_deploy_account_v3_hash` over the account's own
-//! deployment (OpenZeppelin, Ready, or Braavos with its extended authorization), persist the
-//! pending record,
-//! broadcast once, then wait for ACCEPTED_ON_L2/L1 and the receipt like starknet.js
+//! deployment (OpenZeppelin, Ready, or Braavos with its extended authorization, through the host
+//! or on the account's device), persist the pending record, broadcast once, then wait for ACCEPTED_ON_L2/L1 and the receipt like starknet.js
 //! `waitForTransaction` (bounded at 200 attempts).
 
 use crate::Felt;
@@ -21,6 +20,17 @@ use super::sign;
 use super::types::{RpcPurpose, SendFailureCode as Code, SendStep};
 
 impl Plan {
+    /// The parameters Braavos's extended deploy authorization carries for this account.
+    fn braavos_params(&self) -> Result<Vec<Felt>, Code> {
+        let Authorization::Braavos { implementation, .. } = self.account.authorization else {
+            return Err(Code::BraavosNotDeployable);
+        };
+        Ok(sign::braavos_deploy_params(
+            self.account.network,
+            implementation,
+        ))
+    }
+
     /// Braavos's extended deploy authorization (`braavosDeploySignature`): `[r, s, ...params,
     /// aux_r, aux_s]`, where `(aux_r, aux_s)` signs `poseidon(params)` with the same key. The
     /// parameters are signed first, as the extension signs them, so `hash` is the last signed.
@@ -30,10 +40,7 @@ impl Plan {
         hash: &Felt,
         renew: bool,
     ) -> Result<Vec<Felt>, Code> {
-        let Authorization::Braavos { implementation, .. } = self.account.authorization else {
-            return Err(Code::BraavosNotDeployable);
-        };
-        let params = sign::braavos_deploy_params(self.account.network, implementation);
+        let params = self.braavos_params()?;
         let aux = self.sign_renewing(host, &sign::braavos_params_hash(&params), renew)?;
         let mut signature = self.sign_renewing(host, hash, renew)?;
         signature.extend(params);
@@ -41,10 +48,27 @@ impl Plan {
         Ok(signature)
     }
 
+    /// `braavos_deploy_signature` on the account's device: the parameters' hash, then `hash`,
+    /// each its own device signature (`SignFor::BraavosParams`), as the extension's
+    /// `braavosDeploySignature` asks its `accountHashSigner` twice.
+    fn braavos_on_device(&mut self, host: &dyn PlanHost, hash: Felt, then: SignFor) -> SendStep {
+        let params = match self.braavos_params() {
+            Ok(params) => params,
+            Err(code) => return self.fail(code, None),
+        };
+        let params_hash = sign::braavos_params_hash(&params);
+        let then = SignFor::BraavosParams {
+            hash,
+            params,
+            then: Box::new(then),
+        };
+        self.sign_for(host, params_hash, then)
+    }
+
     /// Emits the deployment estimate at the read nonce. Ready and a multisig validate their query
     /// signature and OpenZeppelin skips validation; Braavos validates a real signature over the
     /// query-version hash, since its constructor checks the deploy authorization even in an
-    /// estimate.
+    /// estimate. A Braavos account on a device signs it there first (`braavos_on_device`).
     pub(crate) fn estimate_deployment(&mut self, host: &dyn PlanHost, expect: Expect) -> SendStep {
         let nonce = self.work.nonce;
         let (signature, skip) = match self.account.deployment.as_ref() {
@@ -55,6 +79,9 @@ impl Plan {
                     deployment,
                     &nonce,
                 );
+                if self.device.is_some() {
+                    return self.braavos_on_device(host, hash, SignFor::DeployEstimate(expect));
+                }
                 // The review's estimate is passive; the confirmed re-estimate renews.
                 let renew = expect != Expect::ReviewDeployEstimate;
                 match self.braavos_deploy_signature(host, &hash, renew) {
@@ -67,6 +94,17 @@ impl Plan {
                 !self.account.is_argent() && !self.account.is_multisig(),
             ),
         };
+        self.send_deploy_estimate(expect, signature, skip)
+    }
+
+    /// Sends the deployment estimate at the read nonce, carrying `signature`.
+    pub(super) fn send_deploy_estimate(
+        &mut self,
+        expect: Expect,
+        signature: Vec<Felt>,
+        skip: bool,
+    ) -> SendStep {
+        let nonce = self.work.nonce;
         self.rpc(
             expect,
             RpcPurpose::EstimateDeploymentFee,
@@ -128,7 +166,10 @@ impl Plan {
         if !self.account.is_braavos() {
             return self.sign_for(host, hash, SignFor::Deploy(write));
         }
-        // Braavos signs twice through the host; a device account is refused there.
+        if self.device.is_some() {
+            return self.braavos_on_device(host, hash, SignFor::Deploy(write));
+        }
+        // Braavos signs twice through the host.
         match self.braavos_deploy_signature(host, &hash, true) {
             Ok(signature) => self.send_deploy(host, hash, write, signature),
             Err(code) => self.fail(code, None),

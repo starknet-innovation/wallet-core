@@ -410,9 +410,12 @@ fn a_device_step_takes_only_a_device_reply() {
     );
 }
 
+/// The extension's Braavos deployment, signed on a device holding the host's key: every
+/// signature its `braavosDeploySignature` makes (the parameters, then the hash) is a device
+/// signature, for the review's estimate, the confirmed re-estimate and the write, and the write
+/// carries what the extension wrote.
 #[test]
-fn a_braavos_ledger_account_never_reaches_the_hosts_key() {
-    // Braavos's deployment review signs through the host; a device account is refused there.
+fn a_braavos_ledger_account_deploys_on_its_device() {
     let braavos = capture("braavos");
     let scenario = braavos["scenarios"]
         .as_array()
@@ -423,11 +426,70 @@ fn a_braavos_ledger_account_never_reaches_the_hosts_key() {
     let host = Host::new();
     let account = account(scenario, "braavos", host.public_key());
     let mut plan = plan(scenario, account).with_device(device_key());
+    let mut device = Device::same_as_host();
+    let mut answer = |apdu: &[u8]| Some(device.answer(apdu));
     let step = plan.advance(&host, StepReply::Start).unwrap();
-    // It stops before the signed deployment estimate, the fourth read the extension made.
+    let step = drive_on(
+        &mut plan,
+        &host,
+        step,
+        &review_calls(scenario),
+        scenario,
+        &mut answer,
+    );
+    assert_eq!(step, SendStep::Review);
+    let step = plan.advance(&host, StepReply::Confirm).unwrap();
+    let step = drive_on(
+        &mut plan,
+        &host,
+        step,
+        &phase(scenario, "submit"),
+        scenario,
+        &mut answer,
+    );
+    let hash = scenario["transactionHash"].as_str().unwrap();
+    assert_eq!(step, SendStep::Broadcast { hash: hash.into() });
+    assert!(host.signed.borrow().is_empty());
+    // Two signatures for each of the three estimates and writes, the write's hash last.
+    assert_eq!(device.signed.len(), 6);
+    assert_eq!(device.signed.last(), Some(&f(hash)));
+    assert_eq!(plan.signatures_made(), 6);
+}
+
+/// A device that refuses the parameters' signature parks the deployment there, and a retry
+/// signs from the parameters again.
+#[test]
+fn a_braavos_device_refusal_parks_and_retries_the_parameters() {
+    let braavos = capture("braavos");
+    let scenario = braavos["scenarios"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["name"] == "braavos-standalone-deployment-SN_SEPOLIA")
+        .unwrap();
+    let host = Host::new();
+    let account = account(scenario, "braavos", host.public_key());
+    let mut plan = plan(scenario, account).with_device(device_key());
+    let mut device = Device::same_as_host();
+    let mut refused = false;
+    let mut answer = |apdu: &[u8]| {
+        // The first signHash data APDU is declined on the device (0x6985).
+        if !refused && apdu[1] == 0x02 && apdu[2] == 1 {
+            refused = true;
+            return Some(vec![0x69, 0x85]);
+        }
+        Some(device.answer(apdu))
+    };
+    // It parks before the signed deployment estimate, the fourth read the extension made.
     let calls = review_calls(scenario);
     assert!(calls[3]["method"] == "starknet_estimateFee");
-    let step = drive(&mut plan, &host, step, &calls[..3], scenario);
-    assert_eq!(failure(step).code, Code::AccountClassUnsupported);
+    let step = plan.advance(&host, StepReply::Start).unwrap();
+    let step = drive_on(&mut plan, &host, step, &calls[..3], scenario, &mut answer);
+    assert!(matches!(step, SendStep::DeviceRetry { .. }), "{step:?}");
+    let step = plan.advance(&host, StepReply::RetryDevice).unwrap();
+    let step = drive_on(&mut plan, &host, step, &calls[3..], scenario, &mut answer);
+    assert_eq!(step, SendStep::Review);
     assert!(host.signed.borrow().is_empty());
+    // The declined parameters' signature was signed again from the start, then the hash.
+    assert_eq!(device.signed.len(), 2);
 }
