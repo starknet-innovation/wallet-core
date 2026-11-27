@@ -10,6 +10,8 @@ pub enum NftStandard {
     Erc1155,
 }
 
+pub mod media;
+pub mod metadata;
 mod read;
 pub mod reproof;
 pub mod token_uri;
