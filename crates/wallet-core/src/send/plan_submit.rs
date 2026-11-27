@@ -214,6 +214,10 @@ impl Plan {
     pub(crate) fn submit_probed(&mut self, outcome: Outcome) -> SendStep {
         match outcome {
             Outcome::Deployed if !self.is_invoke() => self.fail(Code::AlreadyDeployed, None),
+            // A proof never rides with a deployment (see `review_probed`).
+            Outcome::Undeployed if self.invoke_proof().is_some() => {
+                self.fail(Code::PreparationUnavailable, None)
+            }
             // `refuseUndeployedBraavos`: a send never deploys a Braavos account.
             Outcome::Undeployed
                 if self.is_invoke()

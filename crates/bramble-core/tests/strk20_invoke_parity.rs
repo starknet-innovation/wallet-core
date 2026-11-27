@@ -3,7 +3,8 @@
 //! verified under the account's key; each `rpc` transcript driven through `send::plan::Plan` (a
 //! batch made proof-bearing by `Invoke::with_proof`), every body it sends compared with the
 //! extension's and the transaction hash with the one it got back; each `refusal` through
-//! `send::proof_invoke::check_shape`; each `maturity` case through `ProvingWait`.
+//! `send::proof_invoke::check_shape`; each `maturity` case through `ProvingWait`. The plan's
+//! refusals beyond the transcripts are `strk20_invoke_plan.rs`.
 //!
 //! The plan's review proves the chain first, where the extension's `estimateInvokeFee` does not,
 //! so its review requests are matched by method; the submit is held to the recorded order. After
@@ -22,7 +23,7 @@ use starknet_wallet_core::send::proof_invoke::{
 use starknet_wallet_core::send::review_flags::ReviewContext;
 use starknet_wallet_core::send::rpc_bodies;
 use starknet_wallet_core::send::sign::{self, Deployment};
-use starknet_wallet_core::send::types::{SendFailureCode as Code, SendStep, StepReply};
+use starknet_wallet_core::send::types::{SendStep, StepReply};
 use starknet_wallet_core::{felt, stark_signature_is_valid, Felt, NetworkId};
 
 use crate::plan_support::{f, Host, NOW, OZ_CLASS};
@@ -30,7 +31,7 @@ use crate::plan_support::{f, Host, NOW, OZ_CLASS};
 /// The extension's maturity numbers (`official-sdk-maturity.ts`): `PROVING_BLOCK_DEPTH`,
 /// `MAX_MATURITY_POLLS` with a one-second pause, and `waitForTransaction`'s 240 status reads 250
 /// ms apart for a prior write.
-const MATURITY: Maturity = Maturity {
+pub(crate) const MATURITY: Maturity = Maturity {
     depth: 10,
     max_polls: 120,
     poll_pause_ms: 1_000,
@@ -50,7 +51,7 @@ fn lines() -> Vec<Value> {
         .collect()
 }
 
-fn of_kind(kind: &str) -> Vec<Value> {
+pub(crate) fn of_kind(kind: &str) -> Vec<Value> {
     lines().into_iter().filter(|l| l["kind"] == kind).collect()
 }
 
@@ -63,7 +64,7 @@ fn felts(value: &Value) -> Vec<Felt> {
         .collect()
 }
 
-fn calls(line: &Value) -> Vec<Call> {
+pub(crate) fn calls(line: &Value) -> Vec<Call> {
     line["calls"]
         .as_array()
         .unwrap()
@@ -76,7 +77,7 @@ fn calls(line: &Value) -> Vec<Call> {
         .collect()
 }
 
-fn proof(line: &Value) -> Option<Proof> {
+pub(crate) fn proof(line: &Value) -> Option<Proof> {
     let proof = &line["proof"];
     (!proof.is_null()).then(|| Proof {
         data: proof["data"].as_str().unwrap().into(),
@@ -85,7 +86,7 @@ fn proof(line: &Value) -> Option<Proof> {
     })
 }
 
-fn network(line: &Value) -> NetworkId {
+pub(crate) fn network(line: &Value) -> NetworkId {
     NetworkId::from_catalog_id(line["networkId"].as_str().unwrap()).unwrap()
 }
 
@@ -160,7 +161,7 @@ fn every_hash_is_the_extensions_and_its_signature_verifies() {
 }
 
 /// The published phrase's OpenZeppelin account 0 on the line's network.
-fn account(host: &Host, network: NetworkId) -> Account {
+pub(crate) fn account(host: &Host, network: NetworkId) -> Account {
     let public_key = host.public_key();
     let deployment = Deployment {
         class_hash: f(OZ_CLASS),
@@ -176,7 +177,7 @@ fn account(host: &Host, network: NetworkId) -> Account {
     }
 }
 
-fn reply(id: u64, recorded: &Value) -> StepReply {
+pub(crate) fn reply(id: u64, recorded: &Value) -> StepReply {
     let mut body = recorded.clone();
     body["id"] = json!(id);
     StepReply::Rpc {
@@ -198,7 +199,7 @@ fn assert_body(sent: &str, recorded: &Value, name: &str) {
     assert_eq!(sent["params"], params, "{name}: {}", recorded["method"]);
 }
 
-fn rpc(step: &SendStep) -> (u64, &str) {
+pub(crate) fn rpc(step: &SendStep) -> (u64, &str) {
     match step {
         SendStep::Rpc { id, body, .. } => (*id, body.as_str()),
         other => panic!("expected a request, got {other:?}"),
@@ -390,53 +391,4 @@ fn every_maturity_case_is_the_proving_block_wait() {
         assert_eq!(wait.prior_accepted_block(), stored, "{name}");
     }
     assert!(capped);
-}
-
-/// A prior write that reverted stops the plan at `Confirm`'s wait: nothing is estimated again or
-/// signed ("strk20 services unavailable" is the core's `PreparationUnavailable`).
-#[test]
-fn a_failed_wait_stops_the_plan_before_signing() {
-    let line = &of_kind("rpc")[1];
-    assert!(proof(line).is_some());
-    let host = Host::new();
-    let account = account(&host, network(line));
-    let calls = calls(line);
-    let pool = calls.last().unwrap().contract_address;
-    let prior = Felt::from(0x5afe_u32);
-    let submission = ProofSubmission {
-        proof: proof(line).unwrap(),
-        prior: Some(PriorWrite::Submitted(prior)),
-        maturity: MATURITY,
-    };
-    let context = ReviewContext::default();
-    let invoke = Invoke::reviewed(&account, calls, &bramble_core::SEND_POLICY, &context)
-        .unwrap()
-        .with_proof(&pool, submission)
-        .unwrap();
-    let mut plan = Plan::new(
-        account,
-        Kind::Invoke(Box::new(invoke)),
-        bramble_core::SEND_POLICY,
-    );
-    let review = line["review"].as_array().unwrap();
-    let mut step = plan.advance(&host, StepReply::Start).unwrap();
-    while let SendStep::Rpc { id, body, .. } = &step {
-        let method = serde_json::from_str::<Value>(body).unwrap()["method"].clone();
-        let recorded = review
-            .iter()
-            .find(|e| e["body"]["method"] == method)
-            .unwrap();
-        step = plan.advance(&host, reply(*id, &recorded["reply"])).unwrap();
-    }
-    let step = plan.advance(&host, StepReply::Confirm).unwrap();
-    let (id, body) = rpc(&step);
-    assert_eq!(body, rpc_bodies::transaction_status(id, &prior));
-    let reverted = json!({"jsonrpc": "2.0", "result": {"execution_status": "REVERTED", "finality_status": "ACCEPTED_ON_L2"}});
-    let step = plan.advance(&host, reply(id, &reverted)).unwrap();
-    let SendStep::Failed { failure } = step else {
-        panic!("{step:?}");
-    };
-    assert_eq!(failure.code, Code::PreparationUnavailable);
-    assert_eq!(failure.hash, None);
-    assert_eq!(plan.signatures_made(), 0);
 }

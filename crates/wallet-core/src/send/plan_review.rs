@@ -118,6 +118,11 @@ impl Plan {
                     // The probe just made is the deployment estimate's own read.
                     return self.read_deploy_nonce_if_deployable();
                 }
+                // A proof exists only for a deployed account (the extension proves once the
+                // account's class is visible): never bundle a deployment with one.
+                if self.invoke_proof().is_some() {
+                    return self.fail(SendFailureCode::PreparationUnavailable, None);
+                }
                 // `refuseUndeployedBraavos`: Braavos deploys only through its own reviewed
                 // deployment, never inside a send; the base class cannot deploy at all.
                 if self.account.is_braavos() {
