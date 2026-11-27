@@ -39,6 +39,7 @@ pub mod host;
 pub mod js;
 pub mod kms;
 pub mod ledger;
+pub mod nft;
 pub mod nostr;
 pub mod portfolio;
 pub mod privacy;
