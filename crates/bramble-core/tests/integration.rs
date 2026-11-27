@@ -95,6 +95,7 @@ mod multisig_tx_export;
 mod multisig_tx_refresh;
 mod multisig_tx_refusals;
 mod multisig_tx_stale;
+mod nfts_watched_parity;
 mod nostr_coordination_parity;
 mod nostr_multisig_parity;
 mod parity;

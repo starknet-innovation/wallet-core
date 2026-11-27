@@ -139,7 +139,10 @@ blocks, `gasless_reads_parity.rs` the rest; the lines the core departs from, its
 (every line: `dapp_request_parity.rs` its `request` block, `dapp_connect_parity.rs` `connect`,
 `grants` and `queue`, `dapp_sites_parity.rs` `site`, `feedParse` and `feed`,
 `dapp_typed_data_parity.rs` `typedData` and `outside`, `dapp_sign_parity.rs` `sign`; each case the core departs from is listed
-there with its reason and asserted as a departure).
+there with its reason and asserted as a departure), and `extension-nfts.jsonl`'s `watched` block,
+`addNft` and `watchAsset` (`nfts_watched_parity.rs`: the page's reader, then the store, with the
+recorded node replies as the ownership verdict; the
+`gallery candidates`' `indexed` and `merged` and its other blocks wait for the rest of P17).
 `extension-privacy-copy.json` is the source of
 Bramble's generated Swift and Kotlin privacy copy; no Rust function returns those sentences, so
 no test here reads it. `extension-multisig-transactions.json` is read by
@@ -149,7 +152,7 @@ proposal's summary as the intent card's call line, and the first signer change o
 all of `-signers.json` and the `calls` part of `-refusals.json`; `multisig_deploy_parity.rs` its
 `deploySubmit` part and `multisig_refusals_parity.rs` every other part
 (`multisig_import_mechanism.rs` builds on its `readyIntent` and `account`). See
-[P1](../../../../docs/PLAN.md#mobile-parity). `extension-nfts.jsonl` waits for P17's port; no test reads it yet. The rest sit
+[P1](../../../../docs/PLAN.md#mobile-parity). The rest sit
 here unused until their Phase 2 step moves the matching mobile parity test in (see `docs/PLAN.md`,
 Phase 1).
 
