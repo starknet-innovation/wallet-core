@@ -307,6 +307,22 @@ impl Invoke {
         self
     }
 
+    /// Respells the first call's review line, for the crate's own builders whose extension
+    /// counterpart reviewed calldata it had already compiled (an NFT send). The batch line follows.
+    #[must_use]
+    pub(crate) fn with_first_call_summary(mut self, summary: String) -> Self {
+        if let Some(call) = self.reviewed.first_mut() {
+            call.summary = summary;
+        }
+        let summaries: Vec<&str> = self
+            .reviewed
+            .iter()
+            .map(|call| call.summary.as_str())
+            .collect();
+        self.summary = batch_line(&summaries, MAX_SUMMARY_LENGTH, "");
+        self
+    }
+
     /// Names the payee of the activity row, for the crate's own builders (an NFT send): a dapp's
     /// batch names none.
     #[must_use]

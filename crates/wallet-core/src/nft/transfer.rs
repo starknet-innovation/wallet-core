@@ -9,6 +9,7 @@
 //! line with the recipient as its payee, and names no amount or token, as the extension's does.
 
 use super::NftStandard;
+use crate::js::felt::address_label;
 use crate::send::calls::Call;
 use crate::send::invoke::{Invoke, InvokeRefusal};
 use crate::send::review_flags::ReviewContext;
@@ -125,8 +126,20 @@ pub fn prepare_transfer(
         known_contracts: std::slice::from_ref(&request.contract),
         ..*review
     };
-    Ok(Invoke::reviewed(account, vec![call], policy, &review)?
-        .with_activity_counterparty(recipient))
+    let invoke = Invoke::reviewed(account, vec![call], policy, &review)?;
+    // `prepareNftTransfer` reviews `CallData.compile`'s calldata, which is decimal, and
+    // `addressLabel` passes a non-hex spelling through: the line names the recipient in decimal.
+    let label = format!(" to {}", address_label(&felt::canonical(&recipient)));
+    let line = invoke
+        .calls()
+        .first()
+        .and_then(|call| call.summary.strip_suffix(&label))
+        .map(|head| format!("{head} to {recipient}"));
+    let invoke = match line {
+        Some(line) => invoke.with_first_call_summary(line),
+        None => invoke,
+    };
+    Ok(invoke.with_activity_counterparty(recipient))
 }
 
 #[cfg(test)]

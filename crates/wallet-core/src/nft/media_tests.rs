@@ -79,12 +79,47 @@ fn spells_the_url_as_the_parser_prints_it() {
         image("https://cdn.example:8443/a"),
         "https://cdn.example:8443/a"
     );
-    // Credentials, and spellings the parser would rewrite, are dropped rather than repaired.
-    assert_eq!(image("https://user:pw@cdn.example/a.png"), "");
-    assert_eq!(image("https://cdn.example/a/../b.png"), "");
-    assert_eq!(image("https://cdn.example:443/a.png"), "");
-    assert_eq!(image("https://2130706433/a.png"), "");
-    assert_eq!(image("https://0x7f000001/a.png"), "");
+    // Respelled as `new URL(...).href` respells them, as the extension shows them.
+    for (url, href) in [
+        (
+            "https://cdn.example/a/../b.png",
+            "https://cdn.example/b.png",
+        ),
+        ("https://cdn.example:443/a.png", "https://cdn.example/a.png"),
+        (
+            "https://cdn.example/My Art.png",
+            "https://cdn.example/My%20Art.png",
+        ),
+        (
+            "https://cdn.example/{id}.png",
+            "https://cdn.example/%7Bid%7D.png",
+        ),
+        (
+            "https://cdn.example/a.png#v2",
+            "https://cdn.example/a.png#v2",
+        ),
+        (
+            "ipfs://bafy/{id}.png",
+            "https://ipfs.io/ipfs/bafy/%7Bid%7D.png",
+        ),
+        ("ipfs://bafy/../../x.png", "https://ipfs.io/x.png"),
+    ] {
+        assert_eq!(image(url), href, "{url}");
+    }
+    // Credentials, and a private host in any spelling the parser reads as an address.
+    for url in [
+        "https://user:pw@cdn.example/a.png",
+        "https://2130706433/a.png",
+        "https://0x7f000001/a.png",
+        "https://127.1/a.png",
+        "https://0300.0250.1.1/a.png",
+        // `Number("1e2")` is 100: the extension's check reads this name as 10.0.0.100.
+        "https://10.0.0.1e2/a.png",
+        // A host only IDNA reads is dropped (`js::url`).
+        "https://ä.example/a.png",
+    ] {
+        assert_eq!(image(url), "", "{url}");
+    }
     let long = format!("https://cdn.example/{}", "a".repeat(URL));
     assert_eq!(image(&long), "");
 }
