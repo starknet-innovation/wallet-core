@@ -36,10 +36,15 @@ the extension's Ledger client against app-starknet 2.4.3 (the pinned Nano S+ ELF
 needs Docker and the vendored app and nothing checks it for drift. Its two `plan` signatures are
 over hashes the core's plan printed (`ledger_parity.rs`'s ignored `print_plan_hashes`), not the
 extension's; its second `version` line is a reply the generator wrote (`recorded: false`).
-A second exception: `extension-strk20-primitives.json`, `extension-strk20-shadow.json` and
-`extension-strk20-jobs.jsonl` (the STRK20 SDK port, #182) come from the branch
-`mobile/strk20-port-fixtures` in Bramble, cut from `feature/mobile-wallet` at `7a7713f14` and not
-yet merged there, all three as of commit `f57fb8370b0254a2054c4f66a86729e0a60f2893`: the
+A third exception: `extension-nfts.jsonl` (P17's generator) is from Bramble
+`dd85d9ae8d179fed0d47e3c8bf2df520918b5c8f` (`fixtures/g-nft`, on `feature/mobile-wallet` at
+`232e21510`), which adds `scripts/mobile-parity-nfts/` and changes no other code (two test-support
+headers gain a note); byte-identical to its copy there.
+A fourth exception: `extension-strk20-primitives.json`, `extension-strk20-shadow.json` and
+`extension-strk20-jobs.jsonl` (the STRK20 SDK port, #182) come from Bramble's
+`mobile/strk20-port-fixtures`, cut from `feature/mobile-wallet` at `7a7713f14` and merged there as
+`f88a40d2e56d2175adbd97a10f1297c50f7930ba` (#1075), byte-identical at that merge; all three as of
+commit `f57fb8370b0254a2054c4f66a86729e0a60f2893`: the
 primitives unchanged since `ea886ca115a058626cbbace946d79ecb8969f72d`, the shadow-account and
 invoke vectors unchanged since `6f22fb539`, and the jobs keeping the first 27 lines of
 `533cbeeae5da69c7310910c5997cd4e05b1da50c` byte for byte, then 12 for the invoke phase and
@@ -48,7 +53,7 @@ shadow-account reads marked by a `kind`, then 12 more (S7, those 39 lines byte f
 multisig lines (`mobile-strk20-batches-multisig.ts`; 4 jobs carrying `inputs.multisig` and a
 `multisig` record, and a co-signer review and the authorization refusals marked by a
 `multisig-*` `kind`) and 6 single-signer jobs (repeated recipients, deposits beside spent notes,
-a moved `block_ref`); 51 lines in all. This line moves to the merge commit when it is. They record the vendored SDK at Bramble's pin
+a moved `block_ref`); 51 lines in all. They record the vendored SDK at Bramble's pin
 (`b40bf109`, `0.14.3-rc.8`, whose `sdk/src` equals `fcc7c90`): the primitives from `sdk/src`
 directly, the jobs through the extension's `prepareWith` over the bundle with
 `crypto.getRandomValues`, `fetch` and `Date.now` stubbed. The discovery, nonce and prover replies in
@@ -111,6 +116,7 @@ Generators are under `scripts/` in Bramble; each fixture's is reached from
 | `vault-v13-to-v14.json` | `generate-mobile-parity-vectors.ts` (`mobile-parity-vault-full.ts`) | `58e4671a1ebe15bef6159df851211390de48c11b42537c8d6fb2e70290067565` |
 | `extension-gasless.jsonl` | `mobile-parity-gasless/` | `c232ecadeb65c8dc36e64d3b51a091eb63c8923698f8d686b269845e4d9e45c7` |
 | `extension-dapp.jsonl` | `mobile-parity-dapp/` | `4fa29896a551736d6f8bcb9dda21819b5077df8e6ad1cf15d3bcf2e6d50d9ef5` |
+| `extension-nfts.jsonl` | `mobile-parity-nfts/` | `64d78a451ba193fbabd603e149fa6a89ad0009bb29ea2ab5fb047287d67c3591` |
 | `extension-ledger.jsonl` | `mobile-ledger-speculos.ts` (`bun run mobile:ledger`) | `944d70116b7606ee1b6a0087dd578132153a26c63b9550e56af267766f201b5d` |
 
 Read today: `extension-parity.json` (`parity.rs`, `vault_parity.rs`),
@@ -154,7 +160,10 @@ blocks, `gasless_reads_parity.rs` the rest; the lines the core departs from, its
 (every line: `dapp_request_parity.rs` its `request` block, `dapp_connect_parity.rs` `connect`,
 `grants` and `queue`, `dapp_sites_parity.rs` `site`, `feedParse` and `feed`,
 `dapp_typed_data_parity.rs` `typedData` and `outside`, `dapp_sign_parity.rs` `sign`; each case the core departs from is listed
-there with its reason and asserted as a departure).
+there with its reason and asserted as a departure), and `extension-nfts.jsonl`'s `watched` block,
+`addNft` and `watchAsset` (`nfts_watched_parity.rs`: the page's reader, then the store, with the
+recorded node replies as the ownership verdict; the
+`gallery candidates`' `indexed` and `merged` and its other blocks wait for the rest of P17).
 `extension-privacy-copy.json` is the source of
 Bramble's generated Swift and Kotlin privacy copy; no Rust function returns those sentences, so
 no test here reads it. `extension-multisig-transactions.json` is read by
@@ -164,7 +173,7 @@ proposal's summary as the intent card's call line, and the first signer change o
 all of `-signers.json` and the `calls` part of `-refusals.json`; `multisig_deploy_parity.rs` its
 `deploySubmit` part and `multisig_refusals_parity.rs` every other part
 (`multisig_import_mechanism.rs` builds on its `readyIntent` and `account`). See
-[P1](../../../../docs/PLAN.md#mobile-parity). The rest sit
+[P1](../../../../docs/PLAN.md#mobile-parity). `extension-nfts.jsonl` waits for P17's port; no test reads it yet. The rest sit
 here unused until their Phase 2 step moves the matching mobile parity test in (see `docs/PLAN.md`,
 Phase 1).
 

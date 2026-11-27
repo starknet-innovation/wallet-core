@@ -642,13 +642,16 @@ Foundations, which the features need, and Ledger, which needs only the first:
     closes it if it is not the dashboard, reads the OS, reopens Starknet, and checks the model
     and version against `LEDGER_OS_MIN`. After each close or open, the host reconnects to the same
     device when the step asks it to.
-  Deliberate departures from the extension: the app version is read on every signature. Three
-  more are refused today and go, since the product owner decided on 2026-11-27 that Ledger
-  matches the extension: a Braavos Ledger account's deployment and adding one (the extension
-  proves one live on chain first); a Ledger account's privacy reads
-  (`PrivacyError::LedgerAccount`; the extension signs for the viewing key on the device); and
-  Nostr coordination, which needs a phrase. A Ledger deployer signs an Argent multisig's
-  deployment on its device (#138).
+  Deliberate departures from the extension: the app version is read on every signature. A
+  Ledger deployer signs an Argent multisig's deployment on its device (#138).
+  Refused as the extension refuses them (read 2026-11-27 at Bramble `release/v0.10.12`,
+  `c29b13d`, and `main`): a Ledger account's private balances (`PrivacyError::LedgerAccount`;
+  the extension's `strk20-op-context.ts` answers "Private balances are not available for Ledger
+  accounts", and its vault reads a cached `ledgerStrk20ViewingKeys` entry, scheme
+  `ledger-strk20-typed-data-v1`, that nothing but its tests writes: the device ceremony that
+  would derive one is a TODO there, with no typed data defined), and Nostr coordination for a
+  wallet with no phrase (`vault/src/service/nostr.ts`: "Nostr coordination requires a
+  recovery-phrase wallet").
   Merged since `v0.9.0` (2026-11-26):
   - golden transcripts (#162, from Bramble #1061): `extension-ledger.jsonl`, the extension's
     client against app-starknet 2.4.3 under the digest-pinned Speculos image, seeded with the
@@ -669,15 +672,26 @@ Foundations, which the features need, and Ledger, which needs only the first:
     before the execute as for a software account. As in the extension, nothing stops two gasless
     submissions started before either journals from both signing; mobile's `relay_pending` is
     read only when offers are made.
-  Left here: a Ledger account's privacy reads (the vault's cached `ledgerStrk20ViewingKeys`
-  first, then the viewing key signed on the device and cached, as the extension does; a
-  prerequisite for P15 on a Ledger account); a Braavos Ledger account added and deployed once
-  proven live on chain; and Nostr coordination for a Ledger-only wallet, as the extension does it
-  (read the extension first). All three at parity, decided 2026-11-27. Ledger's Bluetooth
-  framing is in the core (`ledger::ble`, D1 amended); later, not needed for parity: Android USB.
-  In Bramble: the screens (connect over each app's Bluetooth shim and the core's framing, pick,
-  sign) are #1072, open, built on `v0.10.0`, so the OS gate (#199) is not yet wired, and its
-  picker refuses Braavos as the core does today.
+  - a Braavos Ledger account (decided 2026-11-27, product owner: parity): added at Ready's
+    scheme and Braavos's deployment class only once its address is deployed or holds a known
+    token (`ledgerStoreRefusal`: `wallet_core::accounts::activity`, the host's reads from
+    `ledger_account_activity_requests`, passed to `create_ledger_wallet` and
+    `add_ledger_account`), and deployed with its extended authorization signed on the device,
+    the parameters' hash then the transaction's, for both estimates and the write
+    (`SignFor::BraavosParams`), as `braavosDeploySignature` asks the device. Tested against the
+    extension's Braavos deployment capture with a scripted device; no golden device transcript
+    for it (a Bramble generator is owed: a Braavos deployment under Speculos).
+  Left here: nothing to port for a Ledger account's private balances or a Ledger-only
+  wallet's Nostr coordination; the extension refuses both (above), so mobile refuses them too
+  until the extension ships them. The P8 asks of 2026-11-27 assumed the extension signs the
+  viewing key on the device and might coordinate without a phrase; it does neither. When the
+  extension defines its viewing-key ceremony (`ledger-strk20-typed-data-v1`: the typed data
+  bound to account, chain and pool), port it here, Krusty deriving the key, before P15 can run
+  on a Ledger account. Ledger's Bluetooth framing is in the core
+  (`ledger::ble`, D1 amended); later, not needed for parity: Android USB. In Bramble: the
+  screens (connect over each app's Bluetooth shim and the core's framing, pick, sign) are
+  #1072, open, built on `v0.10.0`, so the OS gate (#199) is not yet wired, and its picker
+  refuses Braavos, which the core now adds.
 - **P9 Call batches.** `send::Kind` is a transfer, a deployment or a refresh; a single-signer
   account cannot submit arbitrary calls. Swap, staking, a revoke and a dapp's invoke all do. Add
   an invoke kind to `send::plan::Plan` whose review is the one multisig already has
@@ -912,6 +926,9 @@ Features, smallest and least dependent first:
   vendored JavaScript SDK (`scripts/vendor-privacy-sdk.ts`); D3 settled on 2026-11-23 that mobile
   embeds the same pinned SDK (Road to parity), and the spike below says how. D3's amendment
   (2026-11-26, #182) ports the SDK's client to Rust instead: see "P15 port" below.
+  A Ledger account is refused throughout, as the extension refuses it (`strk20-op-context.ts`,
+  `strk20-register-ops.ts`, `strk20-approval-staging.ts`: "Private balances are not available
+  for Ledger accounts"); see P8.
 
   **P15 spike findings (2026-11-23).** Read from Bramble `main` (`a01b240c`) and
   `starkware-libs/starknet-privacy` at the extension's pin (`b40bf109`); nothing was built or run.
@@ -1418,6 +1435,28 @@ Features, smallest and least dependent first:
   - *Order.* Generator first (G-NFT, Bramble: discovery replies, metadata cases, re-proof
     outcomes and both transfers through the extension's own code), then the core and its
     export, then the screens (M-NFT). About P12's size.
+  - *Status (2026-11-27).* PRs open, none merged:
+    - G-NFT: Bramble #1077.
+    - Fixtures: #213.
+    - Core: (a) discovery #214, (b) re-proof, token URI and metadata #215, (c) the send #216,
+      (d) the watched list #217.
+    - The export, images only: `ffi_nft*.rs`, with `NFT_POLICY` and `NFT_METADATA_LIMITS`. No
+      animation crosses it, and a watch or a send needs the core's own ownership read.
+
+    Not yet ported:
+    - The gallery's merge of discovered and watched NFTs, with its re-proof and coverage
+      downgrade (`wallet.discoverNfts`). The hosts compose it from the pieces until a core
+      function owns it.
+    - A site's `wallet_watchAsset` for an NFT. Mobile still refuses it; it needs a card in
+      `DappSession`.
+
+    Known departures:
+    - The send card names the recipient as `address_label`; the extension's live code prints
+      it in decimal.
+    - An image URL with a literal `{id}` is dropped rather than respelled. The extension
+      shows it as `%7Bid%7D`.
+
+    M-NFT waits on legal (3.1.1).
 
 - **QR scan for recipients (mobile only).** No client scans a QR code, the extension included:
   it only draws one (`shared/qr.ts`; Receive, the wallet card, multisig funding). The extension

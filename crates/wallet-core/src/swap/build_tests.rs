@@ -271,6 +271,7 @@ fn a_prepared_swap_hands_the_plan_its_router_approval_and_its_asset() {
         invoke.pending_kind(),
         PendingKind::Invoke {
             asset: Some(asset),
+            counterparty: None,
             allowances: vec![approval],
         }
     );

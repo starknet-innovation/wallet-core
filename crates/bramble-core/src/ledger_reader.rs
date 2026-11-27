@@ -152,9 +152,11 @@ pub struct LedgerCandidate {
 }
 
 /// `deriveLedgerAccounts`: each of up to five keys placed as a `family` account on `network`, at
-/// Bramble's class, under the scheme each key was read at, so a key can never be placed at another
-/// scheme's path. Refuses a page whose keys were read at different schemes, Braavos, a key that is
-/// not a non-zero felt, and an index of 2^31 or more, as `add_ledger_account` would.
+/// Bramble's class (Braavos's deployment class for Braavos), under the scheme each key was read
+/// at, so a key can never be placed at another scheme's path. Refuses a page whose keys were read
+/// at different schemes, Braavos at Bramble's scheme, a key that is not a non-zero felt, and an
+/// index of 2^31 or more, as `add_ledger_account` would. The picker reads a Braavos candidate's
+/// state with `ledger_account_activity_requests` (`ledgerCandidateSelectable`).
 #[uniffi::export]
 pub fn ledger_account_candidates(
     network: NetworkId,

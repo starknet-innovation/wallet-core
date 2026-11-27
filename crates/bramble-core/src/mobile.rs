@@ -46,6 +46,10 @@ mod dapp_sites;
 mod dapp_watch;
 mod ffi_coordination;
 mod ffi_coordination_sync;
+mod ffi_nft;
+mod ffi_nft_read;
+mod ffi_nft_send;
+mod ffi_nft_watched;
 mod ffi_nostr_multisig;
 mod ffi_staking;
 mod ffi_staking_action;
@@ -125,6 +129,14 @@ pub use dapp_sign_read::DappSignStep;
 pub use ffi_coordination::{
     CoordinationSyncOutcome, CoordinationSyncStep, NostrSyncPlan, RelayPolicy,
 };
+pub use ffi_nft::{
+    nft_metadata_judge, NftAttribute, NftCandidateView, NftCoverage, NftDiscoveryRequest,
+    NftDiscoveryStart, NftDiscoveryView, NftError, NftMetadata, NftMetadataSource,
+    NftOwnershipView, NftStandard,
+};
+pub use ffi_nft_read::{NftOwnershipRead, NftTokenUriRead};
+pub use ffi_nft_send::NftTransfer;
+pub use ffi_nft_watched::WatchedNft;
 pub use ffi_nostr_multisig::{
     argent_multisig_normalize, argent_multisig_predict, argent_signer_guid, multisig_limits,
     nostr_relay_url_normalize, wallet_contact_card_encode, wallet_contact_card_parse,
@@ -145,7 +157,7 @@ pub use ledger_os_gate::{LedgerOsGate, LedgerOsStep};
 pub use ledger_reader::{
     ledger_account_candidates, LedgerCandidate, LedgerKey, LedgerKeyReader, LedgerReadStep,
 };
-pub use ledger_wallet::LedgerAccountRequest;
+pub use ledger_wallet::{ledger_account_activity_requests, LedgerAccountRequest};
 pub use multisig_rpc::{MultisigAuthorityRead, MultisigAuthorityStatus, MultisigStateRead};
 pub use multisig_tx::{
     ConfigChange, IntentState, MultisigCall, MultisigCallReview, MultisigIntent,

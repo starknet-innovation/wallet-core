@@ -77,6 +77,7 @@ pub fn remove_all(dir: &Path) -> Result<(), CoreError> {
         COORDINATION,
         MULTISIG_INTENTS,
         crate::dapp::ORIGIN_HISTORY_FILE,
+        crate::ffi_nft_watched::NFT_FILE,
     ]
     .into_iter()
     .try_for_each(|file| remove(dir, file))

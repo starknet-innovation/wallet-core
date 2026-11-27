@@ -33,13 +33,18 @@ pub fn transfers_request(
     policy: &HistoryPolicy,
 ) -> HttpRequest {
     let address = canonical_felt(account_id_address(account_id)).unwrap_or_default();
+    starkscan_get(format!(
+        "{}/{}/transfers?limit={MAX_HISTORY_ENTRIES}&address={address}",
+        policy.explorer_api_base,
+        network_code(network)
+    ))
+}
+
+/// A Starkscan GET as the explorer lane sends it: JSON only, no key, bounded.
+pub(crate) fn starkscan_get(url: String) -> HttpRequest {
     HttpRequest {
         method: HttpMethod::Get,
-        url: format!(
-            "{}/{}/transfers?limit={MAX_HISTORY_ENTRIES}&address={address}",
-            policy.explorer_api_base,
-            network_code(network)
-        ),
+        url,
         headers: vec![HttpHeader {
             name: "accept".into(),
             value: "application/json".into(),
@@ -48,6 +53,16 @@ pub fn transfers_request(
         max_body_bytes: STARKSCAN_BODY_LIMIT,
         deadline_ms: STARKSCAN_DEADLINE_MS,
     }
+}
+
+/// A Starkscan reply's JSON: `None` for a failed exchange, a status outside 2xx, an oversized
+/// body (checked before it is parsed) or text that is not JSON.
+pub(crate) fn starkscan_json(outcome: &HttpOutcome) -> Option<JsValue> {
+    let body = outcome.body.as_ref()?;
+    if !(200..300).contains(&outcome.status) || body.len() as u64 > STARKSCAN_BODY_LIMIT {
+        return None;
+    }
+    json::parse(&json::decode_utf8(body))
 }
 
 /// `parseRetryAfterMilliseconds`. HTTP dates are read in the IMF-fixdate form only
@@ -118,19 +133,19 @@ struct Transfer {
     token_decimals: Option<f64>,
 }
 
-fn string_value(value: Option<&JsValue>, max: usize) -> Option<String> {
+pub(crate) fn string_value(value: Option<&JsValue>, max: usize) -> Option<String> {
     let text = value?.as_str()?;
     (utf16_len(text) <= max).then(|| text.to_string())
 }
 
-fn nullable_string(value: Option<&JsValue>, max: usize) -> Option<Option<String>> {
+pub(crate) fn nullable_string(value: Option<&JsValue>, max: usize) -> Option<Option<String>> {
     match value? {
         JsValue::Null => Some(None),
         other => string_value(Some(other), max).map(Some),
     }
 }
 
-fn integer_value(value: Option<&JsValue>) -> Option<f64> {
+pub(crate) fn integer_value(value: Option<&JsValue>) -> Option<f64> {
     let n = value?.as_f64()?;
     (is_safe_integer(n) && n >= 0.0).then_some(if n == 0.0 { 0.0 } else { n })
 }
@@ -159,7 +174,7 @@ fn nullable_decimal(value: Option<&JsValue>) -> Option<Option<String>> {
     }
 }
 
-fn felt_value(value: Option<&JsValue>) -> Option<String> {
+pub(crate) fn felt_value(value: Option<&JsValue>) -> Option<String> {
     let text = string_value(value, 68)?;
     canonical_felt(&text).filter(|c| is_stark_field_element(c))?;
     Some(text)
@@ -302,11 +317,7 @@ pub fn transfers_to_activity(
     tokens: &[TokenConfig],
     policy: &HistoryPolicy,
 ) -> Option<Vec<ActivityEntry>> {
-    let body = outcome.body.as_ref()?;
-    if !(200..300).contains(&outcome.status) || body.len() as u64 > STARKSCAN_BODY_LIMIT {
-        return None;
-    }
-    let page = parse_page(&json::parse(&json::decode_utf8(body))?)?;
+    let page = parse_page(&starkscan_json(outcome)?)?;
     let mut rows: Vec<ActivityEntry> = Vec::new();
     for entry in page
         .iter()

@@ -9,6 +9,7 @@ use starknet_types_core::felt::Felt;
 use crate::js::big::parse_bigint;
 use crate::js::json::JsValue;
 use crate::js::num::utf16_len;
+pub use crate::nft::NftStandard;
 
 /// An asset a page asks the wallet to track.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,12 +27,6 @@ pub enum WatchAsset {
         /// A u256, in decimal.
         token_id: String,
     },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NftStandard {
-    Erc721,
-    Erc1155,
 }
 
 /// `isSafeDecimals`'s bound.
