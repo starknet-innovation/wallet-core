@@ -11,6 +11,7 @@ mod read;
 pub mod reproof;
 mod starkscan;
 pub mod token_uri;
+pub mod transfer;
 
 pub use read::ReadStep;
 
