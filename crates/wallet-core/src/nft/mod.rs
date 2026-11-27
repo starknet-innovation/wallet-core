@@ -5,7 +5,14 @@
 
 pub mod discovery;
 mod indexer;
+pub mod media;
+pub mod metadata;
+mod read;
+pub mod reproof;
 mod starkscan;
+pub mod token_uri;
+
+pub use read::ReadStep;
 
 use crate::send::u256::U256;
 use crate::Felt;

@@ -47,9 +47,14 @@ fn is_host(host: &str) -> bool {
     }
     let name = host.strip_suffix('.').unwrap_or(host);
     let labels: Vec<&str> = name.split('.').collect();
-    let numeric_tail = labels
-        .last()
-        .is_some_and(|label| label.bytes().all(|b| b.is_ascii_digit()));
+    // WHATWG's "ends in a number": decimal, or `0x` hex (`0x7f000001` is 127.0.0.1 to the
+    // parser and to `inet_aton`), so only a plain dotted quad may end that way.
+    let numeric_tail = labels.last().is_some_and(|label| {
+        label.bytes().all(|b| b.is_ascii_digit())
+            || label
+                .strip_prefix("0x")
+                .is_some_and(|hex| hex.bytes().all(|b| b.is_ascii_hexdigit()))
+    });
     if numeric_tail {
         return is_dotted_quad(name);
     }
@@ -318,6 +323,9 @@ mod tests {
             "https://rpc.example?q=1",
             "https://rpc.example/?q='x'",
             "https://réseau.example",
+            "https://0x7f000001/rpc",
+            "https://a.0x7f/rpc",
+            "https://rpc.0x",
             "https://",
             "http://rpc.example",
             "http://10.0.0.1:5050",
