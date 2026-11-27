@@ -19,8 +19,6 @@ use bramble_core::{
 };
 use send_support::*;
 use serde_json::{json, Value};
-use starknet_wallet_core::js::felt::address_label;
-use starknet_wallet_core::Felt;
 
 fn case(block: &str, name: &str) -> Value {
     include_str!("fixtures/extension-nfts.jsonl")
@@ -145,15 +143,7 @@ fn discovery_reproof_and_metadata_through_the_export() {
         match metadata {
             None => assert_eq!(nft["artUnavailable"], json!(true)),
             Some(metadata) => {
-                // Departure (`media.rs`): the core drops a URL the WHATWG parser would respell
-                // rather than respell it, so `{id}` left in an image is no image here, where the
-                // extension shows `%7Bid%7D`.
                 let image = nft["image"].as_str().unwrap();
-                let image = if image.contains("%7Bid%7D") {
-                    ""
-                } else {
-                    image
-                };
                 assert_eq!(
                     (metadata.name.as_str(), metadata.image.as_str()),
                     (nft["name"].as_str().unwrap(), image)
@@ -274,18 +264,10 @@ fn an_nft_send_is_planned_and_reviewed_as_the_extension_does() {
             "{name}"
         );
         let expected = &case["review"]["reply"]["review"];
-        // Departure: the extension's decoder reads starknet.js's decimal calldata, so its line
-        // names the recipient in decimal; the core names it as every address is shown
-        // (`address_label`).
-        let [text] = expected["summaryTexts"].as_array().unwrap().as_slice() else {
-            panic!("{name}: one call");
-        };
-        let decimal = text["facts"]["to"].as_str().unwrap();
-        let label = address_label(&format!("{:#x}", Felt::from_dec_str(decimal).unwrap()));
-        let summary = expected["summaries"][0].as_str().unwrap();
+        // The extension's line names the recipient in decimal (it reviews compiled calldata).
         assert_eq!(
             plan.current_review().unwrap().summary,
-            summary.replace(decimal, &label),
+            expected["summaries"][0].as_str().unwrap(),
             "{name}"
         );
         assert_eq!(
@@ -372,4 +354,55 @@ fn a_watch_is_stored_only_from_a_read_that_found_the_token() {
         core.nft_indexer_url().unwrap().as_deref(),
         Some("https://indexer.example/api")
     );
+}
+
+#[test]
+fn a_lock_voids_a_read_and_closes_the_watched_list() {
+    let case = case(
+        "discover",
+        "Starkscan candidates re-proved: owned kept, someone else's dropped",
+    );
+    let (_dir, core) = wallet();
+    let account = oz_id(&core, NetworkId::Mainnet, 0);
+    let read = core
+        .nft_ownership_read(
+            account,
+            "0x7a11ce5e1f2d3c4b5a69788796a5b4c3d2e1f0a1b2c3d4e5f60718293a4b5c6".into(),
+            "1".into(),
+        )
+        .unwrap();
+    drive(
+        || read.next_calls(),
+        |reply| read.accept(reply),
+        &case["exchanges"],
+    );
+    core.lock();
+    let locked = "wallet is locked";
+    assert_eq!(core.watched_nfts().err().unwrap().to_string(), locked);
+    assert_eq!(core.nft_indexer_url().err().unwrap().to_string(), locked);
+    assert_eq!(core.nfts_shown().err().unwrap().to_string(), locked);
+    assert_eq!(
+        core.set_nfts_shown(false).err().unwrap().to_string(),
+        locked
+    );
+    assert_eq!(
+        core.remove_nft("x".into()).err().unwrap().to_string(),
+        locked
+    );
+    assert_eq!(
+        core.set_nft_spam("x".into(), true)
+            .err()
+            .unwrap()
+            .to_string(),
+        locked
+    );
+    let set = core.set_nft_indexer_url("https://indexer.example".into());
+    assert_eq!(set.err().unwrap().to_string(), locked);
+    // A read made before the lock proves nothing in the next session.
+    core.unlock(PASSWORD.into()).unwrap();
+    assert_eq!(
+        core.watch_nft(read, None).err().unwrap().to_string(),
+        locked
+    );
+    assert!(core.watched_nfts().unwrap().is_empty());
 }

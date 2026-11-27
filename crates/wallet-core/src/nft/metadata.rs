@@ -88,7 +88,9 @@ pub fn resolve_metadata_uri(uri: &str, limits: &NftMetadataLimits) -> MetadataSo
         );
     }
     let url = normalize_image_url(uri, limits.url_length, limits.art_data_uri_length);
-    if url.is_empty() {
+    // A padded `data:` image URI also passes that rule; the extension would `fetch` it, but a
+    // fetch here is an `https` GET only, so it reads as no metadata.
+    if !url.starts_with("https://") {
         return MetadataSource::Resolved(None);
     }
     MetadataSource::Fetch(HttpRequest {

@@ -1450,11 +1450,12 @@ Features, smallest and least dependent first:
     - A site's `wallet_watchAsset` for an NFT. Mobile still refuses it; it needs a card in
       `DappSession`.
 
-    Known departures:
-    - The send card names the recipient as `address_label`; the extension's live code prints
-      it in decimal.
-    - An image URL with a literal `{id}` is dropped rather than respelled. The extension
-      shows it as `%7Bid%7D`.
+    Matched by decision (2026-11-27): the send names its recipient in decimal, as the
+    extension's live send does, and art and metadata URLs are read as `new URL` reads them and
+    shown as its `href` (`js::url`).
+
+    Known departure: a host only IDNA can read (non-ASCII, or an `xn--` label) is dropped. The
+    extension shows it in punycode.
 
     M-NFT waits on legal (3.1.1).
 

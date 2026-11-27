@@ -204,6 +204,15 @@ fn an_empty_uri_is_no_answer_and_a_null_result_is_transport() {
         body: Some(r#"{"jsonrpc":"2.0","id":1,"result":null}"#.into()),
     };
     assert_eq!(read.judge(&null, 2), ReadStep::Transport);
+    // `response.every` throws on an object, so the extension fails over to the next endpoint.
+    let mut again = super::tests::read(1);
+    again.start(1);
+    let object = RpcReply {
+        id: 1,
+        status: 200,
+        body: Some(r#"{"jsonrpc":"2.0","id":1,"result":{}}"#.into()),
+    };
+    assert_eq!(again.judge(&object, 2), ReadStep::Transport);
 }
 
 #[test]
