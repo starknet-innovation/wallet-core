@@ -9,3 +9,7 @@ pub enum NftStandard {
     Erc721,
     Erc1155,
 }
+
+pub mod watched;
+
+pub use watched::{NftTarget, WatchedNft, WatchedNfts};
