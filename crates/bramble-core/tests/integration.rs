@@ -123,6 +123,7 @@ mod stark_name_parity;
 mod strk20_compiler_parity;
 mod strk20_discovery_parity;
 mod strk20_invocation_parity;
+mod strk20_invoke_parity;
 mod strk20_job_parity;
 mod strk20_live_smoke;
 mod strk20_live_smoke_config;
