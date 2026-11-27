@@ -84,6 +84,7 @@ fn spells_the_url_as_the_parser_prints_it() {
     assert_eq!(image("https://cdn.example/a/../b.png"), "");
     assert_eq!(image("https://cdn.example:443/a.png"), "");
     assert_eq!(image("https://2130706433/a.png"), "");
+    assert_eq!(image("https://0x7f000001/a.png"), "");
     let long = format!("https://cdn.example/{}", "a".repeat(URL));
     assert_eq!(image(&long), "");
 }
