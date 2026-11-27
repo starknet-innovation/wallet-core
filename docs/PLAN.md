@@ -1340,6 +1340,28 @@ Features, smallest and least dependent first:
   - *Order.* Generator first (G-NFT, Bramble: discovery replies, metadata cases, re-proof
     outcomes and both transfers through the extension's own code), then the core and its
     export, then the screens (M-NFT). About P12's size.
+  - *Status (2026-11-27).* PRs open, none merged:
+    - G-NFT: Bramble #1077.
+    - Fixtures: #213.
+    - Core: (a) discovery #214, (b) re-proof, token URI and metadata #215, (c) the send #216,
+      (d) the watched list #217.
+    - The export, images only: `ffi_nft*.rs`, with `NFT_POLICY` and `NFT_METADATA_LIMITS`. No
+      animation crosses it, and a watch or a send needs the core's own ownership read.
+
+    Not yet ported:
+    - The gallery's merge of discovered and watched NFTs, with its re-proof and coverage
+      downgrade (`wallet.discoverNfts`). The hosts compose it from the pieces until a core
+      function owns it.
+    - A site's `wallet_watchAsset` for an NFT. Mobile still refuses it; it needs a card in
+      `DappSession`.
+
+    Known departures:
+    - The send card names the recipient as `address_label`; the extension's live code prints
+      it in decimal.
+    - An image URL with a literal `{id}` is dropped rather than respelled. The extension
+      shows it as `%7Bid%7D`.
+
+    M-NFT waits on legal (3.1.1).
 
 - **QR scan for recipients (mobile only).** No client scans a QR code, the extension included:
   it only draws one (`shared/qr.ts`; Receive, the wallet card, multisig funding). The extension
