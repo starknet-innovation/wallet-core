@@ -150,6 +150,9 @@ Grep first; extend in place rather than adding a sibling.
   changes and its row's amount and token (`ActivityAsset`) reach the host in the plan's pending
   record (`PendingKind::Invoke`). The approve spellings are `call_decode::{APPROVE,
   APPROVE_SET, DECREASE_ALLOWANCE}` and the approve call is `send::calls::erc20_approve`.
+- A proof-bearing INVOKE (SNIP-36) is `send::proof_invoke` (`Proof`, `check_shape`, `proving_block`,
+  `ProvingWait`, `PriorWrite`, `Maturity`), carried by `Invoke::with_proof` and waited for in
+  `send::plan_proof`; its hash is `sign::invoke_hash_with_proof`, its bodies `InvokeTx::proof`.
 - The Ledger device protocol is `crates/wallet-core/src/ledger/` (APDUs and their replies,
   `LedgerRejection`, `LedgerPath`); one signature, verified against the account's key before it
   can be used, is `ledger::DeviceSigning`. A plan signs a Ledger account through it
@@ -266,6 +269,8 @@ Grep first; extend in place rather than adding a sibling.
   per token by the incoming walk (`incoming::SpendableNotes`). Bramble's placeholder
   grammar, origin-bound shadow scope, scan limits and multisig redaction marker
   (`MULTISIG_STRK20_REDACTED_FELT`) are `bramble-core`'s `strk20.rs`.
+  A judged proof is submitted through the send plan (`send::proof_invoke`, which owns `Proof`
+  and `APPLY_ACTIONS`; `proof.rs` re-exports them), never a second submit path.
 - Nostr relay work lives beside the keys in `crates/wallet-core/src/nostr/`: the relay-URL
   grammar (`relay_url::is_nostr_relay_url`, which a custom RPC URL shares as
   `is_custom_rpc_url`; the endpoint redactor `redact_endpoints` sits beside it), relay selection, frame parsing, gift-wrap batches and

@@ -18,6 +18,7 @@ use super::call_decode::{decode_call, CallKind};
 use super::calls::{execute_calldata, Call};
 use super::multisig_review::{batch_line, is_poisoned, refuse_poisoned, CallReviewError};
 use super::plan::PendingKind;
+use super::proof_invoke::{check_shape, ProofSubmission, SubmissionUnavailable};
 use super::review_flags::{call_flags, dedupe, ReviewContext, RiskFlag};
 use super::types::{Account, Policy};
 use super::u256::U256;
@@ -69,6 +70,7 @@ pub struct Invoke {
     pub(crate) activity_counterparty: Option<Felt>,
     pub(crate) allowances: Vec<AllowanceChange>,
     pub(crate) fee_balance: Option<U256>,
+    pub(crate) proof: Option<ProofSubmission>,
 }
 
 /// The amount and token an activity row names beside its text (`recordSubmittedActivity`'s
@@ -260,6 +262,7 @@ impl Invoke {
             activity_counterparty: None,
             allowances,
             fee_balance: None,
+            proof: None,
         })
     }
 
@@ -338,6 +341,25 @@ impl Invoke {
     pub fn with_fee_balance(mut self, balance: U256) -> Self {
         self.fee_balance = Some(balance);
         self
+    }
+
+    /// Makes the batch a proof-bearing INVOKE (SNIP-36) for the STRK20 pool at `pool`, once it
+    /// passes `submitPrepared`'s shape rule (`proof_invoke::check_shape`). The plan then waits
+    /// for the proving block before its submit-time reads, hashes the proof's facts, and sends the
+    /// proof in the estimate and the write.
+    pub fn with_proof(
+        mut self,
+        pool: &Felt,
+        submission: ProofSubmission,
+    ) -> Result<Self, SubmissionUnavailable> {
+        check_shape(pool, &self.calls, &submission.proof)?;
+        self.proof = Some(submission);
+        Ok(self)
+    }
+
+    /// The proof this batch carries, with the wait before it, when it is proof-bearing.
+    pub fn proof(&self) -> Option<&ProofSubmission> {
+        self.proof.as_ref()
     }
 
     /// The activity text of a dapp's batch: "<origin> submitted N call(s)", N this batch's own

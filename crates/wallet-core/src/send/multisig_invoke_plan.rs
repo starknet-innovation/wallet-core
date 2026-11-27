@@ -233,6 +233,7 @@ impl ProposePlan {
                     nonce: &self.nonce,
                     bounds: None,
                     signature: &self.query_signature,
+                    proof: None,
                 };
                 (
                     rpc_bodies::estimate(id, Some(&query), None, false),
@@ -373,6 +374,7 @@ impl SubmitPlan {
             nonce: &self.nonce,
             bounds: Some(&self.bounds),
             signature: &self.signature,
+            proof: None,
         };
         let body = rpc_bodies::add_invoke(self.next_id, &tx);
         request(

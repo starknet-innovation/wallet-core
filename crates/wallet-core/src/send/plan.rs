@@ -51,18 +51,7 @@ pub trait PlanHost {
     fn explorer_url(&self, hash: &str) -> Option<String>;
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DeploymentFor {
-    Standalone,
-    Invoke(Bounds),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DeploymentPoll {
-    pub hash: Felt,
-    pub bounds: Bounds,
-    pub attempts: u32,
-}
+pub(crate) use super::plan_deploy::{DeploymentFor, DeploymentPoll};
 
 /// Which reply the plan is waiting for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -102,6 +91,8 @@ pub(crate) enum Expect {
         hash: Felt,
         deployment: Option<Felt>,
     },
+    /// A proof-bearing batch's proving-block wait (`plan_proof`).
+    Proving,
     ConfirmStatus,
     RefreshStatus,
     /// The receipt of a transaction that settled with this status, read for its fee.
@@ -114,6 +105,7 @@ pub(crate) use super::plan_probe::Probe;
 pub(crate) enum AfterWait {
     DeployStatus(DeploymentPoll),
     DeployReceipt(DeploymentPoll),
+    Proving,
     Checkpoint,
 }
 
@@ -170,6 +162,8 @@ pub(crate) struct Work {
     /// `Kind::Authorize`: the live account accepts this wallet's signature.
     pub authorized: bool,
     pub checkpoint: usize,
+    /// A proof-bearing batch's proving-block wait, from `Confirm`.
+    pub proving: Option<super::proof_invoke::ProvingWait>,
 }
 
 /// One plan. Dropped on any edit, lock or dismissal; a new plan means a new review.
@@ -390,6 +384,7 @@ impl Plan {
             | Expect::ReviewEstimate
             | Expect::ReviewDeployNonce
             | Expect::ReviewDeployEstimate => self.on_review_reply(host, expect, answer),
+            Expect::Proving => self.on_proving(answer),
             _ => self.on_submit_reply(host, expect, answer),
         }
     }
@@ -398,6 +393,7 @@ impl Plan {
         match after {
             AfterWait::DeployStatus(poll) => self.poll_deployment(poll),
             AfterWait::DeployReceipt(poll) => self.read_deploy_receipt(poll),
+            AfterWait::Proving => self.after_proving_pause(),
             AfterWait::Checkpoint => {
                 let Some(hash) = self.target_hash() else {
                     return self.fail(SendFailureCode::SubmissionIndeterminate, None);

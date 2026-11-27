@@ -62,6 +62,11 @@ a moved `block_ref`); 51 lines in all. They record the vendored SDK at Bramble's
 directly, the jobs through the extension's `prepareWith` over the bundle with
 `crypto.getRandomValues`, `fetch` and `Date.now` stubbed. The discovery, nonce and prover replies in
 the jobs are scripted by the generator, not recorded from a service.
+A sixth exception: `extension-strk20-invoke.jsonl` (the proof-bearing INVOKE, SNIP-36) comes from
+Bramble `a40b82b23` on `mobile/strk20-proof-invoke-fixtures`, not merged yet; its generator,
+`scripts/mobile-strk20-invoke.ts`, runs the extension's `estimateInvokeFee`, `submitPrepared` and
+`provingBlock` against a scripted node, so every node reply is the generator's, and the proof data
+and facts are fake felts. Sepolia's lines use the mainnet pool on the Sepolia chain id.
 Generators are under `scripts/` in Bramble; each fixture's is reached from
 `generate-mobile-parity-vectors.ts`.
 
@@ -90,6 +95,7 @@ Generators are under `scripts/` in Bramble; each fixture's is reached from
 | `extension-strk20-primitives.json` | `generate-mobile-privacy-vectors.ts` (`mobile-strk20-primitives.ts`) | `d375aaebaf5f9d065b75ef29092b21902a56ceb4a66be7daec3206655c9495b4` |
 | `extension-strk20-shadow.json` | `generate-mobile-privacy-vectors.ts` (`mobile-strk20-shadow.ts`) | `fb4d030acc502f4270b0096ca760b7836737b8c178e5a148dd6e10957dab7b56` |
 | `extension-strk20-jobs.jsonl` | `generate-mobile-privacy-vectors.ts` (`mobile-strk20-jobs.ts`) | `1fb30930c343a7ef57189c9de0f315f3659d9decbb2826300f24c55317f80b91` |
+| `extension-strk20-invoke.jsonl` | `generate-mobile-privacy-vectors.ts` (`mobile-strk20-invoke.ts`) | `83f988f09e9b0502a2611e0a932d0a3889a84ddf03bad9d3471e62d0de38ceb9` |
 | `extension-transactions-argent-refusals.json` | `generate-mobile-transaction-vectors.ts` | `f2eb7492ca5425e618b9954b22fc666bf7a2a4645438ba8837a1c3f6b78d2997` |
 | `extension-transactions-argent-upgraded.json` | `generate-mobile-transaction-vectors.ts` | `9d14e829c7c2dfccb940e150984036db18a528ddd65f134763371049981b8156` |
 | `extension-transactions-argent.json` | `generate-mobile-transaction-vectors.ts` | `854103a684d841a7ed2949ac238283d17a934cd7cba9a9d29b522868959edb5f` |

@@ -124,6 +124,7 @@ fn invoke(tx: &Tx) -> InvokeTx<'_> {
         nonce: &tx.nonce,
         bounds: tx.bounds.as_ref(),
         signature: &tx.signature,
+        proof: None,
     }
 }
 

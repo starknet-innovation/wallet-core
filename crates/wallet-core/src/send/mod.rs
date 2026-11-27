@@ -1,5 +1,5 @@
 //! Sending, sans-IO: the mechanism under an ERC-20 transfer, a single-signer call batch
-//! (`invoke`) and an account's own deployment (an Argent multisig's included, `multisig_deploy`).
+//! (`invoke`, proof-bearing through `proof_invoke`) and an account's own deployment (an Argent multisig's included, `multisig_deploy`).
 //! The core builds every JSON-RPC body (`rpc_bodies`) and judges every reply (`judge`); the host
 //! moves bytes. Hashing goes through Krusty (`sign`); signing itself is `kms::sign_stark_hash`.
 //!
@@ -31,8 +31,10 @@ mod plan_deploy;
 pub mod plan_device;
 pub mod plan_gasless;
 pub mod plan_probe;
+mod plan_proof;
 mod plan_review;
 mod plan_submit;
+pub mod proof_invoke;
 pub mod review_flags;
 pub mod rpc_bodies;
 pub mod sign;
