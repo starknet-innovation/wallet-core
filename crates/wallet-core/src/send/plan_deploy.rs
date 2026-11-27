@@ -2,8 +2,9 @@
 //! `ensureAccountDeployed` / `submitAccountDeployment`: re-estimate against the separately
 //! reviewed deployment fee, sign `compute_deploy_account_v3_hash` over the account's own
 //! deployment (OpenZeppelin, Ready, or Braavos with its extended authorization, through the host
-//! or on the account's device), persist the pending record, broadcast once, then wait for ACCEPTED_ON_L2/L1 and the receipt like starknet.js
-//! `waitForTransaction` (bounded at 200 attempts).
+//! or on the account's device), persist the pending record, broadcast once, then wait for
+//! ACCEPTED_ON_L2/L1 and the receipt like starknet.js `waitForTransaction` (bounded at 200
+//! attempts).
 
 use crate::Felt;
 

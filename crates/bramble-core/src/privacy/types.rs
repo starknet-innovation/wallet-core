@@ -211,7 +211,7 @@ pub enum PrivacyError {
     /// A Ledger account, refused as the extension refuses it ("Private balances are not
     /// available for Ledger accounts"): its viewing key would be the device's, and the
     /// extension defines no ceremony that derives one.
-    #[error("private balances of a Ledger account are not read here yet")]
+    #[error("Private balances are not available for Ledger accounts")]
     LedgerAccount,
 }
 
