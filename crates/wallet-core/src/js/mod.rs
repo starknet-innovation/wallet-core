@@ -8,3 +8,4 @@ pub mod json;
 pub mod num;
 pub mod regex;
 pub mod uri;
+pub mod url;

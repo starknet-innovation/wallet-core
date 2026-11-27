@@ -107,7 +107,7 @@ Grep first; extend in place rather than adding a sibling.
   `stark_name.rs`.
 - JavaScript semantics live in `crates/wallet-core/src/js/`: `trim`, UTF-16 lengths and
   `Number` formatting in `js::num` (`js_trim`; `send::calls` re-exports it), `BigInt` in
-  `js::big`, `JSON` in `js::json`, the budgeted regex matcher in `js::regex`, felt helpers over
+  `js::big`, `JSON` in `js::json`, the budgeted regex matcher in `js::regex`, `new URL` over an `https` URL in `js::url` (a private-host check reads its hostname), felt helpers over
   them in `js::felt`. Fixed-UTC dates are `history::time`.
 - Every address or hash shown is spelled by `js::felt::address_label` (`0x0208…98d9`, cut from
   the 64-digit padded spelling) or `address_text` (in full, padded): Bramble's `addressLabel` and
