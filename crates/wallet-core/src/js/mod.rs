@@ -7,3 +7,4 @@ pub mod felt;
 pub mod json;
 pub mod num;
 pub mod regex;
+pub mod uri;
