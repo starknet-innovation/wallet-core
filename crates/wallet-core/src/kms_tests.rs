@@ -142,3 +142,15 @@ fn selectors_are_starknet_keccak() {
         "0x15d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad"
     );
 }
+
+#[test]
+fn short_strings_are_non_empty_ascii_of_at_most_31_bytes() {
+    assert_eq!(
+        encode_short_string("bramble"),
+        Some(Felt::from_hex_unchecked("0x6272616d626c65"))
+    );
+    assert!(encode_short_string(&"a".repeat(31)).is_some());
+    for refused in ["", "é", &"a".repeat(32)] {
+        assert_eq!(encode_short_string(refused), None, "{refused}");
+    }
+}

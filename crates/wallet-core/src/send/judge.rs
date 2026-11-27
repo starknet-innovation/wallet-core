@@ -197,6 +197,15 @@ pub fn call_felts(answer: Option<Answer>) -> Result<Vec<Felt>, bool> {
     }
 }
 
+/// A `starknet_blockNumber` reply: the number, `None` for an error or anything that is not a
+/// non-negative integer.
+pub fn block_number(answer: Option<Answer>) -> Option<u64> {
+    match answer? {
+        Answer::Result(result) => result.as_u64(),
+        Answer::Error { .. } => None,
+    }
+}
+
 /// A `starknet_getBlockWithTxHashes` reply's `timestamp`, with the same error split.
 pub fn block_timestamp(answer: Option<Answer>) -> Result<u64, bool> {
     match answer {
@@ -213,9 +222,17 @@ pub fn block_timestamp(answer: Option<Answer>) -> Result<u64, bool> {
 /// on a nonce it could not read, which is stricter than starknet.js.
 pub fn nonce(answer: Option<Answer>) -> Option<Felt> {
     match answer? {
-        Answer::Result(Value::String(text)) => felt::parse(&text),
-        Answer::Result(_) => None,
         Answer::Error { .. } => Some(Felt::ZERO),
+        answer => deployed_nonce(Some(answer)),
+    }
+}
+
+/// A `starknet_getNonce` reply through `getNonceForAddress`, for a contract that must exist (the
+/// privacy pool): a JSON-RPC error is no nonce, where `getNonceSafe` would read it as 0.
+pub fn deployed_nonce(answer: Option<Answer>) -> Option<Felt> {
+    match answer? {
+        Answer::Result(Value::String(text)) => felt::parse(&text),
+        _ => None,
     }
 }
 

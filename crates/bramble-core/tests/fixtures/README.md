@@ -44,6 +44,24 @@ headers gain a note); byte-identical to its copy there.
 A fourth exception: `extension-multisig-import.jsonl` (G7c's import cases) comes from Bramble commit
 `232e21510158f1c046885acbca882bfe941b00c9` (`feature/mobile-wallet`, 2026-11-27, merging #1074);
 its generator, `scripts/mobile-parity-multisig-import/`, landed with #1042 (`edc94db3c`).
+A fifth exception: `extension-strk20-primitives.json`, `extension-strk20-shadow.json` and
+`extension-strk20-jobs.jsonl` (the STRK20 SDK port, #182) come from Bramble's
+`mobile/strk20-port-fixtures`, cut from `feature/mobile-wallet` at `7a7713f14` and merged there as
+`f88a40d2e56d2175adbd97a10f1297c50f7930ba` (#1075), byte-identical at that merge; all three as of
+commit `f57fb8370b0254a2054c4f66a86729e0a60f2893`: the
+primitives unchanged since `ea886ca115a058626cbbace946d79ecb8969f72d`, the shadow-account and
+invoke vectors unchanged since `6f22fb539`, and the jobs keeping the first 27 lines of
+`533cbeeae5da69c7310910c5997cd4e05b1da50c` byte for byte, then 12 for the invoke phase and
+shadow accounts (S6, `ddb5c1903604f402e02e327c9f7a3bbbc53c5ad7`): 9 proof jobs and 3
+shadow-account reads marked by a `kind`, then 12 more (S7, those 39 lines byte for byte): 6
+multisig lines (`mobile-strk20-batches-multisig.ts`; 4 jobs carrying `inputs.multisig` and a
+`multisig` record, and a co-signer review and the authorization refusals marked by a
+`multisig-*` `kind`) and 6 single-signer jobs (repeated recipients, deposits beside spent notes,
+a moved `block_ref`); 51 lines in all. They record the vendored SDK at Bramble's pin
+(`b40bf109`, `0.14.3-rc.8`, whose `sdk/src` equals `fcc7c90`): the primitives from `sdk/src`
+directly, the jobs through the extension's `prepareWith` over the bundle with
+`crypto.getRandomValues`, `fetch` and `Date.now` stubbed. The discovery, nonce and prover replies in
+the jobs are scripted by the generator, not recorded from a service.
 Generators are under `scripts/` in Bramble; each fixture's is reached from
 `generate-mobile-parity-vectors.ts`.
 
@@ -69,6 +87,9 @@ Generators are under `scripts/` in Bramble; each fixture's is reached from
 | `extension-privacy-copy.json` | `generate-mobile-privacy-vectors.ts` | `62ef74e7e64fb79e01c00a5c95350d3ddd719340c5a50ee31e181ef7dff82838` |
 | `extension-privacy-rules.json` | `generate-mobile-privacy-vectors.ts` | `771a2b7c98f8bc699b530305f6996aec2b150f96aec4bd4c5fe20358c45c20cd` |
 | `extension-privacy-wire.json` | `generate-mobile-privacy-vectors.ts` | `6274911bb8d13c31815cb1f32cc4d158be634d47180aad9d77cbb01cac717171` |
+| `extension-strk20-primitives.json` | `generate-mobile-privacy-vectors.ts` (`mobile-strk20-primitives.ts`) | `d375aaebaf5f9d065b75ef29092b21902a56ceb4a66be7daec3206655c9495b4` |
+| `extension-strk20-shadow.json` | `generate-mobile-privacy-vectors.ts` (`mobile-strk20-shadow.ts`) | `fb4d030acc502f4270b0096ca760b7836737b8c178e5a148dd6e10957dab7b56` |
+| `extension-strk20-jobs.jsonl` | `generate-mobile-privacy-vectors.ts` (`mobile-strk20-jobs.ts`) | `1fb30930c343a7ef57189c9de0f315f3659d9decbb2826300f24c55317f80b91` |
 | `extension-transactions-argent-refusals.json` | `generate-mobile-transaction-vectors.ts` | `f2eb7492ca5425e618b9954b22fc666bf7a2a4645438ba8837a1c3f6b78d2997` |
 | `extension-transactions-argent-upgraded.json` | `generate-mobile-transaction-vectors.ts` | `9d14e829c7c2dfccb940e150984036db18a528ddd65f134763371049981b8156` |
 | `extension-transactions-argent.json` | `generate-mobile-transaction-vectors.ts` | `854103a684d841a7ed2949ac238283d17a934cd7cba9a9d29b522868959edb5f` |

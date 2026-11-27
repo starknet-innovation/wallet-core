@@ -11,17 +11,20 @@
 //! grammar: decimal or `0x` hex text, or a safe non-negative integer. It yields a `U256`; a value
 //! that does not fit is at least 2^256 and so refused by every caller's `< P` bound anyway.
 
+use std::collections::HashSet;
 use std::fmt;
 
 use serde::de::{self, Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
+use zeroize::Zeroizing;
 
 use crate::send::u256::U256;
 
 /// Largest integer `JSON.parse` represents exactly (`Number.MAX_SAFE_INTEGER`).
 pub const MAX_SAFE_INTEGER: u64 = (1 << 53) - 1;
 
-/// A JSON value that keeps object keys in document order.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// A JSON value that keeps object keys in document order. Its `Debug` prints the shape only: a
+/// service value can be a discovery cursor, which carries channel keys in clear.
+#[derive(Clone, PartialEq, Eq)]
 pub enum Ordered {
     Null,
     Bool(bool),
@@ -29,6 +32,19 @@ pub enum Ordered {
     Str(String),
     Array(Vec<Ordered>),
     Object(Vec<(String, Ordered)>),
+}
+
+impl fmt::Debug for Ordered {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Null => f.write_str("Null"),
+            Self::Bool(_) => f.write_str("Bool"),
+            Self::Int(_) => f.write_str("Int"),
+            Self::Str(text) => write!(f, "Str({} bytes)", text.len()),
+            Self::Array(items) => write!(f, "Array({} items)", items.len()),
+            Self::Object(members) => write!(f, "Object({} members)", members.len()),
+        }
+    }
 }
 
 impl Ordered {
@@ -40,43 +56,127 @@ impl Ordered {
         }
     }
 
-    /// `JSON.stringify` of this value.
-    pub fn write(&self, out: &mut String) {
+    /// Whether any object key, at any depth, is an array index (`"0"` to `"4294967294"`).
+    /// JavaScript objects list those keys first, in numeric order, so `JSON.stringify` of the
+    /// parsed value would not keep document order; a cursor holding one cannot be echoed exactly.
+    pub fn has_index_key(&self) -> bool {
         match self {
-            Self::Null => out.push_str("null"),
-            Self::Bool(value) => out.push_str(if *value { "true" } else { "false" }),
-            Self::Int(value) => out.push_str(&value.to_string()),
+            Self::Array(items) => items.iter().any(Self::has_index_key),
+            Self::Object(members) => members
+                .iter()
+                .any(|(key, value)| is_array_index(key) || value.has_index_key()),
+            _ => false,
+        }
+    }
+
+    /// `JSON.stringify` of this value.
+    pub fn write(&self, out: &mut dyn Sink) {
+        match self {
+            Self::Null => out.put("null"),
+            Self::Bool(value) => out.put(if *value { "true" } else { "false" }),
+            Self::Int(value) => out.put(&value.to_string()),
             Self::Str(value) => write_str(out, value),
             Self::Array(items) => {
-                out.push('[');
+                out.put("[");
                 for (index, item) in items.iter().enumerate() {
                     if index > 0 {
-                        out.push(',');
+                        out.put(",");
                     }
                     item.write(out);
                 }
-                out.push(']');
+                out.put("]");
             }
             Self::Object(members) => {
-                out.push('{');
+                out.put("{");
                 for (index, (key, value)) in members.iter().enumerate() {
                     if index > 0 {
-                        out.push(',');
+                        out.put(",");
                     }
                     write_str(out, key);
-                    out.push(':');
+                    out.put(":");
                     value.write(out);
                 }
-                out.push('}');
+                out.put("}");
             }
         }
     }
 }
 
-/// A JSON string literal as `JSON.stringify` writes it (serde_json's escaping is the same:
-/// `\"`, `\\`, `\b\f\n\r\t`, other controls as lowercase `\u00xx`, nothing else escaped).
-pub fn write_str(out: &mut String, value: &str) {
-    out.push_str(&serde_json::to_string(value).unwrap_or_else(|_| "\"\"".into()));
+/// Where JSON text is written: a string, or a [`Measure`] that sizes one first.
+pub trait Sink {
+    fn put(&mut self, text: &str);
+}
+
+impl Sink for String {
+    fn put(&mut self, text: &str) {
+        self.push_str(text);
+    }
+}
+
+/// Counts the bytes a write would make, and keeps none of them.
+pub struct Measure(pub usize);
+
+impl Sink for Measure {
+    fn put(&mut self, text: &str) {
+        self.0 += text.len();
+    }
+}
+
+/// What `build` writes, in one zeroizing string sized exactly by a first, counting pass, so it is
+/// never reallocated: the discovery cursor it echoes carries channel keys in clear.
+pub fn sized(build: impl Fn(&mut dyn Sink)) -> Zeroizing<String> {
+    let mut measure = Measure(0);
+    build(&mut measure);
+    let mut out = Zeroizing::new(String::with_capacity(measure.0));
+    build(&mut *out);
+    debug_assert_eq!(out.len(), measure.0);
+    debug_assert_eq!(out.capacity(), measure.0);
+    out
+}
+
+fn is_array_index(key: &str) -> bool {
+    key.parse::<u32>()
+        .is_ok_and(|index| index != u32::MAX && index.to_string() == key)
+}
+
+/// A JSON string literal as `JSON.stringify` writes it (and serde_json, which a test checks):
+/// `\"`, `\\`, `\b\f\n\r\t`, other controls as lowercase `\u00xx`, nothing else escaped.
+/// Written straight into `out`, with no temporary copy of the text.
+pub fn write_str(out: &mut dyn Sink, value: &str) {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    out.put("\"");
+    let mut start = 0;
+    // Every escaped byte is ASCII, so each cut is on a character boundary.
+    for (at, byte) in value.bytes().enumerate() {
+        let short = match byte {
+            b'"' => "\\\"",
+            b'\\' => "\\\\",
+            0x08 => "\\b",
+            0x0c => "\\f",
+            b'\n' => "\\n",
+            b'\r' => "\\r",
+            b'\t' => "\\t",
+            0..=0x1f => "",
+            _ => continue,
+        };
+        out.put(value.get(start..at).unwrap_or_default());
+        if short.is_empty() {
+            let code = [
+                b'\\',
+                b'u',
+                b'0',
+                b'0',
+                HEX[usize::from(byte >> 4)],
+                HEX[usize::from(byte & 0xf)],
+            ];
+            out.put(std::str::from_utf8(&code).unwrap_or_default());
+        } else {
+            out.put(short);
+        }
+        start = at + 1;
+    }
+    out.put(value.get(start..).unwrap_or_default());
+    out.put("\"");
 }
 
 struct OrderedVisitor;
@@ -135,8 +235,10 @@ impl<'de> Visitor<'de> for OrderedVisitor {
 
     fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Ordered, A::Error> {
         let mut members: Vec<(String, Ordered)> = Vec::new();
+        // A set, not a scan of `members`: one hostile object can hold a whole reply's keys.
+        let mut seen = HashSet::new();
         while let Some((key, value)) = map.next_entry::<String, Ordered>()? {
-            if members.iter().any(|(existing, _)| *existing == key) {
+            if !seen.insert(key.clone()) {
                 return Err(de::Error::custom("duplicate key"));
             }
             members.push((key, value));
@@ -190,6 +292,49 @@ mod tests {
     }
 
     #[test]
+    fn strings_escape_as_serde_json_does() {
+        let mut every: String = (0u8..0x80).map(char::from).collect();
+        every.push_str("é😀\u{2028}\u{7f}");
+        for text in [every.as_str(), "", "plain", "\"\\", "a\u{1}b"] {
+            let mut out = String::new();
+            write_str(&mut out, text);
+            assert_eq!(out, serde_json::to_string(text).unwrap(), "{text:?}");
+        }
+    }
+
+    #[test]
+    fn sized_writes_into_one_exact_buffer() {
+        let cursor =
+            parse(r#"{"channels":{"0x5":{"channel_key":"0xc0ffee","n":[1,null,true]}},"z":"\n"}"#)
+                .unwrap();
+        let out = sized(|out| cursor.write(out));
+        assert_eq!(out.len(), out.capacity());
+        let mut plain = String::new();
+        cursor.write(&mut plain);
+        assert_eq!(*out, plain);
+    }
+
+    #[test]
+    fn a_reply_sized_object_parses_or_is_refused_in_one_pass() {
+        // About 2 MiB of distinct keys in one object: a scan per key would compare each with
+        // every earlier one, some 10^10 comparisons; the set makes it one lookup each.
+        let keys = 130_000;
+        let mut text = String::from("{");
+        for at in 0..keys {
+            text.push_str(&format!("\"key{at:08}\":0,"));
+        }
+        let unique = format!("{}\"last\":1}}", text);
+        assert!(unique.len() <= super::super::judge::MAX_RESPONSE_BYTES);
+        let Some(Ordered::Object(members)) = super::super::judge::parse_body(unique.as_bytes())
+        else {
+            panic!("a large object of distinct keys parses");
+        };
+        assert_eq!(members.len(), keys + 1);
+        let repeated = format!("{}\"key00000000\":1}}", text);
+        assert_eq!(super::super::judge::parse_body(repeated.as_bytes()), None);
+    }
+
+    #[test]
     fn refuses_what_json_stringify_would_respell() {
         for text in [
             r#"{"a":1.5}"#,
@@ -204,6 +349,19 @@ mod tests {
             parse("9007199254740991"),
             Some(Ordered::Int(MAX_SAFE_INTEGER))
         );
+    }
+
+    #[test]
+    fn array_index_keys_are_found_at_any_depth() {
+        for (text, found) in [
+            (r#"{"0x1":{"a":[{"b":1}]}}"#, false),
+            (r#"{"01":1,"-1":1,"1.0":1,"4294967295":1," 1":1}"#, false),
+            (r#"{"0":1}"#, true),
+            (r#"{"a":{"4294967294":1}}"#, true),
+            (r#"[{"b":{"7":null}}]"#, true),
+        ] {
+            assert_eq!(parse(text).unwrap().has_index_key(), found, "{text}");
+        }
     }
 
     #[test]

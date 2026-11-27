@@ -2,15 +2,17 @@
 //! `JSON.stringify` (pinned by `tests/fixtures/extension-privacy-wire.json`), plus the pool-fee
 //! `starknet_call` the extension's `readStrk20PoolFee` makes through starknet.js.
 //!
-//! The discovery bodies carry the viewing key. Only the public parts are built as plain strings;
-//! the key's hex (`toHex(vk)`) lives in one zeroizing string and one exactly sized zeroizing body
-//! that never reallocates, and callers move the finished buffer straight into a `Post`; a wallet
-//! that crosses FFI makes its one copy there (Bramble's `mobile/docs/privacy.md` §1.1, §5).
+//! The discovery bodies carry the viewing key, and the walks' bodies the service's cursor, which
+//! holds channel keys in clear. Only the public parts are built as plain strings; the key's hex
+//! (`toHex(vk)`) lives in one zeroizing string, the cursor's echo in one exactly sized zeroizing
+//! string (`json::sized`), and both in one exactly sized zeroizing body that never reallocates.
+//! Callers move the finished buffer straight into a `Post`; a wallet that crosses FFI makes its
+//! one copy there (Bramble's `mobile/docs/privacy.md` §1.1, §5).
 
 use serde_json::json;
 use zeroize::Zeroizing;
 
-use super::json::{write_str, Ordered};
+use super::json::{sized, write_str, Ordered, Sink};
 use crate::{felt, Felt, SecretFelt};
 
 /// `sn_keccak("get_fee_amount")`, checked against `kms::selector` in the tests.
@@ -20,6 +22,7 @@ const GET_FEE_AMOUNT_SELECTOR: &str =
 /// The discovery paths, appended to the configured URL as the SDK does.
 pub const PREFLIGHT_PATH: &str = "/v1/sync/preflight_check";
 pub const INCOMING_PATH: &str = "/v1/sync/incoming_state";
+pub const OUTGOING_PATH: &str = "/v1/sync/outgoing_state";
 
 /// A pinned block, echoed exactly as the service first sent it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -29,17 +32,17 @@ pub enum BlockRef {
 }
 
 impl BlockRef {
-    fn write(&self, out: &mut String) {
+    fn write(&self, out: &mut dyn Sink) {
         match self {
             Self::Text(text) => write_str(out, text),
-            Self::Number(number) => out.push_str(&number.to_string()),
+            Self::Number(number) => out.put(&number.to_string()),
         }
     }
 }
 
-fn member(out: &mut String, key: &str, value: &str) {
+fn member(out: &mut dyn Sink, key: &str, value: &str) {
     write_str(out, key);
-    out.push(':');
+    out.put(":");
     write_str(out, value);
 }
 
@@ -84,29 +87,66 @@ pub fn preflight(
     with_key(&head, viewing_key, &tail)
 }
 
-/// `POST /v1/sync/incoming_state`: the first page (`cursor: {}`, no block) or a later one with the
-/// reply's cursor and the pinned block.
+/// `POST /v1/sync/incoming_state`: `cursor` is `{}` on the first page and the reply's cursor
+/// after; `block_ref` follows it when the caller has one (`discoverNotes` sends the pinned block
+/// from the second page on, and on the first page only when given a `blockIdentifier`).
 pub fn incoming(
     pool: &Felt,
     account: &Felt,
     viewing_key: &SecretFelt,
-    page: Option<(&Ordered, &BlockRef)>,
+    cursor: Option<&Ordered>,
+    block: Option<&BlockRef>,
 ) -> Zeroizing<Vec<u8>> {
     let mut head = String::from("{");
     member(&mut head, "contract_address", &felt::canonical(pool));
     head.push(',');
     member(&mut head, "recipient_address", &felt::canonical(account));
     head.push(',');
-    let mut tail = String::from(",\"cursor\":");
-    match page {
-        None => tail.push_str("{}"),
-        Some((cursor, block)) => {
-            cursor.write(&mut tail);
-            tail.push_str(",\"block_ref\":");
-            block.write(&mut tail);
+    // The cursor carries channel keys in clear: written into one exact zeroizing buffer.
+    let tail = sized(|out| {
+        out.put(",\"cursor\":");
+        match cursor {
+            None => out.put("{}"),
+            Some(cursor) => cursor.write(out),
         }
-    }
-    tail.push('}');
+        if let Some(block) = block {
+            out.put(",\"block_ref\":");
+            block.write(out);
+        }
+        out.put("}");
+    });
+    with_key(&head, viewing_key, &tail)
+}
+
+/// `POST /v1/sync/outgoing_state`, as `discoverChannels` sends it for a recipient list: the
+/// cursor, the block, then every recipient as `toHex` writes it, in the caller's order.
+pub fn outgoing(
+    pool: &Felt,
+    account: &Felt,
+    viewing_key: &SecretFelt,
+    cursor: &Ordered,
+    block: &BlockRef,
+    recipients: &[Felt],
+) -> Zeroizing<Vec<u8>> {
+    let mut head = String::from("{");
+    member(&mut head, "contract_address", &felt::canonical(pool));
+    head.push(',');
+    member(&mut head, "sender_address", &felt::canonical(account));
+    head.push(',');
+    let tail = sized(|out| {
+        out.put(",\"cursor\":");
+        cursor.write(out);
+        out.put(",\"block_ref\":");
+        block.write(out);
+        out.put(",\"recipients\":[");
+        for (index, recipient) in recipients.iter().enumerate() {
+            if index > 0 {
+                out.put(",");
+            }
+            write_str(out, &felt::canonical(recipient));
+        }
+        out.put("]}");
+    });
     with_key(&head, viewing_key, &tail)
 }
 
@@ -145,7 +185,7 @@ mod tests {
     fn first_page_has_an_empty_cursor_and_no_block() {
         let one = Felt::ONE;
         let key = SecretFelt::new(Felt::THREE);
-        let body = incoming(&one, &Felt::TWO, &key, None);
+        let body = incoming(&one, &Felt::TWO, &key, None, None);
         assert_eq!(
             std::str::from_utf8(&body).unwrap(),
             r#"{"contract_address":"0x1","recipient_address":"0x2","viewing_key":"0x3","cursor":{}}"#
@@ -155,7 +195,8 @@ mod tests {
             &one,
             &Felt::TWO,
             &key,
-            Some((&cursor, &BlockRef::Number(7))),
+            Some(&cursor),
+            Some(&BlockRef::Number(7)),
         );
         assert!(std::str::from_utf8(&later)
             .unwrap()
@@ -177,8 +218,11 @@ mod tests {
             &max,
             &max,
             &key,
-            Some((&cursor, &BlockRef::Text("b".into()))),
+            Some(&cursor),
+            Some(&BlockRef::Text("b".into())),
         );
         assert_eq!(page.len(), page.capacity());
+        let walk = outgoing(&max, &max, &key, &cursor, &BlockRef::Number(1), &[max, max]);
+        assert_eq!(walk.len(), walk.capacity());
     }
 }

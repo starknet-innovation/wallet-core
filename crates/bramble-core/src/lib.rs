@@ -53,6 +53,7 @@ pub mod gasless;
 pub mod ledger;
 pub mod nft;
 pub mod staking;
+pub mod strk20;
 pub mod swap;
 
 // The mobile wallet's surface, at the crate root where mobile had it.

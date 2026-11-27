@@ -99,9 +99,9 @@ pub(crate) mod testing {
         }
     }
 
-    /// The extension's `STRK20_LIMITS` the engine judge reads.
-    pub(crate) fn proof_limits() -> crate::privacy::engine::ProofLimits {
-        crate::privacy::engine::ProofLimits::CEILING
+    /// The extension's `STRK20_LIMITS` the proof judges read.
+    pub(crate) fn proof_limits() -> crate::privacy::proof::ProofLimits {
+        crate::privacy::proof::ProofLimits::CEILING
     }
 
     pub(crate) fn mainnet(ohttp: bool) -> Route {

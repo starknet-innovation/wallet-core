@@ -17,6 +17,9 @@ use crate::felt;
 use crate::scrub::scrubbed;
 use crate::Error;
 
+mod poseidon;
+pub(crate) use poseidon::{poseidon_hash_many, tagged_hash};
+
 /// Mnemonic lengths Krusty generates and the extension accepts.
 pub const MNEMONIC_WORD_COUNTS: [u8; 5] = [12, 15, 18, 21, 24];
 /// Resource bound on phrase text, in UTF-16 units (Bramble's `MAX_MNEMONIC_LENGTH`).
@@ -373,10 +376,73 @@ pub fn derive_strk20_viewing_key(
     })
 }
 
+/// The privacy SDK's `compute_channel_key(sender_addr, sender_private_key, recipient_addr,
+/// recipient_public_key)`: `hash(CHANNEL_KEY_TAG, ...)` over the sender's viewing key. The
+/// result opens the channel's notes, so it is held as a secret too.
+pub fn compute_channel_key(
+    sender_addr: &Felt,
+    sender_viewing_key: &SecretFelt,
+    recipient_addr: &Felt,
+    recipient_public_key: &Felt,
+) -> SecretFelt {
+    scrubbed(|| {
+        SecretFelt::new(tagged_hash(
+            "CHANNEL_KEY_TAG:V1",
+            &[
+                *sender_addr,
+                *sender_viewing_key.expose_secret(),
+                *recipient_addr,
+                *recipient_public_key,
+            ],
+        ))
+    })
+}
+
+/// The privacy SDK's `compute_identity_key(user_addr, user_private_key, contract_address)`:
+/// `hash(IDENTITY_KEY_TAG, ...)` over the user's viewing key, held as a secret.
+pub fn compute_identity_key(
+    user_addr: &Felt,
+    user_viewing_key: &SecretFelt,
+    contract_address: &Felt,
+) -> SecretFelt {
+    scrubbed(|| {
+        SecretFelt::new(tagged_hash(
+            "IDENTITY_KEY_TAG:V1",
+            &[
+                *user_addr,
+                *user_viewing_key.expose_secret(),
+                *contract_address,
+            ],
+        ))
+    })
+}
+
 /// `hash.getSelectorFromName`: `starknet_keccak` of `entrypoint`'s UTF-8 bytes, with no special
 /// cases. Keyless; any string has one, so the entrypoint grammar is the caller's to enforce.
 pub fn selector(entrypoint: &str) -> Felt {
     krusty_kms::selector_from_name(entrypoint)
+}
+
+/// `shortString.encodeShortString`: a Cairo short string as one felt, through Krusty's encoder.
+/// `None` unless the text is non-empty ASCII of at most 31 bytes (starknet.js throws on
+/// non-ASCII and on more than 31 characters, and its empty encoding is not a felt).
+pub fn encode_short_string(text: &str) -> Option<Felt> {
+    if text.is_empty() || !text.is_ascii() {
+        return None;
+    }
+    krusty_kms::encode_short_string(text).ok()
+}
+
+/// `hash.calculateContractAddressFromHash(salt, class_hash, calldata, deployer)`, through Krusty,
+/// which reduces it below `2**251 - 256` as starknet.js does. Keyless.
+pub fn calculate_contract_address(
+    salt: &Felt,
+    class_hash: &Felt,
+    constructor_calldata: &[Felt],
+    deployer: &Felt,
+) -> Result<Felt, Error> {
+    krusty_kms::calculate_contract_address(salt, class_hash, constructor_calldata, deployer)
+        .map_err(|_| Error::kms("contract address"))
 }
 
 /// `typedData.getMessageHash(typedData, account)`: the SNIP-12 message hash (revision 0 or 1, as

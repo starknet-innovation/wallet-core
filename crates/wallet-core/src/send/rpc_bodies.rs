@@ -110,6 +110,11 @@ pub fn class_hash_at(id: u64, address: &Felt) -> String {
     )
 }
 
+/// `starknet_blockNumber` (starknet.js `getBlockNumber`), which sends no `params`.
+pub fn block_number(id: u64) -> String {
+    json!({ "id": id, "jsonrpc": "2.0", "method": "starknet_blockNumber" }).to_string()
+}
+
 /// `starknet_blockHashAndNumber` (starknet.js `getBlockLatestAccepted`).
 pub fn block_hash_and_number(id: u64) -> String {
     envelope(id, "starknet_blockHashAndNumber", json!([]))
@@ -137,6 +142,23 @@ pub fn call_at_block(id: u64, address: &Felt, selector: &Felt, block: &Felt) -> 
             "block_id": pinned(block),
             "request": {
                 "calldata": [],
+                "contract_address": felt::canonical(address),
+                "entry_point_selector": felt::canonical(selector),
+            },
+        }),
+    )
+}
+
+/// `starknet_call` of `selector` on `address` with `calldata`, at `latest` (starknet.js
+/// `callContract`).
+pub fn call(id: u64, address: &Felt, selector: &Felt, calldata: &[Felt]) -> String {
+    envelope(
+        id,
+        "starknet_call",
+        json!({
+            "block_id": "latest",
+            "request": {
+                "calldata": felts(calldata),
                 "contract_address": felt::canonical(address),
                 "entry_point_selector": felt::canonical(selector),
             },

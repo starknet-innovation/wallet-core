@@ -2,12 +2,17 @@ use super::*;
 use crate::privacy::config::testing::proof_limits;
 
 const ACCOUNT: Felt = Felt::from_hex_unchecked("0x123");
-const POOL: Felt = Felt::from_hex_unchecked("0x9001");
 const BOB: Felt = Felt::from_hex_unchecked("0xb0b");
 const EVE: Felt = Felt::from_hex_unchecked("0xe5e");
 const STRK: Felt =
     Felt::from_hex_unchecked("0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d");
 const KEY: Felt = Felt::from_hex_unchecked("0x654321");
+const POOL: Felt = Felt::from_hex_unchecked("0x9001");
+const ANONYMIZER: Felt = Felt::from_hex_unchecked("0xa11");
+const CONTRACTS: Contracts = Contracts {
+    pool: POOL,
+    anonymizer: Some(ANONYMIZER),
+};
 
 fn key() -> SecretFelt {
     SecretFelt::new(KEY)
@@ -43,14 +48,25 @@ fn open_note(recipient: Felt, token: Felt) -> Vec<Felt> {
     vec![f(4), recipient, f(9), token, f(0), f(1)]
 }
 
+/// The id of `open_note(recipient, token)`: its channel key from the account's viewing key and
+/// the recipient's public key (9), then `compute_note_id` at index 0.
+fn open_note_id(recipient: Felt, token: Felt) -> Felt {
+    let channel_key = crate::compute_channel_key(&ACCOUNT, &key(), &recipient, &f(9));
+    crate::privacy::hashes::compute_note_id(&channel_key, &token, 0)
+}
+
 fn calldata_for(user: Felt, key: Felt, actions: &[Vec<Felt>]) -> Vec<Felt> {
     let mut calldata = vec![user, key, Felt::from(actions.len())];
     calldata.extend(actions.iter().flatten());
     calldata
 }
 
+fn secret(calldata: &[Felt]) -> Vec<SecretFelt> {
+    calldata.iter().copied().map(SecretFelt::new).collect()
+}
+
 fn decode(calldata: &[Felt]) -> Option<Vec<PoolAction>> {
-    decode_compile_actions(calldata, &ACCOUNT, &key())
+    decode_compile_actions(&secret(calldata), &ACCOUNT, &key())
 }
 
 const ONE: u128 = 1_000_000_000_000_000_000;
@@ -105,8 +121,25 @@ fn decodes_every_action_the_flows_produce() {
 fn refuses_what_the_flows_do_not_produce() {
     let one_deposit = [deposit(STRK, ONE)];
     assert!(decode(&calldata_for(EVE, KEY, &one_deposit)).is_none());
-    assert!(decode(&calldata_for(ACCOUNT, KEY, &[invoke_external(BOB)])).is_none());
-    assert!(decode(&calldata_for(ACCOUNT, KEY, &[open_note(BOB, STRK)])).is_none());
+    // An external invoke decodes (S6); binding refuses it unless reviewed
+    // (`an_external_invoke_is_refused`, `pool_actions_invoke_tests.rs`).
+    assert_eq!(
+        decode(&calldata_for(ACCOUNT, KEY, &[invoke_external(BOB)])),
+        Some(vec![PoolAction::Invoke {
+            contract: BOB,
+            calldata: vec![]
+        }])
+    );
+    // An open note decodes (an `Open` transfer compiles to one), with its id recomputed; binding
+    // it is `an_open_note_binds_only_to_a_reviewed_open_transfer`.
+    assert_eq!(
+        decode(&calldata_for(ACCOUNT, KEY, &[open_note(BOB, STRK)])),
+        Some(vec![PoolAction::OpenNote {
+            recipient: BOB,
+            token: STRK,
+            note_id: open_note_id(BOB, STRK),
+        }])
+    );
     // Felts Cairo could not deserialize as the ABI's u32 index or u128 salt.
     let mut wide_index = open_channel(BOB);
     wide_index[2] = Felt::from(1u64 << 32);
@@ -146,41 +179,43 @@ fn refuses_what_the_flows_do_not_produce() {
     assert!(decode(&calldata_for(ACCOUNT, Felt::ONE, &one_deposit)).is_none());
 }
 
-fn shield(amount: u128) -> EngineAction {
-    EngineAction::Deposit {
+fn shield(amount: u128) -> ReviewedAction {
+    ReviewedAction::Deposit {
         token: STRK,
         amount: f(amount),
         recipient: None,
     }
 }
 
-fn send(recipient: Felt, amount: u128) -> EngineAction {
-    EngineAction::Transfer {
+fn send(recipient: Felt, amount: u128) -> ReviewedAction {
+    ReviewedAction::Transfer {
         token: STRK,
         recipient,
         amount: f(amount),
     }
 }
 
-fn unshield(recipient: Felt, amount: u128) -> EngineAction {
-    EngineAction::Withdraw {
+fn unshield(recipient: Felt, amount: u128) -> ReviewedAction {
+    ReviewedAction::Withdraw {
         token: STRK,
         recipient,
         amount: f(amount),
     }
 }
 
-fn bound(actions: &[Vec<Felt>], reviewed: &[EngineAction]) -> Result<(), ProofRefusal> {
+fn bound(actions: &[Vec<Felt>], reviewed: &[ReviewedAction]) -> Result<(), ProofRefusal> {
     bound_call(calldata_for(ACCOUNT, KEY, actions), reviewed)
 }
 
-fn bound_call(calldata: Vec<Felt>, reviewed: &[EngineAction]) -> Result<(), ProofRefusal> {
-    let call = Call {
-        contract_address: POOL,
-        entrypoint: COMPILE_ACTIONS.into(),
-        calldata,
-    };
-    bound_sign_request(&[call], &POOL, &ACCOUNT, &key(), reviewed, &proof_limits())
+fn bound_call(calldata: Vec<Felt>, reviewed: &[ReviewedAction]) -> Result<(), ProofRefusal> {
+    bound_sign_request(
+        &secret(&calldata),
+        &ACCOUNT,
+        &key(),
+        reviewed,
+        &CONTRACTS,
+        &proof_limits(),
+    )
 }
 
 #[test]
@@ -188,7 +223,7 @@ fn binds_each_flow_to_what_was_reviewed() {
     // Activation: register, the self channel, then the deposit.
     let activate = [set_viewing_key(), open_channel(ACCOUNT), deposit(STRK, ONE)];
     assert_eq!(
-        bound(&activate, &[EngineAction::Register, shield(ONE)]),
+        bound(&activate, &[ReviewedAction::Register, shield(ONE)]),
         Ok(())
     );
     // A private send: notes spent, the recipient's note, change back to the account.
@@ -207,7 +242,7 @@ fn binds_each_flow_to_what_was_reviewed() {
     ];
     assert_eq!(bound(&out, &[unshield(BOB, ONE)]), Ok(()));
     // A deposit for someone else carries their note.
-    let gift = EngineAction::Deposit {
+    let gift = ReviewedAction::Deposit {
         token: STRK,
         amount: f(ONE),
         recipient: Some(BOB),
@@ -220,7 +255,7 @@ fn binds_each_flow_to_what_was_reviewed() {
     );
 }
 
-// One test per way a hostile engine could ask for more than was reviewed.
+// One test per way a compile could move more than was reviewed.
 #[test]
 fn a_swapped_recipient_is_refused() {
     let to_eve = [use_note(STRK), enc_note(EVE, STRK, ONE)];
@@ -231,6 +266,46 @@ fn a_swapped_recipient_is_refused() {
     let out_to_eve = [withdraw(EVE, STRK, ONE)];
     assert_eq!(
         bound(&out_to_eve, &[unshield(BOB, ONE)]),
+        Err(ProofRefusal::UnboundSignRequest)
+    );
+}
+
+/// The reviewed send stays in; an extra note beside it, funded by extra spends, is what must be
+/// refused (`a_swapped_recipient_is_refused` is refused for the missing note instead). Only the
+/// account may receive a note no one reviewed.
+#[test]
+fn an_extra_note_to_anyone_but_the_account_is_refused() {
+    let funded = |extra: Vec<Felt>| {
+        vec![
+            use_note(STRK),
+            use_note(STRK),
+            enc_note(BOB, STRK, ONE),
+            extra,
+        ]
+    };
+    assert_eq!(
+        bound(&funded(enc_note(ACCOUNT, STRK, ONE)), &[send(BOB, ONE)]),
+        Ok(()),
+        "change to the account"
+    );
+    for extra in [enc_note(EVE, STRK, ONE), open_note(EVE, STRK)] {
+        assert_eq!(
+            bound(&funded(extra), &[send(BOB, ONE)]),
+            Err(ProofRefusal::UnboundSignRequest)
+        );
+    }
+    // Beside a reviewed open transfer too.
+    let open = ReviewedAction::OpenTransfer {
+        token: STRK,
+        recipient: BOB,
+    };
+    let beside_open = [
+        use_note(STRK),
+        open_note(BOB, STRK),
+        enc_note(EVE, STRK, ONE),
+    ];
+    assert_eq!(
+        bound(&beside_open, &[open]),
         Err(ProofRefusal::UnboundSignRequest)
     );
 }
@@ -300,7 +375,7 @@ fn a_missing_or_altered_action_and_an_unasked_registration_are_refused() {
         ),
         (
             vec![deposit(STRK, ONE)],
-            vec![EngineAction::Register, shield(ONE)],
+            vec![ReviewedAction::Register, shield(ONE)],
         ),
     ] {
         assert_eq!(
@@ -311,39 +386,17 @@ fn a_missing_or_altered_action_and_an_unasked_registration_are_refused() {
 }
 
 #[test]
-fn only_the_pools_one_compile_actions_is_considered() {
-    let calldata = calldata_for(ACCOUNT, KEY, &[deposit(STRK, ONE)]);
-    let call = |pool: Felt, entrypoint: &str| Call {
-        contract_address: pool,
-        entrypoint: entrypoint.into(),
-        calldata: calldata.clone(),
-    };
+fn calldata_over_the_bound_is_refused() {
+    let calldata = secret(&calldata_for(ACCOUNT, KEY, &[deposit(STRK, ONE)]));
     let reviewed = [shield(ONE)];
-    let check = |calls: &[Call]| {
-        bound_sign_request(calls, &POOL, &ACCOUNT, &key(), &reviewed, &proof_limits())
+    let check = |limits: &ProofLimits| {
+        bound_sign_request(&calldata, &ACCOUNT, &key(), &reviewed, &CONTRACTS, limits)
     };
-    assert_eq!(check(&[call(POOL, COMPILE_ACTIONS)]), Ok(()));
-    for refused in [
-        vec![],
-        vec![call(POOL, COMPILE_ACTIONS), call(POOL, COMPILE_ACTIONS)],
-        vec![call(EVE, COMPILE_ACTIONS)],
-        vec![call(POOL, "apply_actions")],
-    ] {
-        assert_eq!(check(&refused), Err(ProofRefusal::UnboundSignRequest));
-    }
     let mut limits = proof_limits();
+    limits.invoke_calldata_felts = calldata.len();
+    assert_eq!(check(&limits), Ok(()));
     limits.invoke_calldata_felts = calldata.len() - 1;
-    assert_eq!(
-        bound_sign_request(
-            &[call(POOL, COMPILE_ACTIONS)],
-            &POOL,
-            &ACCOUNT,
-            &key(),
-            &reviewed,
-            &limits
-        ),
-        Err(ProofRefusal::UnboundSignRequest)
-    );
+    assert_eq!(check(&limits), Err(ProofRefusal::UnboundSignRequest));
 }
 
 #[test]
@@ -382,3 +435,36 @@ fn a_channel_to_an_unreviewed_recipient_is_refused() {
     ];
     assert_eq!(bound(&to_bob, &[send(BOB, ONE)]), Ok(()));
 }
+
+#[test]
+fn an_open_note_binds_only_to_a_reviewed_open_transfer() {
+    let open = |recipient| ReviewedAction::OpenTransfer {
+        token: STRK,
+        recipient,
+    };
+    let to_bob = [open_channel(BOB), open_note(BOB, STRK)];
+    assert_eq!(bound(&to_bob, &[open(BOB)]), Ok(()));
+    // Never unreviewed, not even to the account, nor in place of an amount, nor twice.
+    for (actions, reviewed) in [
+        (vec![open_note(BOB, STRK)], vec![send(BOB, ONE)]),
+        (
+            vec![deposit(STRK, ONE), open_note(ACCOUNT, STRK)],
+            vec![shield(ONE)],
+        ),
+        (vec![open_note(EVE, STRK)], vec![open(BOB)]),
+        (
+            vec![open_note(BOB, STRK), open_note(BOB, STRK)],
+            vec![open(BOB)],
+        ),
+        (vec![enc_note(BOB, STRK, ONE)], vec![open(BOB)]),
+        (vec![open_channel(BOB)], vec![open(BOB)]),
+    ] {
+        assert_eq!(
+            bound(&actions, &reviewed),
+            Err(ProofRefusal::UnboundSignRequest)
+        );
+    }
+}
+
+#[path = "pool_actions_invoke_tests.rs"]
+mod invoke;

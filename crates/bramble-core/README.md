@@ -71,3 +71,68 @@ cargo test -p bramble-core --features mobile,testing       # with mobile's suite
 
 The Swift/Kotlin generator is the `uniffi-bindgen` binary behind the `bindgen` feature.
 `AGENTS.md` at the repo root has the rules for changing this crate.
+
+## Live STRK20 smoke
+
+`tests/strk20_live_smoke.rs` runs one STRK20 proof job (`privacy::job::ProofJob`) against a real
+discovery service, prover and node (#182). It is `#[ignore]`d, refuses to run when a CI variable is
+set, and is run by hand by the owner of a named dev wallet. Its offline twin,
+`tests/strk20_live_smoke_offline.rs`, runs the same code over recorded jobs in every test run.
+
+**Warning: Stage A sends the dev wallet's real viewing key to the configured discovery service
+and prover.** That is the protocol: whoever runs those services can read the account's private
+notes from then on. Use a dev wallet with nothing private worth keeping.
+
+```bash
+STRK20_SMOKE_NETWORK=SN_SEPOLIA \
+STRK20_SMOKE_POOL=0x… STRK20_SMOKE_DISCOVERY_URL=https://… STRK20_SMOKE_PROVER_URL=https://… \
+STRK20_SMOKE_RPC_URL=https://… \
+STRK20_SMOKE_MNEMONIC="…" STRK20_SMOKE_ADDRESS=0x… \
+STRK20_SMOKE_JOB=register \
+STRK20_SMOKE_SEND_VIEWING_KEY="yes, send" \
+  cargo test -p bramble-core --features mobile,testing --test integration \
+    strk20_live_smoke::stage_a -- --ignored --nocapture
+```
+
+Run it once without `STRK20_SMOKE_SEND_VIEWING_KEY` first: every variable is checked and the
+hosts that would receive the viewing key are printed, and nothing is sent.
+
+| Variable | Meaning |
+| --- | --- |
+| `STRK20_SMOKE_NETWORK` | `SN_SEPOLIA`, or `SN_MAIN` with the next variable. No catalog routes Sepolia, so the route below is all yours. |
+| `STRK20_SMOKE_MAINNET_ACK` | Required for `SN_MAIN`, exactly `I am using a named dev wallet on mainnet`. |
+| `STRK20_SMOKE_POOL` | The privacy pool's address. |
+| `STRK20_SMOKE_DISCOVERY_URL` | The discovery service, without `/v1/sync/…`; must pass `config::is_service_url`. |
+| `STRK20_SMOKE_PROVER_URL` | The prover; must pass `config::is_service_url`. |
+| `STRK20_SMOKE_RPC_URL` | The node, HTTPS only. Printed as its host alone, since a path or query may hold an API key. |
+| `STRK20_SMOKE_MNEMONIC` | The dev wallet's phrase. The account key and the pool-scoped viewing key derive from it as the wallet derives them; never printed. |
+| `STRK20_SMOKE_ACCOUNT_INDEX` | Account index, default `0`. |
+| `STRK20_SMOKE_LADDER` | `account` (default, this wallet's), `address` (Braavos) or `argentx` (Ready). |
+| `STRK20_SMOKE_FAMILY` | `openzeppelin` (default) or `argent` (the catalog's default class). |
+| `STRK20_SMOKE_ADDRESS` | The account; refused unless it is the address the four variables above derive. |
+| `STRK20_SMOKE_JOB` | `register`, `register-deposit` or `deposit`. |
+| `STRK20_SMOKE_TOKEN`, `STRK20_SMOKE_AMOUNT` | For a deposit: the token's address and the amount in base units (decimal). |
+| `STRK20_SMOKE_SEND_VIEWING_KEY` | Exactly `yes, send`, or nothing is sent. |
+
+What leaves the machine, all through the system `curl` (HTTPS only, no redirects, bodies on stdin,
+replies capped at the core's bounds, 30 s per prove attempt):
+
+- to the node: `starknet_blockNumber`, then the pool's nonce (`starknet_getNonce`). Public data.
+- to the discovery service: the outgoing walk, and the incoming walk only when the actions spend
+  private notes (never for these three jobs), **carrying the viewing key**.
+- to the prover: `starknet_proveTransaction` with the `compile_actions` invocation, **carrying
+  the viewing key** and the account's signature over the `CallSet` digest (one signature, made
+  locally from the phrase).
+
+Stage A ends there and prints each request's purpose, host and path, HTTP status, sizes and
+latency, then the outcome: the `apply_actions` call's calldata length and the proof's sizes, or
+the exact `ProofRefusal`. No body, key or phrase is printed. Nothing is submitted on chain: Stage B
+(sending `apply_actions` with its proof and the fee approval) needs a proof-bearing invoke this core
+cannot build yet (P15), and the run ends by saying so.
+
+The proving block is a named simplification. The extension proves at the latest block minus 10,
+only once that block is past the scope's previous privacy write and, at that block, the account is
+deployed and any deposited balance is visible (`official-sdk-maturity.ts`,
+`official-sdk-readiness.ts`). The harness takes the latest block minus 10 with none of those
+checks: leave at least 10 blocks after deploying or funding the account and after any earlier
+privacy write by it.
