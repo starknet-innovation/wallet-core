@@ -152,7 +152,7 @@ proposal's summary as the intent card's call line, and the first signer change o
 all of `-signers.json` and the `calls` part of `-refusals.json`; `multisig_deploy_parity.rs` its
 `deploySubmit` part and `multisig_refusals_parity.rs` every other part
 (`multisig_import_mechanism.rs` builds on its `readyIntent` and `account`). See
-[P1](../../../../docs/PLAN.md#mobile-parity). The rest sit
+[P1](../../../../docs/PLAN.md#mobile-parity). `extension-nfts.jsonl` waits for P17's port; no test reads it yet. The rest sit
 here unused until their Phase 2 step moves the matching mobile parity test in (see `docs/PLAN.md`,
 Phase 1).
 
