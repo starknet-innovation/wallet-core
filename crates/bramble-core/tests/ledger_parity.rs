@@ -41,7 +41,14 @@ fn lines(block: &str) -> Vec<Value> {
 /// minimum: a block added in Bramble fails here rather than going unread.
 #[test]
 fn every_line_is_read_and_gated_at_bramble_s_minimum() {
-    let read = ["header", "version", "publicKey", "sign", "enumerate"];
+    let read = [
+        "header",
+        "version",
+        "publicKey",
+        "sign",
+        "enumerate",
+        "braavosDeploy",
+    ];
     for line in all_lines() {
         let block = line["block"].as_str().unwrap();
         assert!(read.contains(&block), "unread block {block}");
@@ -389,6 +396,45 @@ fn a_ledger_transfer_signs_on_the_recorded_device() {
 #[test]
 fn a_ledger_deployment_signs_on_the_recorded_device() {
     signs_on_the_recorded_device(true, "plan deployment");
+}
+
+/// The extension's Braavos deployment at Ready's scheme, every hash its Ledger signer asked for
+/// signed on the device (`braavosDeploy`): over the same node, the plan asks the device for the
+/// same APDUs in order (each estimate's and the write's parameters, then hash), sends the same
+/// estimates and write with the device's extended authorization, and broadcasts the same hash.
+#[test]
+fn a_braavos_ledger_deployment_signs_as_the_extension_on_the_device() {
+    let line = line("braavosDeploy", "a Braavos deployment at Ready's scheme");
+    let scenario = &line["outcome"]["scenario"];
+    let host = Host::new();
+    let account = account(scenario, "braavos", felt_of(&line["storedPublicKeyX"]));
+    assert!(
+        account.deployment.is_some(),
+        "the Braavos deployment class places it"
+    );
+    let device = DeviceKey {
+        path: path(&line),
+        app_minimum: LEDGER_APP_MIN,
+    };
+    let mut plan = plan(scenario, account).with_device(device);
+    let mut replay = Replay::of(&line);
+    let mut answer = |apdu: &[u8]| Some(replay.answer(apdu));
+    let step = plan.advance(&host, StepReply::Start).unwrap();
+    let reads = review_calls(scenario);
+    let step = drive_on(&mut plan, &host, step, &reads, scenario, &mut answer);
+    assert_eq!(step, SendStep::Review);
+    let step = plan.advance(&host, StepReply::Confirm).unwrap();
+    let writes = phase(scenario, "submit");
+    let step = drive_on(&mut plan, &host, step, &writes, scenario, &mut answer);
+    let hash = scenario["transactionHash"].as_str().unwrap();
+    assert_eq!(step, SendStep::Broadcast { hash: hash.into() });
+    replay.done();
+    assert!(
+        host.signed.borrow().is_empty(),
+        "the host's key never signs"
+    );
+    let signed = scenario["signed"].as_array().unwrap();
+    assert_eq!(plan.signatures_made() as usize, signed.len());
 }
 
 /// Not a test of the fixture: prints the hashes the plans above sign, the generator's

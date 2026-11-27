@@ -679,8 +679,9 @@ Foundations, which the features need, and Ledger, which needs only the first:
     `add_ledger_account`), and deployed with its extended authorization signed on the device,
     the parameters' hash then the transaction's, for both estimates and the write
     (`SignFor::BraavosParams`), as `braavosDeploySignature` asks the device. Tested against the
-    extension's Braavos deployment capture with a scripted device; no golden device transcript
-    for it (a Bramble generator is owed: a Braavos deployment under Speculos).
+    extension's Braavos deployment capture with a scripted device, and against a golden device
+    transcript: `extension-ledger.jsonl`'s `braavosDeploy` line (Bramble #1079), the extension's
+    own deployment with every hash signed on Speculos, replayed by `ledger_parity.rs`.
   Left here: nothing to port for a Ledger account's private balances or a Ledger-only
   wallet's Nostr coordination; the extension refuses both (above), so mobile refuses them too
   until the extension ships them. The P8 asks of 2026-11-27 assumed the extension signs the

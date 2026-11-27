@@ -27,10 +27,11 @@ copy. One file is from another commit: `extension-dapp.jsonl` (P16's generator),
 card's rows to `scripts/mobile-parity-dapp/typed-data.ts` and changes no other code; the next full copy brings every file to
 one commit again. Every file is byte-identical to its copy at that commit; privacy SDK
 `vendor/starknet-privacy` at `b40bf109` (Bramble's pin).
-A second exception: `extension-ledger.jsonl` comes from Bramble commit
-`cd1a18a10d84714ecbc92a37d65fbf75645a0e0f` (`feature/mobile-wallet`, 2026-11-26, merging
-Bramble #1061); first copied from its branch at `7cb47788c18d723effcceddb7b13e0235dfef64e`, and
-byte-identical at the merge. `bun run mobile:ledger` writes it by hand, not `mobile:parity`: it runs
+A second exception: `extension-ledger.jsonl` comes from Bramble commit `fdfd44f4a4a7f38559ffcd56121ee3144c34fb32`
+(`fixtures/p8-braavos-ledger`, Bramble #1079), which appends the `braavosDeploy` line (a Braavos account at
+Ready's scheme deployed through the extension's send path, every hash signed on the device); its
+first fifteen lines are byte-identical to `cd1a18a10d84714ecbc92a37d65fbf75645a0e0f`
+(`feature/mobile-wallet`, 2026-11-26, merging Bramble #1061). `bun run mobile:ledger` writes it by hand, not `mobile:parity`: it runs
 the extension's Ledger client against app-starknet 2.4.3 (the pinned Nano S+ ELF, sha256
 `8f15435c…`) in the digest-pinned Speculos image, seeded with the published parity phrase, so it
 needs Docker and the vendored app and nothing checks it for drift. Its two `plan` signatures are
@@ -100,7 +101,7 @@ Generators are under `scripts/` in Bramble; each fixture's is reached from
 | `extension-gasless.jsonl` | `mobile-parity-gasless/` | `c232ecadeb65c8dc36e64d3b51a091eb63c8923698f8d686b269845e4d9e45c7` |
 | `extension-dapp.jsonl` | `mobile-parity-dapp/` | `6dca21b487b810693936b581fd49fc869865f8d9daa1795e9e66f6c54411839d` |
 | `extension-nfts.jsonl` | `mobile-parity-nfts/` | `64d78a451ba193fbabd603e149fa6a89ad0009bb29ea2ab5fb047287d67c3591` |
-| `extension-ledger.jsonl` | `mobile-ledger-speculos.ts` (`bun run mobile:ledger`) | `944d70116b7606ee1b6a0087dd578132153a26c63b9550e56af267766f201b5d` |
+| `extension-ledger.jsonl` | `mobile-ledger-speculos.ts` (`bun run mobile:ledger`) | `cf6200ca373c4d476a1e02f205a6f265032baaffff8ca32d47b4138d4f5d6aa0` |
 
 Read today: `extension-parity.json` (`parity.rs`, `vault_parity.rs`),
 `accounts-parity-families-sepolia.json` and `nostr-multisig-parity.json` (`parity.rs`;
