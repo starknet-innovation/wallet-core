@@ -192,8 +192,8 @@ Written 2026-11-23, against #990's table; updated 2026-11-26. With M15–M17 mer
   transcripts, multisig co-signing and gasless on the device followed, #162–#164), and dapp
   connect and anti-phishing (P16, core done in #202; the host contract is `docs/dapp-host.md`);
 - core work left: STRK20 actions, then shadow accounts and multisig STRK20 (P15; a Rust port of
-  the SDK's client, #182, is being built on `strk20/integration`, draft #186, unmerged, and D3
-  below is not amended), and NFTs
+  the SDK's client, #182, is built on `strk20/integration`, #186, which D3 below now takes),
+  and NFTs
   (P17, added 2026-11-26: the extension shipped them in v0.10.10, so #990's "parked" row was
   wrong).
 
@@ -224,7 +224,9 @@ The porting is mostly done; what decides the pace now is the mobile screens:
   actions to StarkWare's proving service (`starknet_proveTransaction`, optionally through an
   OHTTP relay), and the extension proves remotely too. The question was how mobile runs the
   SDK's client side, which holds keys. *Decided* 2026-11-23 (product owner): embed the pinned SDK
-  for now, port it to Rust later.
+  for now, port it to Rust later. *Amended* 2026-11-27 (product owner): mobile uses the Rust port
+  (#182, on `strk20/integration`, #186) and embeds no SDK runtime; the core holds the client side
+  and still proves remotely through StarkWare's service, as the extension does.
 
 Generators (G*) and adoption (M*) are Bramble PRs against `feature/mobile-wallet`; X* are export
 PRs here, each tagged before its M*. Each feature follows the usual order: generator, mechanism,
@@ -288,7 +290,7 @@ and #147), and #1056, on top of the stack, takes up what `v0.9.0` adds.
 | --- | --- | --- | --- |
 | P8 Ledger | here, then both | D1 (settled) | as the extension's v1: blind signing only. The Starknet app's version, public-key and `signHash` commands with the extension's minimum app version and its status-word catalogue (`ledger-protocol/`, 1,096; `background/ledger/`, 847), as sans-IO APDU bytes here; a signing step in `Plan` that hands the hash to the host's device and takes a signature back, verified against the record's stored `publicKeyX` before anything is broadcast, and never falls back to a key (`account-hash-signer.ts`); Ledger records made operable; and a vault with no phrase opened and created, for Ledger-only onboarding. The apps link to the device over Bluetooth with the core's framing (`ledger::ble`: the GATT identifiers per model, the MTU handshake, frames out and the reply in, refusing a wrong tag, a sequence gap or an overrun) and a thin CoreBluetooth or `BluetoothGatt` shim each that only scans, pairs, writes and listens (D1, amended 2026-11-26). Bluetooth first; Android USB a follow-up. The generator records APDU transcripts against the Starknet Ledger app under Ledger's Speculos emulator (Bramble #1061, copied in #162), so no test needs a device. Core done in `v0.9.0`; follow-ups in review and left: see P8 in [Parity](#parity) |
 | P16 Dapp connect | here, then both | D2 (settled), X2 | core done here, the STRK20 methods waiting on P15 and a declare refused by decision; Bramble's browser, bridge and screens remain (see "P16 progress" under P16 in [Parity](#parity), and [`docs/dapp-host.md`](dapp-host.md) for the host contract). request validation, grants (the vault's `originGrants`, and the per-account revocation P7 left, `withoutOriginAccess`), the approval queue and its review budget, typed-data review and signing (SNIP-12), add-chain and watch-asset, the blocklist and phishing feed as a sans-IO body and judge (`background/provider/`, 2,453; `background/approvals/`, 4,169; `permissions/`, 905). The core takes a request (origin, method, params) and returns a review, a grant or a refusal, whatever carried it. Mobile builds the transport: for a browser, a WebView whose bridge binds every request to the top frame's origin as the platform reports it and refuses frames it cannot attribute. P9's poisoned-payee refusal must not reach the site before the person acts |
-| P15 STRK20 | here, then both | D3 (settled), the P15 spike | activate, shield, unshield and private send; then shadow accounts and multisig STRK20 (`privacy/`, 9,279; `background/privacy/`, 5,872), over 2.4d's read plan. The core owns the policy, the review and the extension's own rules around the SDK; the SDK is an engine the core drives through a trait, and each app runs the same pinned bundle the extension vendors (its pin, its digests) in a sandboxed runtime the spike picks. The largest step: six PRs in that order. Later: the SDK's client ported to Rust, once upstream leaves release candidates or StarkWare ships one, with its crypto from Krusty (the core adds none of its own), and the embedded runtime goes |
+| P15 STRK20 | here, then both | D3 (settled), the P15 spike | activate, shield, unshield and private send; then shadow accounts and multisig STRK20 (`privacy/`, 9,279; `background/privacy/`, 5,872), over 2.4d's read plan. The core owns the policy, the review and the extension's own rules around the SDK; the SDK is an engine the core drives through a trait, and the engine is the Rust port of the SDK's client (D3, amended 2026-11-27; #182, #186), with its crypto from Krusty (the core adds none of its own), so no app embeds an SDK runtime. The largest step: six PRs in that order |
 | P17 NFTs | here, then both | legal on 3.1.1 before the screens ship | spiked 2026-11-26 (see P17 in [Parity](#parity)): the extension's discovery (Starkscan or a set indexer), `owner_of` re-proof, `token_uri` / `uri` metadata, ERC-721/1155 transfers under P9's review, and watched NFTs; then the gallery, detail and send screens, images only. G-NFT, then the core and its tag, then M-NFT |
 
 Done means #990's every shipped row on both apps, each proved against the extension by its
@@ -656,9 +658,10 @@ Foundations, which the features need, and Ledger, which needs only the first:
     read only when offers are made.
   Left here: a Ledger account's privacy reads (the vault's cached `ledgerStrk20ViewingKeys`
   first, then the viewing key signed on the device and cached, as the extension does; a
-  prerequisite for P15 on a Ledger account); whether a Braavos Ledger account is added and
-  deployed once proven live on chain (a product call); whether a Ledger-only wallet coordinates
-  over Nostr (check the extension first). Ledger's Bluetooth framing is in the core
+  prerequisite for P15 on a Ledger account); a Braavos Ledger account added and deployed once
+  proven live on chain, and Nostr coordination for a Ledger-only wallet, each exactly as the
+  extension does (*decided* 2026-11-27, product owner: parity with the extension, so the
+  departures above for Braavos and Nostr go). Ledger's Bluetooth framing is in the core
   (`ledger::ble`, D1 amended); later, not needed for parity: Android USB. Left in Bramble: the
   screens (connect over each app's Bluetooth shim and the core's framing, pick, sign).
 - **P9 Call batches.** `send::Kind` is a transfer, a deployment or a refresh; a single-signer
@@ -892,8 +895,9 @@ Features, smallest and least dependent first:
 - **P15 STRK20 submission.** Activate, shield, unshield and private send; then shadow accounts
   and multisig STRK20. The largest step: `packages/features/privacy/` (9,279) and
   `background/privacy/` (5,872), over the read plan 2.4d ported. The extension proves through a
-  vendored JavaScript SDK (`scripts/vendor-privacy-sdk.ts`); D3 settled that mobile embeds the
-  same pinned SDK (Road to parity), and the spike below says how.
+  vendored JavaScript SDK (`scripts/vendor-privacy-sdk.ts`); D3 first settled that mobile embeds
+  the same pinned SDK (the spike below says how), then on 2026-11-27 took the Rust port of its
+  client instead (Road to parity).
 
   **P15 spike findings (2026-11-23).** Read from Bramble `main` (`a01b240c`) and
   `starkware-libs/starknet-privacy` at the extension's pin (`b40bf109`); nothing was built or run.
@@ -2354,8 +2358,8 @@ Added 2026-11-09 after reviewing the first day's work. Items marked *proposed* a
 - Which modules count as mobile-only glue, and whether they live in the app or in `bramble-core`
   behind mobile's build (Phase 2).
 - What makes a STRK20 proof on a phone (P15). Settled 2026-11-23: nothing on the phone; the
-  SDK sends actions to StarkWare's proving service, as the extension does. Mobile embeds the
-  pinned SDK for its client side for now and ports it to Rust later (see
+  SDK sends actions to StarkWare's proving service, as the extension does. Mobile runs the SDK's
+  client side as a Rust port in the core (amended 2026-11-27; see
   [Road to parity](#road-to-parity), D3).
 - What carries a dapp's requests on mobile (P16): WalletConnect, as #990 assumes, or something
   else. It decides which of the extension's provider rules the core can share unchanged.
