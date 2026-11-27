@@ -1,8 +1,8 @@
 //! `multisig_import::import_intent` end to end, over the ready intent of
 //! `extension-multisig-transactions-refusals.json`: the chain's authority and nonce, the
 //! wallet's own review in place of the remote summary, the record that must be the frozen
-//! transaction's account, and the stored intent it merges into. The extension recorded no import
-//! cases, so these hold the Rust to `importIntent` directly.
+//! transaction's account, and the stored intent it merges into. The extension's own import cases
+//! are `multisig_import_parity.rs`, over `extension-multisig-import.jsonl`.
 
 use crate::multisig_import_support;
 use crate::multisig_support;
