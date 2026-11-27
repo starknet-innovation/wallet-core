@@ -40,6 +40,9 @@ A third exception: `extension-nfts.jsonl` (P17's generator) is from Bramble
 `dd85d9ae8d179fed0d47e3c8bf2df520918b5c8f` (`fixtures/g-nft`, on `feature/mobile-wallet` at
 `232e21510`), which adds `scripts/mobile-parity-nfts/` and changes no other code (two test-support
 headers gain a note); byte-identical to its copy there.
+A fourth exception: `extension-multisig-import.jsonl` (G7c's import cases) comes from Bramble commit
+`232e21510158f1c046885acbca882bfe941b00c9` (`feature/mobile-wallet`, 2026-11-27, merging #1074);
+its generator, `scripts/mobile-parity-multisig-import/`, landed with #1042 (`edc94db3c`).
 Generators are under `scripts/` in Bramble; each fixture's is reached from
 `generate-mobile-parity-vectors.ts`.
 
@@ -85,6 +88,7 @@ Generators are under `scripts/` in Bramble; each fixture's is reached from
 | `extension-multisig-transactions.json` | `generate-mobile-parity-vectors.ts` (`mobile-multisig-*.ts`) | `6af5ce7e64ed96da66c8cfc77b264e230395846ad9f3851b1f7fd7f9afe8c8a3` |
 | `extension-multisig-transactions-refusals.json` | `generate-mobile-parity-vectors.ts` (`mobile-multisig-*.ts`) | `80b278d7f23092c70ae76306b813cb5fe13cea8e79b018d7223d9fa5a7185653` |
 | `extension-multisig-transactions-signers.json` | `generate-mobile-parity-vectors.ts` (`mobile-multisig-*.ts`) | `78ad15af9b68692724cdb1e84118591870f545db892eeaf40ff1e92fe2d9a5b3` |
+| `extension-multisig-import.jsonl` | `mobile-parity-multisig-import/` | `bbe09ac4d8b73d9a4af13681bb0eb92850773863897b825bb25acea330208ae5` |
 | `extension-call-review.jsonl` | `mobile-parity-calls/` | `c9e106c0c6433eccaad6b5503b1b44d80e09cfd1bcac64904ac9c01224055ce6` |
 | `vault-v13.json` | `generate-mobile-parity-vectors.ts` (`mobile-parity-vault.ts`) | `d4f0cf2a62d209cd05286a6d81b372bdaf1d356ba273b41e3e8ed2437912977f` |
 | `vault-v13-imported.json` | `generate-mobile-parity-vectors.ts` (`mobile-parity-vault.ts`) | `099ced8a46789f9d3cf7d3c679d5c5287876ccab618b7e7674c9ef65c774da97` |
@@ -151,7 +155,9 @@ no test here reads it. `extension-multisig-transactions.json` is read by
 proposal's summary as the intent card's call line, and the first signer change of `-signers.json`). `multisig_signers_parity.rs` also reads
 all of `-signers.json` and the `calls` part of `-refusals.json`; `multisig_deploy_parity.rs` its
 `deploySubmit` part and `multisig_refusals_parity.rs` every other part
-(`multisig_import_mechanism.rs` builds on its `readyIntent` and `account`). See
+(`multisig_import_mechanism.rs` builds on its `readyIntent` and `account`).
+`extension-multisig-import.jsonl` is read by `multisig_import_parity.rs` (every line; its
+`divergence` lines and the wallet-level cases mobile does not share are asserted as departures). See
 [P1](../../../../docs/PLAN.md#mobile-parity). `extension-nfts.jsonl` waits for P17's port; no test reads it yet. The rest sit
 here unused until their Phase 2 step moves the matching mobile parity test in (see `docs/PLAN.md`,
 Phase 1).
