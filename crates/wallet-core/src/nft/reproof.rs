@@ -75,7 +75,8 @@ impl OwnershipRead {
     pub fn judge(&mut self, reply: &RpcReply, next_id: u64) -> ReadStep<NftOwnership> {
         let answer = match self.ladder.rung(reply) {
             Rung::Transport => return ReadStep::Transport,
-            Rung::Skip => return self.ladder.next(next_id),
+            // `response[0]` of a non-array is never a felt, and `.length` never 2: next rung.
+            Rung::Skip | Rung::NotArray => return self.ladder.next(next_id),
             Rung::Answer(answer) => answer,
         };
         let read = if self.ladder.at() < OWNER_RUNGS {
@@ -255,6 +256,14 @@ mod tests {
             "balance_of" => result(id, r#"["0x1"]"#),
             _ => result(id, r#"["0x1","0x100000000000000000000000000000000"]"#),
         });
+        assert_eq!(step, ReadStep::Failed);
+        assert_eq!(seen, ["owner_of", "ownerOf", "balance_of", "balanceOf"]);
+    }
+
+    #[test]
+    fn a_non_array_owner_answer_moves_to_the_next_entrypoint() {
+        // `response[0]` of an object is `undefined`, never a felt: the next spelling, same node.
+        let (step, seen) = drive(read(9), |id, _| result(id, "{}"));
         assert_eq!(step, ReadStep::Failed);
         assert_eq!(seen, ["owner_of", "ownerOf", "balance_of", "balanceOf"]);
     }

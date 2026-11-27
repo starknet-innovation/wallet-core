@@ -215,3 +215,13 @@ fn reads_attributes_within_their_bounds() {
     assert_eq!(metadata_from_json("[]", &LIMITS), None);
     assert_eq!(metadata_from_json(r#"{"name":"  "}"#, &LIMITS), None);
 }
+
+#[test]
+fn a_padded_data_uri_is_never_a_fetch() {
+    // Trimmed, it is an image `data:` URI the image rule keeps; a fetch is `https` only.
+    let svg = format!(" data:image/svg+xml;base64,{}", btoa(r#"{"name":"x"}"#));
+    assert_eq!(
+        resolve_metadata_uri(&svg, &LIMITS),
+        MetadataSource::Resolved(None)
+    );
+}
