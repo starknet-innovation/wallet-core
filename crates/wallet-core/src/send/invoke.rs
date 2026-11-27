@@ -66,6 +66,7 @@ pub struct Invoke {
     pub(crate) reviewed: Vec<ReviewedCall>,
     pub(crate) activity_summary: Option<String>,
     pub(crate) activity_asset: Option<ActivityAsset>,
+    pub(crate) activity_counterparty: Option<Felt>,
     pub(crate) allowances: Vec<AllowanceChange>,
     pub(crate) fee_balance: Option<U256>,
 }
@@ -256,6 +257,7 @@ impl Invoke {
             reviewed,
             activity_summary: None,
             activity_asset: None,
+            activity_counterparty: None,
             allowances,
             fee_balance: None,
         })
@@ -305,6 +307,14 @@ impl Invoke {
         self
     }
 
+    /// Names the payee of the activity row, for the crate's own builders (an NFT send): a dapp's
+    /// batch names none.
+    #[must_use]
+    pub(crate) fn with_activity_counterparty(mut self, counterparty: Felt) -> Self {
+        self.activity_counterparty = Some(counterparty);
+        self
+    }
+
     /// The STRK the host last read for the sending account, for the review's shortfall warning
     /// only (`resolveFeeAffordability`, fee-only for a batch). Without it the review says
     /// `Unknown`, never blocking. It rides on the batch the plan binds to its account and network.
@@ -330,11 +340,12 @@ impl Invoke {
         self.activity_summary.as_deref().unwrap_or(&self.summary)
     }
 
-    /// What the plan's pending record says of this batch: the row's amount and token, when its
-    /// builder named them, and the allowance changes to file under the signed hash.
+    /// What the plan's pending record says of this batch: the row's amount, token and payee, when
+    /// its builder named them, and the allowance changes to file under the signed hash.
     pub(crate) fn pending_kind(&self) -> PendingKind {
         PendingKind::Invoke {
             asset: self.activity_asset.clone(),
+            counterparty: self.activity_counterparty,
             allowances: self.allowances.clone(),
         }
     }

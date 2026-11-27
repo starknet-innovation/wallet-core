@@ -304,7 +304,8 @@ impl TransferPlan {
 
 /// What a pending record's row names: its kind, amount, counterparty, token symbol, token
 /// address, and whether it moves value out. Only a public send does (`transfer-ops.ts`); a
-/// batch's row names a token without a direction, as the extension's swap and staking rows do.
+/// batch's row names a token without a direction, as the extension's swap and staking rows do,
+/// and a payee only when its builder named one (an NFT send's, `nft-transfer-submit.ts`).
 fn row(kind: PendingKind) -> (ActivityKind, Text, Text, Text, Text, bool) {
     match kind {
         PendingKind::Transfer {
@@ -321,17 +322,24 @@ fn row(kind: PendingKind) -> (ActivityKind, Text, Text, Text, Text, bool) {
             true,
         ),
         // Its `allowances` were filed in the allowance log before this row (`record_pending`).
-        PendingKind::Invoke { asset, .. } => match asset {
-            Some(asset) => (
-                ActivityKind::Invoke,
-                asset.amount,
-                None,
-                Some(asset.symbol),
-                Some(felt::canonical(&asset.token_address)),
-                false,
-            ),
-            None => (ActivityKind::Invoke, None, None, None, None, false),
-        },
+        PendingKind::Invoke {
+            asset,
+            counterparty,
+            ..
+        } => {
+            let counterparty = counterparty.map(|payee| felt::canonical(&payee));
+            match asset {
+                Some(asset) => (
+                    ActivityKind::Invoke,
+                    asset.amount,
+                    counterparty,
+                    Some(asset.symbol),
+                    Some(felt::canonical(&asset.token_address)),
+                    false,
+                ),
+                None => (ActivityKind::Invoke, None, counterparty, None, None, false),
+            }
+        }
         PendingKind::Deployment => (ActivityKind::Deploy, None, None, None, None, false),
     }
 }
@@ -418,6 +426,7 @@ mod tests {
                 symbol: "ETH".into(),
                 token_address: token,
             }),
+            counterparty: None,
             allowances: Vec::new(),
         };
         let address = Some(felt::canonical(&token));
@@ -445,11 +454,28 @@ mod tests {
         );
         let bare = PendingKind::Invoke {
             asset: None,
+            counterparty: None,
             allowances: Vec::new(),
         };
         assert_eq!(
             row(bare),
             (ActivityKind::Invoke, None, None, None, None, false)
+        );
+        let nft = PendingKind::Invoke {
+            asset: None,
+            counterparty: Some(Felt::from(0x7u8)),
+            allowances: Vec::new(),
+        };
+        assert_eq!(
+            row(nft),
+            (
+                ActivityKind::Invoke,
+                None,
+                Some("0x7".into()),
+                None,
+                None,
+                false
+            )
         );
     }
 }
