@@ -36,6 +36,10 @@ the extension's Ledger client against app-starknet 2.4.3 (the pinned Nano S+ ELF
 needs Docker and the vendored app and nothing checks it for drift. Its two `plan` signatures are
 over hashes the core's plan printed (`ledger_parity.rs`'s ignored `print_plan_hashes`), not the
 extension's; its second `version` line is a reply the generator wrote (`recorded: false`).
+A third exception: `extension-nfts.jsonl` (P17's generator) is from Bramble
+`dd85d9ae8d179fed0d47e3c8bf2df520918b5c8f` (`fixtures/g-nft`, on `feature/mobile-wallet` at
+`232e21510`), which adds `scripts/mobile-parity-nfts/` and changes no other code (two test-support
+headers gain a note); byte-identical to its copy there.
 Generators are under `scripts/` in Bramble; each fixture's is reached from
 `generate-mobile-parity-vectors.ts`.
 
@@ -91,6 +95,7 @@ Generators are under `scripts/` in Bramble; each fixture's is reached from
 | `vault-v13-to-v14.json` | `generate-mobile-parity-vectors.ts` (`mobile-parity-vault-full.ts`) | `58e4671a1ebe15bef6159df851211390de48c11b42537c8d6fb2e70290067565` |
 | `extension-gasless.jsonl` | `mobile-parity-gasless/` | `c232ecadeb65c8dc36e64d3b51a091eb63c8923698f8d686b269845e4d9e45c7` |
 | `extension-dapp.jsonl` | `mobile-parity-dapp/` | `4fa29896a551736d6f8bcb9dda21819b5077df8e6ad1cf15d3bcf2e6d50d9ef5` |
+| `extension-nfts.jsonl` | `mobile-parity-nfts/` | `64d78a451ba193fbabd603e149fa6a89ad0009bb29ea2ab5fb047287d67c3591` |
 | `extension-ledger.jsonl` | `mobile-ledger-speculos.ts` (`bun run mobile:ledger`) | `944d70116b7606ee1b6a0087dd578132153a26c63b9550e56af267766f201b5d` |
 
 Read today: `extension-parity.json` (`parity.rs`, `vault_parity.rs`),
@@ -144,7 +149,7 @@ proposal's summary as the intent card's call line, and the first signer change o
 all of `-signers.json` and the `calls` part of `-refusals.json`; `multisig_deploy_parity.rs` its
 `deploySubmit` part and `multisig_refusals_parity.rs` every other part
 (`multisig_import_mechanism.rs` builds on its `readyIntent` and `account`). See
-[P1](../../../../docs/PLAN.md#mobile-parity). The rest sit
+[P1](../../../../docs/PLAN.md#mobile-parity). `extension-nfts.jsonl` waits for P17's port; no test reads it yet. The rest sit
 here unused until their Phase 2 step moves the matching mobile parity test in (see `docs/PLAN.md`,
 Phase 1).
 
