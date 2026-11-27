@@ -1355,14 +1355,12 @@ Features, smallest and least dependent first:
     - A site's `wallet_watchAsset` for an NFT. Mobile still refuses it; it needs a card in
       `DappSession`.
 
-    Known departures:
-    - The send card names the recipient as `address_label`; the extension's live code prints
-      it in decimal.
-    - An art or metadata URL the WHATWG parser would respell or keep oddly is dropped
-      rather than respelled, since the core checks it without a URL parser. This covers a
-      literal `{id}`, a space, non-ASCII text, a fragment, `'` in the query, and an explicit
-      `:443`. The extension shows these, percent-encoded where needed, so some real art is
-      missing on mobile.
+    Matched by decision (2026-11-27): the send names its recipient in decimal, as the
+    extension's live send does, and art and metadata URLs are read as `new URL` reads them and
+    shown as its `href` (`js::url`).
+
+    Known departure: a host only IDNA can read (non-ASCII, or an `xn--` label) is dropped. The
+    extension shows it in punycode.
 
     M-NFT waits on legal (3.1.1).
 
