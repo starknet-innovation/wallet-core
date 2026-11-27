@@ -37,13 +37,13 @@ use starknet_wallet_core::privacy::types::PrivacyReply;
 use starknet_wallet_core::send::types::SignRefusal;
 use starknet_wallet_core::{felt, Error, Felt, NetworkId, SecretFelt, StarkSignature};
 
-use crate::strk20_support::{compile_refusal, contracts, proof_jobs, reviewed};
+use crate::strk20_support::{compile_refusal, contracts, drive, proof_jobs, reviewed};
 
 /// The generator's pinned clock, the SDK's `Date.now()`.
 const NOW: u64 = 1_800_000_000_000;
 
 /// Bramble's `STRK20_PROVER_REQUEST` with the SDK's backoff defaults.
-const BRAMBLE_RETRY: ProverRetry = ProverRetry {
+pub const BRAMBLE_RETRY: ProverRetry = ProverRetry {
     max_retries: 3,
     request_timeout_ms: 30_000,
     base_delay_ms: 1_000,
@@ -234,90 +234,81 @@ pub fn replay<E: Entropy>(job: &Value, host: &dyn ProofHost, mut proof_job: Proo
             .unwrap_or_else(|| panic!("{id}: an invented {purpose:?} request"))
     };
     let mut waits = Vec::new();
-    let mut step = proof_job
-        .advance(host, PrivacyReply::Start { now_ms: NOW })
-        .unwrap();
-    loop {
-        let reply = match &step {
-            ProofStep::Post {
-                id: step_id,
+    let end = drive(&mut proof_job, host, NOW, |step| match step {
+        ProofStep::Post {
+            id: step_id,
+            url,
+            body,
+            purpose,
+        } => {
+            let recorded = take(*purpose);
+            assert_eq!(
                 url,
-                body,
-                purpose,
-            } => {
-                let recorded = take(*purpose);
-                assert_eq!(
-                    url,
-                    recorded["url"].as_str().unwrap(),
-                    "{id}: {purpose:?} URL"
-                );
-                let expected_url = match purpose {
-                    ProofPurpose::Prove => job["inputs"]["proverUrl"].as_str().unwrap().to_owned(),
-                    _ => format!(
-                        "{}/v1/sync/{}_state",
-                        job["inputs"]["discoveryUrl"].as_str().unwrap(),
-                        route_of(*purpose)
-                    ),
-                };
-                assert_eq!(*url, expected_url, "{id}");
-                assert_eq!(
-                    std::str::from_utf8(body).unwrap(),
-                    recorded["body"].as_str().unwrap(),
-                    "{id}: {purpose:?} body"
-                );
-                let reply = &recorded["reply"];
-                PrivacyReply::Http {
-                    id: *step_id,
-                    status: u16::try_from(reply["status"].as_u64().unwrap()).unwrap(),
-                    body: reply["body"].as_str().unwrap().as_bytes().to_vec(),
-                    now_ms: NOW,
-                }
+                recorded["url"].as_str().unwrap(),
+                "{id}: {purpose:?} URL"
+            );
+            let expected_url = match purpose {
+                ProofPurpose::Prove => job["inputs"]["proverUrl"].as_str().unwrap().to_owned(),
+                _ => format!(
+                    "{}/v1/sync/{}_state",
+                    job["inputs"]["discoveryUrl"].as_str().unwrap(),
+                    route_of(*purpose)
+                ),
+            };
+            assert_eq!(*url, expected_url, "{id}");
+            assert_eq!(
+                std::str::from_utf8(body).unwrap(),
+                recorded["body"].as_str().unwrap(),
+                "{id}: {purpose:?} body"
+            );
+            let reply = &recorded["reply"];
+            PrivacyReply::Http {
+                id: *step_id,
+                status: u16::try_from(reply["status"].as_u64().unwrap()).unwrap(),
+                body: reply["body"].as_str().unwrap().as_bytes().to_vec(),
+                now_ms: NOW,
             }
-            ProofStep::Rpc {
-                id: step_id,
-                body,
-                purpose,
-            } => {
-                let recorded = take(*purpose);
-                assert_eq!(
-                    recorded["url"].as_str().unwrap(),
-                    job["inputs"]["rpcUrl"].as_str().unwrap(),
-                    "{id}"
-                );
-                // `rpc_bodies` sorts its keys, and the JSON-RPC id is the job's step id: equal as
-                // JSON once the recorded id is the job's (the body is public).
-                let ours: Value = serde_json::from_str(body).unwrap();
-                let mut theirs: Value =
-                    serde_json::from_str(recorded["body"].as_str().unwrap()).unwrap();
-                theirs["id"] = (*step_id).into();
-                assert_eq!(ours, theirs, "{id}: {purpose:?} body");
-                let mut reply: Value =
-                    serde_json::from_str(recorded["reply"]["body"].as_str().unwrap()).unwrap();
-                reply["id"] = (*step_id).into();
-                PrivacyReply::Rpc {
-                    id: *step_id,
-                    body: reply.to_string(),
-                    now_ms: NOW,
-                }
+        }
+        ProofStep::Rpc {
+            id: step_id,
+            body,
+            purpose,
+        } => {
+            let recorded = take(*purpose);
+            assert_eq!(
+                recorded["url"].as_str().unwrap(),
+                job["inputs"]["rpcUrl"].as_str().unwrap(),
+                "{id}"
+            );
+            // `rpc_bodies` sorts its keys, and the JSON-RPC id is the job's step id: equal as
+            // JSON once the recorded id is the job's (the body is public).
+            let ours: Value = serde_json::from_str(body).unwrap();
+            let mut theirs: Value =
+                serde_json::from_str(recorded["body"].as_str().unwrap()).unwrap();
+            theirs["id"] = (*step_id).into();
+            assert_eq!(ours, theirs, "{id}: {purpose:?} body");
+            let mut reply: Value =
+                serde_json::from_str(recorded["reply"]["body"].as_str().unwrap()).unwrap();
+            reply["id"] = (*step_id).into();
+            PrivacyReply::Rpc {
+                id: *step_id,
+                body: reply.to_string(),
+                now_ms: NOW,
             }
-            ProofStep::Wait { delay_ms } => {
-                waits.push(*delay_ms);
-                PrivacyReply::WaitElapsed { now_ms: NOW }
-            }
-            ProofStep::Finished { .. }
-            | ProofStep::Held { .. }
-            | ProofStep::Expired
-            | ProofStep::Failed { .. } => break,
-        };
-        step = proof_job.advance(host, reply).unwrap();
-    }
+        }
+        ProofStep::Wait { delay_ms } => {
+            waits.push(*delay_ms);
+            PrivacyReply::WaitElapsed { now_ms: NOW }
+        }
+        _ => unreachable!("drive answers live steps only"),
+    });
     let leftover = queues
         .into_iter()
         .filter(|(_, queue)| !queue.is_empty())
         .map(|(route, queue)| (route, queue.len()))
         .collect();
     Run {
-        end: step,
+        end,
         waits,
         leftover,
     }

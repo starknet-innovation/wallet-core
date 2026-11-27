@@ -7,11 +7,38 @@
 use bramble_core::strk20::invoke_calldata_item;
 use serde_json::Value;
 use starknet_wallet_core::privacy::compiler::{CompileRefusal, Contracts};
+use starknet_wallet_core::privacy::entropy::Entropy;
+use starknet_wallet_core::privacy::job::{ProofHost, ProofJob, ProofStep};
 use starknet_wallet_core::privacy::proof::{CollectPolicy, ReviewedAction};
+use starknet_wallet_core::privacy::types::PrivacyReply;
 use starknet_wallet_core::send::calls::Call;
 use starknet_wallet_core::{encode_short_string, felt, Felt};
 
 pub const JOBS: &str = include_str!("fixtures/extension-strk20-jobs.jsonl");
+
+/// Drives `job` from `Start` (at `now_ms`) until it ends, asking `answer` for the host's side of
+/// each `Post`, `Rpc` and `Wait`; returns the terminal step. The one loop the replays and the
+/// live smoke harness (`strk20_live_smoke`) share.
+pub fn drive<E: Entropy>(
+    job: &mut ProofJob<E>,
+    host: &dyn ProofHost,
+    now_ms: u64,
+    mut answer: impl FnMut(&ProofStep) -> PrivacyReply,
+) -> ProofStep {
+    let mut step = job
+        .advance(host, PrivacyReply::Start { now_ms })
+        .expect("the job starts");
+    while matches!(
+        step,
+        ProofStep::Post { .. } | ProofStep::Rpc { .. } | ProofStep::Wait { .. }
+    ) {
+        let reply = answer(&step);
+        step = job
+            .advance(host, reply)
+            .expect("the job accepts each reply");
+    }
+    step
+}
 
 /// Every line of the fixture.
 pub fn lines() -> Vec<Value> {
