@@ -51,6 +51,7 @@ impl WalletCore {
     /// Every watched NFT, in stored order (`wallet.loadWatchedNfts`), spam-hidden ones included
     /// so the gallery can offer to unhide them.
     pub fn watched_nfts(&self) -> Result<Vec<WatchedNft>, NftError> {
+        self.unlocked()?;
         Ok(with_watched(&self.data_dir, |nfts| nfts.list())?)
     }
 
@@ -74,6 +75,9 @@ impl WalletCore {
         label: Option<String>,
     ) -> Result<WatchedNft, NftError> {
         let acting = self.plan_account_for(&read.account_id, Use::Read)?;
+        if acting.generation != read.generation {
+            return Err(NftError::Locked);
+        }
         let target = NftTarget {
             label,
             ..read.target.clone()
@@ -86,11 +90,13 @@ impl WalletCore {
 
     /// `removeNft`: an unknown id changes nothing.
     pub fn remove_nft(&self, id: String) -> Result<(), NftError> {
+        self.unlocked()?;
         Ok(with_watched(&self.data_dir, |nfts| nfts.remove(&id))?)
     }
 
     /// `setNftSpam`: hide as spam, or unhide; an unknown id changes nothing.
     pub fn set_nft_spam(&self, id: String, spam: bool) -> Result<(), NftError> {
+        self.unlocked()?;
         Ok(with_watched(&self.data_dir, |nfts| {
             nfts.set_spam(&id, spam)
         })?)
@@ -98,6 +104,7 @@ impl WalletCore {
 
     /// The person's NFT indexer endpoint, if set. It may carry an API key: never log it.
     pub fn nft_indexer_url(&self) -> Result<Option<String>, NftError> {
+        self.unlocked()?;
         Ok(with_watched(&self.data_dir, |nfts| nfts.indexer_url())?)
     }
 
@@ -105,6 +112,7 @@ impl WalletCore {
     /// must be an endpoint mobile may store (`https` only, as for an RPC override), else
     /// "Invalid indexer endpoint".
     pub fn set_nft_indexer_url(&self, url: String) -> Result<(), NftError> {
+        self.unlocked()?;
         let url = match indexer_url_setting(&url) {
             Some(IndexerUrlSetting::Clear) => String::new(),
             Some(IndexerUrlSetting::Set(url)) if is_rpc_url(&url) => url,
@@ -117,11 +125,21 @@ impl WalletCore {
 
     /// `nftsShown`: on unless the person turned NFTs off. Off, discovery sends nothing.
     pub fn nfts_shown(&self) -> Result<bool, NftError> {
+        self.unlocked()?;
         Ok(with_watched(&self.data_dir, |nfts| nfts.shown())?)
     }
 
     /// The display switch (`collectiblesPreview`).
     pub fn set_nfts_shown(&self, shown: bool) -> Result<(), NftError> {
+        self.unlocked()?;
         Ok(with_watched(&self.data_dir, |nfts| nfts.set_shown(shown))?)
+    }
+}
+
+impl WalletCore {
+    /// The list names owners and the indexer URL may carry a key: like the RPC override and
+    /// contacts, none of it is read or written while locked.
+    fn unlocked(&self) -> Result<(), NftError> {
+        self.require_unlocked().map_err(|_| NftError::Locked)
     }
 }

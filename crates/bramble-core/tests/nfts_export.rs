@@ -373,3 +373,54 @@ fn a_watch_is_stored_only_from_a_read_that_found_the_token() {
         Some("https://indexer.example/api")
     );
 }
+
+#[test]
+fn a_lock_voids_a_read_and_closes_the_watched_list() {
+    let case = case(
+        "discover",
+        "Starkscan candidates re-proved: owned kept, someone else's dropped",
+    );
+    let (_dir, core) = wallet();
+    let account = oz_id(&core, NetworkId::Mainnet, 0);
+    let read = core
+        .nft_ownership_read(
+            account,
+            "0x7a11ce5e1f2d3c4b5a69788796a5b4c3d2e1f0a1b2c3d4e5f60718293a4b5c6".into(),
+            "1".into(),
+        )
+        .unwrap();
+    drive(
+        || read.next_calls(),
+        |reply| read.accept(reply),
+        &case["exchanges"],
+    );
+    core.lock();
+    let locked = "wallet is locked";
+    assert_eq!(core.watched_nfts().err().unwrap().to_string(), locked);
+    assert_eq!(core.nft_indexer_url().err().unwrap().to_string(), locked);
+    assert_eq!(core.nfts_shown().err().unwrap().to_string(), locked);
+    assert_eq!(
+        core.set_nfts_shown(false).err().unwrap().to_string(),
+        locked
+    );
+    assert_eq!(
+        core.remove_nft("x".into()).err().unwrap().to_string(),
+        locked
+    );
+    assert_eq!(
+        core.set_nft_spam("x".into(), true)
+            .err()
+            .unwrap()
+            .to_string(),
+        locked
+    );
+    let set = core.set_nft_indexer_url("https://indexer.example".into());
+    assert_eq!(set.err().unwrap().to_string(), locked);
+    // A read made before the lock proves nothing in the next session.
+    core.unlock(PASSWORD.into()).unwrap();
+    assert_eq!(
+        core.watch_nft(read, None).err().unwrap().to_string(),
+        locked
+    );
+    assert!(core.watched_nfts().unwrap().is_empty());
+}

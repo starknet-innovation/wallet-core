@@ -116,6 +116,8 @@ fn guard<T>(lock: &Mutex<T>) -> MutexGuard<'_, T> {
 pub struct NftOwnershipRead {
     pub(crate) account_id: String,
     pub(crate) address: Felt,
+    /// The session the read was made in: `watch_nft` refuses a read from before a lock.
+    pub(crate) generation: u64,
     pub(crate) target: NftTarget,
     read: Mutex<Steps<OwnershipRead>>,
 }
@@ -237,6 +239,7 @@ impl WalletCore {
         let read = OwnershipRead::new(contract, address, token_id)?;
         Ok(Arc::new(NftOwnershipRead {
             account_id: acting.account_id,
+            generation: acting.generation,
             address,
             target,
             read: Mutex::new(Steps::new(read)),
