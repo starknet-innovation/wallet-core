@@ -8,17 +8,33 @@
 
 use crate::Felt;
 
+use super::fees::Bounds;
 use super::judge::TxStatus;
 use super::judge::{self, Answer, EstimateAnswer, Observation, WriteAnswer};
 use super::plan::{
-    AfterWait, Authorization, DeploymentFor, DeploymentPoll, Expect, Plan, PlanHost,
-    DEPLOY_POLL_ATTEMPTS, DEPLOY_POLL_INTERVAL_MS,
+    AfterWait, Authorization, Expect, Plan, PlanHost, DEPLOY_POLL_ATTEMPTS, DEPLOY_POLL_INTERVAL_MS,
 };
 use super::plan_device::{DeployWrite, SignFor};
 use super::plan_submit::{refusal_code, settle, Settled};
 use super::rpc_bodies::{self, DeployTx};
 use super::sign;
 use super::types::{RpcPurpose, SendFailureCode as Code, SendStep};
+
+/// What a deployment estimate is for: a standalone deployment, or the one before an invoke
+/// signed at these bounds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DeploymentFor {
+    Standalone,
+    Invoke(Bounds),
+}
+
+/// A broadcast deployment being waited for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct DeploymentPoll {
+    pub hash: Felt,
+    pub bounds: Bounds,
+    pub attempts: u32,
+}
 
 impl Plan {
     /// The parameters Braavos's extended deploy authorization carries for this account.

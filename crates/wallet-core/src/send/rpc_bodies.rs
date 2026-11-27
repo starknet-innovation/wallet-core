@@ -9,6 +9,7 @@ use serde_json::{json, Value};
 use starknet_types_core::felt::Felt;
 
 use super::fees::{Bound, Bounds};
+use super::proof_invoke::Proof;
 use crate::felt;
 use crate::rpc::envelope;
 
@@ -39,12 +40,15 @@ fn resource_bounds(bounds: Option<&Bounds>) -> Value {
 
 /// An INVOKE v3 transaction object. An estimate query has no bounds (all zero, at the query
 /// version) and the account's query signature (empty for OpenZeppelin, which skips validation).
+/// A proof-bearing INVOKE (SNIP-36) carries `proof` (its data) and `proof_facts` in the estimate
+/// and the write alike.
 pub struct InvokeTx<'a> {
     pub sender: &'a Felt,
     pub calldata: &'a [Felt],
     pub nonce: &'a Felt,
     pub bounds: Option<&'a Bounds>,
     pub signature: &'a [Felt],
+    pub proof: Option<&'a Proof>,
 }
 
 /// A DEPLOY_ACCOUNT v3 transaction object for the account's own deployment (class, salt and
@@ -68,7 +72,7 @@ fn version(bounds: Option<&Bounds>) -> &'static str {
 }
 
 fn invoke_object(tx: &InvokeTx<'_>) -> Value {
-    json!({
+    let mut object = json!({
         "account_deployment_data": [],
         "calldata": felts(tx.calldata),
         "fee_data_availability_mode": "L1",
@@ -81,7 +85,12 @@ fn invoke_object(tx: &InvokeTx<'_>) -> Value {
         "tip": "0x0",
         "type": "INVOKE",
         "version": version(tx.bounds),
-    })
+    });
+    if let Some(proof) = tx.proof {
+        object["proof"] = json!(proof.data);
+        object["proof_facts"] = json!(felts(&proof.proof_facts));
+    }
+    object
 }
 
 fn deploy_object(tx: &DeployTx<'_>) -> Value {

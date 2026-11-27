@@ -40,6 +40,7 @@ impl Plan {
             nonce,
             bounds: None,
             signature,
+            proof: self.invoke_proof(),
         })
     }
 

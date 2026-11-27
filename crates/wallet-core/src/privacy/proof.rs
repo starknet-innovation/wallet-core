@@ -11,8 +11,9 @@ use crate::send::calls::Call;
 use crate::send::types::SignRefusal;
 use crate::Felt;
 
-/// The pool's proof-bearing entrypoint.
-pub const APPLY_ACTIONS: &str = "apply_actions";
+/// The proof's record and the pool's proof-bearing entrypoint live with the send path that
+/// submits them.
+pub use crate::send::proof_invoke::{Proof, APPLY_ACTIONS};
 
 /// One item of a reviewed invoke's calldata: a felt, or a value the job resolves while it
 /// compiles (the extension's `${poolAddress}` and `${openNoteIds[N]}` placeholders, whose grammar
@@ -112,14 +113,6 @@ pub enum AuthorizationRefusal {
     Unordered,
     /// A signature does not verify under its key over the job's own digest.
     InvalidSignature,
-}
-
-/// A proof as `STRK20_PROOF`: opaque data plus felt outputs and facts.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Proof {
-    pub data: String,
-    pub output: Vec<Felt>,
-    pub proof_facts: Vec<Felt>,
 }
 
 /// A judged proof: the configured pool's `apply_actions` and its proof, the only proof-bearing

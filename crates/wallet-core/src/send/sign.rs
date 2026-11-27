@@ -1,4 +1,4 @@
-//! Transaction hashes through Krusty (`compute_invoke_v3_hash`,
+//! Transaction hashes through Krusty (`compute_invoke_v3_hash_with_proof_facts`,
 //! `compute_deploy_account_v3_hash`) over exactly the fields `rpc_bodies` sends, with the chain
 //! id taken from `NetworkId` and never from a node. Signing itself is `kms::sign_stark_hash`.
 //!
@@ -8,7 +8,8 @@
 //! composes the same fields with the query version; a test pins it to Krusty at version 3.
 
 use krusty_kms::{
-    calculate_contract_address, compute_deploy_account_v3_hash, compute_invoke_v3_hash, DaMode,
+    calculate_contract_address, compute_deploy_account_v3_hash,
+    compute_invoke_v3_hash_with_proof_facts, DaMode,
 };
 use starknet_types_core::felt::Felt;
 use starknet_types_core::hash::{Poseidon, StarkHash};
@@ -46,8 +47,21 @@ pub fn invoke_hash(
     nonce: &Felt,
     bounds: &Bounds,
 ) -> Result<Felt, FeeRefusal> {
+    invoke_hash_with_proof(network, sender, calldata, nonce, bounds, &[])
+}
+
+/// `invoke_hash` of a proof-bearing INVOKE (SNIP-36): `poseidon(proof_facts)` appended after the
+/// calldata hash when there are facts; no facts is `invoke_hash` exactly.
+pub fn invoke_hash_with_proof(
+    network: NetworkId,
+    sender: &Felt,
+    calldata: &[Felt],
+    nonce: &Felt,
+    bounds: &Bounds,
+    proof_facts: &[Felt],
+) -> Result<Felt, FeeRefusal> {
     let (l1, l2, data) = krusty_bounds(bounds)?;
-    Ok(compute_invoke_v3_hash(
+    Ok(compute_invoke_v3_hash_with_proof_facts(
         sender,
         calldata,
         &network.chain_id(),
@@ -60,6 +74,7 @@ pub fn invoke_hash(
         &[],
         DaMode::L1,
         DaMode::L1,
+        proof_facts,
     ))
 }
 

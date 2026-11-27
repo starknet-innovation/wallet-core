@@ -1,8 +1,9 @@
 //! STRK20 privacy: private balance discovery through the privacy service as a sans-IO plan
 //! (`plan`), the extension's privacy gates for Home, Receive, token detail and the journey
 //! (`gates`, `home`), and the proof job ported from the SDK's client (`job`, below). Nothing is
-//! submitted yet: no flow drives the job, and the core cannot send a proof-bearing transaction,
-//! so `CAPABILITIES` is all false (Bramble's `mobile/docs/privacy.md` §1, §9).
+//! submitted yet: no flow drives the job to a proof-bearing INVOKE (which the send plan carries,
+//! `send::proof_invoke`), so `CAPABILITIES` is all false (Bramble's `mobile/docs/privacy.md` §1,
+//! §9).
 //!
 //! The viewing key is the wallet's (`plan::PrivacyHost`), asked for whenever a body needs it and
 //! dropped after. The balance read never holds it past one discovery body. A proof job

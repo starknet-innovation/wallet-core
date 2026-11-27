@@ -114,7 +114,7 @@ pub enum RpcPurpose {
     TransactionStatus,
     TransactionReceipt,
     /// Ready and Braavos: `starknet_blockHashAndNumber`, the block the account-state reads are
-    /// pinned to.
+    /// pinned to; a proof-bearing batch: `starknet_blockNumber`, its proving-block wait.
     AcceptedBlock,
     /// Ready and Braavos: a read of the account's signer state at that block: `get_owner`,
     /// `get_owner_type`, `get_guardian`, `get_signers`, `get_deferred_remove_signers`, or the
