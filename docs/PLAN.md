@@ -1435,13 +1435,15 @@ Features, smallest and least dependent first:
   - *Order.* Generator first (G-NFT, Bramble: discovery replies, metadata cases, re-proof
     outcomes and both transfers through the extension's own code), then the core and its
     export, then the screens (M-NFT). About P12's size.
-  - *Status (2026-11-27).* PRs open, none merged:
-    - G-NFT: Bramble #1077.
-    - Fixtures: #213.
-    - Core: (a) discovery #214, (b) re-proof, token URI and metadata #215, (c) the send #216,
-      (d) the watched list #217.
-    - The export, images only: `ffi_nft*.rs`, with `NFT_POLICY` and `NFT_METADATA_LIMITS`. No
-      animation crosses it, and a watch or a send needs the core's own ownership read.
+  - *Status (2026-11-27).* Core and export on `main`:
+    - G-NFT: Bramble #1077 (open).
+    - Fixtures #213; core (a) discovery #214, (b) re-proof, token URI and metadata #215,
+      (c) the send #216, (d) the watched list #217; the export #218, images only
+      (`ffi_nft*.rs`, with `NFT_POLICY` and `NFT_METADATA_LIMITS`). No animation crosses it,
+      and a watch or a send needs the core's own ownership read.
+    - Follow-ups after review: the watched-list exports refuse while locked and a read is
+      bound to its session; a token URI read fails over on a non-array result; a metadata
+      fetch is `https` only; and the two decisions below.
 
     Not yet ported:
     - The gallery's merge of discovered and watched NFTs, with its re-proof and coverage
