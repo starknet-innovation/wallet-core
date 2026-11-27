@@ -52,6 +52,29 @@ pub struct NftTarget {
     pub label: Option<String>,
 }
 
+impl NftTarget {
+    /// `readAddNftInput`'s fields (`readNftTarget` and the label rule): a non-zero felt in the
+    /// strict lowercase grammar, a bundled network, a base-10 token id of at most 78 digits (and
+    /// within u256), and a label of 1 to 64 characters once trimmed. The extension's reply to any
+    /// other input is "invalid add nft request".
+    pub fn read(
+        contract: &str,
+        network: &str,
+        token_id: &str,
+        label: Option<&str>,
+    ) -> Option<Self> {
+        if !is_token_id(token_id) || label.is_some_and(|l| !is_label(l)) {
+            return None;
+        }
+        Some(Self {
+            contract: felt::parse_non_zero(contract)?,
+            network: NetworkId::from_catalog_id(network)?,
+            token_id: U256::from_decimal(token_id)?,
+            label: label.map(str::to_string),
+        })
+    }
+}
+
 fn nft_id(network: NetworkId, contract: &str, token_id: &str) -> String {
     format!("{}:{contract}:{token_id}", network.catalog_id())
 }
@@ -78,8 +101,8 @@ fn optional<T>(value: &Value, key: &str, read: impl Fn(&Value) -> Option<T>) -> 
 }
 
 impl WatchedNft {
-    /// `isWatchedNft`.
-    fn from_json(value: &Value) -> Option<Self> {
+    /// `isWatchedNft` over a stored record.
+    pub fn from_json(value: &Value) -> Option<Self> {
         let object = value.as_object()?;
         if !object.keys().all(|k| KEYS.contains(&k.as_str())) {
             return None;
@@ -104,7 +127,8 @@ impl WatchedNft {
         (nft.id == nft_id(nft.network, &nft.contract, &nft.token_id)).then_some(nft)
     }
 
-    fn to_json(&self) -> Value {
+    /// The record as the extension stores it.
+    pub fn to_json(&self) -> Value {
         let mut out = json!({ "contract": self.contract, "id": self.id,
                               "networkId": self.network.catalog_id(), "tokenId": self.token_id });
         if let Some(label) = &self.label {
@@ -119,8 +143,12 @@ impl WatchedNft {
         out
     }
 
-    /// `withNftId`, then `isWatchedNft` over the result (the label's bounds).
-    fn new(target: &NftTarget, owner: &Felt) -> Option<Self> {
+    /// `withNftId`, then `isWatchedNft` over the result (the label's bounds), as `addNft` does.
+    pub fn with_nft_id(
+        target: &NftTarget,
+        owner: Option<&Felt>,
+        spam: Option<bool>,
+    ) -> Option<Self> {
         let contract = felt::canonical(&target.contract);
         let token_id = target.token_id.to_decimal();
         let nft = Self {
@@ -129,8 +157,8 @@ impl WatchedNft {
             network: target.network,
             token_id,
             label: target.label.as_deref().map(|l| js_trim(l).to_string()),
-            owner: Some(felt::canonical(owner)),
-            spam: None,
+            owner: owner.map(felt::canonical),
+            spam,
         };
         Self::from_json(&nft.to_json())
     }
@@ -275,7 +303,8 @@ impl<'a> WatchedNfts<'a> {
         if !owned {
             return Err(Error::invalid("this account does not own that NFT"));
         }
-        let nft = WatchedNft::new(target, account).ok_or_else(|| Error::invalid("Invalid NFT"))?;
+        let nft = WatchedNft::with_nft_id(target, Some(account), None)
+            .ok_or_else(|| Error::invalid("Invalid NFT"))?;
         self.update(|doc| {
             doc.nfts.retain(|stored| stored.id != nft.id);
             doc.nfts.push(nft.clone());
