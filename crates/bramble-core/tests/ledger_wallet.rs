@@ -9,7 +9,8 @@ use crate::send_support;
 use bramble_core::ledger::LedgerScheme;
 use bramble_core::testing::open_vault;
 use bramble_core::{
-    AccountFamily, CoreError, LedgerAccountRequest, NetworkId, SendStep, StepReply,
+    ledger_account_activity_requests, AccountFamily, CoreError, LedgerAccountRequest, NetworkId,
+    RpcResponse, SendStep, StepReply,
 };
 use send_support::{empty_core, reviewed, run_until, sepolia, ACCOUNT_0, ACCOUNT_1, PASSWORD};
 use serde_json::{json, Value};
@@ -38,7 +39,9 @@ fn on_disk(dir: &tempfile::TempDir) -> Value {
 #[test]
 fn a_ledger_wallet_has_no_phrase_and_one_device_account() {
     let (dir, _clock, core) = empty_core();
-    let record = core.create_ledger_wallet(PASSWORD.into(), oz_0()).unwrap();
+    let record = core
+        .create_ledger_wallet(PASSWORD.into(), oz_0(), Vec::new())
+        .unwrap();
     assert_eq!(record.id, format!("SN_SEPOLIA:{ACCOUNT_0}"));
     assert!(record.ledger && record.active);
     assert!(!core.has_recovery_phrase().unwrap());
@@ -70,7 +73,7 @@ fn a_ledger_wallet_has_no_phrase_and_one_device_account() {
     assert_eq!(records.len(), 1);
     assert!(records[0].ledger);
     assert!(matches!(
-        core.create_ledger_wallet(PASSWORD.into(), oz_0()),
+        core.create_ledger_wallet(PASSWORD.into(), oz_0(), Vec::new()),
         Err(CoreError::WalletExists)
     ));
 }
@@ -78,7 +81,8 @@ fn a_ledger_wallet_has_no_phrase_and_one_device_account() {
 #[test]
 fn a_send_from_a_ledger_wallet_asks_its_device() {
     let (_dir, _clock, core) = empty_core();
-    core.create_ledger_wallet(PASSWORD.into(), oz_0()).unwrap();
+    core.create_ledger_wallet(PASSWORD.into(), oz_0(), Vec::new())
+        .unwrap();
     let mut node = sepolia(true);
     let plan = reviewed(&core, &mut node, ACCOUNT_1);
     let step = plan.advance(StepReply::Confirm).unwrap();
@@ -92,7 +96,10 @@ fn a_ledger_account_is_added_beside_the_phrase_accounts() {
     let before = core.all_account_records().unwrap().len();
     // Ready's scheme at index 3, as an Argent account.
     let added = core
-        .add_ledger_account(request(AccountFamily::Argent, LedgerScheme::Ready, 3))
+        .add_ledger_account(
+            request(AccountFamily::Argent, LedgerScheme::Ready, 3),
+            Vec::new(),
+        )
         .unwrap();
     assert!(added.ledger && added.active);
     assert_eq!(added.account_index, 3);
@@ -100,7 +107,10 @@ fn a_ledger_account_is_added_beside_the_phrase_accounts() {
     assert!(core.has_recovery_phrase().unwrap());
     // The same account again is refused.
     assert!(matches!(
-        core.add_ledger_account(request(AccountFamily::Argent, LedgerScheme::Ready, 3)),
+        core.add_ledger_account(
+            request(AccountFamily::Argent, LedgerScheme::Ready, 3),
+            Vec::new()
+        ),
         Err(CoreError::InvalidInput { .. })
     ));
 }
@@ -110,13 +120,14 @@ fn a_request_bramble_would_not_store_is_refused() {
     let (_dir, core) = send_support::wallet();
     let refused = |request| {
         matches!(
-            core.add_ledger_account(request),
+            core.add_ledger_account(request, Vec::new()),
             Err(CoreError::InvalidInput { .. })
         )
     };
+    // `isLedgerApplicationForFamily`: Braavos has a Ledger key only at Ready's scheme.
     assert!(refused(request(
         AccountFamily::Braavos,
-        LedgerScheme::Ready,
+        LedgerScheme::Bramble,
         0
     )));
     assert!(refused(request(
@@ -190,7 +201,8 @@ fn a_key_only_wallet_opens_and_signs_with_its_keys() {
 #[test]
 fn a_phrase_less_wallet_never_waits_for_discovery() {
     let (dir, _clock, core) = empty_core();
-    core.create_ledger_wallet(PASSWORD.into(), oz_0()).unwrap();
+    core.create_ledger_wallet(PASSWORD.into(), oz_0(), Vec::new())
+        .unwrap();
     let mut payload = on_disk(&dir);
     let devnet = format!("SN_DEVNET:{ACCOUNT_0}");
     payload["accounts"][0]["networkId"] = "SN_DEVNET".into();
@@ -215,7 +227,8 @@ fn a_phrase_less_wallet_never_waits_for_discovery() {
 #[test]
 fn a_ledger_wallet_keeps_contacts_and_relay_settings() {
     let (_dir, _clock, core) = empty_core();
-    core.create_ledger_wallet(PASSWORD.into(), oz_0()).unwrap();
+    core.create_ledger_wallet(PASSWORD.into(), oz_0(), Vec::new())
+        .unwrap();
     assert!(core.contacts(NetworkId::Sepolia).unwrap().is_empty());
     core.save_contact(
         NetworkId::Sepolia,
@@ -227,4 +240,154 @@ fn a_ledger_wallet_keeps_contacts_and_relay_settings() {
     .unwrap();
     assert_eq!(core.contacts(NetworkId::Sepolia).unwrap().len(), 1);
     core.relay_policy().unwrap();
+}
+
+// Ported from the extension's `tests/background/ledger/ledger-braavos-activity.test.ts`: Bramble
+// never creates a Braavos account, so a Braavos Ledger account is stored only when its address
+// is deployed or funded, and refused when that cannot be read.
+
+fn braavos(network: NetworkId) -> LedgerAccountRequest {
+    LedgerAccountRequest {
+        network,
+        ..request(AccountFamily::Braavos, LedgerScheme::Ready, 0)
+    }
+}
+
+fn reply(id: u64, body: Value) -> RpcResponse {
+    let mut body = body;
+    body["jsonrpc"] = "2.0".into();
+    body["id"] = id.into();
+    RpcResponse {
+        id,
+        body: body.to_string(),
+    }
+}
+
+fn not_found() -> RpcResponse {
+    reply(
+        0,
+        json!({"error": {"code": 20, "message": "Contract not found"}}),
+    )
+}
+
+fn deployed() -> RpcResponse {
+    reply(0, json!({"result": "0x1"}))
+}
+
+fn balance(id: u64, low: &str) -> RpcResponse {
+    reply(id, json!({"result": [low, "0x0"]}))
+}
+
+/// Every balance read of `request`'s reads, answered `low`.
+fn balances(request: &LedgerAccountRequest, low: &str) -> Vec<RpcResponse> {
+    let reads = ledger_account_activity_requests(request.clone()).unwrap();
+    reads[1..].iter().map(|r| balance(r.id, low)).collect()
+}
+
+/// Adds `request` to a phrase wallet and creates a Ledger wallet from it, each with `activity`.
+fn both(
+    request: &LedgerAccountRequest,
+    activity: &[RpcResponse],
+) -> [Result<String, CoreError>; 2] {
+    let (_dir, wallet) = send_support::wallet();
+    let added = wallet.add_ledger_account(request.clone(), activity.to_vec());
+    let (_dir, _clock, empty) = empty_core();
+    let created = empty.create_ledger_wallet(PASSWORD.into(), request.clone(), activity.to_vec());
+    [added, created].map(|r| r.map(|record| record.address))
+}
+
+#[test]
+fn the_reads_are_for_the_address_the_vault_stores() {
+    let request = braavos(NetworkId::Mainnet);
+    let reads = ledger_account_activity_requests(request.clone()).unwrap();
+    let address = bramble_core::ledger_account_candidates(
+        NetworkId::Mainnet,
+        AccountFamily::Braavos,
+        vec![bramble_core::LedgerKey {
+            scheme: LedgerScheme::Ready,
+            account_index: 0,
+            public_key_x: KEY_0.into(),
+        }],
+    )
+    .unwrap()[0]
+        .address
+        .clone();
+    assert!(reads[0].body.contains("starknet_getClassHashAt"));
+    assert!(reads.iter().all(|r| r.body.contains(&address)));
+    // One balance read for each of Bramble's known tokens on mainnet.
+    assert!(reads.len() > 1);
+    let [added, _] = both(&request, &[deployed()]);
+    assert_eq!(added.unwrap(), address);
+}
+
+#[test]
+fn a_never_used_braavos_address_is_not_found() {
+    let request = braavos(NetworkId::Mainnet);
+    let mut activity = vec![not_found()];
+    activity.extend(balances(&request, "0x0"));
+    for refusal in both(&request, &activity) {
+        assert!(
+            matches!(refusal, Err(CoreError::InvalidInput { ref reason }) if reason == "braavos ledger account not found"),
+            "{refusal:?}"
+        );
+    }
+}
+
+#[test]
+fn an_unreadable_or_half_read_chain_is_unavailable() {
+    let request = braavos(NetworkId::Mainnet);
+    let mut undeployed_only = vec![not_found()];
+    undeployed_only.extend(balances(&request, "0x0").into_iter().skip(1));
+    for activity in [vec![], balances(&request, "0x0"), undeployed_only] {
+        for refusal in both(&request, &activity) {
+            assert!(
+                matches!(refusal, Err(CoreError::Rpc { ref reason }) if reason == "braavos ledger account status unavailable"),
+                "{refusal:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_deployed_braavos_account_is_stored_at_braavos_s_class() {
+    let (_dir, wallet) = send_support::wallet();
+    let added = wallet
+        .add_ledger_account(braavos(NetworkId::Sepolia), vec![deployed()])
+        .unwrap();
+    assert_eq!(added.family, AccountFamily::Braavos);
+    assert!(added.ledger && added.active);
+    // `BRAAVOS_DEPLOYMENT_CLASS_HASH`, the class `ledgerDeployClassHash` defaults to.
+    assert_eq!(
+        added.class_hash,
+        "0x3d16c7a9a60b0593bd202f660a28c5d76e0403601d9ccc7e4fa253b6a70c201"
+    );
+}
+
+#[test]
+fn a_funded_counterfactual_braavos_account_is_stored() {
+    // Deployment unreadable, but a held balance alone proves the address is used.
+    let request = braavos(NetworkId::Mainnet);
+    let mut activity = balances(&request, "0x0");
+    activity[0] = balance(activity[0].id, "0x1");
+    for added in both(&request, &activity) {
+        assert!(added.is_ok(), "{added:?}");
+    }
+}
+
+#[test]
+fn a_network_with_no_known_tokens_reads_an_undeployed_address_as_no_account() {
+    // Sepolia has no curated token, so there is no balance to read: not an unreadable chain.
+    let request = braavos(NetworkId::Sepolia);
+    assert_eq!(
+        ledger_account_activity_requests(request.clone())
+            .unwrap()
+            .len(),
+        1
+    );
+    for refusal in both(&request, &[not_found()]) {
+        assert!(
+            matches!(refusal, Err(CoreError::InvalidInput { .. })),
+            "{refusal:?}"
+        );
+    }
 }

@@ -77,13 +77,16 @@ pub fn setup(net: &Value) -> Setup {
         .private_key;
     let ledger = wallet
         .core
-        .add_ledger_account(LedgerAccountRequest {
-            network: wallet.network,
-            family: AccountFamily::Argent,
-            scheme: LedgerScheme::Bramble,
-            account_index: 0,
-            public_key_x: public_key,
-        })
+        .add_ledger_account(
+            LedgerAccountRequest {
+                network: wallet.network,
+                family: AccountFamily::Argent,
+                scheme: LedgerScheme::Bramble,
+                account_index: 0,
+                public_key_x: public_key,
+            },
+            Vec::new(),
+        )
         .unwrap();
     assert!(ledger.ledger);
     Setup {

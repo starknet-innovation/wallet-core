@@ -68,7 +68,7 @@ fn a_page_of_keys_becomes_candidates_and_a_wallet() {
     // The picked candidate's request makes the wallet at the address the picker showed.
     let (_dir, _clock, core) = empty_core();
     let record = core
-        .create_ledger_wallet(PASSWORD.into(), candidates[0].request.clone())
+        .create_ledger_wallet(PASSWORD.into(), candidates[0].request.clone(), Vec::new())
         .unwrap();
     assert_eq!(record.address, candidates[0].address);
     assert!(record.ledger);
@@ -154,7 +154,12 @@ fn candidates_refuse_what_add_ledger_account_would() {
         public_key_x: KEY_0.into(),
     };
     let candidates = |family, keys| ledger_account_candidates(NetworkId::Sepolia, family, keys);
-    assert!(candidates(AccountFamily::Braavos, vec![key(0)]).is_err());
+    // Braavos only at Ready's scheme (`isLedgerApplicationForFamily`), at Braavos's class.
+    let braavos = candidates(AccountFamily::Braavos, vec![key(0)]).unwrap();
+    assert_ne!(braavos[0].address, ACCOUNT_0);
+    let mut bramble = key(0);
+    bramble.scheme = LedgerScheme::Bramble;
+    assert!(candidates(AccountFamily::Braavos, vec![bramble]).is_err());
     assert!(candidates(AccountFamily::OpenZeppelin, (0..6).map(key).collect()).is_err());
     let mut zero = key(0);
     zero.public_key_x = "0x0".into();

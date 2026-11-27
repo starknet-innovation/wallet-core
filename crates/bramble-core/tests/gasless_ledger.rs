@@ -99,13 +99,16 @@ struct Ledger {
 fn ledger() -> Ledger {
     let (dir, core) = wallet();
     let record = core
-        .add_ledger_account(LedgerAccountRequest {
-            network: NetworkId::Mainnet,
-            family: AccountFamily::OpenZeppelin,
-            scheme: LedgerScheme::Bramble,
-            account_index: 0,
-            public_key_x: felt::canonical(&Device::holding(KEY).public_key()),
-        })
+        .add_ledger_account(
+            LedgerAccountRequest {
+                network: NetworkId::Mainnet,
+                family: AccountFamily::OpenZeppelin,
+                scheme: LedgerScheme::Bramble,
+                account_index: 0,
+                public_key_x: felt::canonical(&Device::holding(KEY).public_key()),
+            },
+            Vec::new(),
+        )
         .unwrap();
     assert!(record.ledger);
     let request = TransferRequest {

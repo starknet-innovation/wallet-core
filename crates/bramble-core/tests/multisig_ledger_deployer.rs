@@ -26,13 +26,16 @@ fn a_ledger_deployer_signs_the_deployment_on_its_device() {
         .unwrap();
     let ledger = wallet
         .core
-        .add_ledger_account(LedgerAccountRequest {
-            network: wallet.network,
-            family: AccountFamily::Argent,
-            scheme: LedgerScheme::Bramble,
-            account_index: 0,
-            public_key_x: signer["publicKey"].as_str().unwrap().into(),
-        })
+        .add_ledger_account(
+            LedgerAccountRequest {
+                network: wallet.network,
+                family: AccountFamily::Argent,
+                scheme: LedgerScheme::Bramble,
+                account_index: 0,
+                public_key_x: signer["publicKey"].as_str().unwrap().into(),
+            },
+            Vec::new(),
+        )
         .unwrap();
     assert!(ledger.ledger);
     let plan = wallet
