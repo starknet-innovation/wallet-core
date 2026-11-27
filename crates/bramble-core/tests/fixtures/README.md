@@ -22,9 +22,9 @@ padded address labels of #884 (`accounts-parity-rules.json`, `portfolio-parity.j
 (`extension-activity-detail.jsonl`) and the review copy (`extension-transactions-copy.json`).
 `transactions_rules_parity.rs` excuses the decimal recipients in `-verification.json`'s summaries,
 an extension bug fixed on Bramble `fix/review-decimal-recipient`; that exception goes with the next
-copy. One file is from another commit: `extension-dapp.jsonl` (P16's generator), Bramble `b4602f0598dca107f48e5f3b9ec647c1cbd86d8b`
-(`fixtures/p16-dapp`, on `feature/mobile-wallet` at `25f66184d`), which adds
-`scripts/mobile-parity-dapp/` and changes no other code (two `tests/support` stub headers gain a note); the next full copy brings every file to
+copy. One file is from another commit: `extension-dapp.jsonl` (P16's generator), Bramble `47b5aaff287edd48914bce5cabf6c98759681204`
+(`fixtures/p16-typed-data-rows`, Bramble #1078, on `feature/mobile-wallet` at `232e21510`), which adds the sign
+card's rows to `scripts/mobile-parity-dapp/typed-data.ts` and changes no other code; the next full copy brings every file to
 one commit again. Every file is byte-identical to its copy at that commit; privacy SDK
 `vendor/starknet-privacy` at `b40bf109` (Bramble's pin).
 A second exception: `extension-ledger.jsonl` comes from Bramble commit
@@ -40,7 +40,10 @@ A third exception: `extension-nfts.jsonl` (P17's generator) is from Bramble
 `dd85d9ae8d179fed0d47e3c8bf2df520918b5c8f` (`fixtures/g-nft`, on `feature/mobile-wallet` at
 `232e21510`), which adds `scripts/mobile-parity-nfts/` and changes no other code (two test-support
 headers gain a note); byte-identical to its copy there.
-A fourth exception: `extension-strk20-primitives.json`, `extension-strk20-shadow.json` and
+A fourth exception: `extension-multisig-import.jsonl` (G7c's import cases) comes from Bramble commit
+`232e21510158f1c046885acbca882bfe941b00c9` (`feature/mobile-wallet`, 2026-11-27, merging #1074);
+its generator, `scripts/mobile-parity-multisig-import/`, landed with #1042 (`edc94db3c`).
+A fifth exception: `extension-strk20-primitives.json`, `extension-strk20-shadow.json` and
 `extension-strk20-jobs.jsonl` (the STRK20 SDK port, #182) come from Bramble's
 `mobile/strk20-port-fixtures`, cut from `feature/mobile-wallet` at `7a7713f14` and merged there as
 `f88a40d2e56d2175adbd97a10f1297c50f7930ba` (#1075), byte-identical at that merge; all three as of
@@ -106,6 +109,7 @@ Generators are under `scripts/` in Bramble; each fixture's is reached from
 | `extension-multisig-transactions.json` | `generate-mobile-parity-vectors.ts` (`mobile-multisig-*.ts`) | `6af5ce7e64ed96da66c8cfc77b264e230395846ad9f3851b1f7fd7f9afe8c8a3` |
 | `extension-multisig-transactions-refusals.json` | `generate-mobile-parity-vectors.ts` (`mobile-multisig-*.ts`) | `80b278d7f23092c70ae76306b813cb5fe13cea8e79b018d7223d9fa5a7185653` |
 | `extension-multisig-transactions-signers.json` | `generate-mobile-parity-vectors.ts` (`mobile-multisig-*.ts`) | `78ad15af9b68692724cdb1e84118591870f545db892eeaf40ff1e92fe2d9a5b3` |
+| `extension-multisig-import.jsonl` | `mobile-parity-multisig-import/` | `bbe09ac4d8b73d9a4af13681bb0eb92850773863897b825bb25acea330208ae5` |
 | `extension-call-review.jsonl` | `mobile-parity-calls/` | `c9e106c0c6433eccaad6b5503b1b44d80e09cfd1bcac64904ac9c01224055ce6` |
 | `vault-v13.json` | `generate-mobile-parity-vectors.ts` (`mobile-parity-vault.ts`) | `d4f0cf2a62d209cd05286a6d81b372bdaf1d356ba273b41e3e8ed2437912977f` |
 | `vault-v13-imported.json` | `generate-mobile-parity-vectors.ts` (`mobile-parity-vault.ts`) | `099ced8a46789f9d3cf7d3c679d5c5287876ccab618b7e7674c9ef65c774da97` |
@@ -115,7 +119,7 @@ Generators are under `scripts/` in Bramble; each fixture's is reached from
 | `vault-v14.json` | `generate-mobile-parity-vectors.ts` (`mobile-parity-vault-full.ts`) | `97a437888e92569c45b810d757633506bb971fd9f9f91199ec8bfe05f4e01a5b` |
 | `vault-v13-to-v14.json` | `generate-mobile-parity-vectors.ts` (`mobile-parity-vault-full.ts`) | `58e4671a1ebe15bef6159df851211390de48c11b42537c8d6fb2e70290067565` |
 | `extension-gasless.jsonl` | `mobile-parity-gasless/` | `c232ecadeb65c8dc36e64d3b51a091eb63c8923698f8d686b269845e4d9e45c7` |
-| `extension-dapp.jsonl` | `mobile-parity-dapp/` | `4fa29896a551736d6f8bcb9dda21819b5077df8e6ad1cf15d3bcf2e6d50d9ef5` |
+| `extension-dapp.jsonl` | `mobile-parity-dapp/` | `6dca21b487b810693936b581fd49fc869865f8d9daa1795e9e66f6c54411839d` |
 | `extension-nfts.jsonl` | `mobile-parity-nfts/` | `64d78a451ba193fbabd603e149fa6a89ad0009bb29ea2ab5fb047287d67c3591` |
 | `extension-ledger.jsonl` | `mobile-ledger-speculos.ts` (`bun run mobile:ledger`) | `944d70116b7606ee1b6a0087dd578132153a26c63b9550e56af267766f201b5d` |
 
@@ -159,7 +163,7 @@ blocks, `gasless_reads_parity.rs` the rest; the lines the core departs from, its
 `knownExtensionBug` lines among them, are asserted as departures), and `extension-dapp.jsonl`
 (every line: `dapp_request_parity.rs` its `request` block, `dapp_connect_parity.rs` `connect`,
 `grants` and `queue`, `dapp_sites_parity.rs` `site`, `feedParse` and `feed`,
-`dapp_typed_data_parity.rs` `typedData` and `outside`, `dapp_sign_parity.rs` `sign`; each case the core departs from is listed
+`dapp_typed_data_parity.rs` `typedData` and `outside` with their sign cards, `dapp_sign_parity.rs` `sign`; each case the core departs from is listed
 there with its reason and asserted as a departure), and `extension-nfts.jsonl`'s `watched` block,
 `addNft` and `watchAsset` (`nfts_watched_parity.rs`: the page's reader, then the store, with the
 recorded node replies as the ownership verdict; the
@@ -172,7 +176,9 @@ no test here reads it. `extension-multisig-transactions.json` is read by
 proposal's summary as the intent card's call line, and the first signer change of `-signers.json`). `multisig_signers_parity.rs` also reads
 all of `-signers.json` and the `calls` part of `-refusals.json`; `multisig_deploy_parity.rs` its
 `deploySubmit` part and `multisig_refusals_parity.rs` every other part
-(`multisig_import_mechanism.rs` builds on its `readyIntent` and `account`). See
+(`multisig_import_mechanism.rs` builds on its `readyIntent` and `account`).
+`extension-multisig-import.jsonl` is read by `multisig_import_parity.rs` (every line; its
+`divergence` lines and the wallet-level cases mobile does not share are asserted as departures). See
 [P1](../../../../docs/PLAN.md#mobile-parity). `extension-nfts.jsonl` waits for P17's port; no test reads it yet. The rest sit
 here unused until their Phase 2 step moves the matching mobile parity test in (see `docs/PLAN.md`,
 Phase 1).

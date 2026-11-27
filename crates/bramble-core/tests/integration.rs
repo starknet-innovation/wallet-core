@@ -79,6 +79,7 @@ mod mainnet;
 mod multisig_deploy_parity;
 mod multisig_import_checks;
 mod multisig_import_mechanism;
+mod multisig_import_parity;
 mod multisig_intent_review;
 mod multisig_ledger_cosign_races;
 mod multisig_ledger_cosigner;

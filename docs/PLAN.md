@@ -264,15 +264,15 @@ step starts.
 | PR | Repo | Needs | What it is |
 | --- | --- | --- | --- |
 | K2 | here | — | done (#105): Krusty 3.2.0; its selector and Stark signature verification replace `StarkPrimitives` |
-| G7c | Bramble | — (can start now) | P1's missing fixtures: the multisig import cases and the call summaries beyond an ERC-20 transfer |
+| G7c | Bramble | — | done (Bramble #1035, `mobile/g7g-multisig-import`, which Bramble calls G7g): the call summaries beyond an ERC-20 transfer (`extension-call-review.jsonl`'s `decode` block, copied in #109) and the multisig import cases (`extension-multisig-import.jsonl`, copied later and read by `multisig_import_parity.rs`, its departures listed there) |
 | X1 P1 | here | — | done (#111, `v0.7.0`): deploy, propose, co-sign, submit, change signers and import, with the extension's stale-intent and resend guards; settling a submitted intent through `refresh_activity` by multisig id followed (#115) |
 | M18 | Bramble | X1 | done (#1049, through the `v0.9.0` bump #1048): multisig transaction screens on both apps: propose, sign, submit, change signers; its core gaps are under "Mobile follow-ups" below |
 | P9 rest | here | — | done (#104) |
-| G7d | Bramble | — | a multicall and a refused batch through `submitInvokeTransaction`, and `verifyCalls` over batches that raise each flag (P9) |
+| G7d | Bramble | — | done (copied in #109): a multicall and the refused batches through `submitInvokeTransaction`, and `verifyCalls` over batches that raise each flag (P9): `extension-call-review.jsonl`'s `submit`, `refusal` and `flags` blocks, read by `calls_review_parity.rs` |
 | X2 P9 | here | — | done with X3 (#106, `v0.7.0`): no UniFFI call signs arbitrary calls on its own; `ffi_surface.rs` fails if any export takes a call |
 | G7e, X3, M19 | both | — | G7e and X3 done (#106, #109); M19, the allowance manager and revoke screens, done (Bramble #1050) |
 | G7f, X4, M20 | both | — | G7f and X4 done (#107, #109); M20, the swap screens, done (Bramble #1051) |
-| G7g, X5, M21 | both | — | X5 done (#110, Mainnet only, `STAKING_POLICY`); M21, the staking screens, done (Bramble #1052); G7g still owed |
+| G7g, X5, M21 | both | — | X5 done (#110, Mainnet only, `STAKING_POLICY`); M21, the staking screens, done (Bramble #1052); G7g done (`extension-staking.jsonl`, copied in #109, read by `staking_parity.rs` and `staking_action_parity.rs`) |
 | P14 | here, then both | — | done (#108, #117, `v0.8.0`): the gateway's outside execution checked against the reviewed calls (Krusty's SNIP-12 hash agrees with starknet.js), the paymaster's bodies and judges, the ceiling's fee-to-token conversion (`GASLESS_POLICY`), `TransferPlan::gasless_offers`, and the sponsored and gasless rows; fixtures from G7h (Bramble #1034); the screens shipped (Bramble #1053) |
 
 **Mobile follow-ups from M18–M21 and gasless.** Written 2026-11-25. Building the screens on
@@ -573,9 +573,9 @@ Foundations, which the features need, and Ledger, which needs only the first:
   owner kept both (2026-11-22). Unit-tested only
   (`tests/vault_v13_kept.rs`, `vault_v13_rules.rs`, `vault_v13_accounts.rs`,
   `vault_v13_poisoning.rs`: the extension's own validator cases, moved onto G4's payload in test
-  code): G4 holds none of these, so before a release relies on it Bramble needs G4 extended with
-  every collection filled, sealed by the extension's own store at a v13 commit, for a test that
-  opens it and writes it back unchanged.
+  code): G4 holds none of these. G7b (Bramble #1033) extended it with every collection filled,
+  sealed by the extension's own store at a v13 commit (`vault-v13-full.json`), and
+  `vault_migration.rs` opens it and writes it back unchanged (#116).
   As built, second half (v14, #92): the reader accepts the extension's schema 14
   (`release/v0.10.11` at `62db6fc10`) beside 13. `isVaultV14` is v13's rules over the rest and
   `validAccountProvenance` over the new optional `accountProvenance` (`vault_provenance.rs`):
@@ -593,8 +593,8 @@ Foundations, which the features need, and Ledger, which needs only the first:
   `import_private_key`, the source's origin (or none) for the network switch's projection, none
   for a restore from the phrase; every other entry, a kept record's included, is written back
   unchanged, and a failed write rolls the map back. Unit-tested only (`tests/vault_v14.rs`,
-  `vault_v14_writes.rs`), over G4's payload in test code; a v14 G4 sealed by the extension's
-  own store is owed by a Bramble generator. Left for P16: per-account origin revocation
+  `vault_v14_writes.rs`), over G4's payload in test code; G7b's v14 G4, sealed by the extension's own store
+  (`vault-v14.json`), is read by `vault_migration.rs` (#116). Left for P16: per-account origin revocation
   (`withoutOriginAccess`).
   Matched to the extension (product owner, 2026-11-22: mobile opens every vault the extension
   opens): mobile's stronger rules decide which records mobile operates, never whether the vault
@@ -791,10 +791,11 @@ Features, smallest and least dependent first:
   passes unchanged. Departures: an axis's `all` is `None`; the explorer link comes from the
   caller's network catalog. Left out: `activityContacts` (it reads preferences; the host
   passes the contacts a search resolves) and `activityExportToast` (screen copy). The
-  extension's export is one account's whole feed, unfiltered. Unit-tested only: the
+  extension's export is one account's whole feed, unfiltered. Tested: the
   extension's own cases for these files are ported with their expected strings, plus the
-  branches they leave out; a Bramble generator writing the CSV, the filtered rows and the
-  summary over one feed is still owed.
+  branches they leave out; G7a's `extension-activity-feed.jsonl` (Bramble #1013, #1016) holds
+  the CSV, the filtered rows and the summary over one feed, read by `activity_feed_parity.rs`
+  (#109).
 - **P11 Token swap.** The AVNU quote and build as sans-IO bodies and reply judges, like the price
   book's: `transactions/src/swap/` (420), `wallet-model/src/swap/` (319) and the background's
   `transactions/swap-{inputs,preparations,build-policy,value-check,ops}.ts`. Needs P9.
@@ -823,9 +824,10 @@ Features, smallest and least dependent first:
   estimated at preparation (the plan's review does it); no preparation store or digest (the
   host holds the value), and no expiry, as in the extension; the poisoned-payee refusal runs
   when the build is judged, not again at execute (the policy already refuses every transfer
-  and any payee but the account). Not ported: `listTokens`. Unit-tested only, with the
-  extension's cases and sentences, and not checked against live AVNU replies; a Bramble
-  generator (a quote, a build and the refused builds through the real handler) is still owed.
+  and any payee but the account). Not ported: `listTokens`. Tested with the
+  extension's cases and sentences, and not checked against live AVNU replies; G7f's
+  `extension-swap.jsonl` drives the extension's real handler for the quotes, builds and refused
+  builds, read by `swap_parity.rs` (#109).
 - **P12 Allowances.** Discovery, scan, records, retention and the revoke call:
   `transactions/src/allowances/` (1,916). The revoke needs P9.
   As built, the read side (no generator yet, so unit tests only): `crates/wallet-core/src/
@@ -1298,16 +1300,16 @@ Features, smallest and least dependent first:
       placed is refused (114), where the extension shows the card and withholds Sign. Missing:
       a merkle field's root row and a revision 1 `string`'s ByteArray felt, which only Krusty's
       encoder computes (krusty-kms #280). Follow-ups, in order:
-      1. *Golden rows* (#175 merged; Bramble #1066 merged without the rows, so the generator
-         below is still owed). Bramble's
-         `scripts/mobile-parity-dapp/typed-data.ts` records, for each `typedData` case the gate
-         accepts, `decodeSignRequest` rendered through `signValueText` (`card: { domain,
-         message, classified }`, each block `{ signed, unsigned }` as `[key, text]` pairs) and
-         `isOutsideExecution`. It adds cases that reach rows the current 28 do not: a revision 0
-         domain with an undeclared `revision`, a revision 1 `string`, a three-leaf merkle tree,
-         and a key past 259 characters. `dapp_typed_data_parity.rs` compares
-         `sign_rows` to them, listing as deviations the root row and the ByteArray felt (until
-         step 2) and the documents Krusty refuses (no card).
+      1. *Golden rows* (done: Bramble #1078). Bramble's
+         `scripts/mobile-parity-dapp/typed-data.ts` records, for each `typedData` and accepted
+         `outside` case the gate accepts, `decodeSignRequest` rendered through `signValueText`
+         (`card: { domain, message, classified }`, each block `{ signed, unsigned }` as
+         `[key, text]` pairs) and `isOutsideExecution` (the extension has no function of that
+         name: it records whether `signRequestWarnings` warns). It adds a revision 0 domain with
+         an undeclared `revision`, a revision 1 `string`, a three-leaf merkle tree of struct
+         leaves and a 324-character key. `dapp_typed_data_parity.rs` compares `sign_rows` to
+         them: 28 of 32 cards agree, and the root row, the ByteArray felt (until step 2) and
+         the two documents Krusty refuses (no card) are listed deviations.
       2. *Krusty's felts* (when krusty-kms ships #280, bumped deliberately with
          `starknet-types-core`). `sign_rows` prints the root as `<path> ⟨merkle root⟩` and the
          ByteArray felt in `"text" (string = 0x…)`, through `kms.rs`. The `ponytail:` note in
