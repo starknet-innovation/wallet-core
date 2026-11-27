@@ -148,6 +148,8 @@ fn a_token_id_is_a_base_units_integer_that_fits_a_u256() {
 
 #[test]
 fn an_erc721_send_is_reviewed_as_a_send_of_the_nft() {
+    // The recipient reads in decimal, as the extension's live send names it (its calldata is
+    // compiled before the review; `extension-nfts.jsonl` `transfer`).
     // `verify-nft-transfer.test.ts`, "decodes transfer_from into a human NFT summary"; the
     // collection raises no `unknown-contract` (`handleReviewNftTransfer` drops it).
     let invoke = prepare(&request(CONTACT, 5), Some(NftStandard::Erc721)).unwrap();
@@ -156,8 +158,8 @@ fn an_erc721_send_is_reviewed_as_a_send_of_the_nft() {
     };
     assert_eq!(call.entrypoint, "transfer_from");
     assert_eq!(call.calldata[..2], [felt(ACCOUNT), felt(CONTACT)]);
-    assert_eq!(invoke.summary(), "Send NFT #5 to 0x0777…bbcc");
-    assert_eq!(invoke.activity_summary(), "Send NFT #5 to 0x0777…bbcc");
+    assert_eq!(invoke.summary(), "Send NFT #5 to 3377621288099693150824796764586984523076137443513370157537360673686401235916");
+    assert_eq!(invoke.activity_summary(), "Send NFT #5 to 3377621288099693150824796764586984523076137443513370157537360673686401235916");
     assert!(invoke.flags().is_empty(), "{:?}", invoke.flags());
 }
 
@@ -166,7 +168,7 @@ fn an_erc1155_send_names_the_edition_count() {
     // `verify-nft-transfer.test.ts`, "decodes the token, amount, and recipient".
     let invoke = prepare(&request(CONTACT, 342), Some(NftStandard::Erc1155)).unwrap();
     assert_eq!(invoke.signed_calls()[0].entrypoint, "safe_transfer_from");
-    assert_eq!(invoke.summary(), "Send 1 of NFT #342 to 0x0777…bbcc");
+    assert_eq!(invoke.summary(), "Send 1 of NFT #342 to 3377621288099693150824796764586984523076137443513370157537360673686401235916");
     assert!(invoke.flags().is_empty());
 }
 
