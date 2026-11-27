@@ -165,6 +165,11 @@ Grep first; extend in place rather than adding a sibling.
   `ledger_os_gate::LedgerOsGate`. Ledger's Bluetooth framing is `ledger::ble`, exported as
   `ledger_ble::LedgerBleExchange` beside `ledger_ble_link` (GATT specs, MTU request); it only carries bytes, and
   the apps' Bluetooth shims hold no protocol logic of their own.
+- Watched NFTs are `nft::watched`: the record (`WatchedNft`, `with_nft_id`, `from_json`), a watch
+  form's input (`NftTarget::read`), and `WatchedNfts` over `host::Storage` (the extension's
+  `nfts`, `nftIndexerUrl` and `collectiblesPreview`; `watch_owned`, `watch_from_site`,
+  `set_spam`, `remove`, `gallery`, and `collections`, the review's `nft_contracts`). Never the
+  vault.
 - AVNU swaps are `crates/wallet-core/src/swap/`: the quote (`quote.rs`: `PendingQuote`,
   `SwapQuote`, the value check), the build and its reply judge (`build.rs`: `PendingBuild`), the
   build policy and floor (`policy.rs`: `build_policy`, `reviewed_min_buy_amount`) and the frozen

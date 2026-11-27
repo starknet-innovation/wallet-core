@@ -12,8 +12,10 @@ pub mod reproof;
 mod starkscan;
 pub mod token_uri;
 pub mod transfer;
+pub mod watched;
 
 pub use read::ReadStep;
+pub use watched::{NftTarget, WatchedNft, WatchedNfts};
 
 use crate::send::u256::U256;
 use crate::Felt;
