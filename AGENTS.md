@@ -180,7 +180,12 @@ Grep first; extend in place rather than adding a sibling.
   request and judged candidates (`discovery::PendingDiscovery`, `NftCandidate`, `NftCoverage`)
   and the indexer URL setting (`indexer_url_setting`) in `discovery.rs`, over `indexer.rs` and
   `starkscan.rs`. Any Starkscan GET and its reply check are
-  `history::starkscan::{starkscan_get, starkscan_json}`.
+  `history::starkscan::{starkscan_get, starkscan_json}`. Mobile's export is `bramble-core`'s
+  `ffi_nft.rs` (`WalletCore::nft_discovery`, `NftDiscoveryRequest`, `nft_metadata_judge`;
+  `NFT_METADATA_LIMITS` in `nft.rs`), `ffi_nft_read.rs` (`NftOwnershipRead`, `NftTokenUriRead`),
+  `ffi_nft_watched.rs` (the list in `nfts.v1.json`; `watch_nft` takes a finished
+  `NftOwnershipRead`, never an `owned` flag) and `ffi_nft_send.rs` (`prepare_nft_transfer`,
+  `NftTransfer::plan` into `TransferPlan`). Images only: the HTML animation never crosses.
 - Native staking lives in `crates/wallet-core/src/staking/`: the pinned chain read
   (`read::StakingRead`, decoders and `verify_staking_pool` in `decode`), Starkscan's directory
   and positions (`directory`, `positions`, the shared `coverage` rule), the rows (`view`), the
