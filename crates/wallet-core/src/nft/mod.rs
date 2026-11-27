@@ -9,3 +9,5 @@ pub enum NftStandard {
     Erc721,
     Erc1155,
 }
+
+pub mod transfer;
