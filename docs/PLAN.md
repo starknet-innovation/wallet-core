@@ -1456,8 +1456,12 @@ Features, smallest and least dependent first:
     extension's live send does, and art and metadata URLs are read as `new URL` reads them and
     shown as its `href` (`js::url`).
 
-    Known departure: a host only IDNA can read (non-ASCII, or an `xn--` label) is dropped. The
-    extension shows it in punycode.
+    Known departures, both failing closed:
+    - A host only IDNA can read (non-ASCII, or an `xn--` label) is dropped. The extension
+      shows it in punycode.
+    - A metadata URI that normalises to an image `data:` URI (a padded one) is no metadata
+      here. The extension would `fetch` the data URI and parse its body; the core's fetch is
+      an `https` GET only.
 
     M-NFT waits on legal (3.1.1).
 

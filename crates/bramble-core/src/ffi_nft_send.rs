@@ -69,6 +69,10 @@ impl NftTransfer {
     /// refuses the recipient. A lock since `prepare_nft_transfer` voids it.
     pub fn plan(&self, fee_balance: Option<String>) -> Result<Arc<TransferPlan>, NftError> {
         let core = self.core.upgrade().ok_or(NftError::Locked)?;
+        // A lock since `prepare_nft_transfer` voids the send: no card for a plan that cannot sign.
+        if core.session_generation() != Some(self.acting.generation) {
+            return Err(NftError::Locked);
+        }
         let network = self.acting.network;
         let infos = token_infos(&self.tokens);
         let collections = with_watched(&self.dir, |nfts| nfts.collections(network))?;

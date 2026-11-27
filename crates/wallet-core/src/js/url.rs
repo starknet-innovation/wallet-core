@@ -37,7 +37,7 @@ fn in_path_set(byte: u8) -> bool {
     c0(byte)
         || matches!(
             byte,
-            b' ' | b'"' | b'#' | b'<' | b'>' | b'?' | b'`' | b'{' | b'}'
+            b' ' | b'"' | b'#' | b'<' | b'>' | b'?' | b'^' | b'`' | b'{' | b'}'
         )
 }
 

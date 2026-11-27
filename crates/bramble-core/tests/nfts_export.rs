@@ -221,6 +221,7 @@ fn an_nft_send_is_planned_and_reviewed_as_the_extension_does() {
         "the largest token id",
         "to an address the wallet does not know",
         "to a lookalike of a saved contact",
+        "to the account itself",
     ] {
         let case = case("transfer", name);
         let message = &case["review"]["message"];
@@ -405,4 +406,34 @@ fn a_lock_voids_a_read_and_closes_the_watched_list() {
         locked
     );
     assert!(core.watched_nfts().unwrap().is_empty());
+}
+
+#[test]
+fn a_lock_voids_a_prepared_nft_send() {
+    let (_dir, core) = wallet();
+    let account = oz_id(&core, NetworkId::Sepolia, 0);
+    let case = case("transfer", "an ERC-721 to a saved contact");
+    let message = &case["review"]["message"];
+    let text = |key: &str| message[key].as_str().unwrap().to_string();
+    let send = core
+        .clone()
+        .prepare_nft_transfer(
+            account,
+            text("contract"),
+            text("tokenId"),
+            text("recipient"),
+            prefs(),
+        )
+        .unwrap();
+    drive(
+        || send.next_calls(),
+        |reply| send.accept(reply),
+        &case["review"]["exchanges"],
+    );
+    core.lock();
+    core.unlock(PASSWORD.into()).unwrap();
+    assert_eq!(
+        send.plan(None).err().unwrap().to_string(),
+        "wallet is locked"
+    );
 }

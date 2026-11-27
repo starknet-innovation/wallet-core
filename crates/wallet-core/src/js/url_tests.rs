@@ -22,6 +22,8 @@ fn serialises_as_new_url_href_does() {
             "https://cdn.example/%7Bid%7D.png",
         ),
         ("https://cdn.example/é", "https://cdn.example/%C3%A9"),
+        // `^` is in the path set only (Node and Bun agree).
+        ("https://cdn.example/^a?^#^", "https://cdn.example/%5Ea?^#^"),
         ("https://cdn.example/a%20b", "https://cdn.example/a%20b"),
         (
             "https://cdn.example/?q='x' y",
