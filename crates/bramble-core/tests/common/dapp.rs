@@ -129,13 +129,16 @@ pub fn ledger_key() -> SecretFelt {
 pub fn add_ledger(core: &WalletCore, key: &SecretFelt) {
     let public_key_x = sign_stark_hash(key, "0x1").unwrap().public_key;
     let added = core
-        .add_ledger_account(LedgerAccountRequest {
-            network: NetworkId::Sepolia,
-            family: AccountFamily::Argent,
-            scheme: LedgerScheme::Ready,
-            account_index: 0,
-            public_key_x,
-        })
+        .add_ledger_account(
+            LedgerAccountRequest {
+                network: NetworkId::Sepolia,
+                family: AccountFamily::Argent,
+                scheme: LedgerScheme::Ready,
+                account_index: 0,
+                public_key_x,
+            },
+            Vec::new(),
+        )
         .unwrap();
     assert!(added.ledger);
 }

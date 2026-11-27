@@ -157,7 +157,9 @@ Grep first; extend in place rather than adding a sibling.
   and path schemes are `bramble-core`'s `ledger.rs` (`LedgerScheme`); a vault's Ledger record is
   `KeySource::Ledger`, admitted when its stored key places it, and reaches a plan only through
   `ledger::record_device` (`signing_key` refuses it). Creating a Ledger-only wallet and adding a
-  Ledger account are `bramble-core`'s `ledger_wallet.rs`; a vault's phrase is read only through
+  Ledger account are `bramble-core`'s `ledger_wallet.rs` (a Braavos one only once
+  `accounts::activity` reads its address in use; a Braavos deployment's two device signatures
+  are `SignFor::BraavosParams` in `send::plan_device`); a vault's phrase is read only through
   `VaultPayload::phrase`, which refuses a wallet without one. A page of public keys for the
   account picker is `ledger::KeyEnumeration`, exported as `ledger_reader::LedgerKeyReader`
   beside `ledger_account_candidates`. The device OS gate (close the open app, read the OS on the

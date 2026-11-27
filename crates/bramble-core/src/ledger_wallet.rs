@@ -7,18 +7,24 @@
 //! extension does from the key its panel read; nothing is signed and no key is held. A key that
 //! is not the device's places an address the device cannot sign for: every send checks the key
 //! at the path before the person confirms (`wrong-device`) and verifies the signature after.
-//! A Braavos request is refused. That is stricter than the extension, whose `ledgerStoreRefusal`
-//! admits a Braavos Ledger account at Ready's scheme once it is proven deployed or funded on
-//! chain (`ledger-activity.ts`); that read is not ported, so mobile refuses rather than add one
-//! unproven. A vault's existing Braavos Ledger record is still operated (part 4). No origin is
-//! recorded, as the extension writes none.
+//! Bramble never creates a Braavos account, so a Braavos request is admitted only at Ready's
+//! scheme (`isLedgerApplicationForFamily`), at the class Braavos deploys (`ledgerDeployClassHash`),
+//! and only once its address is proven in use: deployed, or holding a known token
+//! (`ledgerStoreRefusal`, `ledger-activity.ts`). The host makes the reads
+//! `ledger_account_activity_requests` names and hands the replies in; other families ignore
+//! them, as the extension leaves them unchecked. No origin is recorded, as the extension writes
+//! none.
 
+use wallet_core::accounts::activity::{self, Activity};
 use wallet_core::Zeroizing;
 
+use crate::account_catalog::catalog;
 use crate::account_catalog::AccountFamily;
 use crate::account_store::{push_active, record_at, KeySource, StoredAccount, VaultPayload};
 use crate::ledger::LedgerScheme;
 use crate::networks::NetworkId;
+use crate::portfolio::registry::known_tokens;
+use crate::rpc_request::{RpcRequest, RpcResponse};
 use crate::wallet::WalletCore;
 use crate::wallet_accounts::{render, AccountRecord};
 use crate::{felt, vault, CoreError};
@@ -27,7 +33,8 @@ use crate::{felt, vault, CoreError};
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct LedgerAccountRequest {
     pub network: NetworkId,
-    /// OpenZeppelin or Argent; Braavos is refused (see the module).
+    /// OpenZeppelin or Argent at either scheme; Braavos at Ready's, once proven in use (see the
+    /// module).
     pub family: AccountFamily,
     /// The scheme the key was read at.
     pub scheme: LedgerScheme,
@@ -43,10 +50,12 @@ fn invalid(reason: &str) -> CoreError {
     }
 }
 
-/// `deriveLedgerAccount`: the record the request places, at Bramble's class for its family.
+/// `deriveLedgerAccount`: the record the request places, at Bramble's class for its family and
+/// Braavos's deployment class for Braavos.
 pub(crate) fn record(request: &LedgerAccountRequest) -> Result<StoredAccount, CoreError> {
-    if request.family == AccountFamily::Braavos {
-        return Err(invalid("a Ledger account cannot be a Braavos account here"));
+    let braavos = request.family == AccountFamily::Braavos;
+    if braavos && request.scheme != LedgerScheme::Ready {
+        return Err(invalid("Invalid Ledger path application"));
     }
     request
         .scheme
@@ -58,11 +67,53 @@ pub(crate) fn record(request: &LedgerAccountRequest) -> Result<StoredAccount, Co
         request.family,
         KeySource::Ledger(request.scheme),
         request.account_index,
-        None,
+        braavos.then_some(&catalog().braavos_deployment),
         None,
         &public_key,
         request.network,
     )
+}
+
+/// The known tokens' addresses on `network` (`knownTokensForNetwork`).
+fn token_addresses(network: NetworkId) -> Result<Vec<wallet_core::Felt>, CoreError> {
+    known_tokens(network)
+        .iter()
+        .map(|token| felt::parse_non_zero(&token.address).ok_or_else(|| invalid("invalid token")))
+        .collect()
+}
+
+/// `readLedgerAccountState`'s reads for the address `request` places: its class hash, then its
+/// balance of each known token on its network. For a Braavos request, the host answers them and
+/// passes the replies to `create_ledger_wallet` or `add_ledger_account`.
+#[uniffi::export]
+pub fn ledger_account_activity_requests(
+    request: LedgerAccountRequest,
+) -> Result<Vec<RpcRequest>, CoreError> {
+    let address = felt::parse_non_zero(&record(&request)?.address)
+        .ok_or_else(|| invalid("invalid address"))?;
+    Ok(activity::requests(
+        &address,
+        &token_addresses(request.network)?,
+    )?)
+}
+
+/// `ledgerStoreRefusal`: a Braavos request passes only when `activity` proves its address in
+/// use; every other family passes unchecked.
+fn check_activity(
+    request: &LedgerAccountRequest,
+    activity: &[RpcResponse],
+) -> Result<(), CoreError> {
+    if request.family != AccountFamily::Braavos {
+        return Ok(());
+    }
+    let tokens = token_addresses(request.network)?.len();
+    match activity::judge(tokens, activity) {
+        Activity::Active => Ok(()),
+        Activity::Unused => Err(invalid("braavos ledger account not found")),
+        Activity::Unknown => Err(CoreError::Rpc {
+            reason: "braavos ledger account status unavailable".into(),
+        }),
+    }
 }
 
 #[uniffi::export]
@@ -71,15 +122,18 @@ impl WalletCore {
     /// `request` names, sealed under `password`, and leaves it unlocked. Refuses when a wallet
     /// exists (`WalletExists`). Such a wallet signs only on its device: everything that needs a
     /// phrase (another phrase account, discovery, revealing a phrase, Nostr coordination) is
-    /// refused.
+    /// refused. A Braavos account needs `activity`, the replies to
+    /// `ledger_account_activity_requests`, to prove it in use; other families pass none.
     pub fn create_ledger_wallet(
         &self,
         password: String,
         request: LedgerAccountRequest,
+        activity: Vec<RpcResponse>,
     ) -> Result<AccountRecord, CoreError> {
         let password = Zeroizing::new(password);
         vault::check_password(&password)?;
         let record = record(&request)?;
+        check_activity(&request, &activity)?;
         let id = record.id.clone();
         let mut payload = VaultPayload::opened(None, Vec::new(), None);
         push_active(&mut payload, record, None, None)?;
@@ -95,12 +149,15 @@ impl WalletCore {
 
     /// Adds the Ledger account `request` names to the unlocked wallet and makes it active.
     /// Refuses an account the wallet already holds ("account already exists") and a wallet still
-    /// finding its accounts. Renews the idle window.
+    /// finding its accounts. A Braavos account needs `activity`, as `create_ledger_wallet` does.
+    /// Renews the idle window.
     pub fn add_ledger_account(
         &self,
         request: LedgerAccountRequest,
+        activity: Vec<RpcResponse>,
     ) -> Result<AccountRecord, CoreError> {
         let record = record(&request)?;
+        check_activity(&request, &activity)?;
         let id = record.id.clone();
         self.with_session(true, |session| {
             if session.payload.recovery_pending() {

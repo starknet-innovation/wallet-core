@@ -5,8 +5,10 @@
 //! (`Plan::with_device`) hands the hash to a `ledger::HashSigning` instead of `PlanHost::sign`:
 //! the plan emits each APDU as `SendStep::Device`, the host relays the device's answer, and only
 //! a signature that verified against the account's key continues to the write. `PlanHost::sign`
-//! is refused for such an account wherever it would be reached (a Braavos deployment's review
-//! signature, its two-signature deployment), so a Ledger account never signs with a key. A lock
+//! is refused for such an account wherever it would be reached, so a Ledger account never signs
+//! with a key. A Braavos deployment's extended authorization is two device signatures, its
+//! parameters' hash then the transaction's (`SignFor::BraavosParams`), for its estimates as for
+//! its write, as the extension's `braavosDeploySignature` asks the device twice. A lock
 //! ends the exchange at the next device answer, before another APDU is sent, and a signature the
 //! device returns after the session ended is dropped (`Locked`), as the extension's sign queue
 //! rejects at lock and at settle time. A gasless transfer's outside execution is signed here
@@ -19,7 +21,7 @@
 //! plan (`DeviceRefused`), as the extension's background gate throws.
 
 use super::fees::Bounds;
-use super::plan::{DeploymentFor, Plan, PlanHost, Stage};
+use super::plan::{DeploymentFor, Expect, Plan, PlanHost, Stage};
 use super::sign::Deployment;
 use super::types::{SendFailureCode as Code, SendStep};
 pub use crate::ledger::DeviceKey;
@@ -46,6 +48,21 @@ pub(crate) struct DeployWrite {
 pub(crate) enum SignFor {
     Invoke(InvokeWrite),
     Deploy(DeployWrite),
+    /// A Braavos deployment estimate, sent with the signature (`estimate_deployment`).
+    DeployEstimate(Expect),
+    /// Braavos's deploy parameters, signed first; then `hash` is signed for `then`.
+    BraavosParams {
+        hash: Felt,
+        params: Vec<Felt>,
+        then: Box<SignFor>,
+    },
+    /// Braavos's transaction hash, after its parameters signed as `aux`: the two make the
+    /// extended authorization `[r, s, ...params, aux_r, aux_s]` `then` carries.
+    BraavosHash {
+        params: Vec<Felt>,
+        aux: Vec<Felt>,
+        then: Box<SignFor>,
+    },
     /// A gasless transfer's checked outside execution (`plan_gasless`): no write, the signature
     /// goes back to the gasless path.
     Relay,
@@ -141,7 +158,12 @@ impl Plan {
     fn sign_failed(&mut self, then: &SignFor, code: Code, detail: Option<&str>) -> SendStep {
         let mut step = match then {
             SignFor::Invoke(write) => self.after_deployment(write.deployment, code, None),
-            SignFor::Deploy(_) | SignFor::Relay => self.fail(code, None),
+            SignFor::BraavosParams { then, .. } | SignFor::BraavosHash { then, .. } => {
+                return self.sign_failed(then, code, detail)
+            }
+            SignFor::Deploy(_) | SignFor::DeployEstimate(_) | SignFor::Relay => {
+                self.fail(code, None)
+            }
         };
         if let (SendStep::Failed { failure }, Some(detail)) = (&mut step, detail) {
             failure.detail = Some(detail.to_string());
@@ -159,6 +181,21 @@ impl Plan {
         match then {
             SignFor::Invoke(write) => self.send_invoke(host, hash, write, signature),
             SignFor::Deploy(write) => self.send_deploy(host, hash, write, signature),
+            SignFor::DeployEstimate(expect) => self.send_deploy_estimate(expect, signature, false),
+            SignFor::BraavosParams { hash, params, then } => {
+                let then = SignFor::BraavosHash {
+                    params,
+                    aux: signature,
+                    then,
+                };
+                self.sign_for(host, hash, then)
+            }
+            SignFor::BraavosHash { params, aux, then } => {
+                let mut signature = signature;
+                signature.extend(params);
+                signature.extend(aux);
+                self.send_signed(host, hash, *then, signature)
+            }
             SignFor::Relay => self.relayed(signature),
         }
     }

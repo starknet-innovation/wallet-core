@@ -208,9 +208,10 @@ pub enum PrivacyError {
     /// A release build of the core never takes a discovery override.
     #[error("privacy endpoint overrides are debug-only")]
     OverrideUnavailable,
-    /// A Ledger account: its viewing key is the device's (the extension caches it in
-    /// `accountSecrets`), which this wallet does not read yet.
-    #[error("private balances of a Ledger account are not read here yet")]
+    /// A Ledger account, refused as the extension refuses it ("Private balances are not
+    /// available for Ledger accounts"): its viewing key would be the device's, and the
+    /// extension defines no ceremony that derives one.
+    #[error("Private balances are not available for Ledger accounts")]
     LedgerAccount,
 }
 

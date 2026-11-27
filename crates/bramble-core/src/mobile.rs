@@ -145,7 +145,7 @@ pub use ledger_os_gate::{LedgerOsGate, LedgerOsStep};
 pub use ledger_reader::{
     ledger_account_candidates, LedgerCandidate, LedgerKey, LedgerKeyReader, LedgerReadStep,
 };
-pub use ledger_wallet::LedgerAccountRequest;
+pub use ledger_wallet::{ledger_account_activity_requests, LedgerAccountRequest};
 pub use multisig_rpc::{MultisigAuthorityRead, MultisigAuthorityStatus, MultisigStateRead};
 pub use multisig_tx::{
     ConfigChange, IntentState, MultisigCall, MultisigCallReview, MultisigIntent,

@@ -225,9 +225,21 @@ pub fn reply(id: u64, recorded: &Value) -> StepReply {
 pub fn drive(
     plan: &mut Plan,
     host: &Host,
+    step: SendStep,
+    expected: &[Value],
+    scenario: &Value,
+) -> SendStep {
+    drive_on(plan, host, step, expected, scenario, &mut |_| None)
+}
+
+/// `drive`, answering each device step with `device`'s reply; `None` stops there.
+pub fn drive_on(
+    plan: &mut Plan,
+    host: &Host,
     mut step: SendStep,
     expected: &[Value],
     scenario: &Value,
+    device: &mut dyn FnMut(&[u8]) -> Option<Vec<u8>>,
 ) -> SendStep {
     let name = &scenario["name"];
     let mut next = 0;
@@ -262,6 +274,9 @@ pub fn drive(
                 step = plan.advance(host, reply(*id, &recorded)).unwrap();
             }
             SendStep::Wait { .. } => step = plan.advance(host, StepReply::WaitElapsed).unwrap(),
+            SendStep::Device { apdu } if let Some(reply) = device(apdu) => {
+                step = plan.advance(host, StepReply::Device { reply }).unwrap();
+            }
             _ => {
                 assert_eq!(
                     next,
