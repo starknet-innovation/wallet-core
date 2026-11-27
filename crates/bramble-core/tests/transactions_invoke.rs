@@ -177,7 +177,10 @@ fn a_multicall_signs_and_submits_every_call() {
     assert_eq!(records.len(), 1);
     // The record carries what the batch grants (the approve of 1 unit of STRK), for the host to
     // file under this hash, and no row asset: no builder named one.
-    let PendingKind::Invoke { asset, allowances } = &records[0].kind else {
+    let PendingKind::Invoke {
+        asset, allowances, ..
+    } = &records[0].kind
+    else {
         panic!("not an invoke record");
     };
     assert_eq!(*asset, None);

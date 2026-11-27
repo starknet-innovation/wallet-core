@@ -120,10 +120,15 @@ fn decode_short_felt(value: Option<&JsValue>) -> String {
     if !is_stark_field_element(text) || crate::felt::parse_non_zero(text).is_none() {
         return String::new();
     }
-    let digits = &text[2..];
+    hex_pairs_to_chars(&text[2..])
+}
+
+/// starknet.js `decodeShortString` over hex `digits` (no prefix): each pair is one character
+/// (`String.fromCharCode`, so a byte above 0x7f is a Latin-1 character, not UTF-8), and an odd
+/// trailing digit is kept literally.
+pub(crate) fn hex_pairs_to_chars(digits: &str) -> String {
     let mut out = String::new();
-    let bytes = digits.as_bytes();
-    for pair in bytes.chunks(2) {
+    for pair in digits.as_bytes().chunks(2) {
         if pair.len() == 2 {
             let hex = std::str::from_utf8(pair).unwrap_or("00");
             out.push(char::from(u8::from_str_radix(hex, 16).unwrap_or(0)));

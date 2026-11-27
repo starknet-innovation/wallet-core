@@ -430,6 +430,9 @@ pub enum PendingKind {
     Invoke {
         /// The amount and token the batch's builder named for the row (a swap, a stake).
         asset: Option<ActivityAsset>,
+        /// The payee the row names, when the batch's builder named one (an NFT's recipient,
+        /// `recordSubmittedActivity`'s `counterparty`).
+        counterparty: Option<Felt>,
         /// Every allowance the batch changes. The host files them under the record's hash
         /// (`allowances::calls::record_changes`) before it writes the row, as the extension
         /// does for any hash that may be on chain: a row that fails to write must not lose a

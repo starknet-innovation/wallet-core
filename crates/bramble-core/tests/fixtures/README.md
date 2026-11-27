@@ -36,6 +36,10 @@ the extension's Ledger client against app-starknet 2.4.3 (the pinned Nano S+ ELF
 needs Docker and the vendored app and nothing checks it for drift. Its two `plan` signatures are
 over hashes the core's plan printed (`ledger_parity.rs`'s ignored `print_plan_hashes`), not the
 extension's; its second `version` line is a reply the generator wrote (`recorded: false`).
+A third exception: `extension-nfts.jsonl` (P17's generator) is from Bramble
+`dd85d9ae8d179fed0d47e3c8bf2df520918b5c8f` (`fixtures/g-nft`, on `feature/mobile-wallet` at
+`232e21510`), which adds `scripts/mobile-parity-nfts/` and changes no other code (two test-support
+headers gain a note); byte-identical to its copy there.
 Generators are under `scripts/` in Bramble; each fixture's is reached from
 `generate-mobile-parity-vectors.ts`.
 
@@ -91,6 +95,7 @@ Generators are under `scripts/` in Bramble; each fixture's is reached from
 | `vault-v13-to-v14.json` | `generate-mobile-parity-vectors.ts` (`mobile-parity-vault-full.ts`) | `58e4671a1ebe15bef6159df851211390de48c11b42537c8d6fb2e70290067565` |
 | `extension-gasless.jsonl` | `mobile-parity-gasless/` | `c232ecadeb65c8dc36e64d3b51a091eb63c8923698f8d686b269845e4d9e45c7` |
 | `extension-dapp.jsonl` | `mobile-parity-dapp/` | `4fa29896a551736d6f8bcb9dda21819b5077df8e6ad1cf15d3bcf2e6d50d9ef5` |
+| `extension-nfts.jsonl` | `mobile-parity-nfts/` | `64d78a451ba193fbabd603e149fa6a89ad0009bb29ea2ab5fb047287d67c3591` |
 | `extension-ledger.jsonl` | `mobile-ledger-speculos.ts` (`bun run mobile:ledger`) | `944d70116b7606ee1b6a0087dd578132153a26c63b9550e56af267766f201b5d` |
 
 Read today: `extension-parity.json` (`parity.rs`, `vault_parity.rs`),
@@ -134,7 +139,10 @@ blocks, `gasless_reads_parity.rs` the rest; the lines the core departs from, its
 (every line: `dapp_request_parity.rs` its `request` block, `dapp_connect_parity.rs` `connect`,
 `grants` and `queue`, `dapp_sites_parity.rs` `site`, `feedParse` and `feed`,
 `dapp_typed_data_parity.rs` `typedData` and `outside`, `dapp_sign_parity.rs` `sign`; each case the core departs from is listed
-there with its reason and asserted as a departure).
+there with its reason and asserted as a departure), and `extension-nfts.jsonl`'s `watched` block,
+`addNft` and `watchAsset` (`nfts_watched_parity.rs`: the page's reader, then the store, with the
+recorded node replies as the ownership verdict; the
+`gallery candidates`' `indexed` and `merged` and its other blocks wait for the rest of P17).
 `extension-privacy-copy.json` is the source of
 Bramble's generated Swift and Kotlin privacy copy; no Rust function returns those sentences, so
 no test here reads it. `extension-multisig-transactions.json` is read by

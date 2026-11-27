@@ -11,9 +11,10 @@
 use std::collections::HashSet;
 
 use super::coverage::{staking_coverage, Coverage};
-use super::directory::{starkscan_felt, starkscan_get, starkscan_json, starkscan_raw};
+use super::directory::{starkscan_felt, starkscan_raw};
 use super::read::StakingPair;
 use super::{StakingPolicy, StakingRefusal};
+use crate::history::starkscan::{starkscan_get, starkscan_json};
 use crate::js::json::JsValue;
 use crate::portfolio::wire::{HttpOutcome, HttpRequest};
 use crate::{felt, Felt, NetworkId};

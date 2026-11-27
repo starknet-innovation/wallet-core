@@ -12,14 +12,13 @@ use std::collections::HashSet;
 
 use super::coverage::{staking_coverage, Coverage};
 use super::{StakingPolicy, StakingRefusal};
+use crate::history::starkscan::{starkscan_get, starkscan_json};
 use crate::js::big::{parse_bigint, Big};
 use crate::js::felt::same_felt;
-use crate::js::json::{self, JsValue};
+use crate::js::json::JsValue;
 use crate::js::num::{js_trim, utf16_len};
 use crate::portfolio::model::TokenConfig;
-use crate::portfolio::wire::{
-    HttpHeader, HttpMethod, HttpOutcome, HttpRequest, STARKSCAN_BODY_LIMIT, STARKSCAN_DEADLINE_MS,
-};
+use crate::portfolio::wire::{HttpOutcome, HttpRequest};
 use crate::rpc::format_digits;
 use crate::{felt, Felt, NetworkId};
 
@@ -396,31 +395,6 @@ fn form_encode(value: &str) -> String {
             _ => format!("%{b:02X}"),
         })
         .collect()
-}
-
-/// A Starkscan GET as the explorer lane sends it: JSON only, no key, bounded.
-pub(crate) fn starkscan_get(url: String) -> HttpRequest {
-    HttpRequest {
-        method: HttpMethod::Get,
-        url,
-        headers: vec![HttpHeader {
-            name: "accept".into(),
-            value: "application/json".into(),
-        }],
-        body: None,
-        max_body_bytes: STARKSCAN_BODY_LIMIT,
-        deadline_ms: STARKSCAN_DEADLINE_MS,
-    }
-}
-
-/// A Starkscan reply's JSON: `None` for a failed exchange, a status outside 2xx, an oversized
-/// body (checked before it is parsed) or text that is not JSON.
-pub(crate) fn starkscan_json(outcome: &HttpOutcome) -> Option<JsValue> {
-    let body = outcome.body.as_ref()?;
-    if !(200..300).contains(&outcome.status) || body.len() as u64 > STARKSCAN_BODY_LIMIT {
-        return None;
-    }
-    json::parse(&json::decode_utf8(body))
 }
 
 /// One directory page's request (`getStakingValidators`): `{base}/{chain}/staking/validators?

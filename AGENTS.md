@@ -167,11 +167,27 @@ Grep first; extend in place rather than adding a sibling.
   `ledger_os_gate::LedgerOsGate`. Ledger's Bluetooth framing is `ledger::ble`, exported as
   `ledger_ble::LedgerBleExchange` beside `ledger_ble_link` (GATT specs, MTU request); it only carries bytes, and
   the apps' Bluetooth shims hold no protocol logic of their own.
+- Watched NFTs are `nft::watched`: the record (`WatchedNft`, `with_nft_id`, `from_json`), a watch
+  form's input (`NftTarget::read`), and `WatchedNfts` over `host::Storage` (the extension's
+  `nfts`, `nftIndexerUrl` and `collectiblesPreview`; `watch_owned`, `watch_from_site`,
+  `set_spam`, `remove`, `gallery`, and `collections`, the review's `nft_contracts`). Never the
+  vault.
 - AVNU swaps are `crates/wallet-core/src/swap/`: the quote (`quote.rs`: `PendingQuote`,
   `SwapQuote`, the value check), the build and its reply judge (`build.rs`: `PendingBuild`), the
   build policy and floor (`policy.rs`: `build_policy`, `reviewed_min_buy_amount`) and the frozen
   preparation (`prepare.rs`: `SwapPreparation`); Bramble's deployments and
   numbers are `bramble-core`'s `swap::SWAP_POLICY`.
+- NFTs (P17) live in `crates/wallet-core/src/nft/`: a token's identity (`NftId`) and the
+  numbers (`NftPolicy`; Bramble's `nft::NFT_POLICY`) in `mod.rs`; discovery's source choice,
+  request and judged candidates (`discovery::PendingDiscovery`, `NftCandidate`, `NftCoverage`)
+  and the indexer URL setting (`indexer_url_setting`) in `discovery.rs`, over `indexer.rs` and
+  `starkscan.rs`. Any Starkscan GET and its reply check are
+  `history::starkscan::{starkscan_get, starkscan_json}`. Mobile's export is `bramble-core`'s
+  `ffi_nft.rs` (`WalletCore::nft_discovery`, `NftDiscoveryRequest`, `nft_metadata_judge`;
+  `NFT_METADATA_LIMITS` in `nft.rs`), `ffi_nft_read.rs` (`NftOwnershipRead`, `NftTokenUriRead`),
+  `ffi_nft_watched.rs` (the list in `nfts.v1.json`; `watch_nft` takes a finished
+  `NftOwnershipRead`, never an `owned` flag) and `ffi_nft_send.rs` (`prepare_nft_transfer`,
+  `NftTransfer::plan` into `TransferPlan`). Images only: the HTML animation never crosses.
 - Native staking lives in `crates/wallet-core/src/staking/`: the pinned chain read
   (`read::StakingRead`, decoders and `verify_staking_pool` in `decode`), Starkscan's directory
   and positions (`directory`, `positions`, the shared `coverage` rule), the rows (`view`), the

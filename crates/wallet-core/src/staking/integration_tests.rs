@@ -39,7 +39,10 @@ fn prepared(
 }
 
 fn pending(invoke: &Invoke) -> (Option<ActivityAsset>, Vec<AllowanceChange>) {
-    let PendingKind::Invoke { asset, allowances } = invoke.pending_kind() else {
+    let PendingKind::Invoke {
+        asset, allowances, ..
+    } = invoke.pending_kind()
+    else {
         panic!("a staking action is an invoke");
     };
     (asset, allowances)

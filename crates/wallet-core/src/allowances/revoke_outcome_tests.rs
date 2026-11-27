@@ -93,6 +93,7 @@ fn a_revoke_carries_exactly_the_zero_approve_for_its_pair() {
         invoke.pending_kind(),
         PendingKind::Invoke {
             asset: None,
+            counterparty: None,
             allowances: vec![AllowanceChange {
                 kind: ChangeKind::Set,
                 input: AllowanceInput {
