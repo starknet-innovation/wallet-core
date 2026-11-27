@@ -127,7 +127,9 @@ impl PendingDiscovery {
     }
 
     /// Judges the host's outcome: any failed exchange, status outside 2xx, oversized or
-    /// malformed body is `Unavailable`.
+    /// malformed body is `Unavailable`. Starkscan here is the Activity lane's client: the host
+    /// holds its cooldown (`history::starkscan::cooldown_ms`) over this request too,
+    /// sending nothing while it runs and starting it on a failure, as the extension does.
     pub fn judge(self, outcome: &HttpOutcome) -> NftDiscovery {
         let judged = match self.source {
             Source::Indexer => indexer::judge(outcome, &self.policy),
