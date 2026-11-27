@@ -2,13 +2,16 @@
 //! deployment status and the known tokens' balances) and the verdict `ledgerStoreRefusal` draws
 //! from it (`background/ledger/ledger-activity.ts`). Deployed, or any balance above zero, is
 //! `Active`; known undeployed with every balance read as zero (or no tokens to read) is
-//! `Unused`; anything else is `Unknown`, which a caller must never take as unused.
+//! `Unused`; anything else is `Unknown`, which a caller must never take as unused. One step
+//! stricter than the extension (`isAccountDeployed` takes any class-hash reply as deployed): a
+//! zero class hash, which some nodes answer for an undeployed address, is undeployed here
+//! (`judge::class_value`), so it can never admit an unused address.
 //!
 //! Sans-IO: `requests` gives the host one `starknet_getClassHashAt` (id 0) and one `balanceOf`
 //! per token (ids 1..), and `judge` reads the replies. Which tokens to read is the wallet's.
 
 use crate::rpc::{self, Request, Response};
-use crate::send::judge::{self, ClassHashAnswer};
+use crate::send::judge::{self, ClassValue};
 use crate::send::rpc_bodies;
 use crate::{felt, Error, Felt};
 
@@ -42,14 +45,14 @@ pub fn judge(token_count: usize, responses: &[Response]) -> Activity {
             .find(|response| response.id == id)
             .map_or("", |response| response.body.as_str())
     };
-    let deployed = judge::class_hash(judge::answer(body(0), 0));
+    let deployed = judge::class_value(judge::answer(body(0), 0));
     let balances: Vec<Option<bool>> = (1..=token_count as u64)
         .map(|id| rpc::parse_balance_of(body(id), id).ok().map(|b| b != "0"))
         .collect();
-    if deployed == ClassHashAnswer::Deployed || balances.contains(&Some(true)) {
+    if matches!(deployed, ClassValue::Class(_)) || balances.contains(&Some(true)) {
         return Activity::Active;
     }
-    if deployed == ClassHashAnswer::Undeployed && !balances.contains(&None) {
+    if deployed == ClassValue::Undeployed && !balances.contains(&None) {
         return Activity::Unused;
     }
     Activity::Unknown

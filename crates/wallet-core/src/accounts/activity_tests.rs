@@ -79,3 +79,14 @@ fn a_held_balance_alone_proves_use() {
 fn with_no_tokens_an_undeployed_address_is_unused() {
     assert_eq!(judge(0, &[class(NOT_FOUND)]), Activity::Unused);
 }
+
+#[test]
+fn a_zero_class_hash_is_not_deployed() {
+    // Some nodes answer 0x0 for an undeployed address; it must never prove use.
+    let zero = r#"{"jsonrpc":"2.0","id":0,"result":"0x0"}"#;
+    assert_eq!(judge(0, &[class(zero)]), Activity::Unused);
+    assert_eq!(
+        judge(1, &[class(zero), balance(1, "0x0")]),
+        Activity::Unused
+    );
+}
