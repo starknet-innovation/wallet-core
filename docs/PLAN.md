@@ -1300,16 +1300,16 @@ Features, smallest and least dependent first:
       placed is refused (114), where the extension shows the card and withholds Sign. Missing:
       a merkle field's root row and a revision 1 `string`'s ByteArray felt, which only Krusty's
       encoder computes (krusty-kms #280). Follow-ups, in order:
-      1. *Golden rows* (#175 merged; Bramble #1066 merged without the rows, so the generator
-         below is still owed). Bramble's
-         `scripts/mobile-parity-dapp/typed-data.ts` records, for each `typedData` case the gate
-         accepts, `decodeSignRequest` rendered through `signValueText` (`card: { domain,
-         message, classified }`, each block `{ signed, unsigned }` as `[key, text]` pairs) and
-         `isOutsideExecution`. It adds cases that reach rows the current 28 do not: a revision 0
-         domain with an undeclared `revision`, a revision 1 `string`, a three-leaf merkle tree,
-         and a key past 259 characters. `dapp_typed_data_parity.rs` compares
-         `sign_rows` to them, listing as deviations the root row and the ByteArray felt (until
-         step 2) and the documents Krusty refuses (no card).
+      1. *Golden rows* (done: Bramble #1078). Bramble's
+         `scripts/mobile-parity-dapp/typed-data.ts` records, for each `typedData` and accepted
+         `outside` case the gate accepts, `decodeSignRequest` rendered through `signValueText`
+         (`card: { domain, message, classified }`, each block `{ signed, unsigned }` as
+         `[key, text]` pairs) and `isOutsideExecution` (the extension has no function of that
+         name: it records whether `signRequestWarnings` warns). It adds a revision 0 domain with
+         an undeclared `revision`, a revision 1 `string`, a three-leaf merkle tree of struct
+         leaves and a 324-character key. `dapp_typed_data_parity.rs` compares `sign_rows` to
+         them: 28 of 32 cards agree, and the root row, the ByteArray felt (until step 2) and
+         the two documents Krusty refuses (no card) are listed deviations.
       2. *Krusty's felts* (when krusty-kms ships #280, bumped deliberately with
          `starknet-types-core`). `sign_rows` prints the root as `<path> ⟨merkle root⟩` and the
          ByteArray felt in `"text" (string = 0x…)`, through `kms.rs`. The `ponytail:` note in
