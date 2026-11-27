@@ -170,6 +170,12 @@ Grep first; extend in place rather than adding a sibling.
   build policy and floor (`policy.rs`: `build_policy`, `reviewed_min_buy_amount`) and the frozen
   preparation (`prepare.rs`: `SwapPreparation`); Bramble's deployments and
   numbers are `bramble-core`'s `swap::SWAP_POLICY`.
+- NFTs (P17) live in `crates/wallet-core/src/nft/`: a token's identity (`NftId`) and the
+  numbers (`NftPolicy`; Bramble's `nft::NFT_POLICY`) in `mod.rs`; discovery's source choice,
+  request and judged candidates (`discovery::PendingDiscovery`, `NftCandidate`, `NftCoverage`)
+  and the indexer URL setting (`indexer_url_setting`) in `discovery.rs`, over `indexer.rs` and
+  `starkscan.rs`. Any Starkscan GET and its reply check are
+  `history::starkscan::{starkscan_get, starkscan_json}`.
 - Native staking lives in `crates/wallet-core/src/staking/`: the pinned chain read
   (`read::StakingRead`, decoders and `verify_staking_pool` in `decode`), Starkscan's directory
   and positions (`directory`, `positions`, the shared `coverage` rule), the rows (`view`), the
