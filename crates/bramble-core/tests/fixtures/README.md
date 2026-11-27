@@ -22,9 +22,9 @@ padded address labels of #884 (`accounts-parity-rules.json`, `portfolio-parity.j
 (`extension-activity-detail.jsonl`) and the review copy (`extension-transactions-copy.json`).
 `transactions_rules_parity.rs` excuses the decimal recipients in `-verification.json`'s summaries,
 an extension bug fixed on Bramble `fix/review-decimal-recipient`; that exception goes with the next
-copy. One file is from another commit: `extension-dapp.jsonl` (P16's generator), Bramble `b4602f0598dca107f48e5f3b9ec647c1cbd86d8b`
-(`fixtures/p16-dapp`, on `feature/mobile-wallet` at `25f66184d`), which adds
-`scripts/mobile-parity-dapp/` and changes no other code (two `tests/support` stub headers gain a note); the next full copy brings every file to
+copy. One file is from another commit: `extension-dapp.jsonl` (P16's generator), Bramble `47b5aaff287edd48914bce5cabf6c98759681204`
+(`fixtures/p16-typed-data-rows`, Bramble #1078, on `feature/mobile-wallet` at `232e21510`), which adds the sign
+card's rows to `scripts/mobile-parity-dapp/typed-data.ts` and changes no other code; the next full copy brings every file to
 one commit again. Every file is byte-identical to its copy at that commit; privacy SDK
 `vendor/starknet-privacy` at `b40bf109` (Bramble's pin).
 A second exception: `extension-ledger.jsonl` comes from Bramble commit
@@ -94,7 +94,7 @@ Generators are under `scripts/` in Bramble; each fixture's is reached from
 | `vault-v14.json` | `generate-mobile-parity-vectors.ts` (`mobile-parity-vault-full.ts`) | `97a437888e92569c45b810d757633506bb971fd9f9f91199ec8bfe05f4e01a5b` |
 | `vault-v13-to-v14.json` | `generate-mobile-parity-vectors.ts` (`mobile-parity-vault-full.ts`) | `58e4671a1ebe15bef6159df851211390de48c11b42537c8d6fb2e70290067565` |
 | `extension-gasless.jsonl` | `mobile-parity-gasless/` | `c232ecadeb65c8dc36e64d3b51a091eb63c8923698f8d686b269845e4d9e45c7` |
-| `extension-dapp.jsonl` | `mobile-parity-dapp/` | `4fa29896a551736d6f8bcb9dda21819b5077df8e6ad1cf15d3bcf2e6d50d9ef5` |
+| `extension-dapp.jsonl` | `mobile-parity-dapp/` | `6dca21b487b810693936b581fd49fc869865f8d9daa1795e9e66f6c54411839d` |
 | `extension-nfts.jsonl` | `mobile-parity-nfts/` | `64d78a451ba193fbabd603e149fa6a89ad0009bb29ea2ab5fb047287d67c3591` |
 | `extension-ledger.jsonl` | `mobile-ledger-speculos.ts` (`bun run mobile:ledger`) | `944d70116b7606ee1b6a0087dd578132153a26c63b9550e56af267766f201b5d` |
 
@@ -138,7 +138,7 @@ blocks, `gasless_reads_parity.rs` the rest; the lines the core departs from, its
 `knownExtensionBug` lines among them, are asserted as departures), and `extension-dapp.jsonl`
 (every line: `dapp_request_parity.rs` its `request` block, `dapp_connect_parity.rs` `connect`,
 `grants` and `queue`, `dapp_sites_parity.rs` `site`, `feedParse` and `feed`,
-`dapp_typed_data_parity.rs` `typedData` and `outside`, `dapp_sign_parity.rs` `sign`; each case the core departs from is listed
+`dapp_typed_data_parity.rs` `typedData` and `outside` with their sign cards, `dapp_sign_parity.rs` `sign`; each case the core departs from is listed
 there with its reason and asserted as a departure), and `extension-nfts.jsonl`'s `watched` block,
 `addNft` and `watchAsset` (`nfts_watched_parity.rs`: the page's reader, then the store, with the
 recorded node replies as the ownership verdict; the

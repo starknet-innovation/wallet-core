@@ -6,7 +6,10 @@
 //!   `describe_typed_data` is `describeTypedData`;
 //! - `outside`: `review_outside_execution` at `Stage::Queue` (with the allowance log) and
 //!   `Stage::Sign` (without it) flags, summarizes and refuses each SNIP-9 outside execution as
-//!   `reviewOutsideExecution` did, over the call-review fixture's trusted set.
+//!   `reviewOutsideExecution` did, over the call-review fixture's trusted set;
+//! - both: for each document the gate accepts, `CheckedTypedData::sign_rows` prints the side
+//!   panel's card (`decodeSignRequest` through `signValueText`), refuses where it is
+//!   `classified: false`, and a document the core cannot hash shows no card.
 //!
 //! Krusty hashes less than starknet.js (`typed_data.rs`'s module doc); each case where the
 //! extension signs and the core fails closed is listed as a deviation.
@@ -19,6 +22,7 @@ use dapp_parity_support::*;
 use serde_json::{json, Value};
 use starknet_wallet_core::allowances::record::AllowanceRecord;
 use starknet_wallet_core::catalog::TokenInfo;
+use starknet_wallet_core::dapp::sign_rows::{SignBlock, SignRow};
 use starknet_wallet_core::dapp::typed_data::{describe_typed_data, CheckedTypedData};
 use starknet_wallet_core::dapp::{review_outside_execution, Stage, TypedDataRefusal};
 use starknet_wallet_core::send::call_decode::Known;
@@ -55,6 +59,26 @@ const OUTSIDE_DEVIATIONS: &[(&str, &str)] = &[(
      #147, after Bramble #1038, unmerged); the extension on feature/mobile-wallet signs it",
 )];
 
+/// Where the core's sign card parts from the side panel's.
+const CARD_DEVIATIONS: &[(&str, &str)] = &[
+    (
+        "a message with an undeclared key",
+        "Krusty refuses the document, so the core shows no card; the extension shows one",
+    ),
+    (
+        "domain fields in another order",
+        "Krusty refuses the document, so the core shows no card; the extension shows one",
+    ),
+    (
+        "revision 1, a string",
+        "no ByteArray felt in the row: only Krusty's encoder computes it (krusty-kms #280)",
+    ),
+    (
+        "a merkletree of three struct leaves",
+        "no `root ⟨merkle root⟩` row: only Krusty's encoder computes it (krusty-kms #280)",
+    ),
+];
+
 fn refusal(refused: TypedDataRefusal) -> &'static str {
     match refused {
         TypedDataRefusal::Invalid => "Invalid typed data",
@@ -66,7 +90,7 @@ fn refusal(refused: TypedDataRefusal) -> &'static str {
 #[test]
 fn typed_data_is_gated_bound_and_summarized_as_the_extension_does() {
     let mut deviations = Deviations::new(DEVIATIONS);
-    for case in cases("typedData", 28) {
+    for case in cases("typedData", 32) {
         let name = name(&case);
         let document = js_value(&case["document"]);
         let account = felt_of(text(&case["account"]));
@@ -231,5 +255,102 @@ fn outside_executions_are_reviewed_as_the_extension_reviews_them() {
             json!({ "queue": theirs(&case["queue"]), "sign": theirs(&case["sign"]) }),
         );
     }
+    deviations.finish();
+}
+
+fn block_rows(block: &SignBlock) -> Value {
+    let pairs = |rows: &[SignRow]| -> Vec<Value> {
+        rows.iter().map(|row| json!([row.key, row.value])).collect()
+    };
+    json!({ "signed": pairs(&block.signed), "unsigned": pairs(&block.unsigned) })
+}
+
+/// The core's card as the extension writes one: `null` when the core cannot hash the document
+/// on any chain the case recorded (no card is queued), `{ classified: false }` when `sign_rows`
+/// refuses, the rows otherwise.
+fn our_card(typed: &CheckedTypedData, account: &Felt, chains: &[&str]) -> Value {
+    if chains.iter().all(|chain| {
+        typed
+            .message_hash_for_chain(account, &felt_of(chain))
+            .is_err()
+    }) {
+        return Value::Null;
+    }
+    match typed.sign_rows() {
+        None => json!({ "classified": false }),
+        Some(rows) => json!({
+            "classified": true,
+            "domain": block_rows(&rows.domain),
+            "message": block_rows(&rows.message),
+        }),
+    }
+}
+
+/// The extension's card: `null` when it hashed on none of `chains` (it queues no card either),
+/// only `classified` when the card withholds Sign (the core refuses the request).
+fn their_card(case: &Value, chains: &[&str]) -> Value {
+    if !chains.is_empty()
+        && chains
+            .iter()
+            .all(|chain| case[*chain].get("hash").is_none())
+    {
+        return Value::Null;
+    }
+    let card = &case["card"];
+    if card["classified"] == false {
+        return json!({ "classified": false });
+    }
+    card.clone()
+}
+
+#[test]
+fn sign_cards_are_decoded_as_the_side_panel_decodes_them() {
+    let mut deviations = Deviations::new(CARD_DEVIATIONS);
+    let mut cards = 0;
+    // `typedData` records both chains; `outside` documents are Mainnet's and record no hash.
+    for (block, count, chains, theirs) in [
+        (
+            "typedData",
+            32,
+            &[MAINNET, SEPOLIA][..],
+            &["mainnet", "sepolia"][..],
+        ),
+        ("outside", 17, &[MAINNET][..], &[][..]),
+    ] {
+        for case in cases(block, count) {
+            let name = name(&case);
+            let document = js_value(&case["document"]);
+            let Ok(typed) = CheckedTypedData::check(&document, &DAPP_POLICY.typed_data) else {
+                assert!(
+                    case.get("card").is_none(),
+                    "{name}: a card for a refused document"
+                );
+                continue;
+            };
+            if case["queue"].get("error").is_some() {
+                // The outside review refused it at queue, on both sides (the test above): no card.
+                continue;
+            }
+            cards += 1;
+            // The side panel warns on the primary type alone, as `DappCard::SignTypedData`'s
+            // `outside_execution` does (`dapp_sign_outside.rs`).
+            assert_eq!(
+                case["isOutsideExecution"] == true,
+                typed.value().get("primaryType").and_then(|ty| ty.as_str())
+                    == Some("OutsideExecution"),
+                "{name}"
+            );
+            let account = match &case["account"] {
+                Value::String(address) => felt_of(address),
+                actor => felt_of(text(&actor["address"])),
+            };
+            deviations.check(
+                &name,
+                our_card(&typed, &account, chains),
+                their_card(&case, theirs),
+            );
+        }
+    }
+    assert_eq!(cards, 32, "cards compared");
     deviations.finish();
 }
